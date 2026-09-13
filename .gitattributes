@@ -1,0 +1,4 @@
+# Preserve upstream fixture and SDK patch bytes. CRLF is valid in this snapshot.
+* whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+*.md whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol
+*.patch whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol

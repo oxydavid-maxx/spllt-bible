@@ -1,0 +1,35 @@
+import React from 'react';
+import TestRenderer, { act } from 'react-test-renderer';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+vi.mock('expo-router', () => {
+  const Screen = (props: Record<string, unknown>) => React.createElement('Screen', props);
+  const Tabs = (props: Record<string, unknown>) => React.createElement('Tabs', props, props.children as React.ReactNode);
+  Object.assign(Tabs, { Screen });
+  return { Tabs };
+});
+vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: () => React.createElement('Icon') }));
+vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => React.createElement('AccountEntryButton') }));
+
+import TabsLayout from '../../app/(tabs)/_layout';
+
+describe('focused Reader route composition', () => {
+  const originalError = console.error;
+  beforeAll(() => { console.error = (...args: unknown[]) => { const message = String(args[0] ?? ''); if (message.includes('react-test-renderer is deprecated') || message.includes('testing environment is not configured to support act')) return; originalError(...args); }; });
+  afterAll(() => { console.error = originalError; });
+
+  it('keeps the shared account entry on the focused Reader route while hiding navigation chrome', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(React.createElement(TabsLayout)); });
+
+    const tabs = renderer.root.findAll((node) => String(node.type) === 'Tabs')[0];
+    const reader = renderer.root.findAll((node) => String(node.type) === 'Screen').find((node) => node.props.name === 'reader');
+
+    expect(tabs).toBeDefined();
+    expect(reader).toBeDefined();
+    expect(reader?.props.options).toMatchObject({ headerShown: false, tabBarStyle: { display: 'none' } });
+    expect(reader?.props.options.headerRight).toBe(tabs.props.screenOptions.headerRight);
+    expect(reader?.props.options.headerRight().type).toBe(tabs.props.screenOptions.headerRight().type);
+    renderer.unmount();
+  });
+});

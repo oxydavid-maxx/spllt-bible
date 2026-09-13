@@ -1,0 +1,617 @@
+{
+  "schema_version": 1,
+  "plan_id": "church-2026-09",
+  "plan_sha256": "37092f17562144640690c22a7496aaf207ed73fec0d1b9df1fa0d2595958822b",
+  "decision": "C_FIRST",
+  "task_count": 26,
+  "unique_required_chapters": 42,
+  "chapters": [
+    {
+      "reference": "JHN.12",
+      "book": "JHN",
+      "chapter": 12,
+      "task_dates": [
+        "2026-09-01"
+      ],
+      "task_passages": [
+        "JHN.12.27-50"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "JHN.13",
+      "book": "JHN",
+      "chapter": 13,
+      "task_dates": [
+        "2026-09-01",
+        "2026-09-02"
+      ],
+      "task_passages": [
+        "JHN.13"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "JHN.14",
+      "book": "JHN",
+      "chapter": 14,
+      "task_dates": [
+        "2026-09-02",
+        "2026-09-03"
+      ],
+      "task_passages": [
+        "JHN.14"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "JHN.15",
+      "book": "JHN",
+      "chapter": 15,
+      "task_dates": [
+        "2026-09-03",
+        "2026-09-04"
+      ],
+      "task_passages": [
+        "JHN.15"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "JHN.16",
+      "book": "JHN",
+      "chapter": 16,
+      "task_dates": [
+        "2026-09-04",
+        "2026-09-05"
+      ],
+      "task_passages": [
+        "JHN.16"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "JHN.17",
+      "book": "JHN",
+      "chapter": 17,
+      "task_dates": [
+        "2026-09-05",
+        "2026-09-07"
+      ],
+      "task_passages": [
+        "JHN.17"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "JHN.18",
+      "book": "JHN",
+      "chapter": 18,
+      "task_dates": [
+        "2026-09-07",
+        "2026-09-08"
+      ],
+      "task_passages": [
+        "JHN.18"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "JHN.19",
+      "book": "JHN",
+      "chapter": 19,
+      "task_dates": [
+        "2026-09-08",
+        "2026-09-09"
+      ],
+      "task_passages": [
+        "JHN.19"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "JHN.20",
+      "book": "JHN",
+      "chapter": 20,
+      "task_dates": [
+        "2026-09-09",
+        "2026-09-10"
+      ],
+      "task_passages": [
+        "JHN.20"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "JHN.21",
+      "book": "JHN",
+      "chapter": 21,
+      "task_dates": [
+        "2026-09-10"
+      ],
+      "task_passages": [
+        "JHN.21"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.88",
+      "book": "PSA",
+      "chapter": 88,
+      "task_dates": [
+        "2026-09-11"
+      ],
+      "task_passages": [
+        "PSA.88"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.89",
+      "book": "PSA",
+      "chapter": 89,
+      "task_dates": [
+        "2026-09-11"
+      ],
+      "task_passages": [
+        "PSA.89"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "1TI.1",
+      "book": "1TI",
+      "chapter": 1,
+      "task_dates": [
+        "2026-09-12",
+        "2026-09-14"
+      ],
+      "task_passages": [
+        "1TI.1"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.90",
+      "book": "PSA",
+      "chapter": 90,
+      "task_dates": [
+        "2026-09-12"
+      ],
+      "task_passages": [
+        "PSA.90"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.91",
+      "book": "PSA",
+      "chapter": 91,
+      "task_dates": [
+        "2026-09-12"
+      ],
+      "task_passages": [
+        "PSA.91"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "1TI.2",
+      "book": "1TI",
+      "chapter": 2,
+      "task_dates": [
+        "2026-09-14",
+        "2026-09-15"
+      ],
+      "task_passages": [
+        "1TI.2"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.92",
+      "book": "PSA",
+      "chapter": 92,
+      "task_dates": [
+        "2026-09-14"
+      ],
+      "task_passages": [
+        "PSA.92"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "1TI.3",
+      "book": "1TI",
+      "chapter": 3,
+      "task_dates": [
+        "2026-09-15",
+        "2026-09-16"
+      ],
+      "task_passages": [
+        "1TI.3"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.93",
+      "book": "PSA",
+      "chapter": 93,
+      "task_dates": [
+        "2026-09-15"
+      ],
+      "task_passages": [
+        "PSA.93"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "1TI.4",
+      "book": "1TI",
+      "chapter": 4,
+      "task_dates": [
+        "2026-09-16",
+        "2026-09-17"
+      ],
+      "task_passages": [
+        "1TI.4"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.94",
+      "book": "PSA",
+      "chapter": 94,
+      "task_dates": [
+        "2026-09-16"
+      ],
+      "task_passages": [
+        "PSA.94"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "1TI.5",
+      "book": "1TI",
+      "chapter": 5,
+      "task_dates": [
+        "2026-09-17",
+        "2026-09-18"
+      ],
+      "task_passages": [
+        "1TI.5"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.95",
+      "book": "PSA",
+      "chapter": 95,
+      "task_dates": [
+        "2026-09-17"
+      ],
+      "task_passages": [
+        "PSA.95"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "1TI.6",
+      "book": "1TI",
+      "chapter": 6,
+      "task_dates": [
+        "2026-09-18"
+      ],
+      "task_passages": [
+        "1TI.6"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "2TI.1",
+      "book": "2TI",
+      "chapter": 1,
+      "task_dates": [
+        "2026-09-19",
+        "2026-09-21"
+      ],
+      "task_passages": [
+        "2TI.1"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.96",
+      "book": "PSA",
+      "chapter": 96,
+      "task_dates": [
+        "2026-09-19"
+      ],
+      "task_passages": [
+        "PSA.96"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.97",
+      "book": "PSA",
+      "chapter": 97,
+      "task_dates": [
+        "2026-09-19"
+      ],
+      "task_passages": [
+        "PSA.97"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "2TI.2",
+      "book": "2TI",
+      "chapter": 2,
+      "task_dates": [
+        "2026-09-21",
+        "2026-09-22"
+      ],
+      "task_passages": [
+        "2TI.2"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "2TI.3",
+      "book": "2TI",
+      "chapter": 3,
+      "task_dates": [
+        "2026-09-22",
+        "2026-09-23"
+      ],
+      "task_passages": [
+        "2TI.3"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "2TI.4",
+      "book": "2TI",
+      "chapter": 4,
+      "task_dates": [
+        "2026-09-23"
+      ],
+      "task_passages": [
+        "2TI.4"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.98",
+      "book": "PSA",
+      "chapter": 98,
+      "task_dates": [
+        "2026-09-23"
+      ],
+      "task_passages": [
+        "PSA.98"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "TIT.1",
+      "book": "TIT",
+      "chapter": 1,
+      "task_dates": [
+        "2026-09-24",
+        "2026-09-25"
+      ],
+      "task_passages": [
+        "TIT.1"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.99",
+      "book": "PSA",
+      "chapter": 99,
+      "task_dates": [
+        "2026-09-24"
+      ],
+      "task_passages": [
+        "PSA.99"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.100",
+      "book": "PSA",
+      "chapter": 100,
+      "task_dates": [
+        "2026-09-24"
+      ],
+      "task_passages": [
+        "PSA.100"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "TIT.2",
+      "book": "TIT",
+      "chapter": 2,
+      "task_dates": [
+        "2026-09-25",
+        "2026-09-26"
+      ],
+      "task_passages": [
+        "TIT.2"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.101",
+      "book": "PSA",
+      "chapter": 101,
+      "task_dates": [
+        "2026-09-25"
+      ],
+      "task_passages": [
+        "PSA.101"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "TIT.3",
+      "book": "TIT",
+      "chapter": 3,
+      "task_dates": [
+        "2026-09-26"
+      ],
+      "task_passages": [
+        "TIT.3"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.102",
+      "book": "PSA",
+      "chapter": 102,
+      "task_dates": [
+        "2026-09-26"
+      ],
+      "task_passages": [
+        "PSA.102"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.103",
+      "book": "PSA",
+      "chapter": 103,
+      "task_dates": [
+        "2026-09-28"
+      ],
+      "task_passages": [
+        "PSA.103"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.104",
+      "book": "PSA",
+      "chapter": 104,
+      "task_dates": [
+        "2026-09-28"
+      ],
+      "task_passages": [
+        "PSA.104"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.105",
+      "book": "PSA",
+      "chapter": 105,
+      "task_dates": [
+        "2026-09-29"
+      ],
+      "task_passages": [
+        "PSA.105"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    },
+    {
+      "reference": "PSA.106",
+      "book": "PSA",
+      "chapter": 106,
+      "task_dates": [
+        "2026-09-30"
+      ],
+      "task_passages": [
+        "PSA.106"
+      ],
+      "text_status": "pending_provider_assignment",
+      "audio_status": "pending_licensed_source",
+      "license_status": "not_approved"
+    }
+  ],
+  "range_audio_rule": "A verse-range task keeps its exact text range. Without verified verse timing, label audio as whole-chapter playback; do not invent seek positions or silently change the task."
+}

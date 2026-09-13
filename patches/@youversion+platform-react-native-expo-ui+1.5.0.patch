@@ -1,0 +1,168 @@
+diff --git a/node_modules/@youversion/platform-react-native-expo-ui/README.md b/node_modules/@youversion/platform-react-native-expo-ui/README.md
+index 333d445..c476f4b 100644
+--- a/node_modules/@youversion/platform-react-native-expo-ui/README.md
++++ b/node_modules/@youversion/platform-react-native-expo-ui/README.md
+@@ -58,3 +58,42 @@ The UI `YouVersionProvider` forwards the same optional version filter lists as c
+ This SDK is licensed under [Apache 2.0](./LICENSE).
+ 
+ Licensing information for the Bible versions is available at the [YouVersion Platform](https://platform.youversion.com/) site.
++
++
++## Qingmu reader-settings extension (pinned 1.5.0)
++
++This package copy carries a Qingmu-maintained additive patch. These APIs are not
++provided by upstream YouVersion 1.5.0 or 1.6.0. The original LICENSE is unchanged.
++
++The package root exports `getReaderSettings`, `getDefaultReaderSettings`,
++`setReaderSettings`, `subscribeReaderSettings`, and the `ReaderSettingsSnapshot`
++type. Snapshots contain only fontSize, fontFamily and lineSpacing. The original
++Reader and Settings UI continue using the same store and their original setters.
++
++`setReaderSettings` validates the entire partial object before one SDK store
++update and one SDK persistence write. Font sizes are clamped by the SDK; finite
++unsupported line spacing normalizes to the SDK default. Font families must match
++the built-in Inter/Untitled Serif stacks; the legacy Source Serif stack migrates
++through the existing SDK normalizer. Malformed numbers, unknown keys and invalid
++font strings throw TypeError without changing state. No private persistence key
++is read or written by the facade. Subscribers receive detached snapshots only
++when one of the three values changes; subscription does not emit immediately.
++
++This API does not itself provide account isolation. The host application owns
++per-member SecureStore values and its applying guard during account restoration.
++
++### Maintenance and original-file hash guard
++
++Only apply to package version 1.5.0 with these exact original SHA-256 values.
++Do not treat an upgrade or a changed file as compatible merely because a hunk
++applies. Rebase this tracked patch and rerun sdkReaderSettingsExtension.test.ts
++plus the declaration compile probe before accepting another SDK build.
++
++- `README.md`: `7570dc3e9b7ec54f17d15771c5bba1bf650cb13971e0db350f7ccd78a60901d6`
++- `build/index.js`: `756f0c78b8d6cdbbf4019f0813188d6bf790469cd83d96fed53d35fbf2ba7261`
++- `build/index.d.ts`: `9abafc4fa24f58ef4a2798509ecec9bbcb0bf0e49a662ec9c66dae76f87ae543`
++- `build/stores/reader-settings-store.js`: `55510c92bf4b836e05bfa8dae750cd7f2e903b41b49e7dffeca67619eb5411ec`
++- `build/stores/reader-settings-store.d.ts`: `81f41b70940370dbec1abe0e657bc72b9cc360dc5f75eb609ec8d304c5c1b10d`
++
++Project patch: patches/@youversion+platform-react-native-expo-ui+1.5.0.patch
++Project receipt: docs/receipts/sdk-reader-settings-extension-20260912.json
+diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
+index c48ec7c..4983ba9 100644
+--- a/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
++++ b/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
+@@ -4,4 +4,7 @@ export { useSignOutGuard } from './native';
+ export { useTokens } from './hooks';
+ export { getTokens } from './theme';
+ export type { Tokens } from './theme';
+-//# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
++/** Qingmu extension; these APIs are not supplied by upstream SDK 1.5.0/1.6.0. */
++export { getReaderSettings, getDefaultReaderSettings, setReaderSettings, subscribeReaderSettings } from './stores/reader-settings-store';
++export type { ReaderSettingsSnapshot } from './stores/reader-settings-store';
++//# sourceMappingURL=index.d.ts.map
+diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/index.js b/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
+index b47510f..403c721 100644
+--- a/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
++++ b/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
+@@ -4,4 +4,6 @@ export { BibleCard, BibleChapterPickerSheet, BibleReader, BibleReaderSettingsShe
+ export { useSignOutGuard } from './native';
+ export { useTokens } from './hooks';
+ export { getTokens } from './theme';
+-//# sourceMappingURL=index.js.map
+\ No newline at end of file
++// Qingmu extension; maintained by the host project for pinned SDK 1.5.0.
++export { getReaderSettings, getDefaultReaderSettings, setReaderSettings, subscribeReaderSettings } from './stores/reader-settings-store';
++//# sourceMappingURL=index.js.map
+diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts
+index bcd2248..80c8c8f 100644
+--- a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts
++++ b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts
+@@ -24,5 +24,23 @@ export declare const useReaderSettingsStore: import("zustand").UseBoundStore<Omi
+         getOptions: () => Partial<import("zustand/middleware").PersistOptions<ReaderSettingsState, unknown, unknown>>;
+     };
+ }>;
+-export {};
+-//# sourceMappingURL=reader-settings-store.d.ts.map
+\ No newline at end of file
++/** Qingmu extension for the pinned SDK 1.5.0; not an upstream YouVersion API. */
++export type ReaderSettingsSnapshot = {
++    fontSize: number;
++    fontFamily: string;
++    lineSpacing: number;
++};
++/** Returns a detached snapshot of the same store used by the official UI. */
++export declare function getReaderSettings(): ReaderSettingsSnapshot;
++/** Returns a fresh snapshot of the SDK defaults, independent of current state. */
++export declare function getDefaultReaderSettings(): ReaderSettingsSnapshot;
++/**
++ * Validates all fields before one atomic store/persistence update. Numbers must
++ * be finite; SDK font-size clamps and line-spacing normalization apply. Fonts
++ * must be the built-in canonical SDK stacks (legacy Source Serif is migrated).
++ * Unknown keys or malformed values throw TypeError without changing state.
++ */
++export declare function setReaderSettings(partial: Partial<ReaderSettingsSnapshot>): void;
++/** Emits detached snapshots only on value changes; does not emit immediately. */
++export declare function subscribeReaderSettings(listener: (snapshot: ReaderSettingsSnapshot) => void): () => void;
++//# sourceMappingURL=reader-settings-store.d.ts.map
+diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js
+index 2e79053..f334e92 100644
+--- a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js
++++ b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js
+@@ -4,7 +4,7 @@ import { create } from 'zustand';
+ import { createJSONStorage, persist } from 'zustand/middleware';
+ import { mmkvStorage } from '@youversion/platform-react-native-expo-core';
+ import { READER_SETTINGS_PERSIST_KEY } from '../lib/constants';
+-import { SOURCE_SERIF_FONT, UNTITLED_SERIF_FONT } from '../lib/reader-fonts';
++import { INTER_FONT, SOURCE_SERIF_FONT, UNTITLED_SERIF_FONT } from '../lib/reader-fonts';
+ import { READER_LINE_SPACING } from './types/reader-line-spacing';
+ /** MMKV-backed storage for zustand `persist` (sync; hydrates at store creation). */
+ const mmkvStateStorage = {
+@@ -75,4 +75,47 @@ export const useReaderSettingsStore = create()(persist((set) => ({
+         };
+     },
+ }));
+-//# sourceMappingURL=reader-settings-store.js.map
+\ No newline at end of file
++// Qingmu extension for SDK 1.5.0; not an upstream YouVersion API.
++// Reuse this exact store so the official Reader and Settings UI stay consistent.
++const snapshotOf = (state) => ({ fontSize: state.fontSize, fontFamily: state.fontFamily, lineSpacing: state.lineSpacing });
++const sameSettings = (left, right) => left.fontSize === right.fontSize && left.fontFamily === right.fontFamily && left.lineSpacing === right.lineSpacing;
++const supportedFonts = new Set([INTER_FONT, UNTITLED_SERIF_FONT, SOURCE_SERIF_FONT]);
++export function getReaderSettings() {
++    return snapshotOf(useReaderSettingsStore.getState());
++}
++export function getDefaultReaderSettings() {
++    return { fontSize: BIBLE_READER_FONT.DEFAULT, fontFamily: UNTITLED_SERIF_FONT, lineSpacing: READER_LINE_SPACING.DEFAULT };
++}
++export function setReaderSettings(partial) {
++    if (partial === null || typeof partial !== 'object' || Array.isArray(partial)) {
++        throw new TypeError('Reader settings must be an object');
++    }
++    const next = getReaderSettings();
++    for (const key of Object.keys(partial)) {
++        const value = partial[key];
++        if (key === 'fontSize' || key === 'lineSpacing') {
++            if (typeof value !== 'number' || !Number.isFinite(value)) {
++                throw new TypeError('Reader setting must be a finite number');
++            }
++            next[key] = key === 'fontSize' ? clampBibleReaderFontSize(value) : normalizeLineSpacing(value);
++        } else if (key === 'fontFamily') {
++            if (typeof value !== 'string' || value.length === 0 || value.length > 256 || !supportedFonts.has(value)) {
++                throw new TypeError('Reader font must be a supported SDK font family');
++            }
++            next.fontFamily = normalizeFontFamily(value);
++        } else {
++            throw new TypeError('Unknown reader setting');
++        }
++    }
++    if (sameSettings(next, getReaderSettings())) return;
++    // Zustand persist wraps this existing setState: one state notification and
++    // one SDK-owned persistence write, with the original action methods retained.
++    useReaderSettingsStore.setState(next);
++}
++export function subscribeReaderSettings(listener) {
++    if (typeof listener !== 'function') throw new TypeError('Reader settings listener must be a function');
++    return useReaderSettingsStore.subscribe((state, previous) => {
++        if (!sameSettings(state, previous)) listener(snapshotOf(state));
++    });
++}
++//# sourceMappingURL=reader-settings-store.js.map

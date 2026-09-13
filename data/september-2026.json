@@ -1,0 +1,311 @@
+{
+  "plan_id": "church-2026-09",
+  "timezone": "Asia/Taipei",
+  "source": "使用者提供的2026年九月教會讀經表",
+  "revision": 1,
+  "status": "transcribed_for_design",
+  "rules": {
+    "preserve_source_rows": true,
+    "preserve_repeated_passages": true,
+    "invent_missing_dates": false
+  },
+  "days": [
+    {
+      "date": "2026-09-01",
+      "source_rows": [
+        "約12:27-50",
+        "約13章"
+      ],
+      "references": [
+        "JHN.12.27-50",
+        "JHN.13"
+      ]
+    },
+    {
+      "date": "2026-09-02",
+      "source_rows": [
+        "約13章",
+        "約14章"
+      ],
+      "references": [
+        "JHN.13",
+        "JHN.14"
+      ]
+    },
+    {
+      "date": "2026-09-03",
+      "source_rows": [
+        "約14章",
+        "約15章"
+      ],
+      "references": [
+        "JHN.14",
+        "JHN.15"
+      ]
+    },
+    {
+      "date": "2026-09-04",
+      "source_rows": [
+        "約15章",
+        "約16章"
+      ],
+      "references": [
+        "JHN.15",
+        "JHN.16"
+      ]
+    },
+    {
+      "date": "2026-09-05",
+      "source_rows": [
+        "約16章",
+        "約17章"
+      ],
+      "references": [
+        "JHN.16",
+        "JHN.17"
+      ]
+    },
+    {
+      "date": "2026-09-07",
+      "source_rows": [
+        "約17章",
+        "約18章"
+      ],
+      "references": [
+        "JHN.17",
+        "JHN.18"
+      ]
+    },
+    {
+      "date": "2026-09-08",
+      "source_rows": [
+        "約18章",
+        "約19章"
+      ],
+      "references": [
+        "JHN.18",
+        "JHN.19"
+      ]
+    },
+    {
+      "date": "2026-09-09",
+      "source_rows": [
+        "約19章",
+        "約20章"
+      ],
+      "references": [
+        "JHN.19",
+        "JHN.20"
+      ]
+    },
+    {
+      "date": "2026-09-10",
+      "source_rows": [
+        "約20章",
+        "約21章"
+      ],
+      "references": [
+        "JHN.20",
+        "JHN.21"
+      ]
+    },
+    {
+      "date": "2026-09-11",
+      "source_rows": [
+        "詩88-89章"
+      ],
+      "references": [
+        "PSA.88",
+        "PSA.89"
+      ]
+    },
+    {
+      "date": "2026-09-12",
+      "source_rows": [
+        "提前1章",
+        "詩90-91章"
+      ],
+      "references": [
+        "1TI.1",
+        "PSA.90",
+        "PSA.91"
+      ]
+    },
+    {
+      "date": "2026-09-14",
+      "source_rows": [
+        "提前1章",
+        "提前2章",
+        "詩92章"
+      ],
+      "references": [
+        "1TI.1",
+        "1TI.2",
+        "PSA.92"
+      ]
+    },
+    {
+      "date": "2026-09-15",
+      "source_rows": [
+        "提前2章",
+        "提前3章",
+        "詩93章"
+      ],
+      "references": [
+        "1TI.2",
+        "1TI.3",
+        "PSA.93"
+      ]
+    },
+    {
+      "date": "2026-09-16",
+      "source_rows": [
+        "提前3章",
+        "提前4章",
+        "詩94章"
+      ],
+      "references": [
+        "1TI.3",
+        "1TI.4",
+        "PSA.94"
+      ]
+    },
+    {
+      "date": "2026-09-17",
+      "source_rows": [
+        "提前4章",
+        "提前5章",
+        "詩95章"
+      ],
+      "references": [
+        "1TI.4",
+        "1TI.5",
+        "PSA.95"
+      ]
+    },
+    {
+      "date": "2026-09-18",
+      "source_rows": [
+        "提前5章",
+        "提前6章"
+      ],
+      "references": [
+        "1TI.5",
+        "1TI.6"
+      ]
+    },
+    {
+      "date": "2026-09-19",
+      "source_rows": [
+        "提後1章",
+        "詩96-97章"
+      ],
+      "references": [
+        "2TI.1",
+        "PSA.96",
+        "PSA.97"
+      ]
+    },
+    {
+      "date": "2026-09-21",
+      "source_rows": [
+        "提後1章",
+        "提後2章"
+      ],
+      "references": [
+        "2TI.1",
+        "2TI.2"
+      ]
+    },
+    {
+      "date": "2026-09-22",
+      "source_rows": [
+        "提後2章",
+        "提後3章"
+      ],
+      "references": [
+        "2TI.2",
+        "2TI.3"
+      ]
+    },
+    {
+      "date": "2026-09-23",
+      "source_rows": [
+        "提後3章",
+        "提後4章",
+        "詩98章"
+      ],
+      "references": [
+        "2TI.3",
+        "2TI.4",
+        "PSA.98"
+      ]
+    },
+    {
+      "date": "2026-09-24",
+      "source_rows": [
+        "多1章",
+        "詩99-100章"
+      ],
+      "references": [
+        "TIT.1",
+        "PSA.99",
+        "PSA.100"
+      ]
+    },
+    {
+      "date": "2026-09-25",
+      "source_rows": [
+        "多1章",
+        "多2章",
+        "詩101章"
+      ],
+      "references": [
+        "TIT.1",
+        "TIT.2",
+        "PSA.101"
+      ]
+    },
+    {
+      "date": "2026-09-26",
+      "source_rows": [
+        "多2章",
+        "多3章",
+        "詩102章"
+      ],
+      "references": [
+        "TIT.2",
+        "TIT.3",
+        "PSA.102"
+      ]
+    },
+    {
+      "date": "2026-09-28",
+      "source_rows": [
+        "詩103-104章"
+      ],
+      "references": [
+        "PSA.103",
+        "PSA.104"
+      ]
+    },
+    {
+      "date": "2026-09-29",
+      "source_rows": [
+        "詩105章"
+      ],
+      "references": [
+        "PSA.105"
+      ]
+    },
+    {
+      "date": "2026-09-30",
+      "source_rows": [
+        "詩106章"
+      ],
+      "references": [
+        "PSA.106"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "version": "2.0",
+  "primary_spec": "android-implementation-spec.md",
+  "content_gate": "content-gate.json",
+  "content_requirements": "september-content-requirements.json",
+  "calendar_source": "september-2026.json",
+  "strategy": "C-first; B only after confirmed C unavailability",
+  "current_state": "C_PENDING_ACCESS",
+  "supersedes_for_implementation": [
+    "docs/superpowers/specs/2026-09-08-qingmu-line-design.md",
+    "candidate-v1.1/design-spec.html"
+  ],
+  "old_public_review_status": "Historical v1.0 review; not the current native-app implementation authority",
+  "product_implementation_started": true,
+  "implementation_authority": {
+    "app_shell": "React Native/Expo + TypeScript; Android first with shared iOS source",
+    "reader": "YouVersion React Native/Expo SDK only; C_PENDING_ACCESS until App Key/license/content evidence",
+    "rpg": "LINE OpenChat community entry plus approved external Meet/Zoom link; no call engine",
+    "identity": "Google ID token to server session and fixed member binding; fixture profile is development-only"
+  }
+}

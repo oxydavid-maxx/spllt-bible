@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "testRunner": "vitest",
+  "plugins": ["@stryker-mutator/vitest-runner"],
+  "ignorePatterns": ["android/**", "dist/**", "coverage/**"],
+  "mutate": ["src/ui/groupContext.ts"],
+  "testFiles": [
+    "tests/ui/groupContext.test.ts",
+    "tests/ui/groupContext.property.test.ts"
+  ],
+  "vitest": {
+    "configFile": "vitest.config.ts",
+    "related": false
+  },
+  "coverageAnalysis": "perTest",
+  "concurrency": 1,
+  "timeoutMS": 5000,
+  "reporters": ["clear-text", "json"],
+  "jsonReporter": {
+    "fileName": "reports/stryker-task3.json"
+  },
+  "tempDirName": ".stryker-tmp-task3",
+  "cleanTempDir": "always"
+}

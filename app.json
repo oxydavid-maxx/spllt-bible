@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "青牧青年",
+    "slug": "qingmu-youth",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "org.qingmu.youth",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-font",
+      "expo-status-bar",
+      "expo-notifications",
+      "react-native-nitro-google-signin"
+    ],
+    "android": {
+      "package": "org.qingmu.youth",
+      "adaptiveIcon": {
+        "backgroundColor": "#1E5C4B"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "org.qingmu.youth"
+    },
+    "extra": {
+      "contentMode": "C_PENDING_ACCESS",
+      "fixture": true
+    }
+  }
+}
