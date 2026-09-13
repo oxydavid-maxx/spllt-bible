@@ -67,4 +67,4 @@ npx vitest run tests/ui/unscheduledReaderRoute.test.ts tests/services/reminderRu
 
 ## 授權與第三方內容
 
-專案程式授權待維護者選定，尚未附加開源 LICENSE。第三方 SDK、字型、聖經譯本、音訊及其版權聲明仍遵循各自條款；repository 沒有打包完整聖經文本或音檔。音源網址與程式碼的公開，不構成第三方內容的再授權。
+本專案自有程式碼採用 [MIT License](LICENSE)。第三方 SDK、字型、聖經譯本、音訊及其版權聲明仍遵循各自條款；repository 沒有打包完整聖經文本或音檔。音源網址與程式碼的公開，不構成第三方內容的再授權。
