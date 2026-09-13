@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { chapterAudioProvider } from '../doubles/chapterAudioProvider';
+beforeEach(() => vi.stubGlobal('fetch', chapterAudioProvider));
+afterEach(() => vi.unstubAllGlobals());
 import { createDatabase } from '../../server/db';
 import { createApiHandler } from '../../server/routes';
 import { createCapabilityCoordinator, fetchChapterCapability } from '../../src/services/contentCapabilityClient';
@@ -60,7 +63,7 @@ describe('C6 — the chapter request must carry the signed-in identity', () => {
     expect(out.kind).toBe('playable');
     if (out.kind === 'playable') {
       expect(out.capability.identity).toEqual({ versionId: 1392, usfm: 'PSA.90' });
-      expect(out.capability.uri).toContain('/PSA/90-');
+      expect(out.capability.uri).toBe('https://media.example.test/observed-fixture.mp3');
     }
   });
 

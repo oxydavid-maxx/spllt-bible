@@ -5,7 +5,8 @@ import type { ContentGateStatus } from '../src/domain/types';
 import { authenticate, authenticateGoogle, authenticateSessionOrGoogle, type ProductionGoogleAuth } from './authBoundary';
 import { claimMemberInvite } from './membership';
 import { createSessionToken } from './session';
-import { evaluateContentCapability, parseCapabilityQuery } from './contentCapabilities';
+import { parseCapabilityQuery } from './contentCapabilities';
+import { createChapterAudioResolver } from './genericChapterAudio';
 import { getMemberGroupProfile } from './groups';
 import { buildCompletionOperationFingerprint } from './operationFingerprint';
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
@@ -333,6 +334,7 @@ function handleProgress(db: DatabaseSync, viewerId: string, date: string, policy
 }
 
 export function createApiHandler(options: ApiHandlerOptions) {
+  const resolveChapterAudio = createChapterAudioResolver();
   const sessions = { resolveDevice: (token: string) => resolveDeviceSession(options.db.db, token), isLegacyRevoked: (token: string) => isLegacySessionRevoked(options.db.db, token) };
   const remoteStatus = options.remoteReminderStatus ?? 'REMOTE_PENDING';
   const policy = options.pointPolicy ?? DEFAULT_POLICY;
@@ -457,7 +459,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
             usfm: url.searchParams.get('usfm') ?? undefined,
           });
           if (!parsed.ok) return json(400, { error: parsed.error });
-          return json(200, { ...evaluateContentCapability(parsed.versionId, parsed.usfm) } as unknown as Record<string, unknown>);
+          return json(200, { ...await resolveChapterAudio(parsed.versionId, parsed.usfm) } as unknown as Record<string, unknown>);
         }
         const gate = options.contentGate ?? {
           status: 'C_PENDING_ACCESS' as const,

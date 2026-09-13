@@ -43,7 +43,7 @@ describe('YouVersion reader entry', () => {
       officialUrl: 'https://www.bible.com/versions/312',
       copyrightNotice: expect.stringContaining('CHINESE STANDARD BIBLE'),
     });
-    expect(getYouVersionVersionOptions().map((option) => option.versionId)).toEqual([1392, 312, 111, 110, 3034]);
+    expect(getYouVersionVersionOptions().map((option) => option.versionId)).toEqual([46, 40, 111, 406, 114]);
     expect(selectYouVersionVersion(1392, 312, [1392, 312])).toBe(312);
     expect(selectYouVersionVersion(312, 999, [1392, 312])).toBe(312);
   });
@@ -52,7 +52,7 @@ describe('YouVersion reader entry', () => {
     for (const versionId of [111, 110, 3034]) {
       expect(getYouVersionContentMetadata(versionId)).toMatchObject({ versionId, languageTag: 'en', textStatus: 'AVAILABLE_IN_SDK' });
     }
-    expect(getYouVersionContentMetadata(46)).toBeNull();
+    expect(getYouVersionContentMetadata(46)).toMatchObject({ versionId: 46, textStatus: 'AVAILABLE_FROM_OFFICIAL_READER' });
     expect(getYouVersionContentMetadata(1392)?.audioAttribution).toContain('2011');
   });
 

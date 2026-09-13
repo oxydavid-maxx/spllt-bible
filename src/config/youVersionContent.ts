@@ -1,3 +1,9 @@
+import selectedBibleMetadata from './selectedBibleMetadata.json';
+
+export const SELECTED_BIBLE_VERSION_IDS = [46, 40, 111, 406, 114] as const;
+export const DEFAULT_BIBLE_VERSION_ID = 46;
+export const RETIRED_BIBLE_VERSION_IDS = [1392, 312, 110, 3034] as const;
+
 export interface YouVersionContentMetadata {
   versionId: number;
   languageTag: 'zh-Hant-TW' | 'en';
@@ -6,7 +12,7 @@ export interface YouVersionContentMetadata {
   officialUrl: string;
   copyrightNotice: string;
   audioAttribution?: string;
-  textStatus: 'AVAILABLE_IN_SDK';
+  textStatus: 'AVAILABLE_IN_SDK' | 'AVAILABLE_FROM_OFFICIAL_READER';
   audioStatus: 'CHAPTER_DEPENDENT';
   familyLinkStatus: 'PENDING_NATIVE_PROBE';
   audioAvailability: AudioAvailability;
@@ -22,7 +28,7 @@ export type AudioAvailability = {
 
 // Metadata and real 1TI.1 text reads verified through the official SDK on 2026-09-12.
 // See release evidence POPULAR-VERSIONS-SDK / ADDITIONAL-ENGLISH-VERSIONS.
-// Requested CUV46 is not substituted: the Platform currently returns404; the default decision is pending.
+// Legacy metadata stays readable for migration and old stored records; selectable versions are below.
 const AVAILABLE_VERSIONS: Record<number, YouVersionContentMetadata> = {
   "1392": {
     "versionId": 1392,
@@ -117,6 +123,32 @@ const AVAILABLE_VERSIONS: Record<number, YouVersionContentMetadata> = {
   }
 };
 
+// These notices come from the corresponding official Bible.com version, not
+// from another translation. The SDK remains the renderer; its production
+// apiHost points at the official-content adapter for the selected catalogue.
+const selectedNames: Record<number, string> = {
+  46: '和合本（神版，繁體）',
+  40: '新譯本（繁體）',
+  111: 'NIV — New International Version',
+  406: 'ERV — Easy-to-Read Version',
+  114: 'NKJV — New King James Version',
+};
+for (const source of selectedBibleMetadata) {
+  AVAILABLE_VERSIONS[source.versionId] = {
+    versionId: source.versionId,
+    languageTag: source.versionId === 46 || source.versionId === 40 ? 'zh-Hant-TW' : 'en',
+    translationName: selectedNames[source.versionId],
+    publisher: source.publisher,
+    officialUrl: `https://www.bible.com/versions/${source.versionId}`,
+    copyrightNotice: source.copyrightNotice,
+    textStatus: source.versionId === 111 ? 'AVAILABLE_IN_SDK' : 'AVAILABLE_FROM_OFFICIAL_READER',
+    audioStatus: 'CHAPTER_DEPENDENT',
+    familyLinkStatus: 'PENDING_NATIVE_PROBE',
+    audioAvailability: { status: 'PENDING_PROVIDER', versionId: source.versionId, publisher: source.publisher,
+      recordingId: null, reason: 'Resolved dynamically for the selected translation and chapter.' },
+  };
+}
+
 export function getYouVersionContentMetadata(versionId: number | null): YouVersionContentMetadata | null {
   return versionId === null ? null : AVAILABLE_VERSIONS[versionId] ?? null;
 }
@@ -124,7 +156,7 @@ export function getAudioAvailability(versionId: number | null): AudioAvailabilit
   return getYouVersionContentMetadata(versionId)?.audioAvailability ?? null;
 }
 export function getYouVersionVersionOptions(): YouVersionContentMetadata[] {
-  return [1392, 312, 111, 110, 3034].map(id => AVAILABLE_VERSIONS[id]);
+  return SELECTED_BIBLE_VERSION_IDS.map(id => AVAILABLE_VERSIONS[id]);
 }
 export function selectYouVersionVersion(currentVersionId: number, nextVersionId: number, allowedVersionIds: number[]): number {
   return allowedVersionIds.includes(nextVersionId) ? nextVersionId : currentVersionId;

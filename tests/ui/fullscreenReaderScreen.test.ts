@@ -70,7 +70,7 @@ describe('approved fullscreen Reader assembled entry', () => {
     expect(all('BibleReader')[0].props.showToolbar).toBe(false);
     expect(all('ReadingDateNavigator')).toHaveLength(0); expect(all('CompletionFeedback')).toHaveLength(0); expect(all('AccountEntryButton')).toHaveLength(0);
     const text = all('Text').map(n => String(n.props.children)).join(' ');
-    expect(text).not.toContain('完成所選日期'); expect(text).not.toContain('狀態：'); expect(text).not.toContain('Biblica');
+    expect(text).not.toContain('完成所選日期'); expect(text).not.toContain('狀態：'); expect(text).not.toContain('Hong Kong Bible Society');
     expect(all('ChapterAudioControls')[0].props.compact).toBe(true); expect(all('ChapterAudioControls')[0].props.active).toBe(true);
   });
   it('keeps common tools reachable while system bars stay hidden, without recreating audio on canvas gestures', () => {
@@ -81,7 +81,7 @@ describe('approved fullscreen Reader assembled entry', () => {
   });
   it('routes official chapter selection to both scripture and audio through the same owner', async () => {
     press('更多閱讀工具'); press('選擇其他章節');
-    await act(async () => { await all('OfficialChapterSheet')[0].props.onSelect({ book: 'GEN', chapter: '1', versionId: 1392 }); });
+    await act(async () => { await all('OfficialChapterSheet')[0].props.onSelect({ book: 'GEN', chapter: '1', versionId: 46 }); });
     expect(all('BibleReader')[0].props.book).toBe('GEN'); expect(all('BibleReader')[0].props.chapter).toBe('1');
     expect(all('ChapterAudioControls')[0].props.chapterUsfm).toBe('GEN.1'); expect(native.mounts).toBe(1);
   });

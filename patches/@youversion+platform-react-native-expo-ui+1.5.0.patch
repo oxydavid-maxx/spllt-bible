@@ -53,12 +53,10 @@ index c48ec7c..4983ba9 100644
  export { useTokens } from './hooks';
  export { getTokens } from './theme';
  export type { Tokens } from './theme';
--//# sourceMappingURL=index.d.ts.map
-\ No newline at end of file
 +/** Qingmu extension; these APIs are not supplied by upstream SDK 1.5.0/1.6.0. */
 +export { getReaderSettings, getDefaultReaderSettings, setReaderSettings, subscribeReaderSettings } from './stores/reader-settings-store';
 +export type { ReaderSettingsSnapshot } from './stores/reader-settings-store';
-+//# sourceMappingURL=index.d.ts.map
+ //# sourceMappingURL=index.d.ts.map
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/index.js b/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
 index b47510f..403c721 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
@@ -67,11 +65,32 @@ index b47510f..403c721 100644
  export { useSignOutGuard } from './native';
  export { useTokens } from './hooks';
  export { getTokens } from './theme';
--//# sourceMappingURL=index.js.map
-\ No newline at end of file
 +// Qingmu extension; maintained by the host project for pinned SDK 1.5.0.
 +export { getReaderSettings, getDefaultReaderSettings, setReaderSettings, subscribeReaderSettings } from './stores/reader-settings-store';
-+//# sourceMappingURL=index.js.map
+ //# sourceMappingURL=index.js.map
+diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/lib/web-yv-provider.js b/node_modules/@youversion/platform-react-native-expo-ui/build/lib/web-yv-provider.js
+index 4d1e6a4..a20ded1 100644
+--- a/node_modules/@youversion/platform-react-native-expo-ui/build/lib/web-yv-provider.js
++++ b/node_modules/@youversion/platform-react-native-expo-ui/build/lib/web-yv-provider.js
+@@ -1,15 +1,16 @@
+ // Import first: installs the Android `localStorage` shim (see dom-local-storage)
+ // before the Web SDK module below evaluates and any provider renders.
+ import { ensureDomLocalStorage } from './dom-local-storage';
+-import { YouVersionProvider as BaseYouVersionProvider } from '@youversion/platform-react-ui';
++import { YouVersionProvider as BaseYouVersionProvider, YouVersionPlatformConfiguration } from '@youversion/platform-react-ui';
+ import { createElement } from 'react';
+ import { ensureDomContentCache } from './dom-content-cache';
+ import { mergeSdkHeaders } from './sdk-version';
+ ensureDomLocalStorage();
+ ensureDomContentCache();
+-export function YouVersionProvider({ additionalHeaders, ...rest }) {
++export function YouVersionProvider({ additionalHeaders, apiHost, ...rest }) {
+     return createElement(BaseYouVersionProvider, {
+         ...rest,
++        apiHost: apiHost ?? YouVersionPlatformConfiguration.apiHost,
+         additionalHeaders: mergeSdkHeaders(additionalHeaders),
+     });
+ }
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts
 index bcd2248..80c8c8f 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts
@@ -81,8 +100,6 @@ index bcd2248..80c8c8f 100644
      };
  }>;
 -export {};
--//# sourceMappingURL=reader-settings-store.d.ts.map
-\ No newline at end of file
 +/** Qingmu extension for the pinned SDK 1.5.0; not an upstream YouVersion API. */
 +export type ReaderSettingsSnapshot = {
 +    fontSize: number;
@@ -102,7 +119,7 @@ index bcd2248..80c8c8f 100644
 +export declare function setReaderSettings(partial: Partial<ReaderSettingsSnapshot>): void;
 +/** Emits detached snapshots only on value changes; does not emit immediately. */
 +export declare function subscribeReaderSettings(listener: (snapshot: ReaderSettingsSnapshot) => void): () => void;
-+//# sourceMappingURL=reader-settings-store.d.ts.map
+ //# sourceMappingURL=reader-settings-store.d.ts.map
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js
 index 2e79053..f334e92 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js
@@ -120,8 +137,6 @@ index 2e79053..f334e92 100644
          };
      },
  }));
--//# sourceMappingURL=reader-settings-store.js.map
-\ No newline at end of file
 +// Qingmu extension for SDK 1.5.0; not an upstream YouVersion API.
 +// Reuse this exact store so the official Reader and Settings UI stay consistent.
 +const snapshotOf = (state) => ({ fontSize: state.fontSize, fontFamily: state.fontFamily, lineSpacing: state.lineSpacing });
@@ -165,4 +180,4 @@ index 2e79053..f334e92 100644
 +        if (!sameSettings(state, previous)) listener(snapshotOf(state));
 +    });
 +}
-+//# sourceMappingURL=reader-settings-store.js.map
+ //# sourceMappingURL=reader-settings-store.js.map

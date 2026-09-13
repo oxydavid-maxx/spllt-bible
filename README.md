@@ -56,8 +56,8 @@ npx vitest run tests/ui/unscheduledReaderRoute.test.ts tests/services/reminderRu
 
 ## 目前限制與可協作方向
 
-- 譯本清單目前有限，尚未改為完整動態目錄；預設繁體和合本尚未完成。
-- 主 App 音訊仍使用有限的逐章來源登錄。獨立 POC 已通過和合本詩篇 103 篇與 NIV 提摩太前書 4 章的動態取源/原生播放盲測，但尚未整合；未取得來源不等於官方沒有錄音。
+- Reader 提供和合本神版繁體、新譯本繁體、NIV、ERV、NKJV，預設和合本神版。後端 adapter 讀取 Bible.com 公開閱讀頁並核對版本/章節，保留合併經節與註腳；這是有限的五譯本目錄。
+- 主 App 音訊使用觀察到的 YouVersion consumer/legacy 章節查詢端點，依目前版本/章節動態取源，播放前過期會重新確認，播畢可從頭再播。查詢失敗與端點明確回覆無錄音分開呈現。這些 beta 整合依賴上游頁面/端點格式與可用性，沒有官方支援的完整第三方文字/音訊 API 保證。
 - Reader 支援無排定進度日的自由閱讀；修改仍需真實 Android 驗證。
 - 已在 Pixel 實測提醒設定修改/重開保存、後端排程經 FCM 送達及通知點擊返回小組；正式聚會需要有來源的日期與時間。讀經提醒依排定讀經日建立 Android 本機排程，仍受系統通知權限及省電排程影響。
 - Google 登入採可撤銷的持續裝置 session，憑證存於 SecureStore，後端只保存 hash。已在 Pixel 驗證真實登入、超過一小時仍可操作、冷啟動及登出清理；Family Link、其他裝置與更完整的背景情境仍待驗證。

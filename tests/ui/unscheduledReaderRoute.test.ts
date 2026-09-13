@@ -92,7 +92,7 @@ describe('real unscheduled-day route initializes a free Bible reader', () => {
     expect(text).not.toContain('正在取得本章語音');
   });
   it('uses the valid saved free-browse position on Sunday instead of the fallback', async () => {
-    boundary.positions.set('A:2026-09-13', { memberId: 'A', planId: 'church-2026-09', taskDate: '2026-09-13', versionId: 312, book: 'PSA', chapter: '90', reference: 'PSA.90', mode: 'FREE_BROWSE', updatedAt: 'test' });
+    boundary.positions.set('A:2026-09-13', { memberId: 'A', planId: 'church-2026-09', taskDate: '2026-09-13', versionId: 40, book: 'PSA', chapter: '90', reference: 'PSA.90', mode: 'FREE_BROWSE', updatedAt: 'test' });
     await mount();
     expect(all('OfficialReader')).toHaveLength(1);
     expect(reader().props).toMatchObject({ book: 'PSA', chapter: '90' });
@@ -105,12 +105,12 @@ describe('real unscheduled-day route initializes a free Bible reader', () => {
     await mount();
     expect(all('OfficialReader')).toHaveLength(1);
     act(() => layout().props.controls.openChapterPicker());
-    await act(async () => all('ChapterSheet')[0].props.onSelect({ book: 'GEN', chapter: '2', versionId: 312 }));
-    expect(reader().props).toMatchObject({ book: 'GEN', chapter: '2', versionId: 312 });
-    expect(audio().props).toMatchObject({ chapterUsfm: 'GEN.2', versionId: 312 });
+    await act(async () => all('ChapterSheet')[0].props.onSelect({ book: 'GEN', chapter: '2', versionId: 40 }));
+    expect(reader().props).toMatchObject({ book: 'GEN', chapter: '2', versionId: 40 });
+    expect(audio().props).toMatchObject({ chapterUsfm: 'GEN.2', versionId: 40 });
     await act(async () => setSelectedReadingDate('2026-09-12'));
     expect(layout().props.references).toEqual(['1TI.1', 'PSA.90', 'PSA.91']);
-    expect(reader().props).toMatchObject({ book: '1TI', chapter: '1', versionId: 312 });
+    expect(reader().props).toMatchObject({ book: '1TI', chapter: '1', versionId: 40 });
     expect(audio().props.chapterUsfm).toBe('1TI.1');
     act(() => layout().props.onSelectReference(2));
     expect(reader().props).toMatchObject({ book: 'PSA', chapter: '91' });

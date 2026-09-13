@@ -5,7 +5,7 @@ import { createYouVersionAdapter } from '../services/youVersionAdapter';
 import type { YouVersionReaderUiModule } from '../services/youVersionAdapter';
 import { theme } from './Theme';
 import { formatReferenceListZhTw, formatReferenceZhTw } from '../domain/scriptureReference';
-import { buildYouVersionReaderConfig } from './youVersionReaderConfig';
+import { buildYouVersionReaderConfig, resolveReaderContentApiHost } from './youVersionReaderConfig';
 import { getYouVersionContentMetadata } from '../config/youVersionContent';
 import { buildReaderDomBridge, readReaderUiMessage, READER_SETTINGS_MESSAGE, READER_CANVAS_TAP_MESSAGE, READER_CANVAS_SCROLL_MESSAGE } from './readerSettingsBridge';
 import { useReaderPreferencesBinding, type ReaderPreferencesBinding } from './useReaderPreferencesBinding';
@@ -39,10 +39,6 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
     : null;
   const activeConfig = configs[activeReferenceIndex] ?? configs[0] ?? freeBrowseConfig;
   const contentMetadata = getYouVersionContentMetadata(versionId);
-  const permittedLanguageTags = Array.from(new Set(allowedVersionIds.flatMap(id => {
-    const tag = getYouVersionContentMetadata(id)?.languageTag;
-    return tag ? [tag] : [];
-  })));
   const hasVersionMetadata = Boolean(contentMetadata);
   const hasConfig = Boolean(activeConfig);
   const [overlay, setOverlay] = useState<'settings' | 'chapter' | 'version' | null>(null);
@@ -120,7 +116,8 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   );
   return (
     <View style={styles.host}>
-      <Provider appKey={appKey} locale="zh-Hant-TW" permittedVersionIds={allowedVersionIds} permittedLanguageTags={permittedLanguageTags.length ? permittedLanguageTags : undefined}>
+      {/* The tracked SDK patch also carries apiHost across the native-to-DOM provider boundary. */}
+      <Provider appKey={appKey} apiHost={resolveReaderContentApiHost(process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL)} locale="zh-Hant-TW" permittedVersionIds={allowedVersionIds}>
         <View style={styles.host} accessibilityElementsHidden={Boolean(overlay)} importantForAccessibility={overlay ? 'no-hide-descendants' : 'auto'}>
           {renderScreen(surface, overlayControls)}
         </View>

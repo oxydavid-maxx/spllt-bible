@@ -121,6 +121,7 @@ export function ChapterAudioControls({
   const [answer, setAnswer] = useState<{ key: string; sessionKey: string; outcome: CapabilityOutcome } | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
   const replayRequest = useRef<{ key: string; sessionKey: string; attempt: number } | null>(null);
+  const playRequest = useRef<object | null>(null);
   const liveScope = useRef({ key, sessionKey, active });
   liveScope.current = { key, sessionKey, active };
 
@@ -134,7 +135,11 @@ export function ChapterAudioControls({
       && `${latest.epoch}::${latest.session.memberId}::${latest.session.sessionToken}` === sessionKey;
   };
 
-  useEffect(() => { replayRequest.current = null; }, [key, sessionKey, active]);
+  useEffect(() => {
+    replayRequest.current = null;
+    playRequest.current = null;
+    return () => { playRequest.current = null; };
+  }, [key, sessionKey, active]);
 
   useEffect(() => {
     const coord = coordinatorRef.current;
@@ -172,6 +177,8 @@ export function ChapterAudioControls({
   // owns on UNMOUNT, and this component stays mounted across chapter changes.
   const player = useAudioPlayer(null, { updateInterval: 500 });
   const playbackRef = useRef<ChapterBoundPlayback | null>(null);
+  // Expo's didJustFinish is emitted once; currentStatus does not retain it.
+  const finishedBinding = useRef<ChapterBoundPlayback | null>(null);
   const playbackSelectionRef = useRef('');
   // bumped whenever the binding changes, so an action that started under an older binding can tell
   const bindingGeneration = useRef(0);
@@ -193,6 +200,7 @@ export function ChapterAudioControls({
   useEffect(() => {
     const p = player as unknown as { pause?: () => void; replace?: (s: unknown) => void };
     bindingGeneration.current += 1;
+    finishedBinding.current = null;
     const generation = bindingGeneration.current;
     setFailure(null);
     setNeedsRetry(false);
@@ -220,7 +228,10 @@ export function ChapterAudioControls({
     // Expo reports decoder/network failures after play() has returned. Polling currentStatus loses
     // these one-shot errors; subscribe per binding and retire the exact listener with that binding.
     const subscription = (player as unknown as PlaybackStatusEmitter).addListener('playbackStatusUpdate', status => {
-      if (status.error) reportPlaybackError();
+      if (!bindingIsCurrent()) return;
+      if (status.error) { reportPlaybackError(); return; }
+      if (status.didJustFinish) finishedBinding.current = bound;
+      setProgress(bound.getProgress());
     });
     const freshSource = !audioAuthorized || (capability !== null && versionId !== null
       && validateCapability(capability, { versionId, usfm: chapterUsfm }, Date.now()).ok);
@@ -234,7 +245,7 @@ export function ChapterAudioControls({
       replayRequest.current = null;
       if (prepared && bindingIsCurrent()) {
         // replace() calls the platform's prepare; play queues playback until loading completes.
-        void bound.play().catch(reportPlaybackError);
+        void playBoundWhenCurrent(bound, resolved.availability, capability).catch(reportPlaybackError);
       }
     }
     return () => {
@@ -267,16 +278,60 @@ export function ChapterAudioControls({
     return bound && !bound.disposed && expectedSelection
       && playbackSelectionRef.current === expectedSelection ? bound : undefined;
   };
-  const currentAudioSession = () => {
-    if (!scopeIsCurrent() || !authIsCurrent() || (audioAuthorized && (capability === null || versionId === null
-      || !validateCapability(capability, { versionId, usfm: chapterUsfm }, Date.now()).ok))) {
-      throw new Error('AUDIO_NOT_READY');
+  const playBoundWhenCurrent = async (bound: ChapterBoundPlayback | undefined, availability: typeof resolved.availability, confirmed: typeof capability) => {
+    const generation = bindingGeneration.current;
+    const mayPlay = () => Boolean(bound && !bound.disposed && playbackRef.current === bound
+      && bindingGeneration.current === generation && scopeIsCurrent() && authIsCurrent()
+      && (!audioAuthorized || (confirmed !== null && versionId !== null
+        && validateCapability(confirmed, { versionId, usfm: chapterUsfm }, Date.now()).ok)));
+    if (!mayPlay() || !bound) return;
+    const nativeProgress = bound.getProgress();
+    if (finishedBinding.current === bound || (nativeProgress.durationSeconds > 0
+      && nativeProgress.positionSeconds >= nativeProgress.durationSeconds && !nativeProgress.playing)) {
+      // Native EOF can have isLoaded=false. That is not a failed stream and does
+      // not require replace(): rewind, then recheck the exact binding after await.
+      await player.seekTo(0);
+      if (!mayPlay()) return;
+      finishedBinding.current = null;
     }
-    return createAudioSession(resolved.availability, currentPlaybackBinding());
+    await createAudioSession(availability, bound).play();
   };
   // Expiry may forbid starting/seeking a stream, but must never forbid stopping this live binding.
   // An old chapter's callback has no current binding and cannot pause its successor.
   const pauseCurrentPlayback = async () => { await currentPlaybackBinding()?.pause(); };
+
+  const playCurrentPlayback = async () => {
+    if (!scopeIsCurrent() || !authIsCurrent() || playRequest.current) return;
+    const operation = {};
+    playRequest.current = operation;
+    const generation = bindingGeneration.current;
+    const bound = currentPlaybackBinding();
+    try {
+      const fresh = !audioAuthorized || (capability !== null && versionId !== null
+        && validateCapability(capability, { versionId, usfm: chapterUsfm }, Date.now()).ok);
+      if (fresh) { await playBoundWhenCurrent(bound, resolved.availability, capability); return; }
+      if (versionId === null || !coordinatorRef.current) return;
+      // Expiry is a request to reconfirm this source, not a playback error. Keep
+      // the paused binding mounted while the same coordinator refreshes metadata.
+      const outcome = await coordinatorRef.current.request({ versionId, usfm: chapterUsfm });
+      if (playRequest.current !== operation || generation !== bindingGeneration.current
+        || !scopeIsCurrent() || !authIsCurrent() || outcome.kind === 'stale') return;
+      setFailure(null);
+      setNeedsRetry(false);
+      if (outcome.kind === 'playable') {
+        const next = resolveChapterAudioSession({ chapterUsfm, versionId, qaTestAudioEnabled: qaEnabled, audioAuthorized, capability: outcome.capability });
+        if (bound && next.source?.uri === resolved.source?.uri) {
+          setAnswer({ key, sessionKey, outcome });
+          await playBoundWhenCurrent(bound, next.availability, outcome.capability);
+          return;
+        }
+        // A changed URI must be prepared by the normal binding effect before
+        // satisfying this same play intent. No extra user tap is required.
+        replayRequest.current = { key, sessionKey, attempt: retryNonce };
+      } else replayRequest.current = null;
+      setAnswer({ key, sessionKey, outcome });
+    } finally { if (playRequest.current === operation) playRequest.current = null; }
+  };
 
   const run = (label: string, action: () => Promise<void>) => () => {
     setFailure(null);
@@ -284,7 +339,7 @@ export function ChapterAudioControls({
     void Promise.resolve().then(action).catch(() => {
       // R4: an action that was started on a PREVIOUS chapter must not touch the current one. It does
       // not dispose the live binding and its error is not shown under the new chapter's heading.
-      if (bindingGeneration.current !== startedUnder || !scopeIsCurrent()) return;
+      if (bindingGeneration.current !== startedUnder || !scopeIsCurrent() || !authIsCurrent()) return;
       // R5: no raw exception text on a product surface aimed at teenagers.
       setFailure(`${label}失敗，請再試一次`);
       if (label === '播放') setNeedsRetry(true);
@@ -310,14 +365,14 @@ export function ChapterAudioControls({
   const statusMessage = failure ?? (!hasSource ? unavailableMessage : null);
 
   // One persistent player and one control. Pause resumes the same native position;
-  // only an explicit failed-stream retry refetches/replaces its source.
+  // Expired metadata is reconfirmed in place; native errors explicitly reprepare.
   return (
     <View style={styles.minimal} accessibilityLabel={`章節語音：${label}`}>
       {hasSource || canRetry ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={canRetry ? `重試${label}語音` : progress.playing ? `暫停${label}語音` : `播放${label}語音`}
-          onPress={canRetry ? retryPlayback : run(progress.playing ? '暫停' : '播放', () => progress.playing ? pauseCurrentPlayback() : currentAudioSession().play())}
+          onPress={canRetry ? retryPlayback : run(progress.playing ? '暫停' : '播放', () => progress.playing ? pauseCurrentPlayback() : playCurrentPlayback())}
           style={styles.button}
         >
           <Text style={styles.icon}>{canRetry ? '↻' : progress.playing ? 'Ⅱ' : '▶'}</Text>

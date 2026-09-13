@@ -103,7 +103,7 @@ vi.mock('../../src/storage/mobileDatabase', () => {
     save: (p: Record<string, unknown>) => { state.saved = p; },
     resetToAssigned: (memberId: string, planId: string, taskDate: string, references: string[]) => {
       const [book, chapter] = (references[0] ?? 'JHN.1').split('.');
-      state.saved = { memberId, planId, taskDate, versionId: 1392, book, chapter, reference: references[0], mode: 'ASSIGNED', updatedAt: 'test' };
+      state.saved = { memberId, planId, taskDate, versionId: 46, book, chapter, reference: references[0], mode: 'ASSIGNED', updatedAt: 'test' };
     },
     __reset: () => { state.saved = undefined; },
     __saved: () => state.saved,
@@ -282,7 +282,7 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
 
   it('starts on the FIRST assigned passage', async () => {
     const renderer = await mount();
-    expect(lastRequest()).toEqual({ versionId: 1392, usfm: 'JHN.19' });
+    expect(lastRequest()).toEqual({ versionId: 46, usfm: 'JHN.19' });
     expect(renderer.root.findAll(n => n.props.accessibilityLabel === '更多閱讀工具' && isReachable(renderer, n)).length).toBeGreaterThan(0);
     await act(async () => { renderer.unmount(); });
   });
@@ -293,7 +293,7 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     const renderer = await mount();
     selectAssigned(renderer, '約20');
     await act(async () => { await Promise.resolve(); });
-    expect(lastRequest()).toEqual({ versionId: 1392, usfm: 'JHN.20' });
+    expect(lastRequest()).toEqual({ versionId: 46, usfm: 'JHN.20' });
     expect(audioChapter(renderer)).toContain('約20');
     await act(async () => { renderer.unmount(); });
   });
@@ -315,10 +315,10 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     pressByLabel(renderer, '選擇其他章節');
     const picker = renderer.root.findAll((n: Node) => String(n.type) === 'OfficialChapterPicker')[0];
     expect(isReachable(renderer, picker)).toBe(true);
-    await act(async () => { picker.props.onSelect({ book: 'GEN', chapter: '1', versionId: 1392 }); });
+    await act(async () => { picker.props.onSelect({ book: 'GEN', chapter: '1', versionId: 46 }); });
     expect(renderer.root.findAll((n: Node) => String(n.type) === 'OfficialChapterPicker')[0].props.isOpen).toBe(false);
     await act(async () => { await Promise.resolve(); });
-    expect(lastRequest()).toEqual({ versionId: 1392, usfm: 'GEN.1' });
+    expect(lastRequest()).toEqual({ versionId: 46, usfm: 'GEN.1' });
     await act(async () => { renderer.unmount(); });
   });
 
@@ -344,11 +344,11 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     openMore(renderer);
     pressByLabel(renderer, '選擇譯本');
     const { getYouVersionVersionOptions } = await import('../../src/config/youVersionContent');
-    const label = getYouVersionVersionOptions().find(option => option.versionId === 312)!.translationName;
+    const label = getYouVersionVersionOptions().find(option => option.versionId === 40)!.translationName;
     await act(async () => { pressByLabel(renderer, label); });
     expect(renderer.root.findAll((n: Node) => String(n.type) === 'Modal' && n.props.visible)).toHaveLength(0);
     await act(async () => { await Promise.resolve(); });
-    expect(lastRequest()).toEqual({ versionId: 312, usfm: 'PSA.88' });
+    expect(lastRequest()).toEqual({ versionId: 40, usfm: 'PSA.88' });
     await act(async () => { renderer.unmount(); });
   });
 
@@ -391,11 +391,11 @@ describe('the OLD caller really was broken, and this suite detects it (120 falsi
       'LegacyRoot',
       null,
       React.createElement(YouVersionReader, {
-        date: '2026-09-12', references, appKey: 'test-app-key', versionId: 1392,
-        allowTechnicalProbe: true, allowedVersionIds: [1392], fullscreen: false,
+        date: '2026-09-12', references, appKey: 'test-app-key', versionId: 46,
+        allowTechnicalProbe: true, allowedVersionIds: [46], fullscreen: false,
       }),
       // THE OLD WIRING: always the first assigned passage
-      React.createElement(ChapterAudioControls, { chapterUsfm: references[0], versionId: 1392 }),
+      React.createElement(ChapterAudioControls, { chapterUsfm: references[0], versionId: 46 }),
     );
 
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -448,40 +448,40 @@ async function savedRow(): Promise<Record<string, unknown> | undefined> {
 }
 
 describe('C4 — what gets PERSISTED must match what was selected, not the pre-batch closure', () => {
-  it('persists GEN.1 at version 312 when book, chapter and version all change in ONE batch', async () => {
+  it('persists GEN.1 at version 40 when book, chapter and version all change in ONE batch', async () => {
     const renderer = await mount();
     const reader = bibleReader(renderer);
     await act(async () => {
       await reader.props.onBookChange('GEN');
       await reader.props.onChapterChange('1');
-      await reader.props.onVersionChange(312);
+      await reader.props.onVersionChange(40);
     });
     await act(async () => { await Promise.resolve(); });
 
     // the immediate request was already right before this fix; the SAVED row was not
-    expect(lastRequest()).toEqual({ versionId: 312, usfm: 'GEN.1' });
+    expect(lastRequest()).toEqual({ versionId: 40, usfm: 'GEN.1' });
     const row = await savedRow();
     expect(row?.book).toBe('GEN');
     expect(row?.chapter).toBe('1');
-    expect(row?.versionId).toBe(312);
+    expect(row?.versionId).toBe(40);
     expect(row?.reference).toBe('GEN.1');
     await act(async () => { renderer.unmount(); });
   });
 
-  it('restores GEN.1 / 312 after a remount, which is where the stale save used to show up', async () => {
+  it('restores GEN.1 / 40 after a remount, which is where the stale save used to show up', async () => {
     const first = await mount();
     const reader = bibleReader(first);
     await act(async () => {
       await reader.props.onBookChange('GEN');
       await reader.props.onChapterChange('1');
-      await reader.props.onVersionChange(312);
+      await reader.props.onVersionChange(40);
     });
     await act(async () => { await Promise.resolve(); });
     await act(async () => { first.unmount(); });
 
     recorded.requests.length = 0;
     const second = await mount();
-    expect(lastRequest()).toEqual({ versionId: 312, usfm: 'GEN.1' });
+    expect(lastRequest()).toEqual({ versionId: 40, usfm: 'GEN.1' });
     const shown = bibleReader(second);
     expect(`${shown.props.book}.${shown.props.chapter}`).toBe('GEN.1');
     await act(async () => { second.unmount(); });
@@ -492,11 +492,11 @@ describe('C4 — what gets PERSISTED must match what was selected, not the pre-b
     selectAssigned(renderer, '約20');
     await act(async () => { await Promise.resolve(); });
     const reader = bibleReader(renderer);
-    await act(async () => { await reader.props.onVersionChange(312); });
+    await act(async () => { await reader.props.onVersionChange(40); });
     await act(async () => { await Promise.resolve(); });
     const row = await savedRow();
     expect(`${row?.book}.${row?.chapter}`).toBe('JHN.20');
-    expect(row?.versionId).toBe(312);
+    expect(row?.versionId).toBe(40);
     await act(async () => { renderer.unmount(); });
   });
 });
@@ -553,30 +553,30 @@ describe('account preference integration at the REAL Reader caller', () => {
   it('persists version independently of positions and restores before SDK/audio mount', async () => {
     readerAuth.memberId = 'A';
     const first = await mount();
-    await act(async () => { await bibleReader(first).props.onVersionChange(312); });
-    expect(storedPreferences('A')?.versionId).toBe(312);
+    await act(async () => { await bibleReader(first).props.onVersionChange(40); });
+    expect(storedPreferences('A')?.versionId).toBe(40);
     await act(async () => { first.unmount(); });
     const db = await import('../../src/storage/mobileDatabase');
     (db.openQingmuReaderPositionStore() as unknown as { __reset(): void }).__reset();
     recorded.requests.length = 0;
     const second = await mount();
-    expect(bibleReader(second).props.versionId).toBe(312);
+    expect(bibleReader(second).props.versionId).toBe(40);
     expect(recorded.requests.length).toBeGreaterThan(0);
-    expect(recorded.requests.every(request => request.versionId === 312)).toBe(true);
+    expect(recorded.requests.every(request => request.versionId === 40)).toBe(true);
     await act(async () => { second.unmount(); });
   });
 
   it('does not restore a date-specific position version over the account preference', async () => {
     readerAuth.memberId = 'A';
     const renderer = await mount();
-    await act(async () => { await bibleReader(renderer).props.onVersionChange(312); });
+    await act(async () => { await bibleReader(renderer).props.onVersionChange(40); });
     const db = await import('../../src/storage/mobileDatabase');
-    db.openQingmuReaderPositionStore().save({ memberId: 'A', planId: 'church-2026-09', taskDate: '2026-09-03', versionId: 1392, book: 'PSA', chapter: '88', reference: 'PSA.88', mode: 'FREE_BROWSE', updatedAt: 'test' });
+    db.openQingmuReaderPositionStore().save({ memberId: 'A', planId: 'church-2026-09', taskDate: '2026-09-03', versionId: 46, book: 'PSA', chapter: '88', reference: 'PSA.88', mode: 'FREE_BROWSE', updatedAt: 'test' });
     await selectDateFromHome('2026-09-03');
-    expect(bibleReader(renderer).props.versionId).toBe(312);
-    expect(lastRequest()).toEqual({ versionId: 312, usfm: 'PSA.88' });
+    expect(bibleReader(renderer).props.versionId).toBe(40);
+    expect(lastRequest()).toEqual({ versionId: 40, usfm: 'PSA.88' });
     selectAssigned(renderer, '詩89');
-    expect(bibleReader(renderer).props.versionId).toBe(312);
+    expect(bibleReader(renderer).props.versionId).toBe(40);
     await act(async () => { renderer.unmount(); });
   });
 
@@ -588,9 +588,9 @@ describe('account preference integration at the REAL Reader caller', () => {
     expect(renderer.root.findAll(n => String(n.type) === 'BibleReader')).toHaveLength(0);
     expect(recorded.requests).toHaveLength(0);
     expect(renderer.root.findAll(n => n.props.accessibilityLabel === '返回今日' && typeof n.props.onPress === 'function').length).toBeGreaterThan(0);
-    await act(async () => { release(JSON.stringify({ schemaVersion: 1, owner: 'A', preferences: { versionId: 312, settings: null } })); });
-    expect(bibleReader(renderer).props.versionId).toBe(312);
-    expect(recorded.requests.every(request => request.versionId === 312)).toBe(true);
+    await act(async () => { release(JSON.stringify({ schemaVersion: 1, owner: 'A', preferences: { versionId: 40, settings: null } })); });
+    expect(bibleReader(renderer).props.versionId).toBe(40);
+    expect(recorded.requests.every(request => request.versionId === 40)).toBe(true);
     await act(async () => { renderer.unmount(); });
   });
 
@@ -602,10 +602,10 @@ describe('account preference integration at the REAL Reader caller', () => {
     const current = bibleReader(renderer).props;
     await act(async () => { current.onBookChange('PSA'); current.onChapterChange('88'); });
     const writes = preferenceIO.set.mock.calls.length;
-    await act(async () => { old.onBookChange('GEN'); old.onChapterChange('1'); old.onVersionChange(312); });
+    await act(async () => { old.onBookChange('GEN'); old.onChapterChange('1'); old.onVersionChange(40); });
     expect(bibleReader(renderer).props.book).toBe('PSA');
     expect(bibleReader(renderer).props.chapter).toBe('88');
-    expect(bibleReader(renderer).props.versionId).toBe(1392);
+    expect(bibleReader(renderer).props.versionId).toBe(46);
     expect(preferenceIO.set).toHaveBeenCalledTimes(writes);
     expect((await savedRow())?.memberId).toBe('B');
     await act(async () => { renderer.unmount(); });
@@ -629,21 +629,21 @@ describe('account preference integration at the REAL Reader caller', () => {
     readerAuth.memberId = 'A';
     const renderer = await mount();
     preferenceIO.set.mockRejectedValueOnce(new Error('PRIVATE_IO_DETAIL'));
-    await act(async () => { await bibleReader(renderer).props.onVersionChange(312); });
+    await act(async () => { await bibleReader(renderer).props.onVersionChange(40); });
     expect(preferenceIO.alerts.length).toBeGreaterThan(0);
     expect(JSON.stringify(preferenceIO.alerts)).not.toContain('PRIVATE_IO_DETAIL');
     const retry = preferenceIO.alerts.at(-1)?.buttons?.find(button => button.text?.includes('重試'));
     expect(retry?.onPress).toBeDefined();
     await act(async () => { retry!.onPress!(); });
-    expect(storedPreferences('A')?.versionId).toBe(312);
+    expect(storedPreferences('A')?.versionId).toBe(40);
     await act(async () => { renderer.unmount(); });
   });
 
   it('lets a guest choose a version without disk writes', async () => {
     process.env.EXPO_PUBLIC_QINGMU_FIXTURE = 'false';
     const renderer = await mount();
-    await act(async () => { await bibleReader(renderer).props.onVersionChange(312); });
-    expect(bibleReader(renderer).props.versionId).toBe(312);
+    await act(async () => { await bibleReader(renderer).props.onVersionChange(40); });
+    expect(bibleReader(renderer).props.versionId).toBe(40);
     expect(preferenceIO.get).not.toHaveBeenCalled();
     expect(preferenceIO.set).not.toHaveBeenCalled();
     await act(async () => { renderer.unmount(); });
@@ -653,7 +653,7 @@ describe('account preference integration at the REAL Reader caller', () => {
     readerAuth.memberId = 'A';
     const renderer = await mount();
     const { getYouVersionVersionOptions } = await import('../../src/config/youVersionContent');
-    const label = getYouVersionVersionOptions().find(option => option.versionId === 312)!.translationName;
+    const label = getYouVersionVersionOptions().find(option => option.versionId === 40)!.translationName;
     openMore(renderer); pressByLabel(renderer, '選擇譯本');
     preferenceIO.set.mockRejectedValueOnce(new Error('PRIVATE_MORE_STORAGE_ERROR'));
     await act(async () => { pressByLabel(renderer, label); });
@@ -664,7 +664,7 @@ describe('account preference integration at the REAL Reader caller', () => {
     expect(preferenceIO.alerts).toHaveLength(0);
     expect(storedPreferences('A')).toBeUndefined();
     await act(async () => { pressByLabel(renderer, label); });
-    expect(storedPreferences('A')?.versionId).toBe(312);
+    expect(storedPreferences('A')?.versionId).toBe(40);
     expect(renderer.root.findAll(n => String(n.type) === 'Modal' && n.props.visible)).toHaveLength(0);
     expect(preferenceIO.alerts).toHaveLength(0);
     // A later SDK font failure still belongs to the Alert/retry path, not More's inline owner.
@@ -686,7 +686,7 @@ describe('account preference integration at the REAL Reader caller', () => {
     readerAuth.memberId = 'A';
     const renderer = await mount();
     const { getYouVersionVersionOptions } = await import('../../src/config/youVersionContent');
-    const label = getYouVersionVersionOptions().find(option => option.versionId === 312)!.translationName;
+    const label = getYouVersionVersionOptions().find(option => option.versionId === 40)!.translationName;
     let finish!: () => void;
     preferenceIO.set.mockImplementationOnce((key, value) => new Promise<void>(resolve => {
       finish = () => { preferenceIO.data.set(key, value); resolve(); };
@@ -700,7 +700,7 @@ describe('account preference integration at the REAL Reader caller', () => {
     pressByLabel(renderer, '選擇譯本');
     await act(async () => { finish(); });
     expect(renderer.root.findAll(n => n.props.accessibilityLabel === '關閉譯本選擇' && isReachable(renderer, n)).length).toBeGreaterThan(0);
-    expect(bibleReader(renderer).props.versionId).toBe(1392);
+    expect(bibleReader(renderer).props.versionId).toBe(46);
     expect(storedPreferences('B')).toBeUndefined();
     expect(preferenceIO.alerts).toHaveLength(0);
     await act(async () => { renderer.unmount(); });

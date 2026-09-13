@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { getYouVersionVersionOptions } from '../config/youVersionContent';
+import { getYouVersionVersionOptions, RETIRED_BIBLE_VERSION_IDS } from '../config/youVersionContent';
 import { createReaderPreferencesStore, type ReaderPreferencesStore } from './readerPreferences';
 
 /** One store per Reader screen. Only the signed-in entries use SecureStore; guest stays in memory. */
@@ -12,5 +12,6 @@ export function createNativeReaderPreferencesStore(): ReaderPreferencesStore {
   }, {
     allowedVersionIds: versions.map(version => version.versionId),
     defaultVersionId: versions[0].versionId,
+    retiredVersionIds: RETIRED_BIBLE_VERSION_IDS,
   });
 }

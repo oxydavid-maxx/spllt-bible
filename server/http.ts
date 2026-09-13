@@ -12,6 +12,7 @@ import { seedMemberGroupProfile, type MemberGroupProfileSeed } from './groups';
 import { createRemoteConfiguration } from './remoteConfiguration';
 import { createReminderWorker, type ReminderWorkerTimer } from './reminderWorker';
 import type { MeetingSender } from './remoteReminders';
+import { createOfficialBibleAdapter } from './officialBibleAdapter';
 
 async function readBody(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
@@ -115,7 +116,18 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
         }
       : { fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token' }),
   });
+  const officialBible = createOfficialBibleAdapter();
   const server = createServer(async (request, response) => {
+    // Public, identity-checked Bible content is separate from private member APIs.
+    const official = await officialBible({ method: request.method ?? 'GET', url: request.url ?? '/',
+      headers: Object.fromEntries(Object.entries(request.headers).map(([key,value]) => [key,Array.isArray(value)?value[0]:value])) });
+    if (official) {
+      response.statusCode = official.status;
+      for (const [key,value] of Object.entries(official.headers)) response.setHeader(key,value);
+      response.setHeader('x-qingmu-instance-id', process.env.QINGMU_INSTANCE_ID?.trim() || 'unconfigured');
+      response.end(official.status === 204 ? '' : official.raw ? String(official.body) : JSON.stringify(official.body));
+      return;
+    }
     const result = await handle({
       method: request.method ?? 'GET',
       url: request.url ?? '/',

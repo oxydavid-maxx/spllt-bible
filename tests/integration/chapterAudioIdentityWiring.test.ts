@@ -1,4 +1,7 @@
 import React from 'react';
+import { chapterAudioProvider } from '../doubles/chapterAudioProvider';
+beforeEach(() => vi.stubGlobal('fetch', chapterAudioProvider));
+afterEach(() => vi.unstubAllGlobals());
 import TestRenderer, { act } from 'react-test-renderer';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -564,14 +567,14 @@ describe('native status errors after play returned, retry and scope isolation', 
       expect(bodyText(r)).not.toContain(rawError);
     } finally { if (r) await act(async () => { r!.unmount(); }); db.close(); }
   });
-  it('shows an honest unavailable state for an uncollected chapter without a dead play button', async () => {
+  it('shows an honest unavailable state for a failed provider query without a dead play button', async () => {
     const { db, transport } = backend();
     let r: TestRenderer.ReactTestRenderer | undefined;
     try {
       await persistAuthSession({ memberId: MEMBER, sessionToken: realToken() }, 60);
       r = await mountCompact(transport, '1TI.2');
       expect(playable(r)).toBe(false);
-      expect(bodyText(r)).toContain('還沒取得');
+      expect(bodyText(r)).toContain('暫時無法取得');
       expect(bodyText(r)).not.toContain('這一章沒有朗讀');
       expect(bodyText(r)).not.toContain('官方無錄音');
       expect(openModals(r)).toHaveLength(0);
@@ -611,7 +614,7 @@ describe('native status errors after play returned, retry and scope isolation', 
     } finally { if (r) await act(async () => { r!.unmount(); }); db.close(); }
   });
 
-  it('retry cannot reuse a now-expired source while auth remains valid', async () => {
+  it('retry reconfirms an expired source before preparing and playing while auth remains valid', async () => {
     const { db, transport } = backend();
     let r: TestRenderer.ReactTestRenderer | undefined;
     let sourceDeadline = 0;
@@ -632,12 +635,14 @@ describe('native status errors after play returned, retry and scope isolation', 
       const replaced = p.calls.filter(c => c.startsWith('replace:')).length;
       const plays = p.calls.filter(c => c === 'play').length;
       expect(sourceDeadline).toBeGreaterThan(T0);
+      const previousDeadline = sourceDeadline;
       await act(async () => { vi.setSystemTime(sourceDeadline + 1); retry(); });
       await act(async () => { await Promise.resolve(); });
       expect(getAuthSnapshot().status).toBe('signed-in');
-      expect(p.calls.filter(c => c.startsWith('replace:'))).toHaveLength(replaced);
-      expect(p.calls.filter(c => c === 'play')).toHaveLength(plays);
-      expect(p.playing).toBe(false);
+      expect(sourceDeadline).toBeGreaterThan(previousDeadline);
+      expect(p.calls.filter(c => c.startsWith('replace:'))).toHaveLength(replaced + 1);
+      expect(p.calls.filter(c => c === 'play')).toHaveLength(plays + 1);
+      expect(p.playing).toBe(true);
     } finally { if (r) await act(async () => { r!.unmount(); }); db.close(); }
   });
 

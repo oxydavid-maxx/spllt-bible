@@ -45,9 +45,17 @@ beforeEach(() => {
   native.mounts = 0; native.back = null;
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
-afterEach(() => { if (rendered) act(() => rendered.unmount()); vi.restoreAllMocks(); });
+afterEach(() => { if (rendered) act(() => rendered.unmount()); vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe('fullscreen official reader wrapper', () => {
+  it('uses the SDK production apiHost for all five versions, with the same controlled chapter', async () => {
+    vi.stubEnv('EXPO_PUBLIC_QINGMU_API_BASE_URL', 'https://api.luminexhealthbiohack.com');
+    await mount({ versionId: 46, book: '1TI', chapter: '1', references: ['1TI.1'], allowedVersionIds: [46, 40, 111, 406, 114] });
+    expect(all('OfficialProvider')[0].props.apiHost).toBe('api.luminexhealthbiohack.com');
+    expect(all('OfficialProvider')[0].props.hookOverrides).toBeUndefined();
+    expect(all('OfficialReader')[0].props).toMatchObject({ versionId: 46, book: '1TI', chapter: '1' });
+    expect(controls.ready).toBe(true);
+  });
   it('opens an explicit free-browse chapter when the selected day has no assigned references', async () => {
     await mount({ date: '2026-09-13', references: [], book: 'JHN', chapter: '3' });
     expect(all('OfficialReader')).toHaveLength(1);
@@ -56,7 +64,8 @@ describe('fullscreen official reader wrapper', () => {
   });
   it('allows the verified English selection through the actual provider language filter', async () => {
     await mount({ versionId: 111, allowedVersionIds: [1392, 312, 111] });
-    expect(all('OfficialProvider')[0].props.permittedLanguageTags).toEqual(['zh-Hant-TW', 'en']);
+    expect(all('OfficialProvider')[0].props.permittedVersionIds).toEqual([1392, 312, 111]);
+    expect(all('OfficialProvider')[0].props.permittedLanguageTags).toBeUndefined();
     expect(all('OfficialReader')[0].props.versionId).toBe(111);
   });
   it('renders only scripture, without toolbar, assigned chips, fixed attribution or a card border', async () => {

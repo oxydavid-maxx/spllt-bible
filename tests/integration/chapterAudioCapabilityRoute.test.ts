@@ -1,10 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { chapterAudioProvider } from '../doubles/chapterAudioProvider';
+beforeEach(() => vi.stubGlobal('fetch', chapterAudioProvider));
+afterEach(() => vi.unstubAllGlobals());
 import { createDatabase } from '../../server/db';
 import { createApiHandler } from '../../server/routes';
 import { validateCapability } from '../../src/domain/chapterAudioContract';
 import { fetchChapterCapability } from '../../src/services/contentCapabilityClient';
 
-// In-process integration for review 119 R1/R6: the REAL route, the REAL registry and the REAL client
+// In-process integration for review 119 R1/R6: the REAL route, synthetic provider metadata and the REAL client
 // validator, wired together. No device, no listening socket, no live 8788, no FCM, no real member data.
 
 function harness() {
@@ -22,7 +25,7 @@ describe('GET /api/content-capabilities — per-chapter (R1)', () => {
     expect(r.status).toBe(200);
     expect(r.body.audio).toBe(true);
     expect(r.body.identity).toEqual({ versionId: 1392, usfm: 'PSA.90' });
-    expect(String(r.body.uri)).toContain('/PSA/90-');
+    expect(String(r.body.uri)).toBe('https://media.example.test/observed-fixture.mp3');
   });
 
   it('answers for GEN.1, which is outside the September 42 — proving there is no whitelist', async () => {
@@ -30,15 +33,15 @@ describe('GET /api/content-capabilities — per-chapter (R1)', () => {
     afterEach(() => db.close());
     const r = await api({ method: 'GET', url: '/api/content-capabilities?versionId=1392&usfm=GEN.1', headers });
     expect(r.body.audio).toBe(true);
-    expect(String(r.body.uri)).toContain('/GEN/1-');
+    expect(String(r.body.uri)).toBe('https://media.example.test/observed-fixture.mp3');
   });
 
-  it('reports a chapter whose address was never collected as pending, never as no-audio', async () => {
+  it('reports a failed provider query as temporarily unavailable, never as no-audio', async () => {
     const { db, api, headers } = harness();
     afterEach(() => db.close());
     const r = await api({ method: 'GET', url: '/api/content-capabilities?versionId=1392&usfm=TIT.1', headers });
     expect(r.body.audio).toBe(false);
-    expect(r.body.status).toBe('pending_observation');
+    expect(r.body.status).toBe('temporarily_unavailable');
     expect(r.body.uri).toBeUndefined();
   });
 
@@ -74,7 +77,7 @@ describe('route output survives the CLIENT validator end to end (R2/R5)', () => 
     const r = await api({ method: 'GET', url: '/api/content-capabilities?versionId=1392&usfm=JHN.21', headers });
     const check = validateCapability(r.body, { versionId: 1392, usfm: 'JHN.21' }, Date.parse('2026-09-12T00:00:00Z'));
     expect(check.ok).toBe(true);
-    if (check.ok) expect(check.capability.provenance.publisher).toBe('Biblica');
+    if (check.ok) expect(check.capability.provenance.publisher).toBe('錄音出版者未由目錄提供');
   });
 
   it('and is REFUSED when validated against a different chapter, so a crossed answer cannot land', async () => {
@@ -107,7 +110,7 @@ describe('route output survives the CLIENT validator end to end (R2/R5)', () => 
     }
   });
 
-  it('reports an uncollected chapter to the client as pending, with a retryable honest message', async () => {
+  it('reports provider failure to the client with a retryable honest message', async () => {
     const { db, api, headers } = harness();
     afterEach(() => db.close());
     const fetchImpl = (async (url: string) => {
@@ -123,9 +126,9 @@ describe('route output survives the CLIENT validator end to end (R2/R5)', () => 
     });
     expect(out.kind).toBe('unavailable');
     if (out.kind === 'unavailable') {
-      expect(out.status).toBe('pending_observation');
+      expect(out.status).toBe('temporarily_unavailable');
       expect(out.retryable).toBe(true);
-      expect(out.message).toBe('這一章的朗讀還沒取得');
+      expect(out.message).toBe('暫時無法取得，稍後可再試');
     }
   });
 });

@@ -113,9 +113,9 @@ export function parseCapabilityQuery(
   const usfm = query.usfm?.trim();
   if (!rawVersion || !usfm) return { ok: false, error: 'VERSION_ID_AND_USFM_REQUIRED' };
   const versionId = Number(rawVersion);
-  if (!Number.isFinite(versionId) || !Number.isInteger(versionId)) {
+  if (!Number.isSafeInteger(versionId) || versionId < 1) {
     return { ok: false, error: 'VERSION_ID_MUST_BE_AN_INTEGER' };
   }
-  if (!/^[A-Za-z0-9]{2,5}\.\d{1,3}$/.test(usfm)) return { ok: false, error: 'USFM_MALFORMED' };
+  if (!/^[A-Za-z0-9]{2,5}\.[1-9][0-9]{0,2}$/.test(usfm)) return { ok: false, error: 'USFM_MALFORMED' };
   return { ok: true, versionId, usfm: usfm.toUpperCase() };
 }

@@ -1,0 +1,37 @@
+[
+  {
+    "versionId": 46,
+    "translationName": "新標點和合本, 神版",
+    "abbreviation": "CUNP-神",
+    "publisher": "Hong Kong Bible Society",
+    "copyrightNotice": "新標點和合本（神版） © 1988, 1989, 1996 聯合聖經公會 版權代理：香港聖經公會 蒙允許使用 Chinese Union Version with New Punctuation, Shen Edition, Traditional Script © 1988, 1989, 1996 United Bible Societies. Copyright agent: Hong Kong Bible Society. Used by permission."
+  },
+  {
+    "versionId": 40,
+    "translationName": "新譯本",
+    "abbreviation": "CNV",
+    "publisher": "Worldwide Bible Society",
+    "copyrightNotice": "Scripture texts are from The Holy Bible, Chinese New Version, copyright © 1976,1992,1999,2001,2005,2010 by The Worldwide Bible Society Limited. Used by permission. All rights reserved."
+  },
+  {
+    "versionId": 111,
+    "translationName": "New International Version",
+    "abbreviation": "NIV",
+    "publisher": "Biblica, Inc.",
+    "copyrightNotice": "The Holy Bible, New International Version® NIV®\nCopyright © 1973, 1978, 1984, 2011 by Biblica, Inc.®\nUsed by Permission of Biblica, Inc.® All rights reserved worldwide."
+  },
+  {
+    "versionId": 406,
+    "translationName": "Holy Bible: Easy-to-Read Version",
+    "abbreviation": "ERV",
+    "publisher": "Bible League International",
+    "copyrightNotice": "© 1987, 2004 Bible League International"
+  },
+  {
+    "versionId": 114,
+    "translationName": "New King James Version",
+    "abbreviation": "NKJV",
+    "publisher": "Thomas Nelson, Inc.",
+    "copyrightNotice": "The Holy Bible, New King James Version, Copyright © 1982 Thomas Nelson. All rights reserved."
+  }
+]

@@ -70,9 +70,9 @@ describe('Reader secondary information and controls', () => {
   it('shows version details only on demand and returns to the same chapter', () => {
     const reader = all('BibleReader')[0];
     canvas(); press('更多閱讀工具'); press('版本資訊');
-    expect(all('Text').map(n => String(n.props.children)).join(' ')).toContain('Biblica');
+    expect(all('Text').map(n => String(n.props.children)).join(' ')).toContain('Hong Kong Bible Society');
     press('關閉版本資訊');
-    expect(all('Text').map(n => String(n.props.children)).join(' ')).not.toContain('Biblica');
+    expect(all('Text').map(n => String(n.props.children)).join(' ')).not.toContain('Hong Kong Bible Society');
     expect(all('BibleReader')[0]).toBe(reader);
   });
   it('has no retired playback panel entry in More and keeps the real audio controller mounted', () => {
@@ -84,16 +84,16 @@ describe('Reader secondary information and controls', () => {
   });
   it('keeps the translation shown in information aligned with the official picker', async () => {
     canvas(); press('更多閱讀工具'); press('選擇譯本');
-    const label = getYouVersionVersionOptions().find(option => option.versionId === 312)!.translationName;
+    const label = getYouVersionVersionOptions().find(option => option.versionId === 40)!.translationName;
     await act(async () => { press(label); });
-    expect(all('BibleReader')[0].props.versionId).toBe(312);
-    expect(all('ChapterAudioControls')[0].props.versionId).toBe(312);
+    expect(all('BibleReader')[0].props.versionId).toBe(40);
+    expect(all('ChapterAudioControls')[0].props.versionId).toBe(40);
     press('更多閱讀工具'); press('版本資訊');
-    expect(all('Text').map(n => String(n.props.children)).join(' ')).toContain('中文標準譯本');
+    expect(all('Text').map(n => String(n.props.children)).join(' ')).toContain('新譯本');
   });
   it('selects an assigned passage from More after browsing another book', async () => {
     press('更多閱讀工具'); press('選擇其他章節');
-    await act(async () => { await all('OfficialChapterSheet')[0].props.onSelect({ book: 'GEN', chapter: '1', versionId: 1392 }); });
+    await act(async () => { await all('OfficialChapterSheet')[0].props.onSelect({ book: 'GEN', chapter: '1', versionId: 46 }); });
     press('前往詩91');
     expect(all('BibleReader')[0].props.book).toBe('PSA');
     expect(all('BibleReader')[0].props.chapter).toBe('91');

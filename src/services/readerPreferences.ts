@@ -57,10 +57,11 @@ function samePreferences(a: ReaderPreferences, b: ReaderPreferences): boolean {
 /** Local device preferences only. No React/native I/O, position, completion or cross-device sync. */
 export function createReaderPreferencesStore(
   storage: ReaderPreferencesStorage,
-  options: { allowedVersionIds: readonly number[]; defaultVersionId?: number },
+  options: { allowedVersionIds: readonly number[]; defaultVersionId?: number; retiredVersionIds?: readonly number[] },
 ): ReaderPreferencesStore {
   const defaultVersionId = options.defaultVersionId ?? 46;
   const allowed = new Set(options.allowedVersionIds);
+  const retired = new Set(options.retiredVersionIds ?? []);
   if (!Number.isSafeInteger(defaultVersionId) || defaultVersionId <= 0 || !allowed.has(defaultVersionId)) {
     throw new Error('DEFAULT_VERSION_NOT_ALLOWED');
   }
@@ -88,11 +89,13 @@ export function createReaderPreferencesStore(
     listeners.forEach(listener => listener());
   }
 
-  function normalize(raw: unknown): ReaderPreferences | null {
+  function normalize(raw: unknown, migrateRemovedVersion = false): ReaderPreferences | null {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
     const preferences = raw as Record<string, unknown>;
-    const versionId = preferences.versionId;
-    if (typeof versionId !== 'number' || !Number.isSafeInteger(versionId) || versionId <= 0 || !allowed.has(versionId)) return null;
+    const storedVersionId = preferences.versionId;
+    if (typeof storedVersionId !== 'number' || !Number.isSafeInteger(storedVersionId) || storedVersionId <= 0) return null;
+    if (!allowed.has(storedVersionId) && !(migrateRemovedVersion && retired.has(storedVersionId))) return null;
+    const versionId = allowed.has(storedVersionId) ? storedVersionId : defaultVersionId;
     const rawSettings = preferences.settings;
     if (rawSettings === null) return Object.freeze({ versionId, settings: null });
     if (!rawSettings || typeof rawSettings !== 'object' || Array.isArray(rawSettings)) return null;
@@ -121,13 +124,20 @@ export function createReaderPreferencesStore(
       // A user edit owns the complete current choice, even if this old disk read finishes afterward.
       if (entry.revision !== startedAtRevision) return;
       let preferences: ReaderPreferences | null = raw === null ? defaults() : null;
+      let migrated = false;
       if (raw !== null) {
         try {
           const envelope = JSON.parse(raw) as { schemaVersion?: unknown; owner?: unknown; preferences?: unknown } | null;
-          if (envelope?.schemaVersion === 1 && envelope.owner === memberId) preferences = normalize(envelope.preferences);
+          if (envelope?.schemaVersion === 1 && envelope.owner === memberId) {
+            preferences = normalize(envelope.preferences, true);
+            migrated = Boolean(preferences && (envelope.preferences as ReaderPreferences)?.versionId !== preferences.versionId);
+          }
         } catch { /* corrupt record: keep a safe default, with a non-sensitive readError flag */ }
       }
       publish(entry, { ...entry.snapshot, ready: true, preferences: preferences ?? defaults(), readError: preferences === null });
+      if (migrated && preferences && entry.revision === startedAtRevision) {
+        await enqueueSave(memberId, entry, preferences, startedAtRevision);
+      }
     })();
     const loading: Promise<void> = task.finally(() => { if (entry.loading === loading) entry.loading = null; });
     entry.loading = loading;

@@ -1,0 +1,55 @@
+[
+  {
+    "versionId": 46,
+    "edition": "新標點和合本, 神版",
+    "recordings": [
+      {
+        "id": 1310,
+        "publisher": "Everest Audio Bible",
+        "copyrightNotice": "Everest Audio Bible: Chinese Union New Punctuation Version Bible Audio (Shen Edition, Female Voice) ℗ Everest Audio Bible, 2020. Bible Text used with permission from The Bible Society in Taiwan. Everest 有聲聖經: 「中文新標點和合本」聖經新舊約全書 (女聲版) ℗ Everest Audio Bible, 2020. 內文經台灣聖經公會授權Everest Audio Bible使用。",
+        "sourceUrl": "https://www.bible.com/bible/46/1TI.1"
+      }
+    ]
+  },
+  {
+    "versionId": 40,
+    "edition": "新譯本",
+    "recordings": [
+      {
+        "id": 18,
+        "publisher": "Worldwide Bible Society",
+        "copyrightNotice": "Copyright© The Worldwide Bible Society Limited. Used by permission. All rights reserved.",
+        "sourceUrl": "https://www.bible.com/bible/40/1TI.1"
+      }
+    ]
+  },
+  {
+    "versionId": 111,
+    "edition": "New International Version",
+    "recordings": [
+      {
+        "id": 3,
+        "publisher": "Biblica, Inc.",
+        "copyrightNotice": "The Listener’s Bible®: NIV® Edition\nAudio Copyright ℗ 2011 by Max McLean\nUsed by permission. All rights reserved worldwide.\nThe Holy Bible, New International Version® NIV®\nCopyright © 1973, 1978, 1984, 2011 by Biblica, Inc.®\nAll rights reserved worldwide.",
+        "sourceUrl": "https://www.bible.com/bible/111/1TI.1"
+      }
+    ]
+  },
+  {
+    "versionId": 406,
+    "edition": "Holy Bible: Easy-to-Read Version",
+    "recordings": []
+  },
+  {
+    "versionId": 114,
+    "edition": "New King James Version",
+    "recordings": [
+      {
+        "id": 2332,
+        "publisher": "Thomas Nelson, Inc.",
+        "copyrightNotice": "The Holy Bible, New King James Version, Copyright © 1982 Thomas Nelson. All rights reserved.",
+        "sourceUrl": "https://www.bible.com/bible/114/1TI.1"
+      }
+    ]
+  }
+]
