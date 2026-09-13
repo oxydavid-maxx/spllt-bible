@@ -49,10 +49,16 @@ export async function authenticateSessionOrGoogle(
   headers: Record<string, string | undefined>,
   config: ProductionGoogleAuth,
   sessionSecret: string,
+  sessions?: { resolveDevice: (token: string) => string | null; isLegacyRevoked: (token: string) => boolean },
 ): Promise<AuthContext | AuthFailure> {
   const authorization = headers.authorization ?? headers.Authorization;
   const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token) return { status: 401, error: 'AUTH_REQUIRED' };
+  if (token.startsWith('qmd_')) {
+    const memberId = sessions?.resolveDevice(token);
+    return memberId ? { memberId, mode: 'google-session' } : { status: 401, error: 'AUTH_INVALID' };
+  }
+  if (token.startsWith('qms_') && sessions?.isLegacyRevoked(token)) return { status: 401, error: 'AUTH_INVALID' };
   const sessionMember = verifySessionToken(token, sessionSecret);
   if (sessionMember) return { memberId: sessionMember, mode: 'google-session' };
   return authenticateGoogle(headers, config);

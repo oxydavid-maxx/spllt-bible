@@ -1,4 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
+import { ensureMobileSessionSchema } from './mobileSessions';
+import { ensureMeetingSchema } from './meetingSchedules';
 import { LOCAL_SCHEMA } from '../src/storage/schema';
 import { buildCompletionOperationFingerprint } from './operationFingerprint';
 
@@ -194,6 +196,8 @@ export function createDatabase(options: { filename?: string; members?: ServerMem
       // Leave malformed legacy rows unverified; routes reject their replay.
     }
   }
+  ensureMeetingSchema(db);
+  ensureMobileSessionSchema(db);
   const insert = db.prepare(
     'INSERT OR REPLACE INTO members (id, display_name, group_id) VALUES (?, ?, ?)',
   );

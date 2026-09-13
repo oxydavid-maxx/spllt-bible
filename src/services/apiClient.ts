@@ -2,6 +2,7 @@ import type { CompletionCommand } from '../domain/completion';
 import type { CompletionStatus } from '../domain/types';
 import type { SyncResult } from '../storage/outbox';
 import { notifyAuthExpired } from './authState';
+import { isDeviceSessionCredential } from './authCredential';
 
 export interface ApiClientOptions {
   baseUrl: string;
@@ -13,7 +14,20 @@ export interface ApiClientOptions {
 export interface SessionResult {
   sessionToken: string;
   memberId: string;
-  expiresInSeconds: number;
+  expiresInSeconds: number | null;
+  sessionKind?: 'device';
+}
+
+function parseSessionResult(body: unknown): SessionResult | null {
+  if (!body || typeof body !== 'object') return null;
+  const value = body as Record<string, unknown>;
+  if (typeof value.sessionToken !== 'string' || !value.sessionToken || typeof value.memberId !== 'string' || !value.memberId) return null;
+  if (value.sessionKind === 'device') {
+    return value.expiresInSeconds === null && isDeviceSessionCredential(value.sessionToken)
+      ? { sessionToken: value.sessionToken, memberId: value.memberId, expiresInSeconds: null, sessionKind: 'device' } : null;
+  }
+  const expiry = Number(value.expiresInSeconds ?? 0);
+  return Number.isFinite(expiry) && expiry >= 0 ? { sessionToken: value.sessionToken, memberId: value.memberId, expiresInSeconds: expiry } : null;
 }
 
 export interface SessionFailure {
@@ -109,29 +123,46 @@ function responseObject(value: unknown): Record<string, unknown> | null {
 
 export function createApiClient(options: ApiClientOptions) {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const handleAuthStatus = (response: Response): void => { if (response.status === 401 && options.token) notifyAuthExpired(); };
+  const handleAuthStatus = (response: Response): void => { if (response.status === 401 && options.token) notifyAuthExpired({ memberId: options.memberId, sessionToken: options.token }); };
+  const sessionRequest = async (path: string): Promise<Response> => {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 10_000);
+    try { return await fetchImpl(`${options.baseUrl}${path}`, { method: 'POST', headers: { authorization: `Bearer ${options.token}`, 'content-type': 'application/json' }, body: '{}', signal: abort.signal }); }
+    finally { clearTimeout(timer); }
+  };
   return {
-    async establishSession(idToken: string): Promise<SessionResult | SessionFailure | null> {
+    async establishSession(idToken: string, sessionOptions: { persistentDevice?: boolean } = {}): Promise<SessionResult | SessionFailure | null> {
       const response = await fetchImpl(`${options.baseUrl}/api/session/google`, {
         method: 'POST',
         headers: { authorization: `Bearer ${idToken}`, 'content-type': 'application/json' },
+        ...(sessionOptions.persistentDevice ? { body: JSON.stringify({ session_type: 'device' }) } : {}),
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };
         return { status: response.status, error: String(body.error ?? 'SESSION_ERROR') };
       }
-      const body = (await response.json()) as { sessionToken?: string; memberId?: string; expiresInSeconds?: number };
-      return body.sessionToken && body.memberId ? { sessionToken: body.sessionToken, memberId: body.memberId, expiresInSeconds: Number(body.expiresInSeconds ?? 0) } : null;
+      return parseSessionResult(await response.json());
     },
-    async claimInvite(idToken: string, inviteCode: string): Promise<SessionResult | SessionFailure | null> {
+    async claimInvite(idToken: string, inviteCode: string, sessionOptions: { persistentDevice?: boolean } = {}): Promise<SessionResult | SessionFailure | null> {
       const response = await fetchImpl(`${options.baseUrl}/api/onboarding/claim`, {
         method: 'POST',
         headers: { authorization: `Bearer ${idToken}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ invite_code: inviteCode }),
+        body: JSON.stringify({ invite_code: inviteCode, ...(sessionOptions.persistentDevice ? { session_type: 'device' } : {}) }),
       });
       const body = (await response.json().catch(() => ({}))) as { sessionToken?: string; memberId?: string; expiresInSeconds?: number; error?: string };
       if (!response.ok) return { status: response.status, error: String(body.error ?? 'INVITE_ERROR') };
-      return body.sessionToken && body.memberId ? { sessionToken: body.sessionToken, memberId: body.memberId, expiresInSeconds: Number(body.expiresInSeconds ?? 0) } : null;
+      return parseSessionResult(body);
+    },
+    async upgradeSession(): Promise<SessionResult | SessionFailure | null> {
+      const response = await sessionRequest('/api/session/device');
+      const body = await response.json().catch(() => null);
+      return response.ok ? parseSessionResult(body) : { status: response.status, error: String(body?.error ?? 'SESSION_ERROR') };
+    },
+    async revokeSession(): Promise<boolean> {
+      // This credential may already belong to a logged-out/old account. Its 401
+      // is terminal for the revoke queue and must never expire the current owner.
+      const response = await sessionRequest('/api/session/revoke');
+      return response.ok || response.status === 401 || response.status === 403;
     },
     async saveCompletion(command: CompletionCommand): Promise<SyncResult> {
       const response = await fetchImpl(

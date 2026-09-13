@@ -16,4 +16,11 @@ describe('reminder settings', () => {
       readinessLabel: '提醒設定讀取中；你的變更會在讀取完成後套用',
     });
   });
+
+  it('distinguishes a pending intention from confirmed synchronization and retryable failure', () => {
+    const input = { ready: true, saving: true, readingEnabled: false, meetingEnabled: false, remoteDeliveryStatus: 'REMOTE_PENDING' as const, permission: 'granted' as const, readingTime: '08:00', meetingAdvanceMinutes: 30 };
+    expect(buildReminderSettingsModel(input).readinessLabel).toBe('提醒設定儲存中…');
+    expect(buildReminderSettingsModel({ ...input, saving: false }).readinessLabel).toBe('提醒設定已同步');
+    expect(buildReminderSettingsModel({ ...input, error: 'save' }).readinessLabel).not.toBe('提醒設定已同步');
+  });
 });

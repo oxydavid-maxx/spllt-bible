@@ -11,7 +11,7 @@ describe('account surface', () => {
     })).toEqual({
       mode: 'signed-in',
       displayName: '小明',
-      avatarLabel: '小',
+      avatarLabel: '光',
       avatarUrl: null,
       groupName: 'A小組',
       showSignIn: false,
@@ -26,7 +26,7 @@ describe('account surface', () => {
   });
 
   // Review 121 C9 CONTRACT CHANGE. This used to assert that ANY signed-in session without a profile is
-  // 'loading'. That is exactly the defect 使用者 hit: a request that had already finished and failed kept
+  // 'loading'. That is exactly the defect 小明 hit: a request that had already finished and failed kept
   // spinning forever. Only an in-flight load is 'loading' now.
   it('shows loading only while the profile request is genuinely in flight', () => {
     expect(buildAccountSurfaceModel({ status: 'signed-in', profile: null, profileStatus: 'loading' }))

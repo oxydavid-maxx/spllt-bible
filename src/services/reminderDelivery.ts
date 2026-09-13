@@ -1,3 +1,6 @@
+import { REMINDER_NOTIFICATION_CHANNEL_ID } from './reminderScheduler';
+import { readReminderDeviceBinding } from './reminderDevice';
+
 export const MEETING_REMINDER_TASK = 'qingmu-youth-meeting-reminder-v1';
 
 export interface FcmReminderPayload {
@@ -46,14 +49,17 @@ export interface HeadlessMeetingPayload {
 
 export interface HeadlessValidationResult {
   valid: boolean;
+  memberId?: string;
   meetingId: string;
   scheduleRevision: number;
   status: 'SCHEDULED' | 'CANCELLED';
 }
 
+export type ValidatedMeetingNotificationPayload = HeadlessMeetingPayload & { memberId: string };
+
 export interface ReminderHeadlessRuntime {
   validateLatest: (payload: HeadlessMeetingPayload) => Promise<HeadlessValidationResult>;
-  present: (payload: HeadlessMeetingPayload) => Promise<void>;
+  present: (payload: ValidatedMeetingNotificationPayload) => Promise<void>;
 }
 
 export interface ReminderTaskManager {
@@ -106,10 +112,11 @@ function candidateDataMaps(data: unknown): Array<Record<string, unknown>> {
  * Accept either and normalise, so the freshness comparison below compares numbers to numbers.
  * Widening where we look must not widen what we accept: anything else is still refused.
  */
-function toMeetingPayload(map: Record<string, unknown>): HeadlessMeetingPayload | null {
+function toMeetingPayload(map: Record<string, unknown> | HeadlessMeetingPayload): HeadlessMeetingPayload | null {
   const rawRevision: unknown = map.scheduleRevision;
   const scheduleRevision = typeof rawRevision === 'number' ? rawRevision : typeof rawRevision === 'string' && rawRevision.trim() !== '' ? Number(rawRevision) : Number.NaN;
-  if (map.event !== 'MEETING_REMINDER' || typeof map.reminderId !== 'string' || typeof map.meetingId !== 'string' || !Number.isFinite(scheduleRevision)) return null;
+  if (map.event !== 'MEETING_REMINDER' || typeof map.reminderId !== 'string' || !map.reminderId.trim()
+    || typeof map.meetingId !== 'string' || !map.meetingId.trim() || !Number.isSafeInteger(scheduleRevision) || scheduleRevision < 0) return null;
   return { event: 'MEETING_REMINDER', reminderId: map.reminderId, meetingId: map.meetingId, scheduleRevision };
 }
 
@@ -122,8 +129,14 @@ export function registerReminderHeadlessTask(taskManager: ReminderTaskManager, r
       if (payload) break;
     }
     if (!payload) return;
-    const latest = await runtime.validateLatest(payload);
-    if (latest.valid && latest.status === 'SCHEDULED' && latest.scheduleRevision === payload.scheduleRevision) await runtime.present(payload);
+    try {
+      const latest = await runtime.validateLatest(payload);
+      if (latest?.valid === true && latest.status === 'SCHEDULED' && latest.meetingId === payload.meetingId
+        && Number.isSafeInteger(latest.scheduleRevision) && latest.scheduleRevision >= 0 && latest.scheduleRevision === payload.scheduleRevision
+        && typeof latest.memberId === 'string' && latest.memberId.trim()) {
+        await runtime.present({ ...payload, memberId: latest.memberId });
+      }
+    } catch { /* Offline, invalid or unavailable validation never authorizes a local alert. */ }
   });
 }
 
@@ -161,10 +174,34 @@ export async function registerDefaultReminderHeadlessTask(runtime: ReminderHeadl
   await notifications.registerTaskAsync(MEETING_REMINDER_TASK);
 }
 
-export async function presentValidatedMeetingReminder(payload: HeadlessMeetingPayload): Promise<void> {
-  const notifications = await import('expo-notifications');
+export async function presentValidatedMeetingReminder(payload: ValidatedMeetingNotificationPayload): Promise<void> {
+  if (typeof payload.memberId !== 'string' || !payload.memberId.trim() || !toMeetingPayload(payload)) return;
+  const [{ getAuthSnapshot, hasPersistedAuthTermination }, secureStore, notifications] = await Promise.all([
+    import('./authSession'), import('expo-secure-store'), import('expo-notifications'),
+  ]);
+  const authBefore = getAuthSnapshot();
+  const sameAuthority = () => {
+    const auth = getAuthSnapshot();
+    const sameState = auth.epoch === authBefore.epoch && auth.status === authBefore.status;
+    const expiryOnly = authBefore.status === 'signed-in' && auth.status === 'expired' && auth.epoch === authBefore.epoch + 1;
+    return (sameState || expiryOnly) && auth.expiresAt === authBefore.expiresAt
+      && auth.session?.memberId === authBefore.session?.memberId && auth.session?.sessionToken === authBefore.session?.sessionToken
+      && (auth.status === 'hydrating' || auth.status === 'expired' || auth.status === 'signed-in')
+      && !(auth.status === 'expired' && auth.session === null)
+      && (!auth.session?.memberId || auth.session.memberId === payload.memberId);
+  };
+  const terminated = () => hasPersistedAuthTermination(secureStore).catch(() => true);
+  if (!sameAuthority() || await terminated()) return;
+  const bindingBefore = await readReminderDeviceBinding(secureStore, payload.memberId);
+  if (await terminated()) return;
+  if (!bindingBefore || !sameAuthority()) return;
+  await notifications.setNotificationChannelAsync(REMINDER_NOTIFICATION_CHANNEL_ID, { name: '青牧提醒', importance: 4, vibrationPattern: [0, 250, 250, 250] });
+  const bindingAfter = await readReminderDeviceBinding(secureStore, payload.memberId);
+  if (await terminated()) return;
+  if (!sameAuthority() || !bindingAfter || bindingBefore.installationId !== bindingAfter.installationId || bindingBefore.token !== bindingAfter.token
+    || bindingBefore.bindingVersion !== bindingAfter.bindingVersion || bindingBefore.ownerGeneration !== bindingAfter.ownerGeneration) return;
   await notifications.scheduleNotificationAsync({
     content: { title: '青牧聚會提醒', body: '聚會資料可能已更新，請開啟 App 查看最新狀態。', data: { ...payload } },
-    trigger: null,
+    trigger: { channelId: REMINDER_NOTIFICATION_CHANNEL_ID },
   });
 }

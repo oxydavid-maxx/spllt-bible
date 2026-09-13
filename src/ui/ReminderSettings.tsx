@@ -7,6 +7,7 @@ export { buildReminderSettingsModel } from './reminderSettingsModel';
 export function ReminderSettings({
   ready = true,
   error = null,
+  saving = false,
   onRetry,
   readingEnabled,
   meetingEnabled,
@@ -30,7 +31,7 @@ export function ReminderSettings({
   const [draftReadingTime, setDraftReadingTime] = useState(readingTime);
   const [retrying, setRetrying] = useState(false);
   useEffect(() => { setDraftReadingTime(readingTime); }, [readingTime]);
-  const model = buildReminderSettingsModel({ ready, error, readingEnabled, meetingEnabled, remoteDeliveryStatus, permission, readingTime, meetingAdvanceMinutes });
+  const model = buildReminderSettingsModel({ ready, error, saving, readingEnabled, meetingEnabled, remoteDeliveryStatus, permission, readingTime, meetingAdvanceMinutes });
   return (
     <View accessibilityLabel="提醒設定" style={styles.card}>
       <Text style={styles.title}>提醒</Text>

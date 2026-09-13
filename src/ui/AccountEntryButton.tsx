@@ -6,7 +6,7 @@ import { theme } from './Theme';
 export function AccountEntryButton() {
   const auth = useAuthSnapshot();
   const profile = auth.status === 'signed-in' && auth.session && auth.profile?.memberId === auth.session.memberId ? auth.profile : null;
-  // Review 121 C9. 使用者 signed in and still saw 人. The cause was NOT this label - it was that the
+  // Review 121 C9. 小明 signed in and still saw 人. The cause was NOT this label - it was that the
   // profile request hung forever, so no name ever arrived (fixed in authSession + accountSurface).
   // Deriving a letter from memberId was considered and REJECTED: a memberId is an opaque id such as
   // google:1234567, so it would have shown '1' - inventing an identity, which C9 forbids. The neutral

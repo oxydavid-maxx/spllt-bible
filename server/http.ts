@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { runtimeConfig } from '../src/config/runtime';
-import { createDatabase } from './db';
+import { createDatabase, type ServerDatabase } from './db';
 import { createApiHandler } from './routes';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -9,10 +9,9 @@ import { canonicalSeptemberPlan } from '../src/domain/calendar';
 import { seedMemberInvite, type MemberInviteSeed } from './membership';
 import type { PointPolicy } from '../src/domain/points';
 import { seedMemberGroupProfile, type MemberGroupProfileSeed } from './groups';
-import { createFcmSender } from '../src/services/reminderDelivery';
-import { createServiceAccountAccessTokenProvider, resolveFcmCredentialFile } from './fcmAuth';
+import { createRemoteConfiguration } from './remoteConfiguration';
 import { createReminderWorker, type ReminderWorkerTimer } from './reminderWorker';
-import type { ApiHandlerOptions } from './routes';
+import type { MeetingSender } from './remoteReminders';
 
 async function readBody(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
@@ -20,16 +19,12 @@ async function readBody(request: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export function createHttpServer(options: {
-  fixtureToken?: string;
-  reminderDelivery?: NonNullable<ApiHandlerOptions['reminderDelivery']>;
-  reminderWorker?: { autostart?: boolean; now?: () => Date; intervalMs?: number; timer?: ReminderWorkerTimer };
-} = {}) {
+export function createHttpServer(options: { fixtureToken?: string; database?: ServerDatabase; reminderDelivery?: { enabled: boolean; send: MeetingSender }; reminderWorker?: { autostart?: boolean; now?: () => Date; intervalMs?: number; timer?: ReminderWorkerTimer } } = {}) {
   const config = runtimeConfig();
   const fixtureRoster = process.env.QINGMU_FIXTURE_ROSTER === 'two-member-week';
   const databaseFilename = process.env.QINGMU_DB_PATH;
-  if (databaseFilename && databaseFilename !== ':memory:') mkdirSync(dirname(resolve(databaseFilename)), { recursive: true });
-  const database = createDatabase({
+  if (!options.database && databaseFilename && databaseFilename !== ':memory:') mkdirSync(dirname(resolve(databaseFilename)), { recursive: true });
+  const database = options.database ?? createDatabase({
     filename: databaseFilename,
     members: fixtureRoster
       ? [
@@ -40,7 +35,7 @@ export function createHttpServer(options: {
         ? [{ id: 'fixture:self', displayName: 'Fixture', groupId: 'A' }]
         : [],
   });
-  if (fixtureRoster && !process.env.QINGMU_GROUP_PROFILE_FILE) {
+  if (fixtureRoster) {
     seedMemberGroupProfile(database.db, {
       memberId: 'fixture:self',
       groupId: 'G01',
@@ -76,35 +71,12 @@ export function createHttpServer(options: {
   }
   const googleAudience = config.googleServerClientId;
   const sessionSecret = process.env.QINGMU_SESSION_SECRET;
-  if ((googleAudience && !sessionSecret) || (!googleAudience && sessionSecret && !fixtureRoster && !options.fixtureToken)) {
+  if ((googleAudience && !sessionSecret) || (!googleAudience && sessionSecret)) {
     throw new Error('GOOGLE_SERVER_AUTH_CONFIG_INCOMPLETE');
   }
   if (!fixtureRoster && !options.fixtureToken && !googleAudience) {
     throw new Error('PRODUCTION_GOOGLE_CONFIG_REQUIRED');
   }
-  const fcmProjectId = process.env.QINGMU_FCM_PROJECT_ID?.trim();
-  const reminderWorkerToken = process.env.QINGMU_REMINDER_WORKER_TOKEN?.trim();
-  const fcmCredentialFile = resolveFcmCredentialFile();
-  const fcmAccessTokenProvider = fcmCredentialFile
-    ? createServiceAccountAccessTokenProvider({ credentialFilePath: fcmCredentialFile })
-    : null;
-  const fcmSender = fcmProjectId && fcmAccessTokenProvider && reminderWorkerToken
-    ? createFcmSender({ projectId: fcmProjectId, enabled: true, getAccessToken: fcmAccessTokenProvider.getAccessToken })
-    : null;
-  const reminderDelivery = options.reminderDelivery ?? (fcmSender && reminderWorkerToken
-    ? {
-        workerToken: reminderWorkerToken,
-        enabled: true,
-            // The provider result MUST be returned. sendDueMeetingEvent reads messageId from
-            // it to fill reminder_deliveries.provider_message_id, which is the only
-            // server-side handle for reconciling a delivery against FCM. Discarding it made
-            // every successful send record a NULL id, so a real send and an unacknowledged
-            // one were indistinguishable in the data. Observed in run 5.
-            send: async (token: string, payload: { event: 'MEETING_REMINDER'; reminderId: string; meetingId: string; scheduleRevision: number }) => {
-          return await fcmSender.send(token, payload, { ttlSeconds: 300 });
-        },
-      }
-    : undefined);
   const pointPolicy: PointPolicy = fixtureRoster
     ? { version: 'fixture-week-v1', status: 'ACTIVE', pointsPerCompletion: 1, sharedGoalTarget: 3 }
     : {
@@ -113,7 +85,13 @@ export function createHttpServer(options: {
         pointsPerCompletion: Math.max(0, Number(process.env.QINGMU_POINTS_PER_COMPLETION ?? 0) || 0),
         ...(Number.isInteger(Number(process.env.QINGMU_WEEKLY_GOAL_TARGET)) ? { sharedGoalTarget: Math.max(0, Number(process.env.QINGMU_WEEKLY_GOAL_TARGET)) } : {}),
       };
+  const remoteConfig = createRemoteConfiguration();
+  const reminderDelivery = options.reminderDelivery ?? remoteConfig.delivery;
+  const autostart = options.reminderWorker?.autostart ?? process.env.QINGMU_REMINDER_WORKER_AUTOSTART === 'true';
+  const remoteStatus = reminderDelivery?.enabled && autostart ? 'REMOTE_READY' as const : 'REMOTE_PENDING' as const;
+  const worker = reminderDelivery?.enabled ? createReminderWorker({ db: database.db, send: reminderDelivery.send, now: options.reminderWorker?.now, intervalMs: options.reminderWorker?.intervalMs, timer: options.reminderWorker?.timer }) : null;
   const handle = createApiHandler({
+    remoteReminderStatus: remoteStatus,
     db: database,
     instanceId: process.env.QINGMU_INSTANCE_ID?.trim() || 'unconfigured',
     authMode: googleAudience ? 'google-only' : 'fixture',
@@ -134,15 +112,9 @@ export function createHttpServer(options: {
             },
           },
           sessionSecret,
-      }
+        }
       : { fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token' }),
-    ...(reminderDelivery ? { reminderDelivery } : {}),
   });
-  const worker = reminderDelivery?.enabled
-    ? createReminderWorker({ db: database.db, send: reminderDelivery.send, now: options.reminderWorker?.now, intervalMs: options.reminderWorker?.intervalMs, timer: options.reminderWorker?.timer })
-    : null;
-  const autostart = options.reminderWorker?.autostart ?? process.env.QINGMU_REMINDER_WORKER_AUTOSTART === 'true';
-  if (worker && autostart) worker.start();
   const server = createServer(async (request, response) => {
     const result = await handle({
       method: request.method ?? 'GET',
@@ -158,8 +130,9 @@ export function createHttpServer(options: {
     response.setHeader('x-qingmu-instance-id', process.env.QINGMU_INSTANCE_ID?.trim() || 'unconfigured');
     response.end(JSON.stringify(result.body));
   });
-  server.on('close', () => { worker?.stop(); database.close(); });
-  return { server, config, worker, database };
+  if (worker && autostart) worker.start();
+  server.on('close', () => { if (worker) void worker.stop().finally(() => database.close()); else database.close(); });
+  return { server, config, database, worker, remoteStatus, senderConfigured: Boolean(reminderDelivery?.enabled) };
 }
 
 const isDirectServerEntry = process.argv.some((argument) => /(?:^|[\\/])server[\\/]http\.ts$/.test(argument));

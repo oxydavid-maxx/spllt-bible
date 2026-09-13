@@ -16,7 +16,7 @@ export function AccountSurface() {
   const reminders = useReminderRuntimeSnapshot();
   const [profileRetrying, setProfileRetrying] = useState(false);
   const model = buildAccountSurfaceModel({ status: auth.status, profile, profileStatus: auth.profileStatus });
-  const saveReminderSettings = async (next: { readingEnabled: boolean; meetingEnabled: boolean; readingTime: string; meetingAdvanceMinutes: number }) => {
+  const saveReminderSettings = async (next: Partial<{ readingEnabled: boolean; meetingEnabled: boolean; readingTime: string; meetingAdvanceMinutes: number }>) => {
     await runtime?.savePreferences(next);
   };
   const signOut = () => { clearAuthSession(); };
@@ -31,10 +31,10 @@ export function AccountSurface() {
         <ReminderSettings
           {...reminders}
           onRetry={async () => { if (reminders.error === 'save') await runtime?.retrySave(); else await runtime?.retryLoad(); }}
-          onReadingChange={(enabled) => { void saveReminderSettings({ readingEnabled: enabled, meetingEnabled: reminders.meetingEnabled, readingTime: reminders.readingTime, meetingAdvanceMinutes: reminders.meetingAdvanceMinutes }); }}
-          onMeetingChange={(enabled) => { void saveReminderSettings({ readingEnabled: reminders.readingEnabled, meetingEnabled: enabled, readingTime: reminders.readingTime, meetingAdvanceMinutes: reminders.meetingAdvanceMinutes }); }}
-          onReadingTimeChange={(value) => { void saveReminderSettings({ readingEnabled: reminders.readingEnabled, meetingEnabled: reminders.meetingEnabled, readingTime: value, meetingAdvanceMinutes: reminders.meetingAdvanceMinutes }); }}
-          onMeetingAdvanceChange={(value) => { void saveReminderSettings({ readingEnabled: reminders.readingEnabled, meetingEnabled: reminders.meetingEnabled, readingTime: reminders.readingTime, meetingAdvanceMinutes: value }); }}
+          onReadingChange={(enabled) => { void saveReminderSettings({ readingEnabled: enabled }); }}
+          onMeetingChange={(enabled) => { void saveReminderSettings({ meetingEnabled: enabled }); }}
+          onReadingTimeChange={(value) => { void saveReminderSettings({ readingTime: value }); }}
+          onMeetingAdvanceChange={(value) => { void saveReminderSettings({ meetingAdvanceMinutes: value }); }}
           onOpenSettings={() => { void Linking.openSettings(); }}
         />
       </> : model.mode === 'loading' || model.mode === 'error' || model.mode === 'empty' ? <>

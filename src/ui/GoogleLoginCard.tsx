@@ -2,9 +2,9 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { theme } from './Theme';
-import { createApiClient } from '../services/apiClient';
+import { createApiClient, type SessionResult } from '../services/apiClient';
 import { obtainGoogleIdToken, type NativeGoogleModule } from '../services/googleNative';
-import { persistAuthSession } from '../services/authSession';
+import { beginAuthSessionAttempt, finishAuthSessionAttempt, configureAuthSessionTransport, persistEstablishedAuthSession, type AuthSessionAttempt } from '../services/authSession';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -25,12 +25,14 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn }: { clientId: st
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState('');
-  const completeSession = useCallback(async (session: { sessionToken: string; memberId: string; expiresInSeconds: number }) => {
-    await persistAuthSession({ sessionToken: session.sessionToken, memberId: session.memberId }, session.expiresInSeconds);
+  const completeSession = useCallback(async (session: SessionResult, attempt: AuthSessionAttempt) => {
+    if (!await persistEstablishedAuthSession(session, attempt)) return;
     onSignedIn?.(session.sessionToken, session.memberId);
     setState('signed-in');
   }, [onSignedIn]);
   const signIn = useCallback(async () => {
+    const attempt = beginAuthSessionAttempt();
+    configureAuthSessionTransport({ baseUrl });
     setState('exchanging');
     setErrorMessage(null);
     try {
@@ -42,7 +44,7 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn }: { clientId: st
         return;
       }
       const client = createApiClient({ baseUrl, token: '', memberId: '' });
-      const session = await client.establishSession(authResult.idToken);
+      const session = await client.establishSession(authResult.idToken, { persistentDevice: true });
       if (!session) {
         setState('error');
         setErrorMessage('登入已回來，但伺服器沒有確認身份。');
@@ -59,29 +61,31 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn }: { clientId: st
         }
         return;
       }
-      await completeSession(session);
+      await completeSession(session, attempt);
     } catch {
       setState('error');
       setErrorMessage('目前裝置尚未完成Google登入設定。');
-    }
+    } finally { finishAuthSessionAttempt(attempt); }
   }, [baseUrl, clientId, completeSession]);
   const claimInvite = useCallback(async () => {
     if (!googleIdToken || !inviteCode.trim()) return;
+    const attempt = beginAuthSessionAttempt();
+    configureAuthSessionTransport({ baseUrl });
     setState('claiming-invite');
     setErrorMessage(null);
     try {
       const client = createApiClient({ baseUrl, token: '', memberId: '' });
-      const session = await client.claimInvite(googleIdToken, inviteCode.trim());
+      const session = await client.claimInvite(googleIdToken, inviteCode.trim(), { persistentDevice: true });
       if (!session || 'error' in session) {
         setState('needs-invite');
         setErrorMessage(session && 'error' in session && session.error === 'INVITE_EXPIRED' ? '邀請碼已過期，請向同工索取新的邀請碼。' : '邀請碼無效或已使用。');
         return;
       }
-      await completeSession(session);
+      await completeSession(session, attempt);
     } catch {
       setState('needs-invite');
       setErrorMessage('邀請碼驗證失敗，請稍後重試。');
-    }
+    } finally { finishAuthSessionAttempt(attempt); }
   }, [baseUrl, completeSession, googleIdToken, inviteCode]);
   const alert = state === 'error' || state === 'needs-invite';
   return (

@@ -1,6 +1,174 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createFcmSender, MEETING_REMINDER_TASK, registerDefaultReminderHeadlessTask, registerReminderHeadlessTask, type FcmReminderPayload } from '../../src/services/reminderDelivery';
+import { createFcmSender, MEETING_REMINDER_TASK, presentValidatedMeetingReminder, registerDefaultReminderHeadlessTask, registerReminderHeadlessTask, type FcmReminderPayload, type HeadlessValidationResult } from '../../src/services/reminderDelivery';
+
+const nativeNotifications = vi.hoisted(() => ({
+  scheduleNotificationAsync: vi.fn(async () => 'native-meeting'),
+  setNotificationChannelAsync: vi.fn(async () => null),
+}));
+vi.mock('expo-notifications', () => nativeNotifications);
+const presentationAuthority = vi.hoisted(() => ({
+  auth: { status: 'hydrating', session: null as { memberId: string; sessionToken: string } | null, epoch: 0, expiresAt: null as number | null },
+  device: new Map<string, string>(),
+  hasPersistedAuthTermination: vi.fn(async () => false),
+}));
+vi.mock('../../src/services/authSession', () => ({ getAuthSnapshot: () => presentationAuthority.auth, hasPersistedAuthTermination: presentationAuthority.hasPersistedAuthTermination }));
+vi.mock('expo-secure-store', () => ({ getItemAsync: async (key: string) => presentationAuthority.device.get(key) ?? null }));
+beforeEach(() => {
+  presentationAuthority.auth = { status: 'hydrating', session: null, epoch: 0, expiresAt: null };
+  presentationAuthority.hasPersistedAuthTermination.mockReset().mockResolvedValue(false);
+  presentationAuthority.device = new Map([
+    ['qingmu.reminder.installationId', 'test-installation'], ['qingmu.reminder.deviceToken', 'test-device-token'],
+    ['qingmu.reminder.bindingVersion', '1'], ['qingmu.reminder.ownerGeneration', '1'],
+    ['qingmu.reminder.ownerReceipt.v1', JSON.stringify({ memberId: 'member:one', installationId: 'test-installation', token: 'test-device-token', bindingVersion: 1, ownerGeneration: 1 })],
+  ]);
+});
+
+const currentMeeting = { event: 'MEETING_REMINDER' as const, reminderId: 'meeting:m1:2', meetingId: 'm1', scheduleRevision: 2 };
+const currentValidation = { valid: true, memberId: 'member:one', meetingId: 'm1', scheduleRevision: 2, status: 'SCHEDULED' as const };
+
+function headlessHarness(validateLatest: (payload: typeof currentMeeting) => Promise<HeadlessValidationResult>) {
+  let handler!: (event: { data?: unknown; error?: unknown }) => Promise<void>;
+  const present = vi.fn(async () => undefined);
+  registerReminderHeadlessTask({ defineTask: (_name, next) => { handler = next; } }, { validateLatest, present });
+  return { handler, present };
+}
+
+describe('owner-bound native reminder delivery', () => {
+  it('presents the validated owner with a real FCM string-revision payload', async () => {
+    const task = headlessHarness(async () => currentValidation);
+    await task.handler({ data: { notification: null, data: { ...currentMeeting, scheduleRevision: '2', memberId: 'untrusted-push-owner' } } });
+    expect(task.present).toHaveBeenCalledExactlyOnceWith({ ...currentMeeting, memberId: 'member:one' });
+  });
+
+  it.each([
+    { ...currentValidation, memberId: undefined },
+    { ...currentValidation, memberId: '' },
+    { ...currentValidation, memberId: ' ' },
+    { ...currentValidation, meetingId: 'other-meeting' },
+    { ...currentValidation, scheduleRevision: 1 },
+    { ...currentValidation, scheduleRevision: 2.5 },
+    { ...currentValidation, scheduleRevision: -1 },
+    { ...currentValidation, scheduleRevision: Number.NaN },
+    { ...currentValidation, valid: 'true' },
+    { ...currentValidation, status: 'CANCELLED' },
+    null,
+  ])('does not present stale, malformed or ownerless validation: %j', async (latest) => {
+    const task = headlessHarness(async () => latest as HeadlessValidationResult);
+    await expect(task.handler({ data: { data: { ...currentMeeting, scheduleRevision: '2' } } })).resolves.toBeUndefined();
+    expect(task.present).not.toHaveBeenCalled();
+  });
+
+  it.each([-1, 0.5, '-1', '0.5', Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])('rejects invalid native revisions before validation: %s', async (scheduleRevision) => {
+    const validate = vi.fn(async (payload: typeof currentMeeting) => ({ ...currentValidation, scheduleRevision: payload.scheduleRevision }));
+    const task = headlessHarness(validate);
+    await task.handler({ data: { data: { ...currentMeeting, scheduleRevision } } });
+    expect(validate).not.toHaveBeenCalled();
+    expect(task.present).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when validation rejects', async () => {
+    const task = headlessHarness(async () => { throw new Error('offline'); });
+    await expect(task.handler({ data: { data: currentMeeting } })).resolves.toBeUndefined();
+    expect(task.present).not.toHaveBeenCalled();
+  });
+
+  it('ensures the existing channel before presenting an immediate owner-bound local notification', async () => {
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.setNotificationChannelAsync).toHaveBeenCalledWith('qingmu-reading-reminders', { name: '青牧提醒', importance: 4, vibrationPattern: [0, 250, 250, 250] });
+    expect(nativeNotifications.scheduleNotificationAsync).toHaveBeenCalledWith({ content: { title: '青牧聚會提醒', body: '聚會資料可能已更新，請開啟 App 查看最新狀態。', data: { ...currentMeeting, memberId: 'member:one' } }, trigger: { channelId: 'qingmu-reading-reminders' } });
+    expect(nativeNotifications.setNotificationChannelAsync.mock.invocationCallOrder[0]).toBeLessThan(nativeNotifications.scheduleNotificationAsync.mock.invocationCallOrder[0]);
+  });
+
+  it('does not schedule a local notification without a validated owner', async () => {
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: '' });
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('presentation authority across the native channel await', () => {
+  it('does not present a revoked expired snapshot with no session', async () => {
+    presentationAuthority.auth = { status: 'expired', session: null, epoch: 1, expiresAt: null };
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it.each(['terminated', 'unreadable'])('does not present with %s persisted auth while hydrating', async (mode) => {
+    if (mode === 'terminated') presentationAuthority.hasPersistedAuthTermination.mockResolvedValue(true);
+    else presentationAuthority.hasPersistedAuthTermination.mockRejectedValue(new Error('storage unavailable'));
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not present after persisted termination during channel setup', async () => {
+    nativeNotifications.setNotificationChannelAsync.mockImplementationOnce(async () => { presentationAuthority.hasPersistedAuthTermination.mockResolvedValue(true); return null; });
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not trust legacy device keys without a persisted owner receipt', async () => {
+    presentationAuthority.device.delete('qingmu.reminder.ownerReceipt.v1');
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule after the owner receipt is cleared during channel setup even if legacy keys remain', async () => {
+    nativeNotifications.setNotificationChannelAsync.mockImplementationOnce(async () => { presentationAuthority.device.delete('qingmu.reminder.ownerReceipt.v1'); return null; });
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it.each(['signed-out', 'other-owner'])('refuses %s before ensuring the channel', async (status) => {
+    presentationAuthority.auth = { status: status === 'other-owner' ? 'signed-in' : status, session: { memberId: 'member:two', sessionToken: 'test-session' }, epoch: 1, expiresAt: null };
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.setNotificationChannelAsync).not.toHaveBeenCalled();
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it.each(['signed-out', 'other-owner', 'same-owner-new-epoch'])('does not schedule after %s during channel setup', async (status) => {
+    presentationAuthority.auth = { status: 'signed-in', session: { memberId: 'member:one', sessionToken: 'test-session' }, epoch: 1, expiresAt: null };
+    nativeNotifications.setNotificationChannelAsync.mockImplementationOnce(async () => {
+      presentationAuthority.auth = { ...presentationAuthority.auth, status: status === 'other-owner' || status === 'same-owner-new-epoch' ? 'signed-in' : status, epoch: 2, session: { memberId: status === 'other-owner' ? 'member:two' : 'member:one', sessionToken: 'test-session' } };
+      return null;
+    });
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule if a cold hydrating authority changes during channel setup', async () => {
+    nativeNotifications.setNotificationChannelAsync.mockImplementationOnce(async () => {
+      presentationAuthority.auth = { status: 'signed-in', session: { memberId: 'member:one', sessionToken: 'test-session' }, epoch: 1, expiresAt: null };
+      return null;
+    });
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('presents for an expired interactive session with a matching device owner', async () => {
+    presentationAuthority.auth = { status: 'expired', session: { memberId: 'member:one', sessionToken: 'expired-test-session' }, epoch: 1, expiresAt: 1 };
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('still rejects a known different owner while the interactive session is expired', async () => {
+    presentationAuthority.auth = { status: 'expired', session: { memberId: 'member:two', sessionToken: 'expired-test-session' }, epoch: 1, expiresAt: 1 };
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('preserves background presentation when only interactive session expiry occurs during channel setup', async () => {
+    presentationAuthority.auth = { status: 'signed-in', session: { memberId: 'member:one', sessionToken: 'test-session' }, epoch: 1, expiresAt: null };
+    nativeNotifications.setNotificationChannelAsync.mockImplementationOnce(async () => { presentationAuthority.auth = { ...presentationAuthority.auth, status: 'expired', epoch: 2 }; return null; });
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['qingmu.reminder.installationId', 'qingmu.reminder.deviceToken', 'qingmu.reminder.bindingVersion', 'qingmu.reminder.ownerGeneration'])('does not schedule after device binding drift: %s', async (key) => {
+    nativeNotifications.setNotificationChannelAsync.mockImplementationOnce(async () => { presentationAuthority.device.set(key, 'changed'); return null; });
+    await presentValidatedMeetingReminder({ ...currentMeeting, memberId: 'member:one' });
+    expect(nativeNotifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
 
 describe('FCM sender and closed-app validation seam', () => {
   it('emits a data-only FCM v1 message with bounded TTL/collapse key through an injected transport', async () => {
@@ -19,7 +187,7 @@ describe('FCM sender and closed-app validation seam', () => {
   it('registers a headless task that validates latest state before creating one local alert', async () => {
     let handler: ((event: { data?: unknown; error?: unknown }) => Promise<void>) | null = null;
     const presented: string[] = [];
-    registerReminderHeadlessTask({ defineTask: (name, next) => { expect(name).toBe(MEETING_REMINDER_TASK); handler = next; } }, { validateLatest: async (payload) => ({ valid: payload.scheduleRevision === 2, meetingId: payload.meetingId, scheduleRevision: 2, status: 'SCHEDULED' }), present: async (payload) => { presented.push(payload.reminderId); } });
+    registerReminderHeadlessTask({ defineTask: (name, next) => { expect(name).toBe(MEETING_REMINDER_TASK); handler = next; } }, { validateLatest: async (payload) => ({ valid: payload.scheduleRevision === 2, meetingId: payload.meetingId, scheduleRevision: 2, status: 'SCHEDULED', memberId: 'member:one' }), present: async (payload) => { presented.push(payload.reminderId); } });
     await handler!({ data: { event: 'MEETING_REMINDER', reminderId: 'meeting:m1:1', meetingId: 'm1', scheduleRevision: 1 } });
     await handler!({ data: { event: 'MEETING_REMINDER', reminderId: 'meeting:m1:2', meetingId: 'm1', scheduleRevision: 2 } });
     expect(presented).toEqual(['meeting:m1:2']);
@@ -44,7 +212,7 @@ describe('FCM sender and closed-app validation seam', () => {
     registerReminderHeadlessTask(
       { defineTask: (_name, next) => { handler = next; } },
       {
-        validateLatest: async (payload) => { validatedWith.push(payload.scheduleRevision); return { valid: true, meetingId: payload.meetingId, scheduleRevision: payload.scheduleRevision, status: 'SCHEDULED' }; },
+        validateLatest: async (payload) => { validatedWith.push(payload.scheduleRevision); return { valid: true, meetingId: payload.meetingId, scheduleRevision: payload.scheduleRevision, status: 'SCHEDULED', memberId: 'member:one' }; },
         present: async (payload) => { presented.push(payload.reminderId); },
       },
     );
@@ -61,7 +229,7 @@ describe('FCM sender and closed-app validation seam', () => {
     const presented: string[] = [];
     registerReminderHeadlessTask(
       { defineTask: (_name, next) => { handler = next; } },
-      { validateLatest: async (p) => ({ valid: true, meetingId: p.meetingId, scheduleRevision: p.scheduleRevision, status: 'SCHEDULED' }), present: async (p) => { presented.push(p.reminderId); } },
+      { validateLatest: async (p) => ({ valid: true, meetingId: p.meetingId, scheduleRevision: p.scheduleRevision, status: 'SCHEDULED', memberId: 'member:one' }), present: async (p) => { presented.push(p.reminderId); } },
     );
     await handler!({ data: { event: 'MEETING_REMINDER', reminderId: 'x', meetingId: 'm1', scheduleRevision: 'not-a-number' } });
     await handler!({ data: { event: 'MEETING_REMINDER', reminderId: 'y', meetingId: 'm1', scheduleRevision: '' } });
@@ -79,7 +247,7 @@ describe('FCM sender and closed-app validation seam', () => {
     let definedName: string | null = null;
     let registeredName: string | null = null;
     await registerDefaultReminderHeadlessTask(
-      { validateLatest: async (payload) => ({ valid: true, meetingId: payload.meetingId, scheduleRevision: payload.scheduleRevision, status: 'SCHEDULED' }), present: async () => {} },
+      { validateLatest: async (payload) => ({ valid: true, meetingId: payload.meetingId, scheduleRevision: payload.scheduleRevision, status: 'SCHEDULED', memberId: 'member:one' }), present: async () => {} },
       {
         loadTaskManager: async () => ({ defineTask: (name: string) => { definedName = name; order.push('define'); } }),
         loadNotifications: async () => ({ registerTaskAsync: async (name: string) => { registeredName = name; order.push('register'); return null; } }),
@@ -116,7 +284,7 @@ describe('FCM sender and closed-app validation seam', () => {
     registerReminderHeadlessTask(
       { defineTask: (_name, next) => { handler = next; } },
       {
-        validateLatest: async (payload) => { validatedWith.push(payload.scheduleRevision); return { valid: true, meetingId: payload.meetingId, scheduleRevision: payload.scheduleRevision, status: 'SCHEDULED' }; },
+        validateLatest: async (payload) => { validatedWith.push(payload.scheduleRevision); return { valid: true, meetingId: payload.meetingId, scheduleRevision: payload.scheduleRevision, status: 'SCHEDULED', memberId: 'member:one' }; },
         present: async (payload) => { presented.push(payload.reminderId); },
       },
     );
@@ -151,7 +319,7 @@ describe('FCM sender and closed-app validation seam', () => {
     const presented: string[] = [];
     registerReminderHeadlessTask(
       { defineTask: (_name, next) => { handler = next; } },
-      { validateLatest: async (p) => ({ valid: true, meetingId: p.meetingId, scheduleRevision: p.scheduleRevision, status: 'SCHEDULED' }), present: async (p) => { presented.push(p.reminderId); } },
+      { validateLatest: async (p) => ({ valid: true, meetingId: p.meetingId, scheduleRevision: p.scheduleRevision, status: 'SCHEDULED', memberId: 'member:one' }), present: async (p) => { presented.push(p.reminderId); } },
     );
     await handler!({
       data: {
@@ -174,7 +342,7 @@ describe('FCM sender and closed-app validation seam', () => {
     const presented: string[] = [];
     registerReminderHeadlessTask(
       { defineTask: (_name, next) => { handler = next; } },
-      { validateLatest: async (p) => ({ valid: true, meetingId: p.meetingId, scheduleRevision: p.scheduleRevision, status: 'SCHEDULED' }), present: async (p) => { presented.push(p.reminderId); } },
+      { validateLatest: async (p) => ({ valid: true, meetingId: p.meetingId, scheduleRevision: p.scheduleRevision, status: 'SCHEDULED', memberId: 'member:one' }), present: async (p) => { presented.push(p.reminderId); } },
     );
     await handler!({ data: { data: { event: 'SOMETHING_ELSE', reminderId: 'a', meetingId: 'm1', scheduleRevision: '2' } } });
     await handler!({ data: { data: { event: 'MEETING_REMINDER', reminderId: 'b', meetingId: 'm1', scheduleRevision: 'nope' } } });

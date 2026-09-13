@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { createDatabase } from '../../server/db';
 import { seedMemberGroupProfile } from '../../server/groups';
 import { createApiHandler } from '../../server/routes';
+import { sendDueMeetingEvent, type MeetingSender } from '../../server/remoteReminders';
+import { importMeetingSchedules } from '../../server/meetingSchedules';
 import { registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from '../../server/reminders';
 
 function auth(memberId: string) {
@@ -56,20 +58,23 @@ describe('reminder preferences and due-time authority', () => {
     });
     database.db.prepare('INSERT INTO device_delivery_tokens (installation_id, member_id, platform, token, revoked_at, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)').run('install-one', 'member:one', 'ANDROID', 'device-token', triggerAt, triggerAt);
     database.db.prepare('INSERT INTO reminder_preferences (member_id, reading_enabled, meeting_enabled, meeting_advance_minutes, updated_at) VALUES (?, 0, 1, 0, ?)').run('member:one', triggerAt);
-    const sent: Array<Record<string, unknown>> = [];
-    const api = createApiHandler({ db: database, fixtureToken: 'fixture-token', reminderDelivery: { workerToken: 'worker-secret', enabled: true, send: async (_token, payload) => { sent.push(payload); } } });
+    const sent: unknown[] = [];
+    const send: MeetingSender = async (_token, payload) => { sent.push(payload); return { messageId: 'synthetic-fcm-ack' }; };
+    const event = { reminderId: 'meeting:meeting-1:1', memberId: 'member:one', meetingId: 'meeting-1', scheduleRevision: 1, triggerAt, expiresAt };
+    database.db.prepare('UPDATE member_group_profiles SET schedule_source_ref = ? WHERE member_id = ?').run('test:due-authority', 'member:one');
+    const api = createApiHandler({ db: database, fixtureToken: 'fixture-token' });
     const deviceValidation = await api({ method: 'POST', url: '/api/device/reminders/validate', headers: { 'x-qingmu-installation-id': 'install-one', 'x-qingmu-device-token': 'device-token' }, body: JSON.stringify({ meeting_id: 'meeting-1', schedule_revision: 1 }) });
     expect(deviceValidation).toMatchObject({ status: 200, body: { valid: true, meetingId: 'meeting-1', scheduleRevision: 1, status: 'SCHEDULED' } });
-    const response = await api({ method: 'POST', url: '/internal/reminders/due', headers: { 'x-qingmu-reminder-worker': 'worker-secret' }, body: JSON.stringify({ reminder_id: 'meeting:meeting-1:1', member_id: 'member:one', meeting_id: 'meeting-1', schedule_revision: 1, trigger_at: triggerAt, expires_at: expiresAt }) });
-    expect(response).toMatchObject({ status: 200, body: { decision: 'SEND', reminderId: 'meeting:meeting-1:1', meetingId: 'meeting-1', scheduleRevision: 1 } });
+    const response = await sendDueMeetingEvent(database.db, event, send);
+    expect(response).toMatchObject({ decision: 'SEND', reminderId: 'meeting:meeting-1:1', meetingId: 'meeting-1', scheduleRevision: 1 });
     expect(sent).toEqual([{ event: 'MEETING_REMINDER', reminderId: 'meeting:meeting-1:1', meetingId: 'meeting-1', scheduleRevision: 1 }]);
 
-    seedMemberGroupProfile(database.db, {
-      memberId: 'member:one', groupId: 'G01', groupName: 'A小組', rpgId: 'RPG1', rpgName: 'A-RPG',
-      linkStatus: 'READY', meetingId: 'meeting-1', meetingTitle: '本週聚會', startsAt: triggerAt, scheduleRevision: 2, scheduleStatus: 'CANCELLED', timeZone: 'Asia/Taipei',
-    });
-    const stale = await api({ method: 'POST', url: '/internal/reminders/due', headers: { 'x-qingmu-reminder-worker': 'worker-secret' }, body: JSON.stringify({ reminder_id: 'meeting:meeting-1:old', member_id: 'member:one', meeting_id: 'meeting-1', schedule_revision: 1, trigger_at: triggerAt, expires_at: expiresAt }) });
-    expect(stale).toMatchObject({ status: 200, body: { decision: 'DROP_CANCELLED', latestRevision: 2, latestStatus: 'CANCELLED' } });
+    importMeetingSchedules(database.db, { sourceRef: 'test:due-authority', schedules: [{
+      memberId: 'member:one', rpgId: 'RPG1', meetingId: 'meeting-1', title: '本週聚會',
+      startsAt: triggerAt, timeZone: 'Asia/Taipei', revision: 2, status: 'CANCELLED',
+    }] }, { apply: true });
+    const stale = await sendDueMeetingEvent(database.db, { ...event, reminderId: 'meeting:meeting-1:old' }, send);
+    expect(stale).toMatchObject({ decision: 'DROP_CANCELLED' });
     const cancelledValidation = await api({ method: 'POST', url: '/api/device/reminders/validate', headers: { 'x-qingmu-installation-id': 'install-one', 'x-qingmu-device-token': 'device-token' }, body: JSON.stringify({ meeting_id: 'meeting-1', schedule_revision: 1 }) });
     expect(cancelledValidation).toMatchObject({ status: 200, body: { valid: false, scheduleRevision: 2, status: 'CANCELLED' } });
     expect(sent).toHaveLength(1);

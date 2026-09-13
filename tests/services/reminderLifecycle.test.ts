@@ -4,6 +4,7 @@ vi.mock('expo-secure-store', () => ({ getItemAsync: vi.fn(async () => null), set
 
 import { clearAuthSession, markAuthExpired, setAuthSession } from '../../src/services/authSession';
 import { configureReminderLifecycle } from '../../src/services/reminderLifecycle';
+import { REMINDER_DEVICE_OWNER_RECEIPT_KEY } from '../../src/services/reminderDevice';
 
 function store(installationId: string | null) {
   const values = new Map<string, string>();
@@ -30,16 +31,28 @@ describe('auth-owned reminder lifetime', () => {
     dispose();
   });
 
-  it('cancels and revokes old ownership on switch, logout, and expiry', async () => {
+  it('cancels and revokes on switch/logout while preserving opt-in on expiry', async () => {
     const secureStore = store('install-old');
     const scheduler = { cancelForMember: vi.fn(async () => undefined) };
     const revoked: string[] = [];
-    const dispose = configureReminderLifecycle({ scheduler: scheduler as any, secureStore, createApiClient: (session) => ({ revokeReminderDeviceToken: async (installationId: string) => { revoked.push(`${session.memberId}:${installationId}`); return true; } } as any) });
+    const seedOwner = (memberId: string, generation: number) => {
+      const binding = { memberId, installationId: 'install-old', token: `device-${generation}`, bindingVersion: generation, ownerGeneration: generation };
+      secureStore.values.set('qingmu.reminder.deviceToken', binding.token);
+      secureStore.values.set('qingmu.reminder.bindingVersion', String(generation));
+      secureStore.values.set('qingmu.reminder.ownerGeneration', String(generation));
+      secureStore.values.set(REMINDER_DEVICE_OWNER_RECEIPT_KEY, JSON.stringify(binding));
+    };
+    const dispose = configureReminderLifecycle({ scheduler: scheduler as any, secureStore, createApiClient: () => ({ revokeReminderDeviceToken: async () => { throw new Error('Use captured device authority'); } } as any), revokeDeviceBinding: async binding => { revoked.push(`${binding.memberId}:${binding.installationId}`); return true; } });
+    seedOwner('member:old', 1);
     setAuthSession({ memberId: 'member:old', sessionToken: 'old-token' });
     setAuthSession({ memberId: 'member:new', sessionToken: 'new-token' });
     await new Promise((resolve) => setTimeout(resolve, 0));
+    seedOwner('member:new', 2);
+    const cancellations = scheduler.cancelForMember.mock.calls.length;
     markAuthExpired();
     await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(scheduler.cancelForMember).toHaveBeenCalledTimes(cancellations);
+    expect(secureStore.values.get('qingmu.reminder.deviceToken')).toBe('device-2');
     clearAuthSession();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(scheduler.cancelForMember).toHaveBeenCalledWith('member:old');

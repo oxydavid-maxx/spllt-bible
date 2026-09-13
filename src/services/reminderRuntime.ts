@@ -1,13 +1,15 @@
 import { useSyncExternalStore } from 'react';
-import { getAuthSession, isCurrentAuthSession, registerAuthLifecycleListener, type AuthSession } from './authSession';
+import { getAuthSession, getAuthSnapshot, isCurrentAuthSession, registerAuthLifecycleListener, type AuthSession } from './authSession';
 import { buildUpcomingReadingReminderSpecs, createReminderScheduler, type ReminderScheduler } from './reminderScheduler';
 import { createReminderReconciler, type ReminderReconciler } from './reminderReconciler';
-import { registerReminderDevice, revokeReminderDevice, REMINDER_DEVICE_OWNER_GENERATION_KEY, type ReminderDeviceApi, type ReminderDeviceSecureStore, type ReminderDeviceTokenSource } from './reminderDevice';
+import { registerReminderDevice, readReminderDeviceBinding, clearReminderDeviceBinding, REMINDER_DEVICE_OWNER_GENERATION_KEY, REMINDER_DEVICE_OWNER_SEQUENCE_KEY, type PendingReminderDeviceRevocations, type ReminderDeviceBinding, type ReminderDeviceApi, type ReminderDeviceSecureStore, type ReminderDeviceTokenSource } from './reminderDevice';
+import { isReminderTokenExpiry } from './reminderLifecycle';
 import type { ReminderSnapshot } from './apiClient';
 
 export interface ReminderRuntimeState {
   ready: boolean;
   error?: 'load' | 'save' | null;
+  saving?: boolean;
   readingEnabled: boolean;
   meetingEnabled: boolean;
   readingTime: string;
@@ -18,7 +20,7 @@ export interface ReminderRuntimeState {
 }
 
 export interface ReminderRuntimeNotificationSource extends ReminderDeviceTokenSource {
-  addPushTokenListener: (listener: () => void) => { remove: () => void };
+  addPushTokenListener: (listener: (token?: { type: string; data: string }) => void) => { remove: () => void };
 }
 
 export interface ReminderRuntimeApi extends ReminderDeviceApi {
@@ -31,6 +33,8 @@ export interface ReminderRuntimeOptions {
   scheduler?: ReminderScheduler;
   secureStore: ReminderDeviceSecureStore;
   createApiClient: (session: AuthSession) => ReminderRuntimeApi;
+  revokeDeviceBinding?: (binding: ReminderDeviceBinding) => Promise<boolean>;
+  deviceRevokeQueue?: PendingReminderDeviceRevocations;
   loadNotificationSource: () => Promise<ReminderRuntimeNotificationSource>;
   generateInstallationId: () => string;
   getCompletionStatus?: (memberId: string, taskDate: string) => 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED' | null;
@@ -38,6 +42,14 @@ export interface ReminderRuntimeOptions {
 
 const emptyState: ReminderRuntimeState = { ready: false, error: null, readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'REMOTE_PENDING', permission: 'undetermined', meeting: null };
 type Preferences = { readingEnabled: boolean; meetingEnabled: boolean; readingTime: string; meetingAdvanceMinutes: number };
+function preferencePatch(value: Partial<Preferences>): Partial<Preferences> {
+  return {
+    ...(value.readingEnabled !== undefined ? { readingEnabled: value.readingEnabled } : {}),
+    ...(value.meetingEnabled !== undefined ? { meetingEnabled: value.meetingEnabled } : {}),
+    ...(value.readingTime !== undefined ? { readingTime: value.readingTime } : {}),
+    ...(value.meetingAdvanceMinutes !== undefined ? { meetingAdvanceMinutes: value.meetingAdvanceMinutes } : {}),
+  };
+}
 let configuredOwner: ReminderRuntimeOwner | null = null;
 
 export class ReminderRuntimeOwner {
@@ -46,6 +58,7 @@ export class ReminderRuntimeOwner {
   private readonly options: ReminderRuntimeOptions;
   private readonly listeners = new Set<() => void>();
   private state: ReminderRuntimeState = emptyState;
+  private visibleState: ReminderRuntimeState = emptyState;
   private session: AuthSession | null = null;
   private generation = 0;
   private started = false;
@@ -55,7 +68,10 @@ export class ReminderRuntimeOwner {
   private preferenceRevision = 0;
   private activationReady: Promise<void> | null = null;
   private activationBaselineReady = false;
-  private pendingPreferences: Preferences | null = null;
+  private pendingPreferences: Partial<Preferences> | null = null;
+  private preferenceWork: Promise<void> = Promise.resolve();
+  private localCleanup: Promise<void> = Promise.resolve();
+  private suspendedRegistration: { session: AuthSession; generation: number } | null = null;
 
   private async bounded<T>(request: Promise<T>): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -73,16 +89,20 @@ export class ReminderRuntimeOwner {
   }
 
   getScheduler(): ReminderScheduler { return this.scheduler; }
-  getSnapshot(): ReminderRuntimeState { return this.state; }
+  getSnapshot(): ReminderRuntimeState { return this.visibleState; }
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   private notify(): void { this.listeners.forEach((listener) => listener()); }
-  private setState(next: ReminderRuntimeState): void { this.state = next; this.notify(); }
+  private updateVisibleState(): void {
+    this.visibleState = { ...this.state, ...this.pendingPreferences, saving: Boolean(this.pendingPreferences && this.activationBaselineReady && !this.state.error) };
+    this.notify();
+  }
+  private setState(next: ReminderRuntimeState): void { this.state = next; this.updateVisibleState(); }
   private isCurrent(session: AuthSession, generation: number): boolean { return generation === this.generation && isCurrentAuthSession(session); }
   private async nextOwnerGeneration(): Promise<number> {
-    const raw = await this.options.secureStore.getItemAsync(REMINDER_DEVICE_OWNER_GENERATION_KEY);
-    const previous = raw && Number.isInteger(Number(raw)) ? Number(raw) : 0;
+    const values = await Promise.all([this.options.secureStore.getItemAsync(REMINDER_DEVICE_OWNER_SEQUENCE_KEY), this.options.secureStore.getItemAsync(REMINDER_DEVICE_OWNER_GENERATION_KEY)]);
+    const previous = Math.max(0, ...values.map(raw => raw && Number.isSafeInteger(Number(raw)) ? Number(raw) : 0));
     const next = previous + 1;
-    await this.options.secureStore.setItemAsync(REMINDER_DEVICE_OWNER_GENERATION_KEY, String(next));
+    await this.options.secureStore.setItemAsync(REMINDER_DEVICE_OWNER_SEQUENCE_KEY, String(next));
     return next;
   }
 
@@ -92,48 +112,99 @@ export class ReminderRuntimeOwner {
     this.unregisterAuth = registerAuthLifecycleListener((change) => {
       if (change.invalidated) {
         const invalidated = change.invalidated;
-        const cleanupGeneration = ++this.generation;
+        const expiryOnly = isReminderTokenExpiry(change);
+        const interactiveRevokeAllowed = this.suspendedRegistration === null && !expiryOnly;
+        if (!expiryOnly) this.suspendedRegistration = null;
+        else if (!this.suspendedRegistration || this.suspendedRegistration.session.memberId !== invalidated.memberId || this.suspendedRegistration.session.sessionToken !== invalidated.sessionToken) {
+          this.suspendedRegistration = { session: invalidated, generation: this.generation };
+        }
+        this.generation += 1;
         this.session = null;
         this.activationBaselineReady = false;
         this.activationReady = null;
         this.pendingPreferences = null;
+        this.preferenceWork = Promise.resolve();
         this.tokenSubscription?.remove();
         this.tokenSubscription = null;
-        this.setState(emptyState);
-        void this.cleanupInvalidated(invalidated, cleanupGeneration, this.ownerGeneration);
+        this.setState(expiryOnly ? { ...this.state, ready: false, error: null } : emptyState);
+        if (!expiryOnly) {
+          this.localCleanup = this.localCleanup.then(() => this.cleanupInvalidated(invalidated, interactiveRevokeAllowed)).catch(() => undefined);
+        }
       }
       if (change.current && isCurrentAuthSession(change.current)) void this.activate(change.current);
     });
     const current = getAuthSession();
     if (current && isCurrentAuthSession(current)) void this.activate(current);
+    else if (current && getAuthSnapshot().status === 'expired') this.suspendedRegistration = { session: current, generation: this.generation };
   }
 
-  private async cleanupInvalidated(session: AuthSession, generation: number, expectedOwnerGeneration?: number): Promise<void> {
-    const expectedToken = await this.options.secureStore.getItemAsync('qingmu.reminder.deviceToken');
+  private async cleanupInvalidated(session: AuthSession, interactiveRevokeAllowed: boolean): Promise<void> {
+    const binding = await readReminderDeviceBinding(this.options.secureStore, session.memberId);
     await this.scheduler.cancelForMember(session.memberId).catch(() => undefined);
-    if (generation !== this.generation && this.session?.memberId === session.memberId) return;
-    await revokeReminderDevice({ secureStore: this.options.secureStore, api: this.options.createApiClient(session), expectedToken, expectedOwnerGeneration }).catch(() => false);
+    if (!binding) return;
+    await this.releaseCapturedBinding(binding, session, interactiveRevokeAllowed);
+  }
+
+  private async releaseCapturedBinding(binding: ReminderDeviceBinding, session: AuthSession, interactiveRevokeAllowed: boolean): Promise<void> {
+    const queue = this.options.deviceRevokeQueue;
+    // Never discard the only retry credential before SecureStore acknowledges it.
+    if (queue) await queue.enqueue(binding);
+    const cleared = await clearReminderDeviceBinding(this.options.secureStore, binding);
+    if (queue) { void queue.flush().catch(() => undefined); return; }
+    if (!cleared) return;
+    // Local revocation finishes before the next owner starts. A slow remote reply
+    // may only revoke this captured owner/version, never whatever is stored later.
+    void this.revokeCapturedBinding(binding, session, interactiveRevokeAllowed).catch(() => false);
+  }
+
+  private revokeCapturedBinding(binding: ReminderDeviceBinding, session: AuthSession, interactiveRevokeAllowed: boolean): Promise<boolean> {
+    if (this.options.revokeDeviceBinding) return this.options.revokeDeviceBinding(binding);
+    if (interactiveRevokeAllowed) return this.options.createApiClient(session).revokeReminderDeviceToken(binding.installationId, binding.bindingVersion, binding.ownerGeneration);
+    return Promise.resolve(false);
   }
 
   private async ensureTokenRegistration(session: AuthSession, generation: number, client: ReminderRuntimeApi): Promise<boolean> {
+    if (this.tokenSubscription) {
+      const existing = await readReminderDeviceBinding(this.options.secureStore, session.memberId);
+      if (!this.isCurrent(session, generation)) return false;
+      if (existing?.ownerGeneration === this.ownerGeneration) return true;
+    }
     const notifications = await this.options.loadNotificationSource();
     if (!this.isCurrent(session, generation)) return false;
-    const authority = { isCurrent: () => this.isCurrent(session, generation) };
-    const register = () => registerReminderDevice({ secureStore: this.options.secureStore, tokenSource: notifications, api: client, generateInstallationId: this.options.generateInstallationId, ownerGeneration: this.ownerGeneration, authority });
+    const authority = {
+      isCurrent: () => this.isCurrent(session, generation),
+      canCommit: () => {
+        const current = getAuthSnapshot();
+        const suspended = this.suspendedRegistration;
+        return this.isCurrent(session, generation) || Boolean(suspended && suspended.generation === generation && current.status === 'expired' && current.session?.memberId === session.memberId && current.session.sessionToken === session.sessionToken && suspended.session.memberId === session.memberId && suspended.session.sessionToken === session.sessionToken);
+      },
+    };
+    const register = (eventToken?: { type: string; data: string }) => registerReminderDevice({ secureStore: this.options.secureStore, tokenSource: eventToken ? { getDevicePushTokenAsync: async () => eventToken } : notifications, api: client, memberId: session.memberId, generateInstallationId: this.options.generateInstallationId, ownerGeneration: this.ownerGeneration, authority, revokeDeviceBinding: this.options.revokeDeviceBinding, deviceRevokeQueue: this.options.deviceRevokeQueue });
     const registered = await register();
     if (!registered.registered) return false;
     if (!this.isCurrent(session, generation)) return false;
     this.tokenSubscription?.remove();
-    this.tokenSubscription = notifications.addPushTokenListener(() => { void register(); });
+    this.tokenSubscription = notifications.addPushTokenListener(token => {
+      // Expo explicitly warns that calling its getter here emits this listener
+      // again. Use the event payload; the producer deduplicates identical tokens.
+      if (!token || typeof token.data !== 'string' || !this.isCurrent(session, generation)) return;
+      void register(token).then(result => {
+        if (!result.registered && this.isCurrent(session, generation)) this.setState({ ...this.state, error: 'load' });
+      }).catch(() => { if (this.isCurrent(session, generation)) this.setState({ ...this.state, error: 'load' }); });
+    });
     return true;
   }
 
   private async activate(session: AuthSession): Promise<void> {
     const generation = ++this.generation;
     this.session = session;
+    this.suspendedRegistration = null;
     this.activationBaselineReady = false;
+    this.preferenceWork = Promise.resolve();
     this.setState(emptyState);
     const activation = (async () => {
+      await this.localCleanup;
+      if (!this.isCurrent(session, generation)) return;
       this.ownerGeneration = await this.nextOwnerGeneration();
       if (!this.isCurrent(session, generation)) return;
       this.tokenSubscription?.remove();
@@ -190,14 +261,19 @@ export class ReminderRuntimeOwner {
     await this.reconciler.reconcile({ memberId: session.memberId, readingEnabled: state.readingEnabled, remoteDeliveryStatus: state.remoteDeliveryStatus, meetingEnabled: state.meetingEnabled, reading: readings[0] ?? null, readings, meeting: state.meeting ? { meetingId: state.meeting.meetingId, scheduleRevision: state.meeting.scheduleRevision, status: state.meeting.status } : null }, () => this.isCurrent(session, generation));
   }
 
-  async savePreferences(next: Preferences): Promise<void> {
+  async savePreferences(next: Partial<Preferences>): Promise<void> {
     const session = this.session;
     const generation = this.generation;
     if (!session || !this.isCurrent(session, generation)) return;
-    const intent = { ...next };
+    const intent = { ...this.pendingPreferences, ...preferencePatch(next) };
     this.pendingPreferences = intent;
+    this.setState({ ...this.state, error: null });
+    // Serialize side effects as well as writes. Unstarted obsolete jobs coalesce
+    // into the newest field intent; an in-flight old save cannot overtake it.
+    const work = this.preferenceWork.then(() => this.persistPreferences(intent, session, generation));
+    this.preferenceWork = work.catch(() => undefined);
     try {
-      await this.persistPreferences(intent, session, generation);
+      await work;
     } catch {
       if (this.isCurrent(session, generation) && this.pendingPreferences === intent) {
         this.setState({ ...this.state, error: this.activationBaselineReady ? 'save' : 'load' });
@@ -205,18 +281,19 @@ export class ReminderRuntimeOwner {
     }
   }
 
-  private async persistPreferences(next: Preferences, session: AuthSession, generation: number): Promise<void> {
+  private async persistPreferences(intent: Partial<Preferences>, session: AuthSession, generation: number): Promise<void> {
     const activation = this.activationReady;
     if (activation) await activation.catch(() => undefined);
-    if (!this.activationBaselineReady || !this.isCurrent(session, generation)) return;
+    if (!this.activationBaselineReady || !this.isCurrent(session, generation) || this.pendingPreferences !== intent) return;
+    const next: Preferences = { readingEnabled: this.state.readingEnabled, meetingEnabled: this.state.meetingEnabled, readingTime: this.state.readingTime, meetingAdvanceMinutes: this.state.meetingAdvanceMinutes, ...intent };
     this.setState({ ...this.state, error: null });
     const client = this.options.createApiClient(session);
     const preferenceRevision = ++this.preferenceRevision;
     const wasMeetingEnabled = this.state.meetingEnabled;
     if (next.readingEnabled || next.meetingEnabled) {
       const permission = await this.scheduler.requestPermission().catch(() => 'denied' as const);
-      if (!this.isCurrent(session, generation)) return;
-      if (permission === 'denied') { this.setState({ ...this.state, permission }); return; }
+      if (!this.isCurrent(session, generation) || this.pendingPreferences !== intent) return;
+      if (permission === 'denied') { this.pendingPreferences = null; this.setState({ ...this.state, permission }); return; }
       this.setState({ ...this.state, permission });
       if (next.meetingEnabled) {
         if (!await this.ensureTokenRegistration(session, generation, client)) throw new Error('REMINDER_DEVICE_UNAVAILABLE');
@@ -225,18 +302,20 @@ export class ReminderRuntimeOwner {
     if (!next.meetingEnabled && wasMeetingEnabled) {
       this.tokenSubscription?.remove();
       this.tokenSubscription = null;
-      await revokeReminderDevice({ secureStore: this.options.secureStore, api: client }).catch(() => false);
+      const binding = await readReminderDeviceBinding(this.options.secureStore, session.memberId);
+      if (!this.isCurrent(session, generation) || this.pendingPreferences !== intent) return;
+      if (binding) await this.releaseCapturedBinding(binding, session, true);
     }
-    if (!this.isCurrent(session, generation)) return;
+    if (!this.isCurrent(session, generation) || this.pendingPreferences !== intent) return;
     const saved = await this.bounded(client.saveReminderPreferences({ ...next, preferenceGeneration: preferenceRevision }));
-    if (!this.isCurrent(session, generation) || preferenceRevision !== this.preferenceRevision) return;
+    if (!this.isCurrent(session, generation) || preferenceRevision !== this.preferenceRevision || this.pendingPreferences !== intent) return;
     if (!saved || saved.memberId !== session.memberId) throw new Error('REMINDER_SAVE_UNCONFIRMED');
     this.preferenceRevision = Math.max(this.preferenceRevision, saved.preferenceGeneration ?? preferenceRevision);
     const nextState: ReminderRuntimeState = { ready: true, error: null, readingEnabled: saved.readingEnabled, meetingEnabled: saved.meetingEnabled, readingTime: saved.readingTime, meetingAdvanceMinutes: saved.meetingAdvanceMinutes, remoteDeliveryStatus: saved.remoteDeliveryStatus, permission: this.state.permission, meeting: saved.meetings[0] ?? null };
     this.setState(nextState);
     await Promise.all([this.options.secureStore.setItemAsync('qingmu.reminder.readingEnabled', String(saved.readingEnabled)), this.options.secureStore.setItemAsync('qingmu.reminder.readingTime', saved.readingTime)]);
     await this.reconcile(session, generation, nextState);
-    if (this.isCurrent(session, generation) && this.pendingPreferences === next) this.pendingPreferences = null;
+    if (this.isCurrent(session, generation) && this.pendingPreferences === intent) { this.pendingPreferences = null; this.updateVisibleState(); }
   }
 
   async syncCompletion(memberId: string, taskDate: string): Promise<void> {

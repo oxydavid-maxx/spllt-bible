@@ -56,6 +56,7 @@ export function createServiceAccountAccessTokenProvider(options: {
       const tokenUri = credential.token_uri ?? 'https://oauth2.googleapis.com/token';
       const assertion = signedAssertion(credential, now, scope);
       const response = await fetchImpl(tokenUri, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString(),

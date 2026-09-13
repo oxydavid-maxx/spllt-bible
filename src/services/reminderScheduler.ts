@@ -31,7 +31,7 @@ export interface ReminderNotificationAdapter {
   setNotificationChannelAsync?: (channelId: string, configuration: { name: string; importance: number; vibrationPattern: number[] }) => Promise<unknown>;
 }
 
-const CHANNEL_ID = 'qingmu-reading-reminders';
+export const REMINDER_NOTIFICATION_CHANNEL_ID = 'qingmu-reading-reminders';
 
 export function buildNextReadingReminderSpec(memberId: string, readingTime: string, now = new Date()): ReminderSpec | null {
   return buildUpcomingReadingReminderSpecs(memberId, readingTime, now)[0] ?? null;
@@ -81,6 +81,28 @@ function permissionGranted(status: NotificationPermissionsStatus): boolean {
   return status.granted === true || status.ios?.status === 2 || status.ios?.status === 3;
 }
 
+function triggerDateOf(request: NotificationRequest): Date | null {
+  const trigger: unknown = request.trigger;
+  if (!trigger || typeof trigger !== 'object') return null;
+  // Android DateTrigger.toBundle returns value in epoch milliseconds, not date.
+  if ('type' in trigger && trigger.type === 'date' && 'value' in trigger) {
+    return typeof trigger.value === 'number' ? new Date(trigger.value) : null;
+  }
+  if ((!('type' in trigger) || trigger.type === 'date') && 'date' in trigger) {
+    return trigger.date instanceof Date ? trigger.date : typeof trigger.date === 'number' ? new Date(trigger.date) : null;
+  }
+  // iOS converts a date input to a non-repeating time interval. Its readback
+  // omits the scheduling instant, so recover only our persisted canonical time.
+  if ('type' in trigger && trigger.type === 'timeInterval'
+    && 'repeats' in trigger && trigger.repeats === false
+    && 'seconds' in trigger && typeof trigger.seconds === 'number' && Number.isFinite(trigger.seconds) && trigger.seconds > 0) {
+    const triggerAt = request.content.data?.triggerAt;
+    const date = typeof triggerAt === 'string' ? new Date(triggerAt) : null;
+    return date && Number.isFinite(date.getTime()) && date.toISOString() === triggerAt ? date : null;
+  }
+  return null;
+}
+
 export function createReminderScheduler(adapter: ReminderNotificationAdapter = nativeNotifications) {
   async function cancel(reminderId: string): Promise<void> {
     const scheduled = await adapter.getAllScheduledNotificationsAsync();
@@ -97,7 +119,7 @@ export function createReminderScheduler(adapter: ReminderNotificationAdapter = n
   }
 
   async function requestPermission(): Promise<'granted' | 'denied'> {
-    await adapter.setNotificationChannelAsync?.(CHANNEL_ID, { name: '青牧提醒', importance: 4, vibrationPattern: [0, 250, 250, 250] });
+    await adapter.setNotificationChannelAsync?.(REMINDER_NOTIFICATION_CHANNEL_ID, { name: '青牧提醒', importance: 4, vibrationPattern: [0, 250, 250, 250] });
     const current = await adapter.getPermissionsAsync();
     if (permissionGranted(current)) return 'granted';
     const requested = await adapter.requestPermissionsAsync();
@@ -112,13 +134,14 @@ export function createReminderScheduler(adapter: ReminderNotificationAdapter = n
     }
     if (await requestPermission() !== 'granted') throw new Error('NOTIFICATION_PERMISSION_DENIED');
     await cancel(spec.reminderId);
+    const triggerDate = new Date(spec.triggerAt);
     await adapter.scheduleNotificationAsync({
       content: {
         title: '青牧讀經提醒',
         body: '今天的讀經任務已準備好。',
-        data: { reminderId: spec.reminderId, kind: spec.kind, memberId: spec.memberId, targetId: spec.targetId, taskDate: spec.taskDate ?? null, scheduleRevision: spec.scheduleRevision, route: spec.route },
+        data: { reminderId: spec.reminderId, kind: spec.kind, memberId: spec.memberId, targetId: spec.targetId, taskDate: spec.taskDate ?? null, scheduleRevision: spec.scheduleRevision, route: spec.route, triggerAt: triggerDate.toISOString() },
       },
-      trigger: { type: 'date', date: new Date(spec.triggerAt) } as NotificationTriggerInput,
+      trigger: { type: 'date', date: triggerDate, channelId: REMINDER_NOTIFICATION_CHANNEL_ID } as NotificationTriggerInput,
     });
   }
 
@@ -127,8 +150,7 @@ export function createReminderScheduler(adapter: ReminderNotificationAdapter = n
     return scheduled.flatMap((request) => {
       const data = request.content.data ?? {};
       if (typeof data.reminderId !== 'string' || data.kind !== 'READING' || typeof data.memberId !== 'string' || typeof data.route !== 'string') return [];
-      const rawDate = request.trigger && typeof request.trigger === 'object' && 'date' in request.trigger ? (request.trigger as { date?: Date | number }).date : undefined;
-      const triggerDate = rawDate instanceof Date ? rawDate : typeof rawDate === 'number' ? new Date(rawDate) : null;
+      const triggerDate = triggerDateOf(request);
       return [{
         reminderId: data.reminderId,
         memberId: data.memberId,

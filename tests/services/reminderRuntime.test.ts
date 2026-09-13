@@ -87,7 +87,7 @@ describe('auth-owned reminder runtime', () => {
     const owner = new ReminderRuntimeOwner({ scheduler: schedulerValue as any, secureStore: secureStore(), createApiClient: () => ({ getReminderSnapshot: async () => snapshot, saveReminderPreferences: save, registerReminderDeviceToken: async () => true, revokeReminderDeviceToken: async () => true }), loadNotificationSource: async () => { throw new Error('NOT_NEEDED'); }, generateInstallationId: () => 'install' });
     owner.start(); await new Promise(resolve => setTimeout(resolve, 0));
     await owner.savePreferences({ ...snapshot, readingTime: '09:15' });
-    expect(owner.getSnapshot()).toMatchObject({ ready: true, error: 'save', readingTime: '08:00' });
+    expect(owner.getSnapshot()).toMatchObject({ ready: true, error: 'save', saving: false, readingTime: '09:15' });
     await owner.retrySave();
     expect(owner.getSnapshot()).toMatchObject({ ready: true, error: null, readingTime: '09:15' });
     expect(save).toHaveBeenCalledTimes(2);
@@ -96,8 +96,8 @@ describe('auth-owned reminder runtime', () => {
 
   it('starts registration and keeps token rotation alive without AccountSurface mounted', async () => {
     const store = secureStore();
-    const register = vi.fn(async () => true);
-    let tokenListener: (() => void) | undefined;
+    const register = vi.fn(async (input: { ownerGeneration?: number }) => ({ registered: true, bindingVersion: 1, ownerGeneration: input.ownerGeneration }));
+    let tokenListener: ((token?: { type: string; data: string }) => void) | undefined;
     let listenerActive = false;
     const api = { getReminderSnapshot: async () => ({ memberId: 'member:one', readingEnabled: false, meetingEnabled: true, readingTime: '08:00', meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'REMOTE_PENDING' as const, meetings: [] }), saveReminderPreferences: async () => null, registerReminderDeviceToken: register, revokeReminderDeviceToken: vi.fn(async () => true) };
     setAuthSession({ memberId: 'member:one', sessionToken: 'session-one' });
@@ -105,8 +105,8 @@ describe('auth-owned reminder runtime', () => {
     owner.start();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(register).toHaveBeenCalledTimes(1);
-    const listener = tokenListener as (() => void) | undefined;
-    if (listener) listener();
+    const listener = tokenListener as ((token?: { type: string; data: string }) => void) | undefined;
+    if (listener) listener({ type: 'android', data: 'token-rotated' });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(register).toHaveBeenCalledTimes(2);
     await owner.savePreferences({ readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30 });
@@ -160,9 +160,10 @@ describe('auth-owned reminder runtime', () => {
     owner.start(); await new Promise((resolve) => setTimeout(resolve, 0));
     const oldSave = owner.savePreferences({ readingEnabled: true, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30 });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await owner.savePreferences({ readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30 });
+    const newSave = owner.savePreferences({ readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30 });
+    expect(owner.getSnapshot()).toMatchObject({ readingEnabled: false, saving: true });
     oldResponse.resolve({ memberId: 'member:one', readingEnabled: true, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'LOCAL_ONLY', meetings: [] });
-    await oldSave; await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.all([oldSave, newSave]);
     expect(owner.getSnapshot().readingEnabled).toBe(false);
     owner.dispose();
   });
@@ -255,7 +256,7 @@ describe('auth-owned reminder runtime', () => {
     await fc.assert(fc.asyncProperty(actions, async (sequence) => {
       const store = secureStore();
       const scheduled: any[] = [];
-      const tokenListeners = new Set<() => void>();
+      const tokenListeners = new Set<(token?: { type: string; data: string }) => void>();
       const apiState: any = { memberId: 'member:property', readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30, preferenceGeneration: 0, remoteDeliveryStatus: 'REMOTE_PENDING', meetings: [] };
       let registrations = 0;
       let revocations = 0;
@@ -270,7 +271,7 @@ describe('auth-owned reminder runtime', () => {
       const api = {
         getReminderSnapshot: async () => snapshot(),
         saveReminderPreferences: async (input: any) => { Object.assign(apiState, input); return snapshot(); },
-        registerReminderDeviceToken: async () => { registrations += 1; return true; },
+        registerReminderDeviceToken: async (input: { ownerGeneration: number }) => { registrations += 1; return { registered: true, bindingVersion: registrations, ownerGeneration: input.ownerGeneration }; },
         revokeReminderDeviceToken: async () => { revocations += 1; return true; },
       };
       setAuthSession({ memberId: 'member:property', sessionToken: 'session-property' });
@@ -279,7 +280,7 @@ describe('auth-owned reminder runtime', () => {
         owner.start();
         await new Promise((resolve) => setTimeout(resolve, 0));
         for (const action of sequence) {
-          if (action === 'rotate') { for (const listener of [...tokenListeners]) listener(); await new Promise((resolve) => setTimeout(resolve, 0)); continue; }
+          if (action === 'rotate') { for (const listener of [...tokenListeners]) listener({ type: 'android', data: `property-token-${registrations}` }); await new Promise((resolve) => setTimeout(resolve, 0)); continue; }
           const current = owner.getSnapshot();
           await owner.savePreferences({ readingEnabled: action === 'readingOn' ? true : action === 'readingOff' ? false : current.readingEnabled, meetingEnabled: action === 'meetingOn' ? true : action === 'meetingOff' ? false : current.meetingEnabled, readingTime: current.readingTime, meetingAdvanceMinutes: current.meetingAdvanceMinutes });
         }

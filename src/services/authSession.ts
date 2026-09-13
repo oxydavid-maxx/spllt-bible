@@ -1,6 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import { createContext, createElement, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { registerAuthExpiryHandler } from './authState';
+import { createApiClient, type SessionResult } from './apiClient';
+import { isDeviceSessionCredential, isLegacySessionCredential } from './authCredential';
 
 export interface AuthSession { memberId: string; sessionToken: string; }
 export type AuthStatus = 'hydrating' | 'signed-out' | 'signed-in' | 'expired';
@@ -17,7 +19,7 @@ export type ProfileStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
  * memberId+token pair alone cannot express.
  */
 export interface AuthSnapshot { status: AuthStatus; session: AuthSession | null; profile: VerifiedProfile | null; expiresAt: number | null; profileStatus: ProfileStatus; epoch: number; }
-export type AuthLifecycleReason = 'session-start' | 'session-switch' | 'logout' | 'expired' | 'hydrate';
+export type AuthLifecycleReason = 'session-start' | 'session-switch' | 'logout' | 'expired' | 'revoked' | 'hydrate';
 export interface AuthLifecycleChange { previous: AuthSession | null; current: AuthSession | null; invalidated: AuthSession | null; reason: AuthLifecycleReason; }
 
 interface SecureStoreLike { getItemAsync: (key: string) => Promise<string | null>; setItemAsync: (key: string, value: string) => Promise<void>; deleteItemAsync: (key: string) => Promise<void>; }
@@ -61,6 +63,95 @@ let storageOwnerSequence = 0;
 let activeStorageOwner: string | null = null;
 let invalidatedStorageOwner: string | null = null;
 let storageMutationTail: Promise<void> = Promise.resolve();
+let loginAttemptSequence = 0;
+let pendingLoginAttempt: AuthSessionAttempt | null = null;
+let sessionTransport: { baseUrl: string; fetchImpl?: typeof fetch } = { baseUrl: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL?.trim() ?? '' };
+const SESSION_REVOCATIONS_KEY = 'qingmu.session.revocations.v1';
+let revocationTail: Promise<void> = Promise.resolve();
+let upgradePromise: Promise<void> | null = null;
+
+export function configureAuthSessionTransport(options: { baseUrl: string; fetchImpl?: typeof fetch }): void { sessionTransport = options; }
+export interface AuthSessionAttempt { epoch: number; sequence: number; }
+export function beginAuthSessionAttempt(): AuthSessionAttempt { return (pendingLoginAttempt = { epoch, sequence: ++loginAttemptSequence }); }
+export function finishAuthSessionAttempt(attempt: AuthSessionAttempt): void {
+  if (pendingLoginAttempt?.sequence === attempt.sequence) pendingLoginAttempt = null;
+}
+
+function readRevocations(raw: string | null): AuthSession[] {
+  try {
+    const values = raw ? JSON.parse(raw) : [];
+    return Array.isArray(values) ? values.filter((item): item is AuthSession => item && typeof item.memberId === 'string' && typeof item.sessionToken === 'string'
+      && (isDeviceSessionCredential(item.sessionToken) || isLegacySessionCredential(item.sessionToken))).map(item => ({ memberId: item.memberId, sessionToken: item.sessionToken })) : [];
+  } catch { return []; }
+}
+async function drainSessionRevocations(): Promise<void> {
+  if (!sessionTransport.baseUrl) return;
+  const pending = await enqueueStorageMutation(async () => readRevocations(await SecureStore.getItemAsync(SESSION_REVOCATIONS_KEY)));
+  for (const session of pending) {
+    try {
+      const terminal = await createApiClient({ ...sessionTransport, token: session.sessionToken, memberId: session.memberId }).revokeSession();
+      if (!terminal) continue;
+      await enqueueStorageMutation(async () => {
+        const latest = readRevocations(await SecureStore.getItemAsync(SESSION_REVOCATIONS_KEY));
+        await SecureStore.setItemAsync(SESSION_REVOCATIONS_KEY, JSON.stringify(latest.filter(item => !sameSession(item, session))));
+      });
+    } catch { /* Keep the encrypted tombstone for a future foreground/restart. */ }
+  }
+}
+function queueSessionRevocation(session: AuthSession): void {
+  if (!isDeviceSessionCredential(session.sessionToken) && !isLegacySessionCredential(session.sessionToken)) return;
+  const persisted = enqueueStorageMutation(async () => {
+    const pending = readRevocations(await SecureStore.getItemAsync(SESSION_REVOCATIONS_KEY));
+    if (!pending.some(item => sameSession(item, session))) pending.push({ ...session });
+    await SecureStore.setItemAsync(SESSION_REVOCATIONS_KEY, JSON.stringify(pending));
+  });
+  // Network I/O is deliberately outside storageMutationTail: an offline old
+  // revoke cannot prevent the next account's credential from being persisted.
+  revocationTail = revocationTail.then(async () => { await persisted; await drainSessionRevocations(); }).catch(() => undefined);
+}
+export async function flushAuthSessionRevocations(): Promise<void> {
+  await storageMutationTail.catch(() => undefined);
+  await revocationTail;
+  await drainSessionRevocations();
+}
+
+export async function persistEstablishedAuthSession(result: SessionResult, attempt: AuthSessionAttempt): Promise<boolean> {
+  const session = { memberId: result.memberId, sessionToken: result.sessionToken };
+  try {
+    if (attempt.epoch !== epoch || attempt.sequence !== loginAttemptSequence) { queueSessionRevocation(session); return false; }
+    await persistAuthSession(session, result.expiresInSeconds);
+    return isCurrentAuthSession(session);
+  } finally { finishAuthSessionAttempt(attempt); }
+}
+
+/** One-time migration of an unexpired legacy app credential; never Google UI. */
+export async function upgradeLegacyAuthSession(): Promise<void> {
+  if (upgradePromise) return upgradePromise;
+  if (pendingLoginAttempt) return;
+  // Hydration owns the identity epoch until its profile request settles. An
+  // upgrade must not invalidate that request or an interactive account switch.
+  await storageMutationTail.catch(() => undefined);
+  await restorePromise?.catch(() => undefined);
+  if (upgradePromise) return upgradePromise;
+  if (pendingLoginAttempt) return;
+  const current = snapshot;
+  if (!current.session || current.status !== 'signed-in' || !isLegacySessionCredential(current.session.sessionToken)
+    || current.expiresAt === null || current.expiresAt <= Math.floor(Date.now() / 1000) || !sessionTransport.baseUrl) return;
+  const session = current.session, expectedEpoch = epoch, attemptSequence = loginAttemptSequence;
+  upgradePromise = (async () => {
+    try {
+      const result = await createApiClient({ ...sessionTransport, token: session.sessionToken, memberId: session.memberId }).upgradeSession();
+      if (!result || 'error' in result || result.sessionKind !== 'device') return;
+      if (epoch !== expectedEpoch || loginAttemptSequence !== attemptSequence || !isCurrentAuthSession(session) || result.memberId !== session.memberId) {
+        queueSessionRevocation({ memberId: result.memberId, sessionToken: result.sessionToken }); return;
+      }
+      const next = { memberId: result.memberId, sessionToken: result.sessionToken };
+      await persistAuthSession(next, null);
+      if (current.profile && isCurrentAuthSession(next)) await persistAuthProfile(current.profile);
+    } catch { /* Keep the original credential and its real deadline; retry later. */ }
+  })();
+  try { await upgradePromise; } finally { upgradePromise = null; }
+}
 
 function ownerKeys(owner: string) {
   return {
@@ -77,7 +168,9 @@ function legacyKeys() {
 
 function allocateStorageOwner(): string {
   storageOwnerSequence += 1;
-  return `${Date.now().toString(36)}-${storageOwnerSequence.toString(36)}`;
+  // This is a local storage namespace, not an authentication secret. Include a
+  // fresh suffix so a process restart/clock rollback cannot reuse a logout tombstone.
+  return `${Date.now().toString(36)}-${storageOwnerSequence.toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 function ownerFromPointer(pointer: string | null): string | null {
@@ -85,6 +178,15 @@ function ownerFromPointer(pointer: string | null): string | null {
 }
 
 function logoutMarkerKey(owner: string): string { return `${STORAGE_OWNER_PREFIX}.${owner}.logoutEpoch`; }
+
+/** Read-only local authority for headless consumers; never starts Google/profile I/O. */
+export async function hasPersistedAuthTermination(secureStore: Pick<SecureStoreLike, 'getItemAsync'> = SecureStore): Promise<boolean> {
+  const pointer = await secureStore.getItemAsync(ACTIVE_STORAGE_OWNER_KEY);
+  if (pointer?.startsWith('signed-out:')) return true;
+  const owner = ownerFromPointer(pointer);
+  const marker = await secureStore.getItemAsync(owner ? logoutMarkerKey(owner) : LEGACY_LOGOUT_MARKER_KEY);
+  return Boolean(marker && /^\d+$/.test(marker));
+}
 
 function enqueueStorageMutation<T>(operation: () => Promise<T>): Promise<T> {
   const run = storageMutationTail.then(operation, operation);
@@ -105,6 +207,7 @@ function emitAuthLifecycle(previous: AuthSession | null, current: AuthSession | 
   if (!invalidated && sameSession(previous, current) && reason !== 'expired' && reason !== 'logout') return;
   const change = { previous, current, invalidated, reason };
   lifecycleListeners.forEach((listener) => listener(change));
+  if (invalidated && reason !== 'expired') queueSessionRevocation(invalidated);
 }
 export function registerAuthLifecycleListener(listener: (change: AuthLifecycleChange) => void): () => void { lifecycleListeners.add(listener); return () => lifecycleListeners.delete(listener); }
 export function getAuthSnapshot(): AuthSnapshot { return snapshot; }
@@ -119,7 +222,24 @@ export function isCurrentAuthSession(session: AuthSession | null): boolean {
   return Boolean(session && snapshot.status === 'signed-in' && snapshot.session?.memberId === session.memberId && snapshot.session.sessionToken === session.sessionToken);
 }
 export function setAuthSession(session: AuthSession): void { const previous = snapshot.session; epoch += 1; publish({ status: 'signed-in', session, profile: null, expiresAt: null }); emitAuthLifecycle(previous, session, previous && !sameSession(previous, session) ? 'session-switch' : 'session-start'); }
-export function markAuthExpired(): void { const previous = snapshot.session; epoch += 1; publish({ ...snapshot, status: 'expired', epoch }); emitAuthLifecycle(previous, null, 'expired', previous); }
+export function markAuthExpired(expected?: AuthSession): void {
+  if (expected && !sameSession(snapshot.session, expected)) return;
+  if (snapshot.status === 'expired' || snapshot.status === 'signed-out') return;
+  const previous = snapshot.session;
+  const revoked = Boolean(previous && isDeviceSessionCredential(previous.sessionToken));
+  const owner = activeStorageOwner;
+  if (revoked) activeStorageOwner = null;
+  const invalidationEpoch = ++epoch;
+  publish(revoked ? { status: 'expired', session: null, profile: null, expiresAt: null } : { ...snapshot, status: 'expired', epoch });
+  emitAuthLifecycle(previous, null, revoked ? 'revoked' : 'expired', previous);
+  if (revoked) {
+    void enqueueStorageMutation(async () => {
+      await SecureStore.setItemAsync(owner ? logoutMarkerKey(owner) : LEGACY_LOGOUT_MARKER_KEY, String(invalidationEpoch));
+      const keys = owner ? ownerKeys(owner) : legacyKeys();
+      await Promise.all([SecureStore.deleteItemAsync(keys.token), SecureStore.deleteItemAsync(keys.member), SecureStore.deleteItemAsync(keys.expiresAt), SecureStore.deleteItemAsync(keys.profile)]);
+    });
+  }
+}
 registerAuthExpiryHandler(markAuthExpired);
 
 export function clearAuthSession(): void {
@@ -143,10 +263,11 @@ export function clearAuthSession(): void {
   });
 }
 
-export async function persistAuthSession(session: AuthSession, expiresInSeconds = 3600): Promise<void> {
+export async function persistAuthSession(session: AuthSession, expiresInSeconds: number | null = 3600): Promise<void> {
+  if (expiresInSeconds === null && !isDeviceSessionCredential(session.sessionToken)) throw new Error('PERSISTENT_DEVICE_SESSION_REQUIRED');
   const previous = snapshot.session;
   const nextEpoch = ++epoch;
-  const expiresAt = Math.floor(Date.now() / 1000) + Math.max(0, Math.floor(expiresInSeconds));
+  const expiresAt = expiresInSeconds === null ? null : Math.floor(Date.now() / 1000) + Math.max(0, Math.floor(expiresInSeconds));
   const owner = allocateStorageOwner();
   const keys = ownerKeys(owner);
   activeStorageOwner = owner;
@@ -164,9 +285,9 @@ export async function persistAuthSession(session: AuthSession, expiresInSeconds 
     await SecureStore.setItemAsync(ACTIVE_STORAGE_OWNER_KEY, `owner:${owner}`);
     await Promise.all([
       SecureStore.setItemAsync(keys.token, session.sessionToken), SecureStore.setItemAsync(keys.member, session.memberId),
-      SecureStore.setItemAsync(keys.expiresAt, String(expiresAt)),
+      SecureStore.setItemAsync(keys.expiresAt, expiresAt === null ? '' : String(expiresAt)),
       SecureStore.setItemAsync('qingmu.session.token', session.sessionToken), SecureStore.setItemAsync('qingmu.session.member', session.memberId),
-      SecureStore.setItemAsync('qingmu.session.expiresAt', String(expiresAt)),
+      SecureStore.setItemAsync('qingmu.session.expiresAt', expiresAt === null ? '' : String(expiresAt)),
     ]);
     if (epoch !== nextEpoch && !snapshot.session && invalidatedStorageOwner === owner) {
       const legacy = legacyKeys();
@@ -197,6 +318,9 @@ export async function hydrateAuthSnapshot(options: { secureStore?: SecureStoreLi
     } catch { /* fixture profile can remain synthetic when the shadow is not running */ }
     return snapshot;
   }
+  // A server-rejected device cannot be resurrected from the local cache while
+  // its durable logout marker is still being written.
+  if (snapshot.status === 'expired' && (!snapshot.session || isDeviceSessionCredential(snapshot.session.sessionToken))) return snapshot;
   if (snapshot.status === 'signed-in' && snapshot.session && !options.loadProfile) return snapshot;
   if (restorePromise) return restorePromise;
   const secureStore = options.secureStore ?? SecureStore;
@@ -286,9 +410,22 @@ export function AuthProvider({ children, loadProfile }: { children: ReactNode; l
   const current = useAuthSnapshot();
   configuredProfileLoader = loadProfile;
   useEffect(() => { void hydrateAuthSnapshot({ loadProfile }); }, [loadProfile]);
+  useEffect(() => { void flushAuthSessionRevocations(); }, [current.status, current.session?.sessionToken]);
+  useEffect(() => {
+    let alive = true;
+    let subscription: { remove(): void } | undefined;
+    void import('react-native').then(({ AppState }) => {
+      if (!alive) return;
+      subscription = AppState.addEventListener('change', state => {
+        if (alive && state === 'active') { void flushAuthSessionRevocations(); void upgradeLegacyAuthSession(); }
+      });
+    }).catch(() => { /* A later provider mount will attach the native foreground listener. */ });
+    return () => { alive = false; subscription?.remove(); };
+  }, []);
+  useEffect(() => { if (current.status === 'signed-in') void upgradeLegacyAuthSession(); }, [current.status, current.session?.sessionToken]);
   useEffect(() => {
     if (current.status === 'signed-in' && current.session && !current.profile && loadProfile) void hydrateAuthSnapshot({ loadProfile });
-  }, [current.status, current.session?.memberId, current.profile, loadProfile]);
+  }, [current.status, current.session?.memberId, current.session?.sessionToken, current.profile, loadProfile]);
   return createElement(AuthContext.Provider, { value: current }, children);
 }
 export function useAuthContext(): AuthSnapshot { return useContext(AuthContext); }

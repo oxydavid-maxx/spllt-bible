@@ -5,19 +5,12 @@ import type { ContentGateStatus } from '../src/domain/types';
 import { authenticate, authenticateGoogle, authenticateSessionOrGoogle, type ProductionGoogleAuth } from './authBoundary';
 import { claimMemberInvite } from './membership';
 import { createSessionToken } from './session';
+import { evaluateContentCapability, parseCapabilityQuery } from './contentCapabilities';
 import { getMemberGroupProfile } from './groups';
 import { buildCompletionOperationFingerprint } from './operationFingerprint';
-import {
-  readReminderPreferences,
-  registerDeviceDeliveryToken,
-  revokeDeviceDeliveryToken,
-  saveReminderPreferences,
-  sendDueMeetingEvent,
-  authorizeDeviceMeetingSnapshot,
-  type RemoteDeliveryStatus,
-} from './reminders';
-import { discoverDueMeetingEvents } from './reminderWorker';
-import { evaluateContentCapability, parseCapabilityQuery } from './contentCapabilities';
+import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
+import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
+import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
 
 export interface ApiRequest {
   method: string;
@@ -32,6 +25,7 @@ export interface ApiResponse {
 }
 
 export interface ApiHandlerOptions {
+  remoteReminderStatus?: 'REMOTE_PENDING' | 'REMOTE_READY';
   db: { db: DatabaseSync };
   instanceId?: string;
   authMode?: 'fixture' | 'google-only';
@@ -46,11 +40,6 @@ export interface ApiHandlerOptions {
   pointPolicy?: PointPolicy;
   weeklyDates?: string[];
   scheduleDates?: string[];
-  reminderDelivery?: {
-    workerToken: string;
-    enabled: boolean;
-    send: (token: string, payload: { event: 'MEETING_REMINDER'; reminderId: string; meetingId: string; scheduleRevision: number }) => Promise<void | { messageId?: string | null }>;
-  };
 }
 
 const PLAN_ID = 'church-2026-09';
@@ -344,8 +333,9 @@ function handleProgress(db: DatabaseSync, viewerId: string, date: string, policy
 }
 
 export function createApiHandler(options: ApiHandlerOptions) {
+  const sessions = { resolveDevice: (token: string) => resolveDeviceSession(options.db.db, token), isLegacyRevoked: (token: string) => isLegacySessionRevoked(options.db.db, token) };
+  const remoteStatus = options.remoteReminderStatus ?? 'REMOTE_PENDING';
   const policy = options.pointPolicy ?? DEFAULT_POLICY;
-  const remoteDeliveryStatus: RemoteDeliveryStatus = options.reminderDelivery?.enabled ? 'REMOTE_READY' : 'REMOTE_PENDING';
   return async function handle(request: ApiRequest): Promise<ApiResponse> {
     const url = parsePath(request.url);
     if (request.method === 'GET' && url.pathname === '/api/health') {
@@ -355,55 +345,40 @@ export function createApiHandler(options: ApiHandlerOptions) {
         authMode: options.authMode ?? (options.productionGoogleAuth ? 'google-only' : 'fixture'),
       });
     }
-    if (request.method === 'POST' && url.pathname === '/internal/reminders/due') {
-      const workerToken = request.headers['x-qingmu-reminder-worker'] ?? request.headers.authorization?.replace(/^Bearer\s+/i, '');
-      if (!options.reminderDelivery?.enabled || !workerToken || workerToken !== options.reminderDelivery.workerToken) {
-        return json(401, { error: 'REMINDER_WORKER_UNAUTHORIZED' });
-      }
+    if (request.method === 'POST' && url.pathname === '/api/device/reminders/revoke') {
+      const installationId = request.headers['x-qingmu-installation-id'];
+      const token = request.headers['x-qingmu-device-token'];
+      if (!installationId?.trim() || !token?.trim()) return json(401, { error: 'DEVICE_DELIVERY_AUTH_REQUIRED' });
       try {
         const body = parseBody(request.body);
-        if (typeof body.meeting_id !== 'string' || !body.meeting_id.trim()) return json(400, { error: 'INVALID_REMINDER_EVENT' });
-        const requestedRevision = body.schedule_revision === undefined ? null : Number(body.schedule_revision);
-        const requestedMember = body.member_id === undefined ? null : String(body.member_id);
-        const candidates = discoverDueMeetingEvents(options.db.db, new Date()).filter((candidate) => candidate.meetingId === body.meeting_id && (requestedRevision === null || candidate.scheduleRevision === requestedRevision) && (requestedMember === null || candidate.memberId === requestedMember));
-        if (candidates.length === 0) {
-          const current = options.db.db.prepare('SELECT schedule_revision, schedule_status FROM member_group_profiles WHERE meeting_id = ? ORDER BY COALESCE(schedule_revision, 0) DESC LIMIT 1').get(body.meeting_id) as { schedule_revision: number | null; schedule_status: string | null } | undefined;
-          return json(200, { decision: current?.schedule_status === 'CANCELLED' ? 'DROP_CANCELLED' : 'DROP_UNKNOWN', meetingId: body.meeting_id, latestRevision: current?.schedule_revision, latestStatus: current?.schedule_status });
-        }
-        const results = [];
-        for (const candidate of candidates) results.push(await sendDueMeetingEvent(options.db.db, candidate, options.reminderDelivery.send));
-        const first = results[0];
-        return json(200, { decision: results.some((result) => result.decision === 'SEND') ? 'SEND' : first.decision, reminderId: first.reminderId, meetingId: first.meetingId, scheduleRevision: first.scheduleRevision, latestRevision: first.latestRevision, latestStatus: first.latestStatus, recipients: results.map((result) => ({ memberId: candidates.find((candidate) => candidate.reminderId === result.reminderId)?.memberId, decision: result.decision })) });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'INTERNAL_ERROR';
-        if (message === 'INVALID_JSON') return json(400, { error: message });
-        return json(500, { error: 'REMINDER_DELIVERY_ERROR' });
-      }
+        if (typeof body.member_id !== 'string' || !body.member_id.trim() || typeof body.binding_version !== 'number' || !Number.isSafeInteger(body.binding_version) || body.binding_version < 1 || typeof body.owner_generation !== 'number' || !Number.isSafeInteger(body.owner_generation) || body.owner_generation < 0) return json(400, { error: 'INVALID_DEVICE_REVOKE' });
+        const now = new Date().toISOString();
+        // Authentication and mutation share one exact predicate; a late owner cannot revoke a newer binding.
+        const revoked = options.db.db.prepare(`UPDATE device_delivery_tokens SET revoked_at=?,updated_at=?
+          WHERE installation_id=? AND token=? AND member_id=? AND platform='ANDROID'
+            AND binding_version=? AND owner_generation=? AND revoked_at IS NULL`).run(now,now,installationId.trim(),token.trim(),body.member_id.trim(),body.binding_version,body.owner_generation);
+        return Number(revoked.changes) === 1 ? json(200, { revoked: true }) : json(403, { error: 'DEVICE_DELIVERY_REVOKED' });
+      } catch (error) { return json(error instanceof Error && error.message === 'INVALID_JSON' ? 400 : 500, { error: error instanceof Error && error.message === 'INVALID_JSON' ? 'INVALID_JSON' : 'DEVICE_REMINDER_ERROR' }); }
     }
     if (request.method === 'POST' && url.pathname === '/api/device/reminders/validate') {
-      const deviceToken = request.headers['x-qingmu-device-token'];
       const installationId = request.headers['x-qingmu-installation-id'];
-      if (!deviceToken || !installationId) return json(401, { error: 'DEVICE_DELIVERY_AUTH_REQUIRED' });
+      const token = request.headers['x-qingmu-device-token'];
+      if (!installationId || !token) return json(401, { error: 'DEVICE_DELIVERY_AUTH_REQUIRED' });
       try {
         const body = parseBody(request.body);
-        if (typeof body.meeting_id !== 'string' || typeof body.schedule_revision !== 'number' || !Number.isInteger(body.schedule_revision)) return json(400, { error: 'INVALID_DEVICE_REMINDER_EVENT' });
-        const snapshot = authorizeDeviceMeetingSnapshot(options.db.db, { installationId, token: deviceToken, meetingId: body.meeting_id });
+        if (typeof body.meeting_id !== 'string' || !body.meeting_id.trim() || typeof body.schedule_revision !== 'number' || !Number.isSafeInteger(body.schedule_revision) || body.schedule_revision < 1) return json(400, { error: 'INVALID_DEVICE_REMINDER_EVENT' });
+        const snapshot = authorizeDeviceMeetingSnapshot(options.db.db, { installationId, token, meetingId: body.meeting_id });
         if (!snapshot) return json(403, { error: 'DEVICE_DELIVERY_REVOKED' });
-        return json(200, {
-          valid: snapshot.status === 'SCHEDULED' && snapshot.scheduleRevision === body.schedule_revision,
-          meetingId: snapshot.meetingId,
-          scheduleRevision: snapshot.scheduleRevision,
-          status: snapshot.status,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'INTERNAL_ERROR';
-        if (message === 'INVALID_JSON') return json(400, { error: message });
-        return json(500, { error: 'DEVICE_REMINDER_ERROR' });
-      }
+        return json(200, { ...snapshot, valid: snapshot.status === 'SCHEDULED' && snapshot.scheduleRevision === body.schedule_revision });
+      } catch (error) { return json(error instanceof Error && error.message === 'INVALID_JSON' ? 400 : 500, { error: error instanceof Error && error.message === 'INVALID_JSON' ? 'INVALID_JSON' : 'DEVICE_REMINDER_ERROR' }); }
     }
     if (request.method === 'POST' && url.pathname === '/api/session/google' && options.productionGoogleAuth && options.sessionSecret) {
       const auth = await authenticateGoogle(request.headers, options.productionGoogleAuth);
       if ('status' in auth) return json(auth.status, { error: auth.error });
+      if (!isMemberEnabled(options.db.db, auth.memberId)) return json(403, { error: 'ACCOUNT_DISABLED' });
+      let body: Record<string, unknown>;
+      try { body = parseBody(request.body); } catch { return json(400, { error: 'INVALID_JSON' }); }
+      if (body.session_type === 'device') return json(200, createDeviceSession(options.db.db, auth.memberId));
       return json(200, {
         sessionToken: createSessionToken(auth.memberId, options.sessionSecret),
         memberId: auth.memberId,
@@ -420,6 +395,8 @@ export function createApiHandler(options: ApiHandlerOptions) {
         const identity = await options.productionGoogleAuth.verify(token);
         const claim = claimMemberInvite(options.db.db, { provider: identity.provider, subject: identity.subject, code: inviteCode(body) });
         if (!claim.ok) return json(claim.error === 'INVITE_INVALID' || claim.error === 'INVITE_EXPIRED' || claim.error === 'INVITE_USED' ? 403 : 409, { error: claim.error });
+        if (!isMemberEnabled(options.db.db, claim.memberId)) return json(403, { error: 'ACCOUNT_DISABLED' });
+        if (body.session_type === 'device') return json(200, { ...createDeviceSession(options.db.db, claim.memberId), alreadyBound: claim.alreadyBound });
         return json(200, {
           sessionToken: createSessionToken(claim.memberId, options.sessionSecret),
           memberId: claim.memberId,
@@ -433,26 +410,54 @@ export function createApiHandler(options: ApiHandlerOptions) {
         return json(500, { error: 'INTERNAL_ERROR' });
       }
     }
+    if (request.method === 'POST' && url.pathname === '/api/session/revoke' && options.sessionSecret) {
+      const token = (request.headers.authorization ?? request.headers.Authorization)?.match(/^Bearer\s+(.+)$/i)?.[1];
+      return token && revokeSession(options.db.db, token, options.sessionSecret) ? json(200, { revoked: true }) : json(401, { error: 'AUTH_INVALID' });
+    }
     const auth = options.productionGoogleAuth && options.sessionSecret
-      ? await authenticateSessionOrGoogle(request.headers, options.productionGoogleAuth, options.sessionSecret)
+      ? await authenticateSessionOrGoogle(request.headers, options.productionGoogleAuth, options.sessionSecret, sessions)
       : authenticate(request.headers, options.fixtureToken ?? '', (id) => memberExists(options.db.db, id));
     if ('status' in auth) return json(auth.status, { error: auth.error });
+    if (memberExists(options.db.db, auth.memberId) && !isMemberEnabled(options.db.db, auth.memberId)) return json(401, { error: 'ACCOUNT_DISABLED' });
+    if (request.method === 'POST' && url.pathname === '/api/session/device' && options.productionGoogleAuth && options.sessionSecret) {
+      return json(200, createDeviceSession(options.db.db, auth.memberId));
+    }
 
     try {
+      if (url.pathname === '/api/me/reminders' || url.pathname === '/api/me/reminders/device-token' || url.pathname === '/api/me/reminders/device-token/revoke') {
+        if (!options.db.db.prepare('SELECT id FROM members WHERE id = ?').get(auth.memberId)) return json(404, { error: 'PROFILE_NOT_FOUND' });
+        if (request.method === 'GET' && url.pathname === '/api/me/reminders') return json(200, readReminderPreferences(options.db.db, auth.memberId, remoteStatus));
+        if (request.method === 'PUT' && url.pathname === '/api/me/reminders') {
+          const body = parseBody(request.body);
+          if (typeof body.reading_enabled !== 'boolean' || typeof body.meeting_enabled !== 'boolean') return json(400, { error: 'INVALID_REMINDER_PREFERENCES' });
+          const current = readReminderPreferences(options.db.db, auth.memberId, remoteStatus);
+          const readingTime = body.reading_time === undefined ? current.readingTime : body.reading_time;
+          const meetingAdvanceMinutes = body.meeting_advance_minutes === undefined ? current.meetingAdvanceMinutes : body.meeting_advance_minutes;
+          const preferenceGeneration = body.preference_generation === undefined ? current.preferenceGeneration : body.preference_generation;
+          if (typeof readingTime !== 'string' || typeof meetingAdvanceMinutes !== 'number' || typeof preferenceGeneration !== 'number') return json(400, { error: 'INVALID_REMINDER_PREFERENCES' });
+          return json(200, saveReminderPreferences(options.db.db, auth.memberId, { readingEnabled: body.reading_enabled, meetingEnabled: body.meeting_enabled, readingTime, meetingAdvanceMinutes, preferenceGeneration }, remoteStatus));
+        }
+        if (request.method === 'POST' && url.pathname === '/api/me/reminders/device-token') {
+          const body = parseBody(request.body);
+          const ownerGeneration = body.owner_generation === undefined ? 0 : body.owner_generation;
+          if (typeof body.installation_id !== 'string' || !body.installation_id.trim() || typeof body.token !== 'string' || !body.token.trim() || body.platform !== 'ANDROID' || typeof ownerGeneration !== 'number' || !Number.isSafeInteger(ownerGeneration) || ownerGeneration < 0) return json(400, { error: 'INVALID_DEVICE_TOKEN' });
+          return json(200, { ...registerDeviceDeliveryToken(options.db.db, { memberId: auth.memberId, installationId: body.installation_id.trim(), token: body.token.trim(), ownerGeneration }), remoteDeliveryStatus: remoteStatus });
+        }
+        if (request.method === 'POST' && url.pathname === '/api/me/reminders/device-token/revoke') {
+          const body = parseBody(request.body);
+          if (typeof body.installation_id !== 'string' || !body.installation_id.trim()) return json(400, { error: 'INVALID_DEVICE_TOKEN' });
+          if ((body.binding_version !== undefined && (typeof body.binding_version !== 'number' || !Number.isSafeInteger(body.binding_version) || body.binding_version < 1)) || (body.owner_generation !== undefined && (typeof body.owner_generation !== 'number' || !Number.isSafeInteger(body.owner_generation) || body.owner_generation < 0))) return json(400, { error: 'INVALID_DEVICE_TOKEN' });
+          return json(200, { revoked: revokeDeviceDeliveryToken(options.db.db, auth.memberId, body.installation_id.trim(), body.binding_version as number | undefined, body.owner_generation as number | undefined) });
+        }
+      }
       if (request.method === 'GET' && url.pathname === '/api/content-capabilities') {
-        // Per-chapter audio capability (parent spec line 160). Backward compatible on purpose: the
-        // existing callers ask with NO query and still get the content gate they expect, so this
-        // extension cannot break them. Asking about a specific chapter is opt-in via the query.
-        const hasChapterQuery =
-          url.searchParams.has('versionId') || url.searchParams.has('usfm');
-        if (hasChapterQuery) {
+        if (url.searchParams.has('versionId') || url.searchParams.has('usfm')) {
           const parsed = parseCapabilityQuery({
             versionId: url.searchParams.get('versionId') ?? undefined,
             usfm: url.searchParams.get('usfm') ?? undefined,
           });
           if (!parsed.ok) return json(400, { error: parsed.error });
-          const capability = evaluateContentCapability(parsed.versionId, parsed.usfm);
-          return json(200, { ...capability } as unknown as Record<string, unknown>);
+          return json(200, { ...evaluateContentCapability(parsed.versionId, parsed.usfm) } as unknown as Record<string, unknown>);
         }
         const gate = options.contentGate ?? {
           status: 'C_PENDING_ACCESS' as const,
@@ -480,30 +485,6 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (request.method === 'GET' && url.pathname === '/api/me/groups') {
         const profile = getMemberGroupProfile(options.db.db, auth.memberId);
         return profile ? json(200, profile) : json(404, { error: 'GROUP_PROFILE_PENDING' });
-      }
-      if (request.method === 'GET' && url.pathname === '/api/me/reminders') {
-        return json(200, readReminderPreferences(options.db.db, auth.memberId, remoteDeliveryStatus) as unknown as Record<string, unknown>);
-      }
-      if (request.method === 'PUT' && url.pathname === '/api/me/reminders') {
-        const body = parseBody(request.body);
-        if (typeof body.reading_enabled !== 'boolean' || typeof body.meeting_enabled !== 'boolean') return json(400, { error: 'INVALID_REMINDER_PREFERENCES' });
-        const current = readReminderPreferences(options.db.db, auth.memberId, remoteDeliveryStatus);
-        const readingTime = body.reading_time === undefined ? current.readingTime : body.reading_time;
-        const meetingAdvanceMinutes = body.meeting_advance_minutes === undefined ? current.meetingAdvanceMinutes : body.meeting_advance_minutes;
-        const preferenceGeneration = body.preference_generation === undefined ? current.preferenceGeneration : body.preference_generation;
-        if (typeof readingTime !== 'string' || typeof meetingAdvanceMinutes !== 'number' || !Number.isInteger(meetingAdvanceMinutes) || typeof preferenceGeneration !== 'number' || !Number.isInteger(preferenceGeneration)) return json(400, { error: 'INVALID_REMINDER_PREFERENCES' });
-        return json(200, saveReminderPreferences(options.db.db, auth.memberId, { readingEnabled: body.reading_enabled, meetingEnabled: body.meeting_enabled, readingTime, meetingAdvanceMinutes, preferenceGeneration }, undefined) as unknown as Record<string, unknown>);
-      }
-      if (request.method === 'POST' && url.pathname === '/api/me/reminders/device-token') {
-        const body = parseBody(request.body);
-        if (typeof body.installation_id !== 'string' || !body.installation_id.trim() || typeof body.token !== 'string' || !body.token.trim() || body.platform !== 'ANDROID') return json(400, { error: 'INVALID_DEVICE_TOKEN' });
-        const binding = registerDeviceDeliveryToken(options.db.db, { memberId: auth.memberId, installationId: body.installation_id.trim(), platform: 'ANDROID', token: body.token.trim(), ownerGeneration: typeof body.owner_generation === 'number' && Number.isInteger(body.owner_generation) ? body.owner_generation : 0 });
-        return json(200, { registered: binding.accepted, remoteDeliveryStatus, bindingVersion: binding.bindingVersion, ownerGeneration: binding.ownerGeneration });
-      }
-      if (request.method === 'POST' && url.pathname === '/api/me/reminders/device-token/revoke') {
-        const body = parseBody(request.body);
-        if (typeof body.installation_id !== 'string' || !body.installation_id.trim()) return json(400, { error: 'INVALID_DEVICE_TOKEN' });
-        return json(200, { revoked: revokeDeviceDeliveryToken(options.db.db, auth.memberId, body.installation_id.trim(), typeof body.binding_version === 'number' && Number.isInteger(body.binding_version) ? body.binding_version : undefined, typeof body.owner_generation === 'number' && Number.isInteger(body.owner_generation) ? body.owner_generation : undefined) });
       }
       if (request.method === 'GET' && url.pathname === '/api/progress') {
         return handleProgress(
