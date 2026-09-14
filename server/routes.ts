@@ -481,7 +481,13 @@ export function createApiHandler(options: ApiHandlerOptions) {
         if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
         const body = parseBody(request.body);
         if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.expectedRevision !== 'number') return gamificationError({ status: 400, code: 'INVALID_REWARD' });
-        const result = updateReward(options.db.db, auth.memberId, body.operationId, decodeURIComponent(adminRewardMatch[1]), { name: typeof body.name === 'string' ? body.name : undefined, costPoints: typeof body.costPoints === 'number' ? body.costPoints : undefined, active: typeof body.active === 'boolean' ? body.active : undefined, expectedRevision: body.expectedRevision }, { now });
+        const rewardInput = {
+          expectedRevision: body.expectedRevision,
+          ...(typeof body.name === 'string' ? { name: body.name } : {}),
+          ...(typeof body.costPoints === 'number' ? { costPoints: body.costPoints } : {}),
+          ...(typeof body.active === 'boolean' ? { active: body.active } : {}),
+        };
+        const result = updateReward(options.db.db, auth.memberId, body.operationId, decodeURIComponent(adminRewardMatch[1]), rewardInput, { now });
         return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
       }
       if (request.method === 'GET' && url.pathname === '/api/admin/redemptions') {

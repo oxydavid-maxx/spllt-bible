@@ -139,7 +139,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
       headers: Object.fromEntries(
         Object.entries(request.headers).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value]),
       ),
-      body: request.method === 'PUT' || request.method === 'POST' ? await readBody(request) : undefined,
+      body: request.method === 'PUT' || request.method === 'POST' || request.method === 'PATCH' ? await readBody(request) : undefined,
     });
     response.statusCode = result.status;
     response.setHeader('content-type', 'application/json; charset=utf-8');
