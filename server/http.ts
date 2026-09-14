@@ -88,7 +88,8 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
       };
   const remoteConfig = createRemoteConfiguration();
   const reminderDelivery = options.reminderDelivery ?? remoteConfig.delivery;
-  const autostart = options.reminderWorker?.autostart ?? process.env.QINGMU_REMINDER_WORKER_AUTOSTART === 'true';
+  const disableMeetingReminders = process.env.QINGMU_DISABLE_MEETING_REMINDERS === 'true' || !options.fixtureToken;
+  const autostart = disableMeetingReminders ? false : options.reminderWorker?.autostart ?? process.env.QINGMU_REMINDER_WORKER_AUTOSTART === 'true';
   const remoteStatus = reminderDelivery?.enabled && autostart ? 'REMOTE_READY' as const : 'REMOTE_PENDING' as const;
   const worker = reminderDelivery?.enabled ? createReminderWorker({ db: database.db, send: reminderDelivery.send, now: options.reminderWorker?.now, intervalMs: options.reminderWorker?.intervalMs, timer: options.reminderWorker?.timer }) : null;
   const handle = createApiHandler({
@@ -98,6 +99,10 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     authMode: googleAudience ? 'google-only' : 'fixture',
     scheduleDates: canonicalSeptemberPlan.dates,
     pointPolicy,
+    autoProvisionGoogleMembers: Boolean(googleAudience && !options.fixtureToken),
+    disableMeetingReminders,
+    adminMemberIds: process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean),
+    adminGoogleSubjects: process.env.QINGMU_ADMIN_GOOGLE_SUBJECTS?.split(',').map((value) => value.trim()).filter(Boolean),
     ...(fixtureRoster
       ? {
           weeklyDates: ['2026-09-07', '2026-09-08'],

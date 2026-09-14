@@ -574,7 +574,7 @@ describe('native status errors after play returned, retry and scope isolation', 
       await persistAuthSession({ memberId: MEMBER, sessionToken: realToken() }, 60);
       r = await mountCompact(transport, '1TI.2');
       expect(playable(r)).toBe(false);
-      expect(bodyText(r)).toContain('暫時無法取得');
+      expect(r!.root.findAll(node => Boolean(node.props.accessibilityLabel)).map(node => String(node.props.accessibilityLabel)).join(' ')).toContain('重試');
       expect(bodyText(r)).not.toContain('這一章沒有朗讀');
       expect(bodyText(r)).not.toContain('官方無錄音');
       expect(openModals(r)).toHaveLength(0);

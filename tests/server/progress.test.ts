@@ -3,7 +3,7 @@ import { createDatabase } from '../../server/db';
 import { createApiHandler } from '../../server/routes';
 
 describe('progress API', () => {
-  it('returns masked group members and content pending status without raw peer names', async () => {
+  it('keeps the retired progress response scoped to the authenticated member', async () => {
     const db = createDatabase({
       members: [
         { id: 'google:self', displayName: '小明', groupId: 'A' },
@@ -11,7 +11,7 @@ describe('progress API', () => {
       ],
     });
     afterEach(() => db.close());
-    const api = createApiHandler({ db, fixtureToken: 'test-token' });
+    const api = createApiHandler({ db, fixtureToken: 'test-token', now: () => new Date('2026-09-14T04:00:00.000Z') });
     const headers = {
       authorization: 'Bearer test-token',
       'x-qingmu-member-id': 'google:self',
@@ -29,8 +29,8 @@ describe('progress API', () => {
     expect(response.status).toBe(200);
     expect(response.body.members).toEqual([
       { id: 'google:self', label: '小明', isSelf: true, status: 'COMPLETED' },
-      { id: 'google:other', label: 'O小O', isSelf: false, status: 'UNREPORTED' },
     ]);
+    expect(response.body.totalMembers).toBe(1);
     expect(JSON.stringify(response.body)).not.toContain('王小明');
     expect(capabilities.body.status).toBe('C_PENDING_ACCESS');
   });

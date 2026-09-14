@@ -4,7 +4,6 @@ import type {
   NotificationRequestInput,
   NotificationTriggerInput,
 } from 'expo-notifications';
-import { canonicalSeptemberPlan } from '../domain/calendar';
 
 export type ReminderKind = 'READING' | 'MEETING';
 export type ReminderStatus = 'ACTIVE' | 'CANCELLED';
@@ -22,6 +21,13 @@ export interface ReminderSpec {
   status: ReminderStatus;
 }
 
+/** The account-owned reading schedule projected by /api/me/reading-days. */
+export interface ReadingScheduleEntry {
+  taskDate: string;
+  planId: string;
+  scheduleRevision?: number;
+}
+
 export interface ReminderNotificationAdapter {
   getPermissionsAsync: () => Promise<NotificationPermissionsStatus>;
   requestPermissionsAsync: () => Promise<NotificationPermissionsStatus>;
@@ -33,34 +39,42 @@ export interface ReminderNotificationAdapter {
 
 export const REMINDER_NOTIFICATION_CHANNEL_ID = 'qingmu-reading-reminders';
 
-export function buildNextReadingReminderSpec(memberId: string, readingTime: string, now = new Date()): ReminderSpec | null {
-  return buildUpcomingReadingReminderSpecs(memberId, readingTime, now)[0] ?? null;
+export function buildNextReadingReminderSpec(memberId: string, readingTime: string, now = new Date(), schedule: readonly ReadingScheduleEntry[] = []): ReminderSpec | null {
+  return buildUpcomingReadingReminderSpecs(memberId, readingTime, now, schedule)[0] ?? null;
 }
 
-export function buildUpcomingReadingReminderSpecs(memberId: string, readingTime: string, now = new Date()): ReminderSpec[] {
+export function buildUpcomingReadingReminderSpecs(memberId: string, readingTime: string, now = new Date(), schedule: readonly ReadingScheduleEntry[] = []): ReminderSpec[] {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(readingTime)) return [];
-  return canonicalSeptemberPlan.dates
-    .map((taskDate) => buildReadingSpec(memberId, taskDate, readingTime))
-    .filter((spec) => new Date(spec.triggerAt).getTime() > now.getTime());
+  return schedule
+    .filter((entry) => validDateOnly(entry.taskDate) && entry.planId.trim().length > 0)
+    .map((entry) => buildReadingSpec(memberId, entry.taskDate, entry.planId, readingTime, entry.scheduleRevision ?? 0))
+    .filter((spec) => new Date(spec.triggerAt).getTime() > now.getTime())
+    .sort((left, right) => left.triggerAt.localeCompare(right.triggerAt));
 }
 
-function buildReadingSpec(memberId: string, taskDate: string, readingTime: string): ReminderSpec {
+function validDateOnly(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T12:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function buildReadingSpec(memberId: string, taskDate: string, planId: string, readingTime: string, scheduleRevision: number): ReminderSpec {
   return {
     reminderId: `reading:${memberId}:${taskDate}`,
     memberId,
     kind: 'READING',
-    targetId: 'church-2026-09',
+    targetId: planId,
     taskDate,
-    scheduleRevision: 0,
+    scheduleRevision,
     triggerAt: new Date(`${taskDate}T${readingTime}:00+08:00`).toISOString(),
     route: `/today?date=${taskDate}`,
     status: 'ACTIVE',
   };
 }
 
-export function buildReadingReminderSpecForDate(memberId: string, taskDate: string, readingTime: string): ReminderSpec | null {
-  if (!/^2026-09-\d{2}$/.test(taskDate) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(readingTime)) return null;
-  return buildReadingSpec(memberId, taskDate, readingTime);
+export function buildReadingReminderSpecForDate(memberId: string, taskDate: string, readingTime: string, planId: string, scheduleRevision = 0): ReminderSpec | null {
+  if (!validDateOnly(taskDate) || !planId.trim() || !/^([01]\d|2[0-3]):[0-5]\d$/.test(readingTime)) return null;
+  return buildReadingSpec(memberId, taskDate, planId, readingTime, scheduleRevision);
 }
 
 const nativeNotifications: ReminderNotificationAdapter = {
@@ -118,6 +132,13 @@ export function createReminderScheduler(adapter: ReminderNotificationAdapter = n
     await Promise.all(scheduled.filter((request) => request.memberId === memberId).map((request) => cancel(request.reminderId)));
   }
 
+  async function cancelRetiredMeetingReminders(): Promise<void> {
+    const scheduled = await adapter.getAllScheduledNotificationsAsync();
+    await Promise.all(scheduled
+      .filter((request) => request.content.data?.kind === 'MEETING' || reminderIdOf(request)?.startsWith('meeting:'))
+      .map((request) => adapter.cancelScheduledNotificationAsync(request.identifier)));
+  }
+
   async function requestPermission(): Promise<'granted' | 'denied'> {
     await adapter.setNotificationChannelAsync?.(REMINDER_NOTIFICATION_CHANNEL_ID, { name: '青牧提醒', importance: 4, vibrationPattern: [0, 250, 250, 250] });
     const current = await adapter.getPermissionsAsync();
@@ -165,7 +186,9 @@ export function createReminderScheduler(adapter: ReminderNotificationAdapter = n
     });
   }
 
-  return { schedule, cancel, cancelForMember, list, requestPermission };
+  return { schedule, cancel, cancelForMember, cancelRetiredMeetingReminders, list, requestPermission };
 }
 
-export type ReminderScheduler = ReturnType<typeof createReminderScheduler>;
+export type ReminderScheduler = Omit<ReturnType<typeof createReminderScheduler>, 'cancelRetiredMeetingReminders'> & {
+  cancelRetiredMeetingReminders?: () => Promise<void>;
+};

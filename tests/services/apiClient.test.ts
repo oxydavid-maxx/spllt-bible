@@ -50,4 +50,13 @@ describe('session onboarding client', () => {
     await expect(client.getProgress('2026-09-08')).resolves.toBeNull();
     expect(expiry).toHaveBeenCalledTimes(1);
   });
+
+  it('parses the authenticated reading-day schedule with the server completion window', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      today: '2026-09-14', timezone: 'Asia/Taipei',
+      days: [{ taskDate: '2026-10-01', planId: 'church-2026-10', references: ['REV.1'], sourceRevision: 2, sourceDigest: 'digest', status: 'UNREPORTED', revision: 0, canComplete: false }],
+    }), { status: 200 }));
+    const client = createApiClient({ baseUrl: 'https://api.example.test', token: 'token', memberId: 'member:one', fetchImpl });
+    await expect(client.getReadingDays('2026-09-14', '2026-10-01')).resolves.toMatchObject({ days: [{ taskDate: '2026-10-01', planId: 'church-2026-10', canComplete: false }] });
+  });
 });

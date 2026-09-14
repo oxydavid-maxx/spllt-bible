@@ -40,7 +40,7 @@ describe('authenticated fixed group/RPG profile', () => {
       body: {
         groupId: 'G01',
         groupName: 'A小組',
-        rpgs: [{ rpgId: 'G01-RPG1', rpgName: 'A-RPG1', openChatUrl: null, callUrl: 'https://meet.google.com/pilot-test', callProvider: 'meet', callScope: 'TEST_ONLY', linkStatus: 'READY', linkRevision: 1 }],
+        rpgs: [{ rpgId: 'G01-RPG1', rpgName: 'A-RPG1', openChatUrl: null, callUrl: null, callProvider: null, callScope: null, linkStatus: 'READY', linkRevision: 1, meeting: null, roster: null }],
       },
     });
     database.close();

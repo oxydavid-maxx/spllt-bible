@@ -2,13 +2,23 @@
   "expo": {
     "name": "青牧青年",
     "slug": "qingmu-youth",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "scheme": "org.qingmu.youth",
     "userInterfaceStyle": "automatic",
     "plugins": [
       "expo-router",
       "expo-sqlite",
+      "./plugins/withQingmuReleaseSigning",
+      "./plugins/withQingmuNetworkSecurity",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "允許青牧掃描好友 QR",
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-local-authentication",
       "expo-secure-store",
       "expo-font",
       "expo-status-bar",
@@ -17,6 +27,7 @@
     ],
     "android": {
       "package": "org.qingmu.youth",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#1E5C4B"
       }

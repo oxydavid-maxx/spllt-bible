@@ -2,6 +2,8 @@ export type CompletionStatus = 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED';
 
 export interface ReadingDay {
   date: string;
+  /** Optional per-date source plan; legacy bundled plans use ReadingPlan.planId. */
+  planId?: string;
   sourceRows: string[];
   references: string[];
 }

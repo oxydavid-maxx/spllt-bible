@@ -30,7 +30,7 @@ describe('reminder reconciliation', () => {
     expect((await scheduler.list()).map((item) => item.memberId)).toEqual(['member:two']);
   });
 
-  it('owns and schedules the complete future canonical reading set', async () => {
+  it('owns and schedules the complete future account reading set', async () => {
     const fake = fakeAdapter();
     const scheduler = createReminderScheduler(fake.adapter);
     const reconciler = createReminderReconciler(scheduler);
@@ -39,8 +39,19 @@ describe('reminder reconciliation', () => {
     expect((await scheduler.list()).map((item) => item.taskDate)).toEqual(['2026-09-12', '2026-09-15']);
   });
 
+  it('replaces a same-date reminder when its source plan revision changes', async () => {
+    const fake = fakeAdapter();
+    const scheduler = createReminderScheduler(fake.adapter);
+    const reconciler = createReminderReconciler(scheduler);
+    await reconciler.reconcile({ memberId: 'member:one', readingEnabled: true, meetingEnabled: false, remoteDeliveryStatus: 'LOCAL_ONLY', reading: null, readings: [reading], meeting: null });
+    const updated = { ...reading, targetId: 'plan-october', scheduleRevision: 4 };
+    const result = await reconciler.reconcile({ memberId: 'member:one', readingEnabled: true, meetingEnabled: false, remoteDeliveryStatus: 'LOCAL_ONLY', reading: null, readings: [updated], meeting: null });
+    expect(result).toMatchObject({ cancelled: [reading.reminderId], created: [reading.reminderId] });
+    expect((await scheduler.list())[0]).toMatchObject({ targetId: 'plan-october', scheduleRevision: 4 });
+  });
+
   it('refetches latest state on tap and suppresses cancelled/stale events', () => {
-    expect(resolveMeetingReminderTap({ meetingId: 'm1', scheduleRevision: 1 }, { meetingId: 'm1', scheduleRevision: 1, status: 'SCHEDULED' })).toEqual({ route: '/groups', meetingId: 'm1' });
+    expect(resolveMeetingReminderTap({ meetingId: 'm1', scheduleRevision: 1 }, { meetingId: 'm1', scheduleRevision: 1, status: 'SCHEDULED' })).toEqual({ route: '/today', meetingId: 'm1' });
     expect(resolveMeetingReminderTap({ meetingId: 'm1', scheduleRevision: 1 }, { meetingId: 'm1', scheduleRevision: 2, status: 'SCHEDULED' })).toBeNull();
     expect(resolveMeetingReminderTap({ meetingId: 'm1', scheduleRevision: 1 }, { meetingId: 'm1', scheduleRevision: 1, status: 'CANCELLED' })).toBeNull();
   });

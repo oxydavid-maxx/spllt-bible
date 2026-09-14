@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { randomUUID } from 'node:crypto';
 import { maskForViewer } from '../src/domain/masking';
 import { calculateNetPoints, type PointEvent, type PointPolicy } from '../src/domain/points';
 import type { ContentGateStatus } from '../src/domain/types';
@@ -8,10 +9,32 @@ import { createSessionToken } from './session';
 import { parseCapabilityQuery } from './contentCapabilities';
 import { createChapterAudioResolver } from './genericChapterAudio';
 import { getMemberGroupProfile } from './groups';
-import { buildCompletionOperationFingerprint } from './operationFingerprint';
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
 import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
+import {
+  GAMIFICATION_POLICY_VERSION,
+  GAMIFICATION_POINT_AMOUNT,
+  canViewMember,
+  claimFriend,
+  createReward,
+  ensureGamificationSchema,
+  getPeople,
+  getRedemptions,
+  getRewards,
+  getScoreProfile,
+  getViewerCapabilities,
+  issueFriendToken,
+  mutateCompletion,
+  readReadingDays,
+  removeFriend,
+  redeemReward,
+  reverseRedemption,
+  setRewardTarget,
+  updateReward,
+  type GamificationError,
+} from './gamification';
+import { isValidDateOnly, taipeiDate } from '../src/domain/gamificationV1';
 
 export interface ApiRequest {
   method: string;
@@ -23,6 +46,7 @@ export interface ApiRequest {
 export interface ApiResponse {
   status: number;
   body: Record<string, unknown>;
+  headers?: Record<string, string>;
 }
 
 export interface ApiHandlerOptions {
@@ -41,6 +65,11 @@ export interface ApiHandlerOptions {
   pointPolicy?: PointPolicy;
   weeklyDates?: string[];
   scheduleDates?: string[];
+  adminMemberIds?: string[];
+  adminGoogleSubjects?: string[];
+  autoProvisionGoogleMembers?: boolean;
+  disableMeetingReminders?: boolean;
+  now?: () => Date;
 }
 
 const PLAN_ID = 'church-2026-09';
@@ -52,6 +81,28 @@ const DEFAULT_POLICY: PointPolicy = {
 
 function json(status: number, body: Record<string, unknown>): ApiResponse {
   return { status, body };
+}
+
+function gamificationJson(status: number, body: Record<string, unknown>): ApiResponse {
+  return { status, body, headers: { 'cache-control': 'no-store' } };
+}
+
+function gamificationError(error: GamificationError): ApiResponse {
+  return gamificationJson(error.status, {
+    error: {
+      code: error.code,
+      retryable: false,
+      ...(error.details ? { details: error.details } : {}),
+    },
+  });
+}
+
+function isGamificationError(value: unknown): value is GamificationError {
+  return Boolean(value && typeof value === 'object' && typeof (value as Record<string, unknown>).code === 'string' && typeof (value as Record<string, unknown>).status === 'number');
+}
+
+function isGamificationPath(pathname: string): boolean {
+  return pathname === '/api/me/profile' || pathname.startsWith('/api/me/reading-days') || pathname.startsWith('/api/me/completions/') || pathname.startsWith('/api/me/reward-target') || pathname.startsWith('/api/me/redemptions') || pathname.startsWith('/api/points/') || pathname === '/api/rewards' || pathname.startsWith('/api/friends/') || pathname.startsWith('/api/admin/');
 }
 
 function parseBody(body: string | undefined): Record<string, unknown> {
@@ -73,11 +124,6 @@ function memberExists(db: DatabaseSync, memberId: string): boolean {
   return Boolean(db.prepare('SELECT id FROM members WHERE id = ?').get(memberId));
 }
 
-function parseStatus(value: unknown): 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED' {
-  if (value === 'UNREPORTED' || value === 'NOT_COMPLETED' || value === 'COMPLETED') return value;
-  throw new Error('INVALID_STATUS');
-}
-
 function parsePath(url: string): URL {
   return new URL(url, 'http://127.0.0.1');
 }
@@ -91,118 +137,6 @@ function defaultWeeklyDates(scheduleDates: string[] | undefined, date: string): 
   start.setUTCDate(selected.getUTCDate() - daysFromMonday);
   const startDate = start.toISOString().slice(0, 10);
   return scheduleDates.filter((scheduledDate) => scheduledDate >= startDate && scheduledDate <= date);
-}
-
-function completionResponse(
-  db: DatabaseSync,
-  memberId: string,
-  planId: string,
-  taskDate: string,
-  status: 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED',
-  revision: number,
-  operationId: string,
-  policy: PointPolicy,
-): Record<string, unknown> {
-  const events = db
-    .prepare('SELECT event_id, completion_key, status FROM point_events WHERE member_id = ? AND policy_version = ?')
-    .all(memberId, policy.version)
-    .map((row) => ({
-      eventId: String((row as Record<string, unknown>).event_id),
-      completionKey: String((row as Record<string, unknown>).completion_key),
-      status: String((row as Record<string, unknown>).status) as PointEvent['status'],
-    }));
-  const pointResult = calculateNetPoints(events, policy);
-  return {
-    memberId,
-    planId,
-    taskDate,
-    status,
-    revision,
-    syncStatus: 'CONFIRMED',
-    operationId,
-    points: pointResult.points,
-    pointStatus: policy.status,
-  };
-}
-
-function handleCompletion(
-  db: DatabaseSync,
-  memberId: string,
-  planId: string,
-  taskDate: string,
-  body: Record<string, unknown>,
-  policy: PointPolicy,
-): ApiResponse {
-  if (planId !== PLAN_ID || !/^2026-09-\d{2}$/.test(taskDate)) return json(404, { error: 'UNKNOWN_TASK' });
-  const operationId = body.operation_id;
-  const expectedRevision = body.expected_revision;
-  if (typeof operationId !== 'string' || !operationId.trim() || !Number.isInteger(expectedRevision)) {
-    return json(400, { error: 'INVALID_COMPLETION_COMMAND' });
-  }
-  const status = parseStatus(body.status);
-  const fingerprint = buildCompletionOperationFingerprint({ memberId, planId, taskDate, status });
-  const existingOperation = db.prepare('SELECT response_json, command_fingerprint FROM operations WHERE operation_id = ?').get(operationId) as
-    | { response_json: string; command_fingerprint: string | null }
-    | undefined;
-  if (existingOperation) {
-    if (!existingOperation.command_fingerprint) return json(409, { error: 'OPERATION_REPLAY_UNVERIFIED' });
-    if (existingOperation.command_fingerprint !== fingerprint) return json(409, { error: 'OPERATION_ID_REUSED' });
-    const cached = JSON.parse(existingOperation.response_json) as Record<string, unknown>;
-    const cachedMemberId = typeof cached.memberId === 'string' ? cached.memberId : null;
-    const cachedPlanId = typeof cached.planId === 'string' ? cached.planId : null;
-    const cachedTaskDate = typeof cached.taskDate === 'string' ? cached.taskDate : null;
-    const cachedStatus = parseStatus(cached.status);
-    const cachedRevision = Number(cached.revision);
-    const current = cachedMemberId && cachedPlanId && cachedTaskDate
-      ? db.prepare('SELECT status, revision FROM completions WHERE member_id = ? AND plan_id = ? AND task_date = ?').get(cachedMemberId, cachedPlanId, cachedTaskDate) as { status: string; revision: number } | undefined
-      : undefined;
-    if (!current || current.status !== cachedStatus || current.revision !== cachedRevision) {
-      return json(409, {
-        error: 'OPERATION_REPLAY_STALE',
-        status: current?.status ?? 'UNREPORTED',
-        revision: current?.revision ?? 0,
-      });
-    }
-    return json(200, cached);
-  }
-
-  const current = db
-    .prepare('SELECT status, revision FROM completions WHERE member_id = ? AND plan_id = ? AND task_date = ?')
-    .get(memberId, planId, taskDate) as { status: string; revision: number } | undefined;
-  const currentRevision = current?.revision ?? 0;
-  if (expectedRevision !== currentRevision) {
-    return json(409, {
-      error: 'REVISION_CONFLICT',
-      status: current?.status ?? 'UNREPORTED',
-      revision: currentRevision,
-    });
-  }
-
-  const revision = currentRevision + 1;
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    if (current) {
-      db.prepare(
-        'UPDATE completions SET status = ?, revision = ?, sync_status = ?, last_operation_id = ? WHERE member_id = ? AND plan_id = ? AND task_date = ?',
-      ).run(status, revision, 'CONFIRMED', operationId, memberId, planId, taskDate);
-    } else {
-      db.prepare(
-        'INSERT INTO completions (member_id, plan_id, task_date, status, revision, sync_status, last_operation_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      ).run(memberId, planId, taskDate, status, revision, 'CONFIRMED', operationId);
-    }
-    if (policy.status === 'ACTIVE') {
-      db.prepare(
-        'INSERT OR IGNORE INTO point_events (event_id, member_id, completion_key, status, policy_version) VALUES (?, ?, ?, ?, ?)',
-      ).run(operationId, memberId, `${memberId}:${planId}:${taskDate}`, status, policy.version);
-    }
-    const response = completionResponse(db, memberId, planId, taskDate, status, revision, operationId, policy);
-    db.prepare('INSERT INTO operations (operation_id, response_json, command_fingerprint) VALUES (?, ?, ?)').run(operationId, JSON.stringify(response), fingerprint);
-    db.exec('COMMIT');
-    return json(200, response);
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
-  }
 }
 
 interface PeriodProgress {
@@ -230,7 +164,7 @@ function getPeriodProgress(
 ): PeriodProgress | undefined {
   if (periodDates.length === 0) return undefined;
   const placeholders = periodDates.map(() => '?').join(',');
-  const rows = db.prepare(`SELECT member_id, task_date, status FROM completions WHERE plan_id = ? AND task_date IN (${placeholders})`).all(PLAN_ID, ...periodDates) as Array<{ member_id: string; task_date: string; status: string }>;
+  const rows = db.prepare(`SELECT member_id, task_date, status FROM completions WHERE member_id = ? AND plan_id = ? AND task_date IN (${placeholders})`).all(viewerId, PLAN_ID, ...periodDates) as Array<{ member_id: string; task_date: string; status: string }>;
   const completedTasks = new Set(rows.filter((row) => row.status === 'COMPLETED').map((row) => `${row.member_id}:${row.task_date}`));
   const personalCompleted = new Set(rows.filter((row) => row.member_id === viewerId && row.status === 'COMPLETED').map((row) => row.task_date)).size;
   const events = db
@@ -241,7 +175,9 @@ function getPeriodProgress(
       return { eventId: item.event_id, completionKey: item.completion_key, status: item.status };
     })
     .filter((event) => periodDates.some((periodDate) => event.completionKey === `${viewerId}:${PLAN_ID}:${periodDate}`));
-  const points = calculateNetPoints(events, policy).points;
+  const entitlement = db.prepare(`SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total
+    FROM daily_point_entitlements WHERE member_id = ? AND active = 1 AND task_date IN (${placeholders})`).get(viewerId, ...periodDates) as { count: number; total: number };
+  const points = Number(entitlement.count) > 0 ? Math.max(0, Number(entitlement.total)) : calculateNetPoints(events, policy).points;
   const target = periodDates.length * memberCount;
   const result: PeriodProgress = {
     periodStart: periodDates[0],
@@ -263,14 +199,24 @@ function getPeriodProgress(
   return result;
 }
 
+function personalEarnedPoints(db: DatabaseSync, memberId: string, policy: PointPolicy): number {
+  const entitlement = db.prepare('SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total FROM daily_point_entitlements WHERE member_id = ? AND active = 1').get(memberId) as { count: number; total: number };
+  if (Number(entitlement.count) > 0) return Math.max(0, Number(entitlement.total));
+  const events = db.prepare('SELECT event_id, completion_key, status FROM point_events WHERE member_id = ? AND policy_version = ?').all(memberId, policy.version).map((row) => {
+    const item = row as { event_id: string; completion_key: string; status: PointEvent['status'] };
+    return { eventId: item.event_id, completionKey: item.completion_key, status: item.status };
+  });
+  return calculateNetPoints(events, policy).points;
+}
+
 function handleProgress(db: DatabaseSync, viewerId: string, date: string, policy: PointPolicy, weeklyDates?: string[], scheduleDates?: string[], periodStart?: string, periodEnd?: string): ApiResponse {
   if (!/^2026-09-\d{2}$/.test(date)) return json(400, { error: 'INVALID_DATE' });
-  const viewer = db.prepare('SELECT group_id FROM members WHERE id = ?').get(viewerId) as { group_id: string } | undefined;
+  const viewer = db.prepare('SELECT id, display_name FROM members WHERE id = ?').get(viewerId) as { id: string; display_name: string } | undefined;
   if (!viewer) return json(403, { error: 'UNKNOWN_MEMBER' });
-  const members = db
-    .prepare('SELECT id, display_name, group_id FROM members WHERE group_id = ? ORDER BY id')
-    .all(viewer.group_id)
-    .map((row) => row as { id: string; display_name: string; group_id: string });
+  // Keep this legacy response shape for older clients, but scope every
+  // projection to the authenticated member. The retired group surface must
+  // never disclose peer names, statuses, counts, or aggregate points.
+  const members = [viewer];
   const records = new Map(
     db
       .prepare('SELECT member_id, status, revision FROM completions WHERE plan_id = ? AND task_date = ?')
@@ -291,13 +237,6 @@ function handleProgress(db: DatabaseSync, viewerId: string, date: string, policy
   const completed = masked.filter((member) => member.status === 'COMPLETED').length;
   const personal = masked.find((member) => member.isSelf);
   const personalRecord = records.get(viewerId);
-  const pointEvents = db
-    .prepare('SELECT event_id, completion_key, status FROM point_events WHERE member_id = ? AND policy_version = ?')
-    .all(viewerId, policy.version)
-    .map((row) => {
-      const item = row as { event_id: string; completion_key: string; status: PointEvent['status'] };
-      return { eventId: item.event_id, completionKey: item.completion_key, status: item.status };
-    });
   const requestedPeriodDates = periodStart && periodEnd && scheduleDates
     ? scheduleDates.filter((scheduledDate) => scheduledDate >= periodStart && scheduledDate <= periodEnd && scheduledDate <= date)
     : undefined;
@@ -319,7 +258,7 @@ function handleProgress(db: DatabaseSync, viewerId: string, date: string, policy
       ? {
           status: personal.status,
           revision: personalRecord?.revision ?? 0,
-          points: calculateNetPoints(pointEvents, policy).points,
+          points: personalEarnedPoints(db, viewerId, policy),
         }
       : null,
     ...(weekly ? { weekly } : {}),
@@ -334,10 +273,30 @@ function handleProgress(db: DatabaseSync, viewerId: string, date: string, policy
 }
 
 export function createApiHandler(options: ApiHandlerOptions) {
+  ensureGamificationSchema(options.db.db);
+  if (options.scheduleDates && options.scheduleDates.length > 0) {
+    // Existing tests and local deployments can narrow the aggregate period without
+    // replacing the canonical reading-day source. Dates already present retain their
+    // references; a new date is represented by its plan and an empty reference list
+    // only when the caller has explicitly inserted it into reading_days.
+  }
   const resolveChapterAudio = createChapterAudioResolver();
   const sessions = { resolveDevice: (token: string) => resolveDeviceSession(options.db.db, token), isLegacyRevoked: (token: string) => isLegacySessionRevoked(options.db.db, token) };
   const remoteStatus = options.remoteReminderStatus ?? 'REMOTE_PENDING';
   const policy = options.pointPolicy ?? DEFAULT_POLICY;
+  const configuredAdminMemberIds = options.adminMemberIds ?? (process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean) ?? []);
+  const configuredAdminSubjects = options.adminGoogleSubjects ?? (process.env.QINGMU_ADMIN_GOOGLE_SUBJECTS?.split(',').map((value) => value.trim()).filter(Boolean) ?? []);
+  const resolvedAdminMemberIds = (): string[] => {
+    const ids = new Set(configuredAdminMemberIds);
+    if (configuredAdminSubjects.length > 0) {
+      const placeholders = configuredAdminSubjects.map(() => '?').join(',');
+      const rows = options.db.db.prepare(`SELECT member_id FROM identity_bindings WHERE provider='google' AND subject IN (${placeholders})`).all(...configuredAdminSubjects) as Array<{ member_id: string }>;
+      for (const row of rows) ids.add(row.member_id);
+    }
+    return [...ids];
+  };
+  const now = options.now ?? (() => new Date());
+  const disableMeetingReminders = options.disableMeetingReminders ?? process.env.QINGMU_DISABLE_MEETING_REMINDERS === 'true';
   return async function handle(request: ApiRequest): Promise<ApiResponse> {
     const url = parsePath(request.url);
     if (request.method === 'GET' && url.pathname === '/api/health') {
@@ -375,15 +334,37 @@ export function createApiHandler(options: ApiHandlerOptions) {
       } catch (error) { return json(error instanceof Error && error.message === 'INVALID_JSON' ? 400 : 500, { error: error instanceof Error && error.message === 'INVALID_JSON' ? 'INVALID_JSON' : 'DEVICE_REMINDER_ERROR' }); }
     }
     if (request.method === 'POST' && url.pathname === '/api/session/google' && options.productionGoogleAuth && options.sessionSecret) {
-      const auth = await authenticateGoogle(request.headers, options.productionGoogleAuth);
-      if ('status' in auth) return json(auth.status, { error: auth.error });
-      if (!isMemberEnabled(options.db.db, auth.memberId)) return json(403, { error: 'ACCOUNT_DISABLED' });
+      const authorization = request.headers.authorization ?? request.headers.Authorization;
+      const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+      if (!token) return json(401, { error: 'AUTH_REQUIRED' });
+      let identity: Awaited<ReturnType<NonNullable<ApiHandlerOptions['productionGoogleAuth']>['verify']>>;
+      try { identity = await options.productionGoogleAuth.verify(token); } catch { return json(401, { error: 'AUTH_INVALID' }); }
+      let memberId = (options.db.db.prepare('SELECT member_id FROM identity_bindings WHERE provider = ? AND subject = ?').get(identity.provider, identity.subject) as { member_id: string } | undefined)?.member_id ?? null;
+      if (!memberId) memberId = await options.productionGoogleAuth.resolveMember(identity);
+      if (!memberId && options.autoProvisionGoogleMembers) {
+        memberId = randomUUID();
+        try {
+          options.db.db.exec('BEGIN IMMEDIATE');
+          const existing = options.db.db.prepare('SELECT member_id FROM identity_bindings WHERE provider = ? AND subject = ?').get(identity.provider, identity.subject) as { member_id: string } | undefined;
+          if (existing) memberId = existing.member_id;
+          else {
+            options.db.db.prepare('INSERT INTO members(id, display_name, group_id) VALUES(?,?,?)').run(memberId, identity.displayName?.trim() || '青牧會員', `unassigned:${memberId}`);
+            options.db.db.prepare('INSERT INTO identity_bindings(provider, subject, member_id, created_at) VALUES(?,?,?,?)').run(identity.provider, identity.subject, memberId, Date.now());
+          }
+          options.db.db.exec('COMMIT');
+        } catch (error) {
+          try { options.db.db.exec('ROLLBACK'); } catch { /* preserve original failure */ }
+          throw error;
+        }
+      }
+      if (!memberId) return json(403, { error: 'UNKNOWN_MEMBER' });
+      if (!isMemberEnabled(options.db.db, memberId)) return json(403, { error: 'ACCOUNT_DISABLED' });
       let body: Record<string, unknown>;
       try { body = parseBody(request.body); } catch { return json(400, { error: 'INVALID_JSON' }); }
-      if (body.session_type === 'device') return json(200, createDeviceSession(options.db.db, auth.memberId));
+      if (body.session_type === 'device') return json(200, createDeviceSession(options.db.db, memberId));
       return json(200, {
-        sessionToken: createSessionToken(auth.memberId, options.sessionSecret),
-        memberId: auth.memberId,
+        sessionToken: createSessionToken(memberId, options.sessionSecret),
+        memberId,
         expiresInSeconds: 3600,
       });
     }
@@ -419,16 +400,118 @@ export function createApiHandler(options: ApiHandlerOptions) {
     const auth = options.productionGoogleAuth && options.sessionSecret
       ? await authenticateSessionOrGoogle(request.headers, options.productionGoogleAuth, options.sessionSecret, sessions)
       : authenticate(request.headers, options.fixtureToken ?? '', (id) => memberExists(options.db.db, id));
-    if ('status' in auth) return json(auth.status, { error: auth.error });
-    if (memberExists(options.db.db, auth.memberId) && !isMemberEnabled(options.db.db, auth.memberId)) return json(401, { error: 'ACCOUNT_DISABLED' });
+    if ('status' in auth) return isGamificationPath(url.pathname) ? gamificationError({ status: auth.status, code: auth.error }) : json(auth.status, { error: auth.error });
+    if (memberExists(options.db.db, auth.memberId) && !isMemberEnabled(options.db.db, auth.memberId)) return isGamificationPath(url.pathname) ? gamificationError({ status: 401, code: 'AUTH_INVALID' }) : json(401, { error: 'ACCOUNT_DISABLED' });
     if (request.method === 'POST' && url.pathname === '/api/session/device' && options.productionGoogleAuth && options.sessionSecret) {
       return json(200, createDeviceSession(options.db.db, auth.memberId));
     }
 
     try {
+      if (request.method === 'GET' && url.pathname === '/api/me/reading-days') {
+        const today = taipeiDate(now());
+        const from = url.searchParams.get('from') ?? today;
+        const to = url.searchParams.get('to') ?? today;
+        if (!isValidDateOnly(from) || !isValidDateOnly(to) || from > to) return gamificationError({ status: 400, code: 'INVALID_DATE_RANGE' });
+        const span = Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000) + 1;
+        if (span > 62) return gamificationError({ status: 400, code: 'DATE_RANGE_TOO_LARGE' });
+        return gamificationJson(200, { days: readReadingDays(options.db.db, from, to, today, auth.memberId), timezone: 'Asia/Taipei', today });
+      }
+      if (request.method === 'GET' && url.pathname === '/api/rewards') {
+        return gamificationJson(200, { rewards: getRewards(options.db.db) });
+      }
+      if (request.method === 'GET' && url.pathname === '/api/points/people') {
+        const scope = url.searchParams.get('scope');
+        if (scope !== 'friends' && scope !== 'all') return gamificationError({ status: 400, code: 'INVALID_SCOPE' });
+        const people = getPeople(options.db.db, auth.memberId, scope, resolvedAdminMemberIds());
+        return Array.isArray(people) ? gamificationJson(200, { scope, people }) : gamificationError(people);
+      }
+      const scoreProfileMatch = url.pathname.match(/^\/api\/points\/profiles\/([^/]+)$/);
+      if (request.method === 'GET' && scoreProfileMatch) {
+        const memberId = decodeURIComponent(scoreProfileMatch[1]);
+        const scope = url.searchParams.get('scope') ?? (memberId === auth.memberId ? 'me' : 'friends');
+        if (scope !== 'me' && scope !== 'friends' && scope !== 'all') return gamificationError({ status: 400, code: 'INVALID_SCOPE' });
+        if (scope === 'me' && memberId !== auth.memberId) return gamificationError({ status: 404, code: 'MEMBER_NOT_ACCESSIBLE' });
+        const adminMembers = resolvedAdminMemberIds();
+        if (scope === 'all' && !adminMembers.includes(auth.memberId)) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
+        if (scope === 'friends' && !canViewMember(options.db.db, auth.memberId, memberId, [])) return gamificationError({ status: 404, code: 'MEMBER_NOT_ACCESSIBLE' });
+        const anchorMonth = url.searchParams.get('anchorMonth') ?? taipeiDate(now()).slice(0, 7);
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(anchorMonth)) return gamificationError({ status: 400, code: 'INVALID_MONTH' });
+        if (anchorMonth > taipeiDate(now()).slice(0, 7)) return gamificationError({ status: 400, code: 'FUTURE_MONTH_NOT_ALLOWED' });
+        const profile = getScoreProfile(options.db.db, auth.memberId, memberId, anchorMonth, adminMembers);
+        if (isGamificationError(profile)) return gamificationError(profile);
+        if (scope !== 'me' && scope !== 'all') delete profile.private;
+        if (scope === 'all' && !adminMembers.includes(auth.memberId)) delete profile.private;
+        return gamificationJson(200, profile as unknown as Record<string, unknown>);
+      }
+      if (request.method === 'GET' && url.pathname === '/api/me/redemptions') {
+        return gamificationJson(200, { redemptions: getRedemptions(options.db.db, auth.memberId) });
+      }
+      if (request.method === 'PUT' && url.pathname === '/api/me/reward-target') {
+        const body = parseBody(request.body);
+        if (typeof body.rewardId !== 'string' || !body.rewardId.trim()) return gamificationError({ status: 400, code: 'INVALID_REWARD' });
+        const result = setRewardTarget(options.db.db, auth.memberId, body.rewardId, { now });
+        return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
+      }
+      if (request.method === 'POST' && url.pathname === '/api/friends/qr') {
+        const result = issueFriendToken(options.db.db, auth.memberId, { now });
+        return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
+      }
+      if (request.method === 'POST' && url.pathname === '/api/friends/claim') {
+        const body = parseBody(request.body);
+        if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.token !== 'string' || !body.token.trim()) return gamificationError({ status: 400, code: 'INVALID_FRIEND_CLAIM' });
+        const result = claimFriend(options.db.db, auth.memberId, body.operationId, body.token, { now });
+        return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
+      }
+      const removeFriendMatch = url.pathname.match(/^\/api\/friends\/([^/]+)$/);
+      if (request.method === 'DELETE' && removeFriendMatch) {
+        const result = removeFriend(options.db.db, auth.memberId, decodeURIComponent(removeFriendMatch[1]), { now });
+        return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, { removed: result });
+      }
+      const admin = resolvedAdminMemberIds().includes(auth.memberId);
+      if (request.method === 'POST' && url.pathname === '/api/admin/rewards') {
+        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
+        const body = parseBody(request.body);
+        if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.name !== 'string' || typeof body.costPoints !== 'number') return gamificationError({ status: 400, code: 'INVALID_REWARD' });
+        const replay = Boolean(options.db.db.prepare('SELECT 1 FROM mutation_receipts WHERE actor_member_id=? AND operation_id=?').get(auth.memberId, body.operationId));
+        const result = createReward(options.db.db, auth.memberId, body.operationId, body.name, body.costPoints, { now });
+        return isGamificationError(result) ? gamificationError(result) : gamificationJson(replay ? 200 : 201, result);
+      }
+      const adminRewardMatch = url.pathname.match(/^\/api\/admin\/rewards\/([^/]+)$/);
+      if (request.method === 'PATCH' && adminRewardMatch) {
+        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
+        const body = parseBody(request.body);
+        if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.expectedRevision !== 'number') return gamificationError({ status: 400, code: 'INVALID_REWARD' });
+        const result = updateReward(options.db.db, auth.memberId, body.operationId, decodeURIComponent(adminRewardMatch[1]), { name: typeof body.name === 'string' ? body.name : undefined, costPoints: typeof body.costPoints === 'number' ? body.costPoints : undefined, active: typeof body.active === 'boolean' ? body.active : undefined, expectedRevision: body.expectedRevision }, { now });
+        return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
+      }
+      if (request.method === 'GET' && url.pathname === '/api/admin/redemptions') {
+        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
+        const memberId = url.searchParams.get('memberId');
+        const rows = memberId ? getRedemptions(options.db.db, memberId) : [...new Set((options.db.db.prepare('SELECT member_id FROM redemptions ORDER BY confirmed_at DESC').all() as Array<{ member_id: string }>).map((row) => row.member_id))].flatMap((id) => getRedemptions(options.db.db, id));
+        return gamificationJson(200, { redemptions: rows });
+      }
+      if (request.method === 'POST' && url.pathname === '/api/admin/redemptions') {
+        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
+        const body = parseBody(request.body);
+        if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.memberId !== 'string' || typeof body.rewardId !== 'string' || typeof body.expectedRewardRevision !== 'number') return gamificationError({ status: 400, code: 'INVALID_REDEMPTION' });
+        const replay = Boolean(options.db.db.prepare('SELECT 1 FROM mutation_receipts WHERE actor_member_id=? AND operation_id=?').get(auth.memberId, body.operationId));
+        const result = redeemReward(options.db.db, auth.memberId, { operationId: body.operationId, memberId: body.memberId, rewardId: body.rewardId, expectedRewardRevision: body.expectedRewardRevision }, { now });
+        return isGamificationError(result) ? gamificationError(result) : gamificationJson(replay ? 200 : 201, result);
+      }
+      const redemptionReverseMatch = url.pathname.match(/^\/api\/admin\/redemptions\/([^/]+)\/reverse$/);
+      if (request.method === 'POST' && redemptionReverseMatch) {
+        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
+        const body = parseBody(request.body);
+        if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.reason !== 'string') return gamificationError({ status: 400, code: 'REVERSAL_REASON_REQUIRED' });
+        const result = reverseRedemption(options.db.db, auth.memberId, decodeURIComponent(redemptionReverseMatch[1]), body.operationId, body.reason, { now });
+        return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
+      }
       if (url.pathname === '/api/me/reminders' || url.pathname === '/api/me/reminders/device-token' || url.pathname === '/api/me/reminders/device-token/revoke') {
         if (!options.db.db.prepare('SELECT id FROM members WHERE id = ?').get(auth.memberId)) return json(404, { error: 'PROFILE_NOT_FOUND' });
-        if (request.method === 'GET' && url.pathname === '/api/me/reminders') return json(200, readReminderPreferences(options.db.db, auth.memberId, remoteStatus));
+        if (request.method === 'GET' && url.pathname === '/api/me/reminders') {
+          const snapshot = readReminderPreferences(options.db.db, auth.memberId, remoteStatus);
+          return json(200, disableMeetingReminders ? { ...snapshot, meetingEnabled: false, meetings: [] } : snapshot);
+        }
         if (request.method === 'PUT' && url.pathname === '/api/me/reminders') {
           const body = parseBody(request.body);
           if (typeof body.reading_enabled !== 'boolean' || typeof body.meeting_enabled !== 'boolean') return json(400, { error: 'INVALID_REMINDER_PREFERENCES' });
@@ -437,7 +520,8 @@ export function createApiHandler(options: ApiHandlerOptions) {
           const meetingAdvanceMinutes = body.meeting_advance_minutes === undefined ? current.meetingAdvanceMinutes : body.meeting_advance_minutes;
           const preferenceGeneration = body.preference_generation === undefined ? current.preferenceGeneration : body.preference_generation;
           if (typeof readingTime !== 'string' || typeof meetingAdvanceMinutes !== 'number' || typeof preferenceGeneration !== 'number') return json(400, { error: 'INVALID_REMINDER_PREFERENCES' });
-          return json(200, saveReminderPreferences(options.db.db, auth.memberId, { readingEnabled: body.reading_enabled, meetingEnabled: body.meeting_enabled, readingTime, meetingAdvanceMinutes, preferenceGeneration }, remoteStatus));
+          const saved = saveReminderPreferences(options.db.db, auth.memberId, { readingEnabled: body.reading_enabled, meetingEnabled: disableMeetingReminders ? false : body.meeting_enabled, readingTime, meetingAdvanceMinutes, preferenceGeneration }, remoteStatus);
+          return json(200, disableMeetingReminders ? { ...saved, meetingEnabled: false, meetings: [] } : saved);
         }
         if (request.method === 'POST' && url.pathname === '/api/me/reminders/device-token') {
           const body = parseBody(request.body);
@@ -476,17 +560,36 @@ export function createApiHandler(options: ApiHandlerOptions) {
         const group = options.db.db
           .prepare('SELECT group_name FROM member_group_profiles WHERE member_id = ? ORDER BY rpg_id LIMIT 1')
           .get(auth.memberId) as { group_name: string } | undefined;
-        return json(200, {
+        const capabilities = getViewerCapabilities(options.db.db, auth.memberId, resolvedAdminMemberIds());
+        return gamificationJson(200, {
           memberId: member.id,
           displayName: member.display_name,
           avatarUrl: null,
           groupId: member.group_id,
           groupName: group?.group_name ?? null,
+          capabilities,
         });
       }
       if (request.method === 'GET' && url.pathname === '/api/me/groups') {
         const profile = getMemberGroupProfile(options.db.db, auth.memberId);
-        return profile ? json(200, profile) : json(404, { error: 'GROUP_PROFILE_PENDING' });
+        if (!profile) return json(404, { error: 'GROUP_PROFILE_PENDING' });
+        // The group/RPG surface is retired in v1. Keep the old response shape
+        // for installed clients, but remove every peer roster and social or
+        // meeting link so this compatibility endpoint cannot expose retired
+        // group data or reopen those entry points.
+        const retired = profile as { rpgs?: Array<Record<string, unknown>> };
+        return json(200, {
+          ...profile,
+          rpgs: (retired.rpgs ?? []).map((rpg) => ({
+            ...rpg,
+            openChatUrl: null,
+            callUrl: null,
+            callProvider: null,
+            callScope: null,
+            meeting: null,
+            roster: null,
+          })),
+        });
       }
       if (request.method === 'GET' && url.pathname === '/api/progress') {
         return handleProgress(
@@ -502,20 +605,46 @@ export function createApiHandler(options: ApiHandlerOptions) {
       }
       const match = url.pathname.match(/^\/api\/me\/completions\/([^/]+)\/([^/]+)$/);
       if (request.method === 'PUT' && match) {
-        return handleCompletion(
-          options.db.db,
-          auth.memberId,
-          decodeURIComponent(match[1]),
-          decodeURIComponent(match[2]),
-          parseBody(request.body),
-          policy,
-        );
+        const candidateBody = parseBody(request.body);
+        const operationId = candidateBody.operation_id;
+        // Every completion write uses the v1 entitlement/wallet transaction.
+        // Older clients may still send opaque operation IDs, but that is only
+        // an input compatibility detail; it never selects a second points
+        // writer or bypasses the schedule/window checks.
+        if (typeof operationId !== 'string' || !operationId.trim()) return gamificationError({ status: 400, code: 'INVALID_COMPLETION_COMMAND' });
+        const desiredStatus = candidateBody.status;
+        const expectedRevision = candidateBody.expected_revision;
+        if (!isCompletionStatusForRoute(desiredStatus) || typeof expectedRevision !== 'number' || !Number.isSafeInteger(expectedRevision)) return gamificationError({ status: 400, code: 'INVALID_COMPLETION_COMMAND' });
+        const result = mutateCompletion(options.db.db, {
+          memberId: auth.memberId,
+          planId: decodeURIComponent(match[1]),
+          taskDate: decodeURIComponent(match[2]),
+          operationId,
+          expectedRevision,
+          status: desiredStatus,
+          policyAmount: GAMIFICATION_POINT_AMOUNT,
+          policyVersion: GAMIFICATION_POLICY_VERSION,
+          now: now(),
+        });
+        if ('code' in result) {
+          const details = result.details ?? {};
+          return gamificationJson(result.status, {
+            error: { code: result.code, retryable: false, ...(Object.keys(details).length > 0 ? { details } : {}) },
+            ...(typeof details.status === 'string' ? { status: details.status } : {}),
+            ...(typeof details.revision === 'number' ? { revision: details.revision } : {}),
+          });
+        }
+        return gamificationJson(200, result as unknown as Record<string, unknown>);
       }
       return json(404, { error: 'NOT_FOUND' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'INTERNAL_ERROR';
-      if (message === 'INVALID_JSON' || message.startsWith('INVALID_')) return json(400, { error: message });
+      if (message === 'INVALID_JSON' || message.startsWith('INVALID_')) return isGamificationPath(url.pathname) ? gamificationError({ status: 400, code: message }) : json(400, { error: message });
       return json(500, { error: 'INTERNAL_ERROR' });
     }
   };
+}
+
+function isCompletionStatusForRoute(value: unknown): value is 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED' {
+  return value === 'UNREPORTED' || value === 'NOT_COMPLETED' || value === 'COMPLETED';
 }

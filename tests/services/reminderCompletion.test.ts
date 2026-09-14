@@ -11,8 +11,8 @@ describe('completion/reminder producer binding', () => {
     const calls: string[] = [];
     const scheduler = { cancel: async (id: string) => { calls.push(`cancel:${id}`); }, schedule: async (spec: { reminderId: string }) => { calls.push(`schedule:${spec.reminderId}`); }, list: async () => [], requestPermission: async () => 'granted' as const, cancelForMember: async () => undefined };
     const store = { getItemAsync: async (key: string) => key.endsWith('readingEnabled') ? 'true' : '08:00' };
-    await syncReadingReminderForCompletion({ memberId: 'member:one', taskDate: '2026-09-12', status: 'COMPLETED', scheduler, store });
-    await syncReadingReminderForCompletion({ memberId: 'member:one', taskDate: '2026-09-12', status: 'NOT_COMPLETED', scheduler, store });
+    await syncReadingReminderForCompletion({ memberId: 'member:one', planId: 'church-2026-09', taskDate: '2026-09-12', status: 'COMPLETED', scheduler, store });
+    await syncReadingReminderForCompletion({ memberId: 'member:one', planId: 'church-2026-09', taskDate: '2026-09-12', status: 'NOT_COMPLETED', scheduler, store });
     expect(calls).toEqual(['cancel:reading:member:one:2026-09-12', 'schedule:reading:member:one:2026-09-12']);
   });
 });

@@ -9,6 +9,7 @@ import { buildYouVersionReaderConfig, resolveReaderContentApiHost } from './youV
 import { getYouVersionContentMetadata } from '../config/youVersionContent';
 import { buildReaderDomBridge, readReaderUiMessage, READER_SETTINGS_MESSAGE, READER_CANVAS_TAP_MESSAGE, READER_CANVAS_SCROLL_MESSAGE } from './readerSettingsBridge';
 import { useReaderPreferencesBinding, type ReaderPreferencesBinding } from './useReaderPreferencesBinding';
+import { BibleContentPreloadHost } from './BibleContentPreloadHost';
 
 export interface ReaderOverlayControls {
   ready: boolean;
@@ -121,6 +122,13 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
         <View style={styles.host} accessibilityElementsHidden={Boolean(overlay)} importantForAccessibility={overlay ? 'no-hide-descendants' : 'auto'}>
           {renderScreen(surface, overlayControls)}
         </View>
+        <BibleContentPreloadHost
+          enabled={Boolean(readerModule && preferencesBinding.ready && hasConfig && allowTechnicalProbe && appKey && versionId !== null)}
+          versionId={versionId}
+          references={references}
+          activeReferenceIndex={safeIndex}
+          generationKey={`${date}:${versionId ?? 'none'}:${references.join('|')}`}
+        />
         {/* NativeSheet issues one snap when activated. Keep its native host mounted
             while closed so layout/detents can settle before that opening command. */}
         <BibleReaderSettingsSheet isSettingsSheetOpen={overlay === 'settings'} onClose={closeOverlay} />

@@ -9,6 +9,7 @@ const boundary = vi.hoisted(() => ({
   repository: null as any,
   push: vi.fn(),
   getProgress: vi.fn(),
+  getReadingDays: vi.fn(),
   saveCompletion: vi.fn(),
 }));
 vi.mock('react-native', () => ({
@@ -30,9 +31,10 @@ vi.mock('expo-crypto', () => ({ randomUUID: () => 'compact-today-operation' }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined, deleteItemAsync: async () => undefined }));
 vi.mock('expo-web-browser', () => ({ maybeCompleteAuthSession() {} }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: () => boundary.repository }));
-vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ getProgress: boundary.getProgress, saveCompletion: boundary.saveCompletion }) }));
+vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ getProgress: boundary.getProgress, getReadingDays: boundary.getReadingDays, saveCompletion: boundary.saveCompletion }) }));
 vi.mock('../../src/services/reminderScheduler', () => ({ createReminderScheduler: () => ({}) }));
 vi.mock('../../src/services/reminderCompletion', () => ({ syncReadingReminderForCompletion: async () => undefined }));
+vi.mock('../../src/ui/BibleContentPreloadHome', () => ({ BibleContentPreloadHome: () => null }));
 
 import TodayScreen from '../../app/(tabs)/today';
 import TabsLayout from '../../app/(tabs)/_layout';
@@ -77,6 +79,7 @@ describe('compact Today home', () => {
       getAllSync: <T,>(source: string, ...params: unknown[]) => database.prepare(source).all(...params as never[]) as T[],
     });
     boundary.getProgress.mockResolvedValue(null);
+    boundary.getReadingDays.mockResolvedValue(null);
     boundary.saveCompletion.mockResolvedValue({ ok: true, revision: 1, status: 'COMPLETED' });
     clearAuthSession();
     setSelectedReadingDate('2026-09-12');
@@ -105,7 +108,6 @@ describe('compact Today home', () => {
     expect(text).toContain('提前1、詩90、詩91');
     expect(text).toContain('開始今日讀經');
     expect(text).toContain('我已完成讀經');
-    expect(text).toContain('積分：');
   });
 
   it('places a 48dp account control beside the date within the top safe area', async () => {
@@ -123,11 +125,11 @@ describe('compact Today home', () => {
     expect(boundary.push).toHaveBeenCalledWith('/account');
   });
 
-  it('hides only the Today native header while retaining Today and Reader tab semantics', async () => {
+  it('hides only the reading home native header while retaining the two main tabs', async () => {
     const renderer = await render(TabsLayout);
     const screens = all(renderer, 'Screen');
-    expect(screens.find(node => node.props.name === 'today')?.props.options).toMatchObject({ headerShown: false, title: '今日', tabBarAccessibilityLabel: '今日讀經' });
-    expect(screens.find(node => node.props.name === 'reader')?.props.options).toMatchObject({ title: '讀經', tabBarAccessibilityLabel: '讀經入口' });
+    expect(screens.find(node => node.props.name === 'today')?.props.options).toMatchObject({ headerShown: false, title: '讀經', tabBarAccessibilityLabel: '讀經入口' });
+    expect(screens.find(node => node.props.name === 'progress')?.props.options).toMatchObject({ title: '積分', tabBarAccessibilityLabel: '積分' });
     expect(all(renderer, 'Tabs')[0]?.props.screenOptions.headerShown).toBe(true);
   });
 
@@ -144,7 +146,7 @@ describe('compact Today home', () => {
     expect(button(renderer, '確認今日已完成讀經')?.props.disabled).toBe(true);
   });
 
-  it('preserves date selection, reader navigation, completion state, and points display', async () => {
+  it('preserves date selection, reader navigation, and completion state', async () => {
     signIn();
     const renderer = await render();
     act(() => { button(renderer, '下一個排定讀經日').props.onPress(); });
@@ -153,14 +155,13 @@ describe('compact Today home', () => {
     expect(boundary.push).toHaveBeenCalledWith('/reader');
     await act(async () => { button(renderer, '確認今日已完成讀經').props.onPress(); });
     expect(textContent(renderer)).toContain('已完成');
-    expect(textContent(renderer)).toContain('你的完成：1 次');
     expect(button(renderer, '撤銷今日讀經完成確認')?.props.disabled).toBe(false);
     expect(boundary.repository.get({ memberId: 'component:test-member', planId: 'church-2026-09', taskDate: '2026-09-14' })).toMatchObject({ status: 'COMPLETED' });
   });
 
   it('keeps the actionable sync error visible when the progress request fails', async () => {
     signIn();
-    boundary.getProgress.mockRejectedValue(new Error('offline-test'));
+    boundary.getReadingDays.mockRejectedValue(new Error('offline-test'));
     const renderer = await render();
     expect(textContent(renderer)).toContain('同步遇到問題');
     expect(button(renderer, '開啟今日讀經')?.props.disabled).toBe(false);

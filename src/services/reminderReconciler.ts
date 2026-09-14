@@ -43,7 +43,8 @@ export function createReminderReconciler(scheduler: ReminderScheduler) {
       for (const reminder of existingReading) {
         if (!isAuthorized()) return { created, cancelled, unchanged, deliveryStatus: 'LOCAL_ONLY' };
         const desired = desiredById.get(reminder.reminderId);
-        const same = desired && reminder.taskDate === desired.taskDate && reminder.triggerAt === desired.triggerAt;
+        const same = desired && reminder.taskDate === desired.taskDate && reminder.triggerAt === desired.triggerAt
+          && reminder.targetId === desired.targetId && reminder.scheduleRevision === desired.scheduleRevision;
         if (same) unchanged.push(reminder.reminderId);
         else {
           await scheduler.cancel(reminder.reminderId);
@@ -92,7 +93,7 @@ export function resolveMeetingReminderTap(
   latest: { meetingId: string; scheduleRevision: number; status: 'SCHEDULED' | 'CANCELLED' } | null,
 ): { route: string; meetingId: string } | null {
   if (!latest || latest.meetingId !== payload.meetingId || latest.scheduleRevision !== payload.scheduleRevision || latest.status !== 'SCHEDULED') return null;
-  return { route: '/groups', meetingId: latest.meetingId };
+  return { route: '/today', meetingId: latest.meetingId };
 }
 
 export type ReminderReconciler = ReturnType<typeof createReminderReconciler>;

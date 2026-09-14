@@ -29,13 +29,21 @@ describe('owned reminder notification entry', () => {
 
   it.each([
     { memberId: 'member:b' }, { taskDate: '2026-09-13' }, { taskDate: '2026-09-99' },
-    { reminderId: 'reading:other' }, { targetId: 'another-plan' }, { kind: 'OTHER' },
-  ])('rejects malformed, unplanned or foreign reading payload %j', async change => {
+    { reminderId: 'reading:other' }, { targetId: '' }, { kind: 'OTHER' },
+  ])('rejects malformed or foreign reading payload %j', async change => {
     const f = fixture();
     const data = { ...readingData(), ...change };
     expect(await f.controller.handleForeground(notification(data))).toMatchObject({ shouldShowBanner: false, shouldShowList: false });
     expect(await f.controller.handleResponse(response(data))).toBe('ignored');
     expect(f.openReadingDate).not.toHaveBeenCalled();
+  });
+
+  it('accepts an owned scheduled reading from a later month without the retired September plan lookup', async () => {
+    const f = fixture();
+    const data = { ...readingData(), targetId: 'church-2026-10', taskDate: '2026-10-01', reminderId: 'reading:member:a:2026-10-01' };
+    expect(await f.controller.handleForeground(notification(data))).toMatchObject({ shouldShowBanner: true });
+    expect(await f.controller.handleResponse(response(data))).toBe('handled');
+    expect(f.openReadingDate).toHaveBeenCalledExactlyOnceWith('2026-10-01');
   });
 
   it('defers cold-start navigation until auth hydration and root navigation are ready', async () => {

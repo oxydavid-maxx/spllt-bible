@@ -13,7 +13,7 @@ function setup() {
     ],
   });
   databases.push(db);
-  return createApiHandler({ db, fixtureToken: 'test-token' });
+  return createApiHandler({ db, fixtureToken: 'test-token', now: () => new Date('2026-09-14T04:00:00.000Z') });
 }
 
 const headers = {
@@ -49,7 +49,7 @@ describe('completion API', () => {
     const conflict = await api({ ...base, body: JSON.stringify({ operation_id: 'api-op-2', expected_revision: 0, status: 'NOT_COMPLETED' }) });
 
     expect(conflict.status).toBe(409);
-    expect(conflict.body).toMatchObject({ error: 'REVISION_CONFLICT', revision: 1, status: 'COMPLETED' });
+    expect(conflict.body).toMatchObject({ error: { code: 'REVISION_CONFLICT' }, revision: 1, status: 'COMPLETED' });
   });
 
   it('does not replay an operation response across members or changed commands', async () => {
@@ -68,14 +68,14 @@ describe('completion API', () => {
       headers: { authorization: 'Bearer test-token', 'x-qingmu-member-id': 'google:other' },
     });
     expect(other.status).toBe(409);
-    expect(other.body).toMatchObject({ error: 'OPERATION_ID_REUSED' });
+    expect(other.body).toMatchObject({ error: { code: 'OPERATION_ID_REUSED' } });
 
     const changed = await api({
       ...selfRequest,
       body: JSON.stringify({ operation_id: 'shared-operation-id', expected_revision: 0, status: 'NOT_COMPLETED' }),
     });
     expect(changed.status).toBe(409);
-    expect(changed.body).toMatchObject({ error: 'OPERATION_ID_REUSED' });
+    expect(changed.body).toMatchObject({ error: { code: 'OPERATION_ID_REUSED' } });
 
     const otherProgress = await api({
       method: 'GET',
@@ -102,6 +102,6 @@ describe('completion API', () => {
 
     const replay = await api({ ...base, body: JSON.stringify({ operation_id: 'advance-1', expected_revision: 0, status: 'COMPLETED' }) });
     expect(replay.status).toBe(409);
-    expect(replay.body).toMatchObject({ error: 'OPERATION_REPLAY_STALE', revision: 2, status: 'NOT_COMPLETED' });
+    expect(replay.body).toMatchObject({ error: { code: 'OPERATION_REPLAY_STALE' }, revision: 2, status: 'NOT_COMPLETED' });
   });
 });

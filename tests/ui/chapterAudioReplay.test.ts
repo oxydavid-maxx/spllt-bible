@@ -3,7 +3,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.hoisted(() => { process.env.EXPO_PUBLIC_QINGMU_FIXTURE = 'false'; (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
 const primitive = vi.hoisted(() => (name: string) => (props: any) => require('react').createElement(name, props, props.children));
-vi.mock('react-native', () => ({ View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'), StyleSheet: { create: (value: unknown) => value } }));
+vi.mock('react-native', () => ({ ActivityIndicator: primitive('ActivityIndicator'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'), StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }));
 const native = vi.hoisted(() => ({ player: null as any }));
 vi.mock('expo-audio', () => ({ useAudioPlayer: () => native.player }));
@@ -55,7 +55,8 @@ describe('single play intent after capability expiry and native EOF', () => {
   it.each(['explicit_no_audio', 'temporarily_unavailable'])('shows the genuine refreshed %s state without playing the stale source', async status => {
     await mount(); await expire(); fetchImpl.mockImplementationOnce(async () => response({ identity: { versionId: 46, usfm: '1TI.1' }, text: true, audio: false, offline: false, status }));
     await press(); expect(fetchImpl).toHaveBeenCalledTimes(2); expect(native.player.playing).toBe(false);
-    expect(text()).toContain(status === 'explicit_no_audio' ? '沒有朗讀' : '暫時無法取得'); expect(text()).not.toContain('播放失敗');
+    const labels = view!.root.findAll(node => Boolean(node.props.accessibilityLabel)).map(node => String(node.props.accessibilityLabel));
+    expect(labels.some(label => status === 'explicit_no_audio' ? label.includes('沒有朗讀') : label.includes('重試'))).toBe(true); expect(text()).not.toContain('播放失敗');
     expect(view!.root.findAll(node => String(node.type) === 'Pressable')).toHaveLength(status === 'explicit_no_audio' ? 0 : 1);
   });
   it('recovers from a failed refresh through the existing retry and prepares a fresh capability', async () => {
@@ -63,10 +64,11 @@ describe('single play intent after capability expiry and native EOF', () => {
     fetchImpl.mockRejectedValueOnce(new Error('private transport detail'));
     await press(); expect(native.player.playing).toBe(false);
     expect(button().props.accessibilityLabel).toContain('重試');
-    expect(text()).toContain('暫時無法取得'); expect(text()).not.toContain('private transport detail');
+    expect(text()).not.toContain('private transport detail');
+    expect(view!.root.findAll(node => Boolean(node.props.accessibilityLabel)).map(node => String(node.props.accessibilityLabel)).join(' ')).not.toContain('private transport detail');
     await press(); expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(native.player.calls.slice(-2)).toEqual(['replace:https://example.test/1TI.1.mp3', 'play']);
-    expect(native.player.currentTime).toBe(0); expect(text()).not.toContain('暫時無法取得');
+    expect(native.player.currentTime).toBe(0); expect(text()).not.toContain('播放失敗');
   });
   it('pause remains available after capability expiry without a new query', async () => {
     await mount(); await press(); await expire(); await press();

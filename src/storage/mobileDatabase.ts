@@ -1,5 +1,4 @@
 import { openDatabaseSync } from 'expo-sqlite';
-import { randomUUID } from 'expo-crypto';
 import { createMobileRepository } from './mobileRepository';
 import { createReaderPositionStore } from './readerPosition';
 
@@ -9,7 +8,7 @@ let sharedDatabase: ReturnType<typeof openDatabaseSync> | null = null;
 export function openQingmuRepository() {
   if (sharedRepository === null) {
     sharedDatabase = openDatabaseSync('qingmu-youth.db', { useNewConnection: true });
-    sharedRepository = createMobileRepository(sharedDatabase, { generateOperationId: randomUUID });
+    sharedRepository = createMobileRepository(sharedDatabase);
   }
   return sharedRepository;
 }

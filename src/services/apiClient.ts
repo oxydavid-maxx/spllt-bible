@@ -111,6 +111,17 @@ export interface MemberProfileSnapshot {
   groupName: string | null;
 }
 
+export interface ReadingDaySnapshot {
+  taskDate: string;
+  planId: string;
+  references: string[];
+  sourceRevision: number;
+  sourceDigest: string;
+  status: CompletionStatus;
+  revision: number;
+  canComplete: boolean;
+}
+
 const COMPLETION_STATUSES: readonly CompletionStatus[] = ['UNREPORTED', 'NOT_COMPLETED', 'COMPLETED'];
 
 function isCompletionStatus(value: unknown): value is CompletionStatus {
@@ -183,22 +194,23 @@ export function createApiClient(options: ApiClientOptions) {
       );
       handleAuthStatus(response);
       const body = responseObject(await response.json().catch(() => null));
+      const responseError = typeof body?.error === 'string' ? body.error : body?.error && typeof body.error === 'object' && !Array.isArray(body.error) && typeof (body.error as Record<string, unknown>).code === 'string' ? String((body.error as Record<string, unknown>).code) : undefined;
+      if (!body) return { ok: false, error: 'INVALID_API_RESPONSE' };
       if (response.status === 409) {
         const conflictRevision = body?.revision;
-        if ((body?.error !== 'REVISION_CONFLICT' && body?.error !== 'OPERATION_REPLAY_STALE') || typeof conflictRevision !== 'number' || !Number.isInteger(conflictRevision) || conflictRevision < 0 || !isCompletionStatus(body.status)) {
+        if ((responseError !== 'REVISION_CONFLICT' && responseError !== 'OPERATION_REPLAY_STALE') || typeof conflictRevision !== 'number' || !Number.isInteger(conflictRevision) || conflictRevision < 0 || !isCompletionStatus(body.status)) {
           return { ok: false, error: 'INVALID_API_RESPONSE' };
         }
         return {
           ok: false,
           conflict: true,
-          error: body.error as 'REVISION_CONFLICT' | 'OPERATION_REPLAY_STALE',
+          error: responseError as 'REVISION_CONFLICT' | 'OPERATION_REPLAY_STALE',
           revision: conflictRevision,
           status: body.status,
         };
       }
-      if (!response.ok) return { ok: false, error: String(body?.error ?? 'API_ERROR') };
+      if (!response.ok) return { ok: false, error: responseError ?? 'API_ERROR' };
       if (
-        !body ||
         body.memberId !== command.memberId ||
         body.planId !== command.planId ||
         body.taskDate !== command.taskDate ||
@@ -228,6 +240,24 @@ export function createApiClient(options: ApiClientOptions) {
       handleAuthStatus(response);
       if (!response.ok) return null;
       return (await response.json()) as ProgressSnapshot;
+    },
+    async getReadingDays(from: string, to: string): Promise<{ today: string; timezone: string; days: ReadingDaySnapshot[] } | null> {
+      const response = await fetchImpl(`${options.baseUrl}/api/me/reading-days?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+        headers: {
+          authorization: `Bearer ${options.token}`,
+          'x-qingmu-member-id': options.memberId,
+        },
+      });
+      handleAuthStatus(response);
+      if (!response.ok) return null;
+      const body = responseObject(await response.json().catch(() => null));
+      if (!body || typeof body.today !== 'string' || body.timezone !== 'Asia/Taipei' || !Array.isArray(body.days)) return null;
+      const days = body.days.flatMap((value) => {
+        const item = responseObject(value);
+        if (!item || typeof item.taskDate !== 'string' || typeof item.planId !== 'string' || !Array.isArray(item.references) || item.references.some((reference) => typeof reference !== 'string') || typeof item.sourceRevision !== 'number' || typeof item.sourceDigest !== 'string' || !isCompletionStatus(item.status) || typeof item.revision !== 'number' || typeof item.canComplete !== 'boolean') return [];
+        return [{ taskDate: item.taskDate, planId: item.planId, references: item.references as string[], sourceRevision: item.sourceRevision, sourceDigest: item.sourceDigest, status: item.status, revision: item.revision, canComplete: item.canComplete }];
+      });
+      return days.length === body.days.length ? { today: body.today, timezone: body.timezone, days } : null;
     },
     async getGroups(): Promise<GroupProfileSnapshot | null> {
       const response = await fetchImpl(`${options.baseUrl}/api/me/groups`, {

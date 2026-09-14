@@ -4,7 +4,9 @@ function Get-QingmuDomAssetRoot {
     [Parameter(Mandatory = $true)][ValidateSet('debug', 'release')][string]$Variant
   )
   $project = (Resolve-Path -LiteralPath $ProjectRoot).Path
-  $buildRoot = (Resolve-Path -LiteralPath (Join-Path $project 'android\app\build')).Path
+  $buildPath = Join-Path $project 'android\app\build'
+  if (-not (Test-Path -LiteralPath $buildPath)) { New-Item -ItemType Directory -Force -Path $buildPath | Out-Null }
+  $buildRoot = (Resolve-Path -LiteralPath $buildPath).Path
   $variantRoot = (Resolve-Path -LiteralPath (Join-Path $buildRoot "generated\assets\react\$Variant") -ErrorAction SilentlyContinue)
   if (-not $variantRoot) {
     return Join-Path $buildRoot "generated\assets\react\$Variant\www.bundle"

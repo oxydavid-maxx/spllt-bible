@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from 'react';
 import { getAuthSession, getAuthSnapshot, isCurrentAuthSession, registerAuthLifecycleListener, type AuthSession } from './authSession';
-import { buildUpcomingReadingReminderSpecs, createReminderScheduler, type ReminderScheduler } from './reminderScheduler';
+import { buildUpcomingReadingReminderSpecs, createReminderScheduler, type ReadingScheduleEntry, type ReminderScheduler } from './reminderScheduler';
 import { createReminderReconciler, type ReminderReconciler } from './reminderReconciler';
 import { registerReminderDevice, readReminderDeviceBinding, clearReminderDeviceBinding, REMINDER_DEVICE_OWNER_GENERATION_KEY, REMINDER_DEVICE_OWNER_SEQUENCE_KEY, type PendingReminderDeviceRevocations, type ReminderDeviceBinding, type ReminderDeviceApi, type ReminderDeviceSecureStore, type ReminderDeviceTokenSource } from './reminderDevice';
 import { isReminderTokenExpiry } from './reminderLifecycle';
 import type { ReminderSnapshot } from './apiClient';
+import { taipeiDate } from '../domain/gamificationV1';
 
 export interface ReminderRuntimeState {
   ready: boolean;
@@ -26,6 +27,7 @@ export interface ReminderRuntimeNotificationSource extends ReminderDeviceTokenSo
 export interface ReminderRuntimeApi extends ReminderDeviceApi {
   getReminderSnapshot: () => Promise<ReminderSnapshot | null>;
   saveReminderPreferences: (preferences: { readingEnabled: boolean; meetingEnabled: boolean; readingTime: string; meetingAdvanceMinutes: number; preferenceGeneration?: number }) => Promise<ReminderSnapshot | null>;
+  getReadingDays?: (from: string, to: string) => Promise<{ today: string; timezone: string; days: Array<{ taskDate: string; planId: string; sourceRevision: number }> } | null>;
 }
 
 export interface ReminderRuntimeOptions {
@@ -37,7 +39,7 @@ export interface ReminderRuntimeOptions {
   deviceRevokeQueue?: PendingReminderDeviceRevocations;
   loadNotificationSource: () => Promise<ReminderRuntimeNotificationSource>;
   generateInstallationId: () => string;
-  getCompletionStatus?: (memberId: string, taskDate: string) => 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED' | null;
+  getCompletionStatus?: (memberId: string, taskDate: string, planId?: string) => 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED' | null;
 }
 
 const emptyState: ReminderRuntimeState = { ready: false, error: null, readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'REMOTE_PENDING', permission: 'undetermined', meeting: null };
@@ -226,7 +228,7 @@ export class ReminderRuntimeOwner {
       const nextState: ReminderRuntimeState = { ready: false, error: null, readingEnabled: next.readingEnabled, meetingEnabled: next.meetingEnabled, readingTime: next.readingTime, meetingAdvanceMinutes: next.meetingAdvanceMinutes, remoteDeliveryStatus: next.remoteDeliveryStatus, permission, meeting: next.meetings[0] ?? null };
       this.setState(nextState);
       await Promise.all([this.options.secureStore.setItemAsync('qingmu.reminder.readingEnabled', String(next.readingEnabled)), this.options.secureStore.setItemAsync('qingmu.reminder.readingTime', next.readingTime)]);
-      await this.reconcile(session, generation, nextState);
+      await this.reconcile(session, generation, nextState, client);
       if (!this.isCurrent(session, generation)) return;
       this.activationBaselineReady = true;
       this.setState({ ...nextState, ready: true });
@@ -255,9 +257,26 @@ export class ReminderRuntimeOwner {
     if (this.pendingPreferences) await this.savePreferences(this.pendingPreferences);
   }
 
-  private async reconcile(session: AuthSession, generation: number, state: ReminderRuntimeState): Promise<void> {
+  private async loadReadingSchedule(session: AuthSession, generation: number, client: ReminderRuntimeApi): Promise<ReadingScheduleEntry[] | null> {
+    if (!client.getReadingDays) return [];
+    const from = taipeiDate(new Date());
+    const to = shiftDate(from, 61);
+    try {
+      const response = await this.bounded(client.getReadingDays(from, to));
+      if (!this.isCurrent(session, generation) || !response || response.timezone !== 'Asia/Taipei') return null;
+      return response.days
+        .filter((day) => typeof day.taskDate === 'string' && typeof day.planId === 'string' && day.planId.trim().length > 0 && Number.isSafeInteger(day.sourceRevision) && day.sourceRevision >= 0)
+        .map((day) => ({ taskDate: day.taskDate, planId: day.planId, scheduleRevision: day.sourceRevision }));
+    } catch {
+      return null;
+    }
+  }
+
+  private async reconcile(session: AuthSession, generation: number, state: ReminderRuntimeState, client?: ReminderRuntimeApi): Promise<void> {
     if (!this.isCurrent(session, generation)) return;
-    const readings = state.readingEnabled ? buildUpcomingReadingReminderSpecs(session.memberId, state.readingTime).filter((spec) => this.options.getCompletionStatus?.(session.memberId, spec.taskDate ?? '') !== 'COMPLETED') : [];
+    const readingSchedule = state.readingEnabled ? await this.loadReadingSchedule(session, generation, client ?? this.options.createApiClient(session)) : [];
+    if (state.readingEnabled && readingSchedule === null) return;
+    const readings = state.readingEnabled ? buildUpcomingReadingReminderSpecs(session.memberId, state.readingTime, new Date(), readingSchedule ?? []).filter((spec) => this.options.getCompletionStatus?.(session.memberId, spec.taskDate ?? '', spec.targetId) !== 'COMPLETED') : [];
     await this.reconciler.reconcile({ memberId: session.memberId, readingEnabled: state.readingEnabled, remoteDeliveryStatus: state.remoteDeliveryStatus, meetingEnabled: state.meetingEnabled, reading: readings[0] ?? null, readings, meeting: state.meeting ? { meetingId: state.meeting.meetingId, scheduleRevision: state.meeting.scheduleRevision, status: state.meeting.status } : null }, () => this.isCurrent(session, generation));
   }
 
@@ -314,7 +333,7 @@ export class ReminderRuntimeOwner {
     const nextState: ReminderRuntimeState = { ready: true, error: null, readingEnabled: saved.readingEnabled, meetingEnabled: saved.meetingEnabled, readingTime: saved.readingTime, meetingAdvanceMinutes: saved.meetingAdvanceMinutes, remoteDeliveryStatus: saved.remoteDeliveryStatus, permission: this.state.permission, meeting: saved.meetings[0] ?? null };
     this.setState(nextState);
     await Promise.all([this.options.secureStore.setItemAsync('qingmu.reminder.readingEnabled', String(saved.readingEnabled)), this.options.secureStore.setItemAsync('qingmu.reminder.readingTime', saved.readingTime)]);
-    await this.reconcile(session, generation, nextState);
+    await this.reconcile(session, generation, nextState, client);
     if (this.isCurrent(session, generation) && this.pendingPreferences === intent) { this.pendingPreferences = null; this.updateVisibleState(); }
   }
 
@@ -325,6 +344,12 @@ export class ReminderRuntimeOwner {
   }
 
   dispose(): void { this.unregisterAuth?.(); this.unregisterAuth = null; this.tokenSubscription?.remove(); this.tokenSubscription = null; this.started = false; }
+}
+
+function shiftDate(date: string, offsetDays: number): string {
+  const value = new Date(`${date}T12:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + offsetDays);
+  return value.toISOString().slice(0, 10);
 }
 
 export function configureReminderRuntime(owner: ReminderRuntimeOwner): () => void { configuredOwner = owner; owner.start(); return () => { if (configuredOwner === owner) configuredOwner = null; owner.dispose(); }; }

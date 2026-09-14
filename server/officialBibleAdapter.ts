@@ -175,7 +175,8 @@ export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={
   const chapter=(id:number,usfm:string)=>cached(`chapter:${id}:${usfm}`,async()=>parseChapter((await request(`https://www.bible.com/bible/${id}/${usfm}`)).body,id,usfm));
   const index=(id:number)=>cached(`index:${id}`,async()=>parseIndex((await request(`https://www.bible.com/versions/${id}`)).body,id));
   const version=async(id:number)=>{const [page,books]=await Promise.all([chapter(id,'1TI.1'),index(id)]);const m=page.metadata;return {id,abbreviation:m.abbreviation,localized_abbreviation:m.abbreviation,title:m.title,localized_title:m.title,language_tag:m.languageTag,books:books.map(b=>b.id),copyright:m.copyright,info:m.publisher,youversion_deep_link:`https://www.bible.com/versions/${id}`};};
-  const response=(status:number,body:unknown,extra:Record<string,string>={},raw=false):OfficialBibleResponse=>({status,body,headers:{...CORS,'content-type':raw?'text/css; charset=utf-8':'application/json; charset=utf-8',...extra},...(raw?{raw:true}:{})});
+  const response=(status:number,body:unknown,extra:Record<string,string>={},raw=false,cacheControl='no-store'):OfficialBibleResponse=>({status,body,headers:{...CORS,'content-type':raw?'text/css; charset=utf-8':'application/json; charset=utf-8','cache-control':cacheControl,...extra},...(raw?{raw:true}:{})});
+  const bibleJson=(status:number,body:unknown):OfficialBibleResponse=>response(status,body,{},false,'public, max-age=1800');
   const list=(data:unknown[])=>({data,next_page_token:null});
   return async function handleOfficialBibleRequest(input:OfficialBibleRequest):Promise<OfficialBibleResponse|null> {
     let url:URL;try{url=new URL(input.url,'https://adapter.invalid');}catch{return response(400,{error:'INVALID_URL'});}
@@ -199,13 +200,13 @@ export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={
       if(path==='/v1/bibles'){
         const ranges=url.searchParams.getAll('language_ranges[]');let ids=[...VERSIONS];
         if(ranges.length&&!ranges.includes('*'))ids=ids.filter(id=>ranges.some(r=>r.toLowerCase().startsWith(id===46||id===40?'zh':'en')));
-        const data=[];for(const id of ids)data.push(await version(id));return response(200,list(data));
+        const data=[];for(const id of ids)data.push(await version(id));return bibleJson(200,list(data));
       }
       const match=path.match(/^\/v1\/bibles\/(\d+)(?:\/(.*))?$/);if(!match)return response(400,{error:'INVALID_PATH'});
       const id=Number(match[1]);if(!(VERSIONS as readonly number[]).includes(id))return response(404,{error:'BIBLE_NOT_SUPPORTED'});
       const rest=match[2]??'';
-      if(!rest)return response(200,await version(id));
-      if(rest==='books')return response(200,list(await index(id)));
+      if(!rest)return bibleJson(200,await version(id));
+      if(rest==='books')return bibleJson(200,list(await index(id)));
       if(rest.startsWith('passages/')){
         let usfm:string;try{usfm=decodeURIComponent(rest.slice(9));}catch{return response(400,{error:'INVALID_REFERENCE'});}
         const ref=usfm.match(/^([A-Z0-9]{3}\.[1-9]\d{0,2})(?:\.(\d+)(?:-(\d+))?)?$/);if(!ref)return response(400,{error:'INVALID_REFERENCE'});
@@ -213,18 +214,18 @@ export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={
         if(ref[2]){const end=Number(ref[3]??ref[2]),start=Number(ref[2]);if(end<start||end-start>199)return response(400,{error:'INVALID_REFERENCE'});selected=new Set(page.verses.filter(v=>intersectsVerse(v.id,start,end)).map(v=>v.id));if(!selected.size)return response(404,{error:'VERSE_NOT_FOUND'});}
         const html=renderPage(page,url.searchParams.get('include_headings')!=='false',url.searchParams.get('include_notes')!=='false',selected);
         const content=url.searchParams.get('format')==='text'?text(parse(html)):html;
-        return response(200,{id:usfm,content,reference:page.reference+(ref[2]?':'+ref[2]+(ref[3]?'-'+ref[3]:''):'')});
+        return bibleJson(200,{id:usfm,content,reference:page.reference+(ref[2]?':'+ref[2]+(ref[3]?'-'+ref[3]:''):'')});
       }
       const bookPath=rest.match(/^books\/([A-Z0-9]{3})(?:\/chapters(?:\/([1-9]\d{0,2})(?:\/verses(?:\/(\d+(?:-\d+)?))?)?)?)?$/);
       if(!bookPath)return response(404,{error:'BIBLE_RESOURCE_NOT_SUPPORTED'});
       const book=(await index(id)).find(b=>b.id===bookPath[1]);if(!book)return response(404,{error:'BOOK_NOT_FOUND'});
-      if(rest===`books/${book.id}`)return response(200,book);
-      if(!bookPath[2])return response(200,list(book.chapters));
+      if(rest===`books/${book.id}`)return bibleJson(200,book);
+      if(!bookPath[2])return bibleJson(200,list(book.chapters));
       const current=book.chapters.find(c=>c.id===bookPath[2]);if(!current)return response(404,{error:'CHAPTER_NOT_FOUND'});
       const page=await chapter(id,current.passage_id);
-      if(rest.endsWith('/verses'))return response(200,list(page.verses));
-      if(bookPath[3]){const verse=page.verses.find(v=>v.id===bookPath[3]||(!bookPath[3].includes('-')&&intersectsVerse(v.id,Number(bookPath[3]),Number(bookPath[3]))));return verse?response(200,verse):response(404,{error:'VERSE_NOT_FOUND'});}
-      return response(200,{...current,verses:page.verses});
+      if(rest.endsWith('/verses'))return bibleJson(200,list(page.verses));
+      if(bookPath[3]){const verse=page.verses.find(v=>v.id===bookPath[3]||(!bookPath[3].includes('-')&&intersectsVerse(v.id,Number(bookPath[3]),Number(bookPath[3]))));return verse?bibleJson(200,verse):response(404,{error:'VERSE_NOT_FOUND'});}
+      return bibleJson(200,{...current,verses:page.verses});
     }catch(error){return error instanceof AdapterError?response(error.status,{error:error.code}):response(502,{error:'OFFICIAL_SOURCE_UNAVAILABLE'});}
   };
 }

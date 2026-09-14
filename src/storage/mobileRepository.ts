@@ -26,6 +26,9 @@ interface StoredOutbox {
 
 export type MobileQueuedCommand = CompletionCommand;
 
+/** Kept for source compatibility with the previous repository constructor.
+ * Replay recovery never consumes this generator; new operation IDs only come
+ * from an explicit UI command. */
 export interface MobileRepositoryOptions {
   generateOperationId?: () => string;
 }
@@ -48,8 +51,7 @@ function toRecord(row: StoredCompletion | null): CompletionRecord | undefined {
   };
 }
 
-export function createMobileRepository(database: MobileDatabase, options: MobileRepositoryOptions = {}) {
-  const generateOperationId = options.generateOperationId ?? (() => `recovery-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+export function createMobileRepository(database: MobileDatabase, _options: MobileRepositoryOptions = {}) {
   database.execSync(`
     CREATE TABLE IF NOT EXISTS qingmu_completions (
       member_id TEXT NOT NULL,
@@ -134,7 +136,6 @@ export function createMobileRepository(database: MobileDatabase, options: Mobile
     const results: SyncResult[] = [];
     for (const item of queued) {
       let command = JSON.parse(item.command_json) as MobileQueuedCommand;
-      let revisionRetries = 0;
       let commandSettled = false;
       while (true) {
         const result = await send(command);
@@ -145,31 +146,62 @@ export function createMobileRepository(database: MobileDatabase, options: Mobile
           break;
         }
 
-        if (result.conflict && (result.error === 'REVISION_CONFLICT' || result.error === 'OPERATION_REPLAY_STALE')) {
+        // A replay-stale response means another device has since changed the
+        // same completion. The server's status/revision is authoritative: end
+        // this outbox item and reconcile locally. Rotating the operation ID
+        // would turn an old intent into a fresh write and could award/withdraw
+        // points after the user has already acted elsewhere. A new operation
+        // is created only by a new explicit saveCompletion call.
+        if (result.conflict && result.error === 'OPERATION_REPLAY_STALE') {
+          confirmAuthoritative(command, result.revision, result.status);
+          results[results.length - 1] = { ...result, reconciledConflict: true };
+          commandSettled = true;
+          break;
+        }
+
+        if (result.conflict && result.error === 'REVISION_CONFLICT') {
           if (result.status === command.desiredStatus) {
             confirmAuthoritative(command, result.revision, result.status);
             results[results.length - 1] = { ok: true, revision: result.revision, status: result.status, reconciledConflict: true };
             commandSettled = true;
             break;
           }
-          if (result.error === 'OPERATION_REPLAY_STALE') {
-            const rotated = { ...command, operationId: generateOperationId(), expectedRevision: result.revision };
-            replacePendingOperation(command, rotated, result.revision, revisionRetries > 0 ? 'SAVE_FAILED' : 'PENDING_SAVE');
-            command = rotated;
-          } else {
-            rebasePending(command, result.revision, revisionRetries > 0 ? 'SAVE_FAILED' : 'PENDING_SAVE');
-            command = { ...command, expectedRevision: result.revision };
-          }
-          if (revisionRetries === 0) {
-            revisionRetries += 1;
-            continue;
-          }
+          confirmAuthoritative(command, result.revision, result.status);
+          results[results.length - 1] = { ...result, reconciledConflict: true };
+          commandSettled = true;
+          break;
+        }
+        if (!result.conflict && (result.error === 'OUTSIDE_COMPLETION_WINDOW' || result.error === 'UNSCHEDULED_DAY')) {
+          rejectTerminal(command);
+          commandSettled = true;
         }
         break;
       }
       if (!commandSettled) break;
     }
     return results;
+  }
+
+  function rejectTerminal(command: MobileQueuedCommand): void {
+    const current = get(command);
+    database.execSync('BEGIN IMMEDIATE');
+    try {
+      database.runSync('DELETE FROM qingmu_outbox WHERE operation_id = ?', command.operationId);
+      if (current?.lastOperationId === command.operationId) {
+        database.runSync(
+          'UPDATE qingmu_completions SET sync_status = ?, pending_status = ? WHERE member_id = ? AND plan_id = ? AND task_date = ?',
+          'SAVE_FAILED',
+          command.desiredStatus,
+          command.memberId,
+          command.planId,
+          command.taskDate,
+        );
+      }
+      database.execSync('COMMIT');
+    } catch (error) {
+      database.execSync('ROLLBACK');
+      throw error;
+    }
   }
 
   function confirmAuthoritative(command: MobileQueuedCommand, revision: number, status: CompletionRecord['status']): void {
@@ -199,61 +231,6 @@ export function createMobileRepository(database: MobileDatabase, options: Mobile
         );
       }
       database.runSync('DELETE FROM qingmu_outbox WHERE operation_id = ?', command.operationId);
-      database.execSync('COMMIT');
-    } catch (error) {
-      database.execSync('ROLLBACK');
-      throw error;
-    }
-  }
-
-  function rebasePending(command: MobileQueuedCommand, revision: number, syncStatus: CompletionRecord['syncStatus']): void {
-    const rebased = JSON.stringify({ ...command, expectedRevision: revision });
-    const current = get(command);
-    const hasNewerIntent = !!current?.lastOperationId && current.lastOperationId !== command.operationId;
-    const preservedStatus = hasNewerIntent ? current!.status : command.desiredStatus;
-    const preservedPendingStatus = hasNewerIntent ? current!.pendingStatus : command.desiredStatus;
-    const preservedOperationId = hasNewerIntent ? current!.lastOperationId : command.operationId;
-    database.execSync('BEGIN IMMEDIATE');
-    try {
-      database.runSync(
-        'UPDATE qingmu_completions SET revision = ?, status = ?, sync_status = ?, pending_status = ?, last_operation_id = ? WHERE member_id = ? AND plan_id = ? AND task_date = ?',
-        revision,
-        preservedStatus,
-        syncStatus,
-        preservedPendingStatus ?? null,
-        preservedOperationId ?? command.operationId,
-        command.memberId,
-        command.planId,
-        command.taskDate,
-      );
-      database.runSync('UPDATE qingmu_outbox SET command_json = ? WHERE operation_id = ?', rebased, command.operationId);
-      database.execSync('COMMIT');
-    } catch (error) {
-      database.execSync('ROLLBACK');
-      throw error;
-    }
-  }
-
-  function replacePendingOperation(command: MobileQueuedCommand, replacement: MobileQueuedCommand, revision: number, syncStatus: CompletionRecord['syncStatus']): void {
-    const current = get(command);
-    const hasNewerIntent = !!current?.lastOperationId && current.lastOperationId !== command.operationId;
-    const preservedStatus = hasNewerIntent ? current!.status : command.desiredStatus;
-    const preservedPendingStatus = hasNewerIntent ? current!.pendingStatus : command.desiredStatus;
-    const preservedOperationId = hasNewerIntent ? current!.lastOperationId : replacement.operationId;
-    database.execSync('BEGIN IMMEDIATE');
-    try {
-      database.runSync(
-        'UPDATE qingmu_completions SET revision = ?, status = ?, sync_status = ?, pending_status = ?, last_operation_id = ? WHERE member_id = ? AND plan_id = ? AND task_date = ?',
-        revision,
-        preservedStatus,
-        syncStatus,
-        preservedPendingStatus ?? null,
-        preservedOperationId ?? replacement.operationId,
-        command.memberId,
-        command.planId,
-        command.taskDate,
-      );
-      database.runSync('UPDATE qingmu_outbox SET operation_id = ?, command_json = ? WHERE operation_id = ?', replacement.operationId, JSON.stringify(replacement), command.operationId);
       database.execSync('COMMIT');
     } catch (error) {
       database.execSync('ROLLBACK');

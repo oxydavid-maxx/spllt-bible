@@ -21,6 +21,20 @@ function fixture(options: Record<string,unknown> = {}) {
   return {fetcher,handle,get: async(path:string):Promise<any>=>handle({method:'GET',url:path,headers:{authorization:'DO_NOT_FORWARD',cookie:'DO_NOT_FORWARD','x-yvp-app-key':'public-app-key-fixture'}})};
 }
 describe('official Bible SSR adapter',()=>{
+  it('sets a thirty minute public cache lifetime only on successful Bible JSON responses',async()=>{
+    const success=fixture();
+    const ok=await success.get('/v1/bibles/46/passages/1TI.1');
+    expect(ok.headers['cache-control']).toBe('public, max-age=1800');
+
+    const failed=fixture({fetcher:async()=>new Response('upstream failure',{status:500})});
+    const error=await failed.get('/v1/bibles/46/passages/1TI.1');
+    expect(error.headers['cache-control']).toBe('no-store');
+
+    const css=await success.handle({method:'GET',url:'/v1/fonts/1/stylesheet',headers:{}});
+    expect(css?.raw).toBe(true);
+    expect(css?.headers['cache-control']).toBe('no-store');
+  });
+
   it('preserves official joined-verse spans once, including poetry continuations and SDK anchors',async()=>{
     const joined=`<span class="${prefix}verse" data-usfm="1TI.1.3+1TI.1.4"><span class="${prefix}label">3-4</span><span class="${prefix}content">Joined first.</span><span class="${prefix}note"><span class="${prefix}body">Joined note.</span></span></span></div><div class="${prefix}q1"><span class="${prefix}verse" data-usfm="1TI.1.3+1TI.1.4"><span class="${prefix}content">Joined continuation.</span></span>`;
     const f=fixture({fetcher:async(url:string)=>new Response(url.includes('/versions/')?indexHtml():chapterHtml(46,'1TI.1',joined))});

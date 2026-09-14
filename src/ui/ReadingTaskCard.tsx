@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from './Theme';
 import { formatReferenceListZhTw } from '../domain/scriptureReference';
 
-export function ReadingTaskCard({ date, references, completed, onOpenReader, onComplete, onUndo, syncStatus }: { date: string; references: string[]; completed: boolean; onOpenReader?: () => void; onComplete?: () => void; onUndo?: () => void; syncStatus?: 'CONFIRMED' | 'PENDING_SAVE' | 'SAVE_FAILED' }) {
+export function ReadingTaskCard({ date, references, completed, onOpenReader, onComplete, onUndo, syncStatus, canComplete = true }: { date: string; references: string[]; completed: boolean; onOpenReader?: () => void; onComplete?: () => void; onUndo?: () => void; syncStatus?: 'CONFIRMED' | 'PENDING_SAVE' | 'SAVE_FAILED'; canComplete?: boolean }) {
   const pending = syncStatus === 'PENDING_SAVE' || syncStatus === 'SAVE_FAILED';
   // 顯示用中文簡寫;references 本身仍是原始 USFM,往下傳給閱讀器與同步的都沒有改。
   const referencesLabel = formatReferenceListZhTw(references);
@@ -13,15 +13,15 @@ export function ReadingTaskCard({ date, references, completed, onOpenReader, onC
     >
       <View style={styles.row}>
         <Text accessibilityRole="header" style={styles.title} numberOfLines={2}>{referencesLabel}</Text>
-        <Text style={[styles.state, completed && styles.stateDone]}>{completed ? '已完成' : '待完成'}</Text>
+        <Text style={[styles.state, completed && styles.stateDone]}>{completed ? '已完成' : canComplete ? '待完成' : '超過補登期限'}</Text>
       </View>
       <Pressable onPress={onOpenReader} disabled={!onOpenReader} accessibilityRole="button" accessibilityLabel="開啟今日讀經" style={[styles.button, !onOpenReader && styles.buttonDisabled]}>
         <Text style={styles.buttonText}>開始今日讀經</Text>
       </Pressable>
       <View style={styles.footer}>
         <Text style={[styles.sync, pending && styles.syncPending]} numberOfLines={2}>{syncStatus === undefined ? '' : syncStatus === 'CONFIRMED' ? (completed ? '已與伺服器確認' : '尚未送出完成') : syncStatus === 'PENDING_SAVE' ? '已保留在本機，等待同步' : '同步失敗，保留待重試'}</Text>
-        <Pressable onPress={completed ? onUndo : onComplete} disabled={(!completed && !onComplete) || (completed && !onUndo)} accessibilityRole="button" accessibilityLabel={completed ? '撤銷今日讀經完成確認' : '確認今日已完成讀經'} style={[styles.secondaryButton, completed && styles.undoButton]}>
-          <Text style={[styles.secondaryText, completed && styles.undoText]}>{completed ? '撤銷確認' : '我已完成讀經'}</Text>
+        <Pressable onPress={completed ? onUndo : onComplete} disabled={(!completed && (!onComplete || !canComplete)) || (completed && !onUndo)} accessibilityRole="button" accessibilityLabel={completed ? '撤銷今日讀經完成確認' : canComplete ? '確認今日已完成讀經' : '超過補登期限'} style={[styles.secondaryButton, completed && styles.undoButton, !canComplete && !completed && styles.buttonDisabled]}>
+          <Text style={[styles.secondaryText, completed && styles.undoText]}>{completed ? '撤銷確認' : canComplete ? '我已完成讀經' : '超過補登期限'}</Text>
         </Pressable>
       </View>
     </View>

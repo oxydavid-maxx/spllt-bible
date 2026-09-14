@@ -32,6 +32,7 @@ GoogleService-Info.plist
 *.private.json
 data/receipts/
 docs/receipts/
+.tmp/
 expo-env.d.ts
 .DS_Store
 Thumbs.db

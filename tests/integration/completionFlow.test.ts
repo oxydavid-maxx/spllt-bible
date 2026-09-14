@@ -26,7 +26,7 @@ describe('completion to API to progress integration', () => {
         { id: 'fixture:other', displayName: '王小明', groupId: 'G01' },
       ],
     });
-    const api = createApiHandler({ db: database, fixtureToken: 'dev-only-test-token' });
+    const api = createApiHandler({ db: database, fixtureToken: 'dev-only-test-token', now: () => new Date('2026-09-14T04:00:00.000Z') });
     const { node, mobile } = mobileDatabase();
     const local = createMobileRepository(mobile);
     const command = {
@@ -54,8 +54,8 @@ describe('completion to API to progress integration', () => {
     });
     expect(progress.body.members).toEqual([
       { id: 'fixture:self', label: '小明', isSelf: true, status: 'COMPLETED' },
-      { id: 'fixture:other', label: 'O小O', isSelf: false, status: 'UNREPORTED' },
     ]);
+    expect(progress.body.totalMembers).toBe(1);
     expect(JSON.stringify(progress.body)).not.toContain('王小明');
     expect(local.get(command)).toMatchObject({ status: 'COMPLETED', syncStatus: 'CONFIRMED', revision: 1 });
     expect(local.pendingCount()).toBe(0);
@@ -63,7 +63,7 @@ describe('completion to API to progress integration', () => {
     database.close();
   });
 
-  it('rotates only after an explicit stale replay response and converges without duplicate points', async () => {
+  it('reconciles a stale replay response without reviving the old completion or duplicating points', async () => {
     const database = createDatabase({
       members: [
         { id: 'fixture:self', displayName: '小明', groupId: 'G01' },
@@ -75,6 +75,7 @@ describe('completion to API to progress integration', () => {
       fixtureToken: 'dev-only-test-token',
       pointPolicy: { version: 'fixture-week-v1', status: 'ACTIVE', pointsPerCompletion: 1 },
       scheduleDates: ['2026-09-08'],
+      now: () => new Date('2026-09-14T04:00:00.000Z'),
     });
     const put = async (operationId: string, expectedRevision: number, status: 'COMPLETED' | 'NOT_COMPLETED') => api({
       method: 'PUT',
@@ -111,16 +112,16 @@ describe('completion to API to progress integration', () => {
     });
     const results = await local.flush((command) => client.saveCompletion(command));
 
-    expect(sent).toEqual(['op-a', 'op-a-recovered']);
-    expect(results.at(-1)).toMatchObject({ ok: true, revision: 3, status: 'COMPLETED' });
+    expect(sent).toEqual(['op-a']);
+    expect(results.at(-1)).toMatchObject({ ok: false, error: 'OPERATION_REPLAY_STALE', reconciledConflict: true, revision: 2, status: 'NOT_COMPLETED' });
     expect(local.pendingCount()).toBe(0);
-    expect(local.get({ memberId: 'fixture:self', planId: 'church-2026-09', taskDate: '2026-09-08' })).toMatchObject({ status: 'COMPLETED', revision: 3, syncStatus: 'CONFIRMED' });
+    expect(local.get({ memberId: 'fixture:self', planId: 'church-2026-09', taskDate: '2026-09-08' })).toMatchObject({ status: 'NOT_COMPLETED', revision: 2, syncStatus: 'CONFIRMED' });
     const progress = await api({
       method: 'GET',
       url: '/api/progress?date=2026-09-08',
       headers: { authorization: 'Bearer dev-only-test-token', 'x-qingmu-member-id': 'fixture:self' },
     });
-    expect(progress.body).toMatchObject({ completed: 1, personal: { status: 'COMPLETED', revision: 3, points: 1 } });
+    expect(progress.body).toMatchObject({ completed: 0, personal: { status: 'NOT_COMPLETED', revision: 2, points: 0 } });
     node.close();
     database.close();
   });

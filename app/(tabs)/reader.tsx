@@ -23,12 +23,13 @@ import { syncReadingReminderForCompletion } from '../../src/services/reminderCom
 
 export default function ReaderScreen() {
   const chrome = useReaderChrome();
-  const { selectedDate, day, period, previousDate, nextDate } = useReadingSession();
+  const { selectedDate, planId, day, period, previousDate, nextDate } = useReadingSession();
   const auth = useAuthSnapshot();
   const session = auth.session;
   const [reminderScheduler] = useState(() => createReminderScheduler());
   const memberId = session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
   const model = buildFixtureModels(selectedDate);
+  const references = day?.references ?? model.reader.references;
   const [preferencesStore] = useState(createNativeReaderPreferencesStore);
   const preferences = useReaderPreferences(memberId, preferencesStore);
   const selectedVersionId = preferences.preferences.versionId;
@@ -89,7 +90,7 @@ export default function ReaderScreen() {
   };
   const rememberBook = (book: string, chapter: string, versionId?: number): void => {
     if (!ownsReader() || !memberId) return;
-    saveReaderPosition({ memberId, planId: 'church-2026-09', taskDate: selectedDate, versionId: versionId ?? preferencesStore.getSnapshot(memberId).preferences.versionId, book, chapter, reference: `${book}.${chapter}`, mode: 'FREE_BROWSE', updatedAt: new Date().toISOString() });
+    saveReaderPosition({ memberId, planId, taskDate: selectedDate, versionId: versionId ?? preferencesStore.getSnapshot(memberId).preferences.versionId, book, chapter, reference: `${book}.${chapter}`, mode: 'FREE_BROWSE', updatedAt: new Date().toISOString() });
   };
 
   // ── THE SINGLE READER SELECTION AUTHORITY (review 120) ──────────────────────────────────────────
@@ -104,16 +105,16 @@ export default function ReaderScreen() {
     | { source: 'FREE'; book: string; chapter: string };
   // Keep the schedule empty on rest days; this is a free Bible location, not a task.
   // JHN.1 is the official SDK's existing default and must also drive chapter audio.
-  const initialSelection = (): ReaderSelection => model.reader.references.length
+  const initialSelection = (): ReaderSelection => references.length
     ? { source: 'ASSIGNED', index: 0 }
     : { source: 'FREE', book: 'JHN', chapter: '1' };
   const [selection, setSelection] = useState<ReaderSelection>(initialSelection);
   const selectionOwner = useRef(owner);
 
   const assignedIndex = selection.source === 'ASSIGNED'
-    ? Math.min(selection.index, Math.max(0, model.reader.references.length - 1))
+    ? Math.min(selection.index, Math.max(0, references.length - 1))
     : 0;
-  const assignedReference = model.reader.references[assignedIndex] ?? '';
+  const assignedReference = references[assignedIndex] ?? '';
   const [assignedBook = '', assignedChapter = ''] = assignedReference.split('.');
   const currentBook = selection.source === 'FREE' ? selection.book : assignedBook;
   const currentChapter = selection.source === 'FREE' ? selection.chapter : assignedChapter;
@@ -147,53 +148,53 @@ export default function ReaderScreen() {
     if (at) rememberBook(at.book, at.chapter, versionId);
   };
   const returnToAssignedRange = (): void => {
-    if (!ownsReader() || !memberId || model.reader.references.length === 0) return;
+    if (!ownsReader() || !memberId || references.length === 0) return;
     const store = positionStoreRef.current ?? openQingmuReaderPositionStore();
     positionStoreRef.current = store;
-    store.resetToAssigned(memberId, 'church-2026-09', selectedDate, model.reader.references);
-    setReaderPosition(store.get(memberId, 'church-2026-09', selectedDate) ?? null);
+    store.resetToAssigned(memberId, planId, selectedDate, references);
+    setReaderPosition(store.get(memberId, planId, selectedDate) ?? null);
     freePositionRef.current = null;
     setSelection({ source: 'ASSIGNED', index: 0 });
   };
   const [record, setRecord] = useState<CompletionRecord>(() => {
     const initialMemberId = memberId ?? 'signed-out';
-    if (!memberId) return { memberId: initialMemberId, planId: 'church-2026-09', taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
+    if (!memberId) return { memberId: initialMemberId, planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
     try {
       const repository = openQingmuRepository();
       repositoryRef.current = repository;
-      return repository.get({ memberId, planId: 'church-2026-09', taskDate: selectedDate }) ?? {
-        memberId, planId: 'church-2026-09', taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED',
+      return repository.get({ memberId, planId, taskDate: selectedDate }) ?? {
+        memberId, planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED',
       };
     } catch {
-      return { memberId: initialMemberId, planId: 'church-2026-09', taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
+      return { memberId: initialMemberId, planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
     }
   });
   useFocusEffect(useCallback(() => {
     let active = true;
     if (!memberId) {
-      setRecord({ memberId: 'signed-out', planId: 'church-2026-09', taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' });
+      setRecord({ memberId: 'signed-out', planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' });
       return () => { active = false; };
     }
     const repository = repositoryRef.current ?? openQingmuRepository();
     repositoryRef.current = repository;
-    setRecord(repository.get({ memberId, planId: 'church-2026-09', taskDate: selectedDate }) ?? {
-      memberId, planId: 'church-2026-09', taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED',
+    setRecord(repository.get({ memberId, planId, taskDate: selectedDate }) ?? {
+      memberId, planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED',
     });
     if (clientRef.current) {
       void repository.flush((command) => clientRef.current!.saveCompletion(command), memberId).then(() => {
-        const recovered = repository.get({ memberId, planId: 'church-2026-09', taskDate: selectedDate });
+        const recovered = repository.get({ memberId, planId, taskDate: selectedDate });
         if (active && recovered) setRecord(recovered);
       }).catch(() => { if (active) setSyncError(true); });
     }
     return () => { active = false; };
-  }, [memberId, selectedDate]));
+  }, [memberId, planId, selectedDate]));
   useEffect(() => {
     if (!ownsReader()) return;
     selectionOwner.current = owner;
     if (!memberId) { setReaderPosition(null); freePositionRef.current = null; setSelection(initialSelection()); return; }
     const store = positionStoreRef.current ?? openQingmuReaderPositionStore();
     positionStoreRef.current = store;
-    const saved = store.get(memberId, 'church-2026-09', selectedDate);
+    const saved = store.get(memberId, planId, selectedDate);
     setReaderPosition(saved ?? null);
     const hasSavedFreePosition = saved?.mode === 'FREE_BROWSE'
       && typeof saved.book === 'string' && saved.book.trim().length > 0
@@ -204,7 +205,7 @@ export default function ReaderScreen() {
     setSelection(hasSavedFreePosition
       ? { source: 'FREE', book: saved.book, chapter: saved.chapter }
       : initialSelection());
-  }, [memberId, selectedDate, owner]);
+  }, [memberId, planId, selectedDate, owner]);
   useEffect(() => {
     if (!memberId) {
       clientRef.current = null;
@@ -224,7 +225,7 @@ export default function ReaderScreen() {
       });
       if (repositoryRef.current) {
         await repositoryRef.current.flush((command) => clientRef.current!.saveCompletion(command), activeMemberId);
-        const recovered = repositoryRef.current.get({ memberId: activeMemberId, planId: 'church-2026-09', taskDate: selectedDate });
+        const recovered = repositoryRef.current.get({ memberId: activeMemberId, planId, taskDate: selectedDate });
         if (active && recovered) setRecord(recovered);
       }
       if (active) setSyncError(false);
@@ -232,11 +233,11 @@ export default function ReaderScreen() {
       if (active) setSyncError(true);
     });
     return () => { active = false; };
-  }, [authToken, memberId, selectedDate]);
+  }, [authToken, memberId, planId, selectedDate]);
   const toggleCompletion = async () => {
     const repository = repositoryRef.current;
     if (!repository || !day || !memberId) return;
-    const current = repository.get({ memberId, planId: 'church-2026-09', taskDate: selectedDate }) ?? record;
+    const current = repository.get({ memberId, planId, taskDate: selectedDate }) ?? record;
     const desiredStatus = current.status === 'COMPLETED' ? 'NOT_COMPLETED' : 'COMPLETED';
     const next = repository.saveCompletion({
       memberId: record.memberId,
@@ -247,7 +248,7 @@ export default function ReaderScreen() {
       expectedRevision: current.revision,
       syncStatus: 'PENDING_SAVE',
     });
-    void syncReadingReminderForCompletion({ memberId, taskDate: selectedDate, status: desiredStatus, scheduler: reminderScheduler, store: SecureStore });
+    void syncReadingReminderForCompletion({ memberId, planId, taskDate: selectedDate, status: desiredStatus, scheduler: reminderScheduler, store: SecureStore });
     setRecord(next);
     setSyncError(false);
     if (clientRef.current) {
@@ -261,7 +262,6 @@ export default function ReaderScreen() {
           const last = results.at(-1);
           if (last && !last.ok) setSyncError(true);
         }
-        await clientRef.current.getProgress(selectedDate, period);
       } catch {
         setSyncError(true);
       }
@@ -281,7 +281,7 @@ export default function ReaderScreen() {
   return (
     <YouVersionReader
       key={selectedDate}
-      references={model.reader.references}
+      references={references}
       date={selectedDate}
       appKey={process.env.EXPO_PUBLIC_YOUVERSION_APP_KEY ?? null}
       versionId={selectedVersionId}
@@ -305,7 +305,7 @@ export default function ReaderScreen() {
           chrome={chrome}
           chapterUsfm={currentUsfm}
           versionId={selectedVersionId}
-          references={model.reader.references}
+          references={references}
           onSelectReference={selectAssigned}
           versionOptions={versionOptions}
           onSelectVersion={chooseVersion}

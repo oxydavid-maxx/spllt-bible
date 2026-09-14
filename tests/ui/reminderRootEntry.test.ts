@@ -84,7 +84,7 @@ describe('formal Root notification wiring', () => {
     const event = { actionIdentifier: 'default', notification: { date: 2, request: { identifier: 'root-meeting', content: { data: { event: 'MEETING_REMINDER', memberId: 'member:a', meetingId: 'm1', reminderId: 'meeting:m1:2', scheduleRevision: 2, route: '/account' } } } } };
     await act(async () => { state.listener!(event); });
     expect(state.validate).toHaveBeenCalledOnce();
-    expect(state.push).toHaveBeenCalledExactlyOnceWith('/groups');
+    expect(state.push).toHaveBeenCalledExactlyOnceWith('/today');
     await act(async () => { renderer!.unmount(); }); renderer = null;
     expect(state.remove).toHaveBeenCalledOnce(); expect(state.handler).toBeNull();
   });

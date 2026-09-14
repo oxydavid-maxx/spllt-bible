@@ -16,6 +16,7 @@ describe('weekly reset and monthly personal accumulation', () => {
       fixtureToken: 'fixture-token',
       scheduleDates: ['2026-09-01', '2026-09-02', '2026-09-07', '2026-09-08'],
       pointPolicy: policy,
+      now: () => new Date('2026-09-14T04:00:00.000Z'),
     });
     const headers = { authorization: 'Bearer fixture-token', 'x-qingmu-member-id': 'fixture:self' };
     const complete = (date: string, operationId: string) => api({
@@ -37,7 +38,7 @@ describe('weekly reset and monthly personal accumulation', () => {
       periodStart: '2026-09-07',
       periodEnd: '2026-09-08',
       completed: 1,
-      target: 4,
+      target: 2,
       personalCompleted: 1,
       points: 1,
       goalTarget: 2,
@@ -48,10 +49,10 @@ describe('weekly reset and monthly personal accumulation', () => {
     expect(response.body.monthly).toMatchObject({
       periodStart: '2026-09-01',
       periodEnd: '2026-09-08',
-      completed: 2,
-      target: 8,
-      personalCompleted: 2,
-      points: 2,
+      completed: 1,
+      target: 4,
+      personalCompleted: 1,
+      points: 1,
       policyStatus: 'ACTIVE',
     });
     database.close();

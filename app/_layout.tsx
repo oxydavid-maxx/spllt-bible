@@ -1,8 +1,8 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AuthProvider, type AuthSession, type VerifiedProfile } from '../src/services/authSession';
-import { registerConfiguredReminderHeadlessTask, revokeConfiguredReminderDeviceBinding, revokeConfiguredReminderDeviceBindingResult } from '../src/services/configuredReminderHeadless';
+import { revokeConfiguredReminderDeviceBinding, revokeConfiguredReminderDeviceBindingResult } from '../src/services/configuredReminderHeadless';
 import { runtimeConfig } from '../src/config/runtime';
 import { createApiClient } from '../src/services/apiClient';
 import * as SecureStore from 'expo-secure-store';
@@ -12,11 +12,11 @@ import { openQingmuRepository } from '../src/storage/mobileDatabase';
 import { randomUUID } from 'expo-crypto';
 import { ReminderNotificationBridge } from '../src/services/ReminderNotificationBridge';
 import { createReminderDeviceRevokeQueue } from '../src/services/reminderDeviceRevokeQueue';
-
-void registerConfiguredReminderHeadlessTask();
+import { getReadingPlanId } from '../src/ui/readingSession';
 
 export default function RootLayout() {
   const [reminderScheduler] = useState(() => createReminderScheduler());
+  useEffect(() => { void reminderScheduler.cancelRetiredMeetingReminders().catch(() => undefined); }, [reminderScheduler]);
   const [reminderRevokeQueue] = useState(() => createReminderDeviceRevokeQueue({ secureStore: SecureStore, revoke: revokeConfiguredReminderDeviceBindingResult }));
   const [reminderRuntime] = useState(() => new ReminderRuntimeOwner({
     scheduler: reminderScheduler,
@@ -29,8 +29,11 @@ export default function RootLayout() {
       return notifications;
     },
     generateInstallationId: randomUUID,
-    getCompletionStatus: (memberId, taskDate) => {
-      try { return openQingmuRepository().get({ memberId, planId: 'church-2026-09', taskDate })?.status ?? null; } catch { return null; }
+    getCompletionStatus: (memberId, taskDate, planId) => {
+      try {
+        const resolvedPlanId = planId ?? getReadingPlanId(taskDate);
+        return resolvedPlanId ? openQingmuRepository().get({ memberId, planId: resolvedPlanId, taskDate })?.status ?? null : null;
+      } catch { return null; }
     },
   }));
   const loadProfile = useCallback(async (session: AuthSession): Promise<VerifiedProfile | null> => {

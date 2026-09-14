@@ -54,7 +54,7 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn }: { clientId: st
         if (session.error === 'UNKNOWN_MEMBER') {
           setGoogleIdToken(authResult.idToken);
           setState('needs-invite');
-          setErrorMessage('這個Google身份尚未加入核准名單，請輸入同工提供的一次性邀請碼。');
+          setErrorMessage('這個Google身份尚未完成帳戶啟用，請輸入同工提供的一次性啟用碼。');
         } else {
           setState('error');
           setErrorMessage('伺服器沒有確認身份，請稍後再試。');
@@ -78,24 +78,24 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn }: { clientId: st
       const session = await client.claimInvite(googleIdToken, inviteCode.trim(), { persistentDevice: true });
       if (!session || 'error' in session) {
         setState('needs-invite');
-        setErrorMessage(session && 'error' in session && session.error === 'INVITE_EXPIRED' ? '邀請碼已過期，請向同工索取新的邀請碼。' : '邀請碼無效或已使用。');
+        setErrorMessage(session && 'error' in session && session.error === 'INVITE_EXPIRED' ? '啟用碼已過期，請向同工索取新的啟用碼。' : '啟用碼無效或已使用。');
         return;
       }
       await completeSession(session, attempt);
     } catch {
       setState('needs-invite');
-      setErrorMessage('邀請碼驗證失敗，請稍後重試。');
+      setErrorMessage('啟用碼驗證失敗，請稍後重試。');
     } finally { finishAuthSessionAttempt(attempt); }
   }, [baseUrl, completeSession, googleIdToken, inviteCode]);
   const alert = state === 'error' || state === 'needs-invite';
   return (
     <View style={[styles.card, alert && styles.cardAlert]}>
       <Text style={styles.title}>Google身份</Text>
-      <Text style={[styles.body, alert && styles.bodyAlert]}>{state === 'signed-in' ? '已登入，可以連續保存你的讀經與小組進度。' : state === 'exchanging' ? '正在登入…' : state === 'needs-invite' || state === 'claiming-invite' ? errorMessage ?? '請輸入同工提供的一次性邀請碼。' : state === 'error' ? errorMessage ?? '登入失敗，請稍後重試。' : '登入後可以連續保存你的讀經與小組進度。'}</Text>
+      <Text style={[styles.body, alert && styles.bodyAlert]}>{state === 'signed-in' ? '已登入，可以保存你的讀經進度。' : state === 'exchanging' ? '正在登入…' : state === 'needs-invite' || state === 'claiming-invite' ? errorMessage ?? '請輸入同工提供的一次性啟用碼。' : state === 'error' ? errorMessage ?? '登入失敗，請稍後重試。' : '登入後可以保存你的讀經進度。'}</Text>
       {state === 'needs-invite' || state === 'claiming-invite' ? <>
-        <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="一次性邀請碼" autoCapitalize="none" autoCorrect={false} style={styles.input} accessibilityLabel="一次性邀請碼" />
-        <Pressable accessibilityRole="button" accessibilityLabel="送出邀請碼" disabled={state === 'claiming-invite' || !inviteCode.trim()} style={[styles.button, (state === 'claiming-invite' || !inviteCode.trim()) && styles.disabled]} onPress={() => { void claimInvite(); }}>
-          <Text style={styles.buttonText}>{state === 'claiming-invite' ? '確認中…' : '加入核准小組'}</Text>
+        <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="一次性啟用碼" autoCapitalize="none" autoCorrect={false} style={styles.input} accessibilityLabel="一次性啟用碼" />
+        <Pressable accessibilityRole="button" accessibilityLabel="送出啟用碼" disabled={state === 'claiming-invite' || !inviteCode.trim()} style={[styles.button, (state === 'claiming-invite' || !inviteCode.trim()) && styles.disabled]} onPress={() => { void claimInvite(); }}>
+          <Text style={styles.buttonText}>{state === 'claiming-invite' ? '確認中…' : '完成帳戶啟用'}</Text>
         </Pressable>
       </> : <Pressable accessibilityRole="button" accessibilityLabel="使用Google登入" disabled={state === 'exchanging' || state === 'signed-in'} style={[styles.button, (state === 'exchanging' || state === 'signed-in') && styles.disabled]} onPress={() => { void signIn(); }}>
         <Text style={styles.buttonText}>{state === 'signed-in' ? '已登入' : '使用Google登入'}</Text>

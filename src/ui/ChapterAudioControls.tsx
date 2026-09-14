@@ -20,7 +20,7 @@
 //       HTTP status or exception text.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAudioPlayer, type AudioStatus } from 'expo-audio';
 import { theme } from './Theme';
 import { isAuthorizedAudioEnabled, isQaTestAudioEnabled, resolveChapterAudioSession } from '../services/audioChapterResolver';
@@ -356,19 +356,33 @@ export function ChapterAudioControls({
     setRetryNonce(value => value + 1);
   };
 
-  if (!active) return null;
   const label = resolved.source?.chapterLabel ?? formatReferenceZhTw(chapterUsfm);
   const hasSource = Boolean(resolved.source);
   const canRetry = authValid && (needsRetry || (!hasSource && current?.kind === 'unavailable' && current.retryable));
-  const unavailableMessage = !authValid ? '登入後即可使用朗讀。'
-    : current?.kind === 'unavailable' ? current.message : '正在取得本章語音…';
-  const statusMessage = failure ?? (!hasSource ? unavailableMessage : null);
+  const noAudio = !hasSource && current?.kind === 'unavailable' && !current.retryable;
+  const loading = !hasSource && !canRetry && !noAudio;
+  const slotLabel = loading
+    ? (!authValid ? '登入後即可使用朗讀' : '正在載入朗讀來源')
+    : noAudio ? '本章沒有朗讀' : canRetry ? `重試${label}語音` : progress.playing ? `暫停${label}語音` : `播放${label}語音`;
 
   // One persistent player and one control. Pause resumes the same native position;
   // Expired metadata is reconfirmed in place; native errors explicitly reprepare.
   return (
-    <View style={styles.minimal} accessibilityLabel={`章節語音：${label}`}>
-      {hasSource || canRetry ? (
+    <View
+      style={styles.host}
+      accessibilityLabel={`章節語音：${label}`}
+      {...(!active ? { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const } : {})}
+    >
+      <View
+        style={styles.slot}
+        accessible={false}
+        accessibilityLabel={slotLabel}
+        accessibilityState={{ busy: loading }}
+        {...(!active ? { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const } : {})}
+      >
+      {active && loading ? <ActivityIndicator accessibilityLabel={slotLabel} color={theme.colors.primary} /> : null}
+      {active && noAudio ? <Text accessible accessibilityLabel={slotLabel} style={styles.icon}>⊘</Text> : null}
+      {active && (hasSource || canRetry) ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={canRetry ? `重試${label}語音` : progress.playing ? `暫停${label}語音` : `播放${label}語音`}
@@ -378,24 +392,25 @@ export function ChapterAudioControls({
           <Text style={styles.icon}>{canRetry ? '↻' : progress.playing ? 'Ⅱ' : '▶'}</Text>
         </Pressable>
       ) : null}
-      {statusMessage ? (
+      </View>
+      {active && failure ? (
         <Text
           accessible
-          accessibilityRole={failure ? 'alert' : undefined}
+          accessibilityRole="alert"
           accessibilityLiveRegion="polite"
-          accessibilityLabel={`朗讀狀態：${statusMessage}`}
+          accessibilityLabel={`朗讀狀態：${failure}`}
           numberOfLines={1}
-          style={[styles.status, failure ? styles.failure : null]}
-        >{statusMessage}</Text>
+          style={styles.feedback}
+        >{failure}</Text>
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  minimal: { alignItems: 'center', justifyContent: 'center', maxWidth: 160, flexShrink: 1 },
-  button: { minWidth: theme.control.tap, minHeight: theme.control.tap, paddingHorizontal: theme.spacing.sm, alignItems: 'center', justifyContent: 'center' },
+  host: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  slot: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
+  button: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
   icon: { color: theme.colors.primary, fontSize: 24, fontWeight: '700' },
-  status: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, maxWidth: 160 },
-  failure: { color: theme.colors.danger ?? theme.colors.ink },
+  feedback: { position: 'absolute', left: theme.control.tap + theme.spacing.xs, top: 0, color: theme.colors.danger ?? theme.colors.ink, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, maxWidth: 160 },
 });

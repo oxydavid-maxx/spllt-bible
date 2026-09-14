@@ -34,7 +34,9 @@ export function ReminderNotificationBridge({ revokeQueue }: { revokeQueue?: Pend
         defaultActionIdentifier: notifications.DEFAULT_ACTION_IDENTIFIER,
         validateLatest: validateConfiguredMeetingReminder,
         openReadingDate: taskDate => { setSelectedReadingDate(taskDate); router.push('/today'); },
-        openMeeting: () => { router.push('/groups'); },
+        // Meeting reminders were retired. A stale notification/deep link returns
+        // to the reading entry and never recreates the old group surface.
+        openMeeting: () => { router.push('/today'); },
       });
       binding = bindReminderNotifications(notifications, controller);
       bindingRef.current = binding;

@@ -3,6 +3,9 @@ import type { NotificationRequestInput } from 'expo-notifications';
 
 import { createReminderReconciler } from '../../src/services/reminderReconciler';
 import { buildNextReadingReminderSpec, buildUpcomingReadingReminderSpecs, createReminderScheduler, type ReminderNotificationAdapter, type ReminderSpec } from '../../src/services/reminderScheduler';
+import { canonicalSeptemberPlan } from '../../src/domain/calendar';
+
+const schedule = canonicalSeptemberPlan.days.map((day) => ({ taskDate: day.date, planId: canonicalSeptemberPlan.planId }));
 
 function spec(overrides: Partial<ReminderSpec> = {}): ReminderSpec {
   return {
@@ -49,12 +52,12 @@ function fakeAdapter(initial: Array<Record<string, unknown>> = [], granted = tru
 }
 
 describe('local reminder scheduler', () => {
-  it('selects the next canonical scheduled date in Asia/Taipei for the chosen daily time', () => {
-    expect(buildNextReadingReminderSpec('member:one', '07:45', new Date('2026-09-11T23:00:00.000Z'))).toMatchObject({ reminderId: 'reading:member:one:2026-09-12', taskDate: '2026-09-12', route: '/today?date=2026-09-12' });
+  it('selects the next account-scheduled date in Asia/Taipei for the chosen daily time', () => {
+    expect(buildNextReadingReminderSpec('member:one', '07:45', new Date('2026-09-11T23:00:00.000Z'), schedule)).toMatchObject({ reminderId: 'reading:member:one:2026-09-12', taskDate: '2026-09-12', targetId: 'church-2026-09', route: '/today?date=2026-09-12' });
   });
 
-  it('returns every future canonical task date without past, duplicate, or non-canonical reminders', () => {
-    const specs = buildUpcomingReadingReminderSpecs('member:one', '07:45', new Date('2026-09-09T00:00:00.000Z'));
+  it('returns every future account-scheduled task date without past or duplicate reminders', () => {
+    const specs = buildUpcomingReadingReminderSpecs('member:one', '07:45', new Date('2026-09-09T00:00:00.000Z'), schedule);
     expect(specs.length).toBeGreaterThan(1);
     expect(new Set(specs.map((item) => item.reminderId)).size).toBe(specs.length);
     expect(specs.every((item) => item.memberId === 'member:one' && item.taskDate && item.taskDate >= '2026-09-09' && item.triggerAt > '2026-09-09T00:00:00.000Z')).toBe(true);

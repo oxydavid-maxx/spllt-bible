@@ -3,6 +3,7 @@ import { ensureMobileSessionSchema } from './mobileSessions';
 import { ensureMeetingSchema } from './meetingSchedules';
 import { LOCAL_SCHEMA } from '../src/storage/schema';
 import { buildCompletionOperationFingerprint } from './operationFingerprint';
+import { defaultReadingDays, ensureGamificationSchema, seedReadingDays, type ReadingDaySeed } from './gamification';
 
 export interface ServerMember {
   id: string;
@@ -40,7 +41,7 @@ export interface ServerDatabase {
   close: () => void;
 }
 
-export function createDatabase(options: { filename?: string; members?: ServerMember[]; groupProfiles?: ServerGroupProfile[] } = {}): ServerDatabase {
+export function createDatabase(options: { filename?: string; members?: ServerMember[]; groupProfiles?: ServerGroupProfile[]; readingDays?: ReadingDaySeed[] } = {}): ServerDatabase {
   const db = new DatabaseSync(options.filename ?? ':memory:');
   db.exec(`
     ${LOCAL_SCHEMA}
@@ -198,6 +199,9 @@ export function createDatabase(options: { filename?: string; members?: ServerMem
   }
   ensureMeetingSchema(db);
   ensureMobileSessionSchema(db);
+  ensureGamificationSchema(db);
+  const readingDayCount = Number((db.prepare('SELECT COUNT(*) AS count FROM reading_days').get() as { count: number }).count);
+  if (readingDayCount === 0) seedReadingDays(db, options.readingDays ?? defaultReadingDays());
   const insert = db.prepare(
     'INSERT OR REPLACE INTO members (id, display_name, group_id) VALUES (?, ?, ?)',
   );

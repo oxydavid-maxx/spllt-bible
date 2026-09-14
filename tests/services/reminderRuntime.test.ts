@@ -145,6 +145,34 @@ describe('auth-owned reminder runtime', () => {
     owner.dispose();
   });
 
+  it('uses the signed-in account reading schedule and plan id for future reminders', async () => {
+    const store = secureStore();
+    const getReadingDays = vi.fn(async () => ({
+      today: '2026-09-14',
+      timezone: 'Asia/Taipei',
+      days: [{ taskDate: '2026-10-01', planId: 'plan-october', sourceRevision: 7 }],
+    }));
+    setAuthSession({ memberId: 'member:one', sessionToken: 'session-one' });
+    const owner = new ReminderRuntimeOwner({
+      scheduler: schedulerValue as any,
+      secureStore: store,
+      createApiClient: () => ({
+        getReminderSnapshot: async () => ({ memberId: 'member:one', readingEnabled: true, meetingEnabled: false, readingTime: '07:45', meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'LOCAL_ONLY' as const, meetings: [] }),
+        getReadingDays,
+        saveReminderPreferences: async () => null,
+        registerReminderDeviceToken: async () => true,
+        revokeReminderDeviceToken: async () => true,
+      }),
+      loadNotificationSource: async () => ({ getDevicePushTokenAsync: async () => ({ type: 'android', data: 'token' }), addPushTokenListener: () => ({ remove: vi.fn() }) }),
+      generateInstallationId: () => 'install-one',
+    });
+    owner.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getReadingDays).toHaveBeenCalledWith(expect.any(String), expect.any(String));
+    expect(schedulerValue.scheduled).toEqual([expect.objectContaining({ taskDate: '2026-10-01', targetId: 'plan-october', scheduleRevision: 7 })]);
+    owner.dispose();
+  });
+
   it('drops an older preference response after a newer off intent wins', async () => {
     const store = secureStore();
     const oldResponse = (() => { let resolve!: (value: any) => void; const promise = new Promise((next) => { resolve = next; }); return { promise, resolve }; })();

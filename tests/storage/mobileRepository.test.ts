@@ -57,6 +57,35 @@ describe('durable mobile completion repository', () => {
     node.close();
   });
 
+  it('reconciles a stale replay to the server state without reviving the old intent', async () => {
+    const { node, mobile } = nodeDatabase();
+    const repository = createMobileRepository(mobile);
+    const oldCommand = {
+      memberId: 'google:self', planId: 'church-2026-09', taskDate: '2026-09-08', desiredStatus: 'COMPLETED' as const,
+      operationId: 'mobile-op-lost-response', expectedRevision: 0, syncStatus: 'PENDING_SAVE' as const,
+    };
+    repository.saveCompletion(oldCommand);
+    const stale = await repository.flush(async (queued) => {
+      expect(queued.operationId).toBe(oldCommand.operationId);
+      return { ok: false as const, conflict: true as const, error: 'OPERATION_REPLAY_STALE' as const, revision: 2, status: 'NOT_COMPLETED' as const };
+    });
+
+    expect(stale).toMatchObject([{ ok: false, error: 'OPERATION_REPLAY_STALE', reconciledConflict: true, revision: 2, status: 'NOT_COMPLETED' }]);
+    expect(repository.pendingCount()).toBe(0);
+    expect(repository.get(oldCommand)).toMatchObject({ status: 'NOT_COMPLETED', revision: 2, syncStatus: 'CONFIRMED' });
+
+    const newCommand = { ...oldCommand, operationId: 'mobile-op-explicit-retry', expectedRevision: 2 };
+    repository.saveCompletion(newCommand);
+    const retried = await repository.flush(async (queued) => {
+      expect(queued.operationId).toBe(newCommand.operationId);
+      expect(queued.expectedRevision).toBe(2);
+      return { ok: true as const, revision: 3, status: 'COMPLETED' as const };
+    });
+    expect(retried).toMatchObject([{ ok: true, revision: 3, status: 'COMPLETED' }]);
+    expect(repository.get(newCommand)).toMatchObject({ status: 'COMPLETED', revision: 3, syncStatus: 'CONFIRMED' });
+    node.close();
+  });
+
   it('confirms a pending intent when the server already has the desired state', async () => {
     const { node, mobile } = nodeDatabase();
     const repository = createMobileRepository(mobile);
@@ -74,7 +103,7 @@ describe('durable mobile completion repository', () => {
     node.close();
   });
 
-  it('rebases one stale opposite intent and retries it with the same operation identity', async () => {
+  it('reconciles a stale opposite intent without automatically applying it', async () => {
     const { node, mobile } = nodeDatabase();
     const repository = createMobileRepository(mobile);
     const command = {
@@ -86,22 +115,17 @@ describe('durable mobile completion repository', () => {
     const sent: Array<{ operationId: string; expectedRevision: number }> = [];
     const results = await repository.flush(async (queued) => {
       sent.push({ operationId: queued.operationId, expectedRevision: queued.expectedRevision });
-      return sent.length === 1
-        ? { ok: false as const, conflict: true as const, error: 'REVISION_CONFLICT' as const, revision: 5, status: 'COMPLETED' as const }
-        : { ok: true as const, revision: 6, status: 'NOT_COMPLETED' as const };
+      return { ok: false as const, conflict: true as const, error: 'REVISION_CONFLICT' as const, revision: 5, status: 'COMPLETED' as const };
     });
 
-    expect(sent).toEqual([
-      { operationId: 'mobile-op-rebase', expectedRevision: 2 },
-      { operationId: 'mobile-op-rebase', expectedRevision: 5 },
-    ]);
-    expect(results.at(-1)).toMatchObject({ ok: true, revision: 6, status: 'NOT_COMPLETED' });
+    expect(sent).toEqual([{ operationId: 'mobile-op-rebase', expectedRevision: 2 }]);
+    expect(results.at(-1)).toMatchObject({ ok: false, error: 'REVISION_CONFLICT', reconciledConflict: true, revision: 5, status: 'COMPLETED' });
     expect(repository.pendingCount()).toBe(0);
-    expect(repository.get(command)).toMatchObject({ status: 'NOT_COMPLETED', revision: 6, syncStatus: 'CONFIRMED' });
+    expect(repository.get(command)).toMatchObject({ status: 'COMPLETED', revision: 5, syncStatus: 'CONFIRMED' });
     node.close();
   });
 
-  it('keeps an opposite intent after the bounded second conflict for a later retry', async () => {
+  it('removes an opposite intent after a revision conflict until the user explicitly retries', async () => {
     const { node, mobile } = nodeDatabase();
     const repository = createMobileRepository(mobile);
     const command = {
@@ -113,21 +137,12 @@ describe('durable mobile completion repository', () => {
     const sent: number[] = [];
     await repository.flush(async (queued) => {
       sent.push(queued.expectedRevision);
-      return { ok: false as const, conflict: true as const, error: 'REVISION_CONFLICT' as const, revision: 5 + sent.length - 1, status: 'COMPLETED' as const };
+      return { ok: false as const, conflict: true as const, error: 'REVISION_CONFLICT' as const, revision: 5, status: 'COMPLETED' as const };
     });
 
-    expect(sent).toEqual([2, 5]);
-    expect(repository.pendingCount()).toBe(1);
-    expect(repository.get(command)).toMatchObject({ status: 'NOT_COMPLETED', pendingStatus: 'NOT_COMPLETED', revision: 6, syncStatus: 'SAVE_FAILED' });
-    const reopened = createMobileRepository(mobile);
-    const retry = await reopened.flush(async (queued) => {
-      expect(queued.operationId).toBe('mobile-op-second-conflict');
-      expect(queued.expectedRevision).toBe(6);
-      return { ok: true as const, revision: 7, status: 'NOT_COMPLETED' as const };
-    });
-    expect(retry.at(-1)).toMatchObject({ ok: true, revision: 7, status: 'NOT_COMPLETED' });
-    expect(reopened.pendingCount()).toBe(0);
-    expect(reopened.get(command)).toMatchObject({ status: 'NOT_COMPLETED', revision: 7, syncStatus: 'CONFIRMED' });
+    expect(sent).toEqual([2]);
+    expect(repository.pendingCount()).toBe(0);
+    expect(repository.get(command)).toMatchObject({ status: 'COMPLETED', revision: 5, syncStatus: 'CONFIRMED' });
     node.close();
   });
 
@@ -207,6 +222,21 @@ describe('durable mobile completion repository', () => {
 
     expect(send).not.toHaveBeenCalled();
     expect(repository.pendingCount()).toBe(1);
+    node.close();
+  });
+
+  it('drops an expired completion from the outbox without treating it as confirmed points', async () => {
+    const { node, mobile } = nodeDatabase();
+    const repository = createMobileRepository(mobile);
+    const command = {
+      memberId: 'google:self', planId: 'church-2026-09', taskDate: '2026-09-01', desiredStatus: 'COMPLETED' as const,
+      operationId: 'mobile-op-expired', expectedRevision: 0, syncStatus: 'PENDING_SAVE' as const,
+    };
+    repository.saveCompletion(command);
+    const results = await repository.flush(async () => ({ ok: false as const, error: 'OUTSIDE_COMPLETION_WINDOW' }));
+    expect(results).toMatchObject([{ ok: false, error: 'OUTSIDE_COMPLETION_WINDOW' }]);
+    expect(repository.pendingCount()).toBe(0);
+    expect(repository.get(command)).toMatchObject({ status: 'COMPLETED', syncStatus: 'SAVE_FAILED' });
     node.close();
   });
 });

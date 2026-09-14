@@ -26,7 +26,6 @@ export function AccountSurface() {
       {model.mode === 'signed-in' && profile ? <>
         {model.avatarUrl ? <Image accessibilityLabel={`帳戶頭像：${profile.displayName}`} source={{ uri: model.avatarUrl }} style={styles.avatarImage} /> : <Text style={styles.avatar}>{model.avatarLabel}</Text>}
         <Text style={styles.title}>{profile.displayName}</Text>
-        <Text style={styles.body}>{profile.groupName ?? '小組資料待核准'}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="登出" onPress={signOut} style={styles.secondary}><Text style={styles.secondaryText}>登出</Text></Pressable>
         <ReminderSettings
           {...reminders}
@@ -36,6 +35,7 @@ export function AccountSurface() {
           onReadingTimeChange={(value) => { void saveReminderSettings({ readingTime: value }); }}
           onMeetingAdvanceChange={(value) => { void saveReminderSettings({ meetingAdvanceMinutes: value }); }}
           onOpenSettings={() => { void Linking.openSettings(); }}
+          showMeeting={false}
         />
       </> : model.mode === 'loading' || model.mode === 'error' || model.mode === 'empty' ? <>
         <Text style={styles.title}>{model.mode === 'error' ? '暫時無法載入帳戶資料' : model.mode === 'empty' ? '尚未取得帳戶資料' : '正在載入帳戶資料'}</Text>

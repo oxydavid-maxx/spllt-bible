@@ -53,7 +53,7 @@ if ($yvEnvFile -and (Test-Path -LiteralPath $yvEnvFile)) {
 # secret or token is copied, logged, hashed, or written into receipts/source.
 $googleConfigFile = $env:QINGMU_GOOGLE_CONFIG_FILE
 if ($googleConfigFile -and (Test-Path -LiteralPath $googleConfigFile)) {
-  $googleConfig = Get-Content -LiteralPath $googleConfigFile -Raw | ConvertFrom-Json
+  $googleConfig = [IO.File]::ReadAllText($googleConfigFile) | ConvertFrom-Json
   if (-not $env:EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID -and $googleConfig.clients.web.client_id) {
     $env:EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = [string]$googleConfig.clients.web.client_id
   }
@@ -113,6 +113,12 @@ if ($staleCxxDirs.Count -gt 0) {
   $staleCxxDirs = @($staleCxxDirs | ForEach-Object { $_.Substring($root.Length + 1) })
 }
 $domAssetPublication = Clear-QingmuDomAssetPublication -ProjectRoot $root -Variant $Variant
+if ($Variant -eq 'release') {
+  $releaseSigningProperties = $env:QINGMU_RELEASE_SIGNING_PROPERTIES
+  if (-not $releaseSigningProperties) { throw 'QINGMU_RELEASE_SIGNING_PROPERTIES is required for release builds' }
+  if (-not (Test-Path -LiteralPath $releaseSigningProperties)) { throw "Release signing properties are missing: $releaseSigningProperties" }
+  $argumentsReleaseSigning = '-PqingmuRelease=true'
+}
 $arguments = @(
   $gradleTask,
   '--no-daemon',
@@ -122,6 +128,7 @@ $arguments = @(
   "-Dorg.gradle.workers.max=$maxWorkers",
   '-Dorg.gradle.parallel=false'
 )
+if ($Variant -eq 'release') { $arguments += $argumentsReleaseSigning }
 if ($ReactNativeArchitectures) {
   $arguments += "-PreactNativeArchitectures=$ReactNativeArchitectures"
 }
@@ -130,6 +137,7 @@ if ($LegacyPackaging) {
 }
 $architectureArgument = if ($ReactNativeArchitectures) { " -PreactNativeArchitectures=$ReactNativeArchitectures" } else { '' }
 $packagingArgument = if ($LegacyPackaging) { ' -Pexpo.useLegacyPackaging=true' } else { '' }
+$releaseArgument = if ($Variant -eq 'release') { ' -PqingmuRelease=true' } else { '' }
 if ($env:QINGMU_GRADLE_FRESH -eq 'true') {
   $arguments += @('--refresh-dependencies', '--no-build-cache')
 }
@@ -158,7 +166,7 @@ $receipt = [ordered]@{
   profile = $buildProfile
   variant = $Variant
   fixture = $fixtureEnabled
-  command = ".\gradlew.bat $gradleTask --no-daemon --max-workers=$maxWorkers --stacktrace -Dorg.gradle.jvmargs=-Xmx${maxHeapMiB}m -XX:MaxMetaspaceSize=${maxMetaspaceMiB}m -Dfile.encoding=UTF-8 -Dorg.gradle.workers.max=$maxWorkers -Dorg.gradle.parallel=false$architectureArgument$packagingArgument"
+  command = ".\gradlew.bat $gradleTask --no-daemon --max-workers=$maxWorkers --stacktrace -Dorg.gradle.jvmargs=-Xmx${maxHeapMiB}m -XX:MaxMetaspaceSize=${maxMetaspaceMiB}m -Dfile.encoding=UTF-8 -Dorg.gradle.workers.max=$maxWorkers -Dorg.gradle.parallel=false$architectureArgument$packagingArgument$releaseArgument"
   reactNativeArchitectures = if ($ReactNativeArchitectures) { $ReactNativeArchitectures } else { $null }
   legacyPackaging = $LegacyPackaging.IsPresent
   maxWorkers = $maxWorkers
@@ -172,7 +180,7 @@ $receipt = [ordered]@{
   youVersionVersionId = if ($env:EXPO_PUBLIC_YOUVERSION_VERSION_ID) { $env:EXPO_PUBLIC_YOUVERSION_VERSION_ID } else { $null }
   youVersionAppKeyPresent = [bool]($env:EXPO_PUBLIC_YOUVERSION_APP_KEY)
   fixtureBackend = if ($fixtureEnabled) { 'two-member-week process env' } else { 'not enabled' }
-  googleOAuthConfigPresent = [bool](Test-Path -LiteralPath $googleConfigFile)
+  googleOAuthConfigPresent = [bool]($googleConfigFile -and (Test-Path -LiteralPath $googleConfigFile))
   googleAndroidServices = if ($googleAndroidServicesBinding) {
     [ordered]@{
       present = $true
@@ -192,7 +200,7 @@ $receipt = [ordered]@{
   logPath = $logPath.Substring($root.Length + 1)
   selfContained = $Variant -eq 'release'
   signingConfig = if ($Variant -eq 'release') {
-    if ($fixtureEnabled) { 'debug-keystore-fixture; replace before distribution' } else { 'debug-keystore-pilot; replace before distribution' }
+    if ($fixtureEnabled) { 'owner-controlled-release-keystore-fixture' } else { 'owner-controlled-release-keystore' }
   } else { 'debug' }
   completedAtUtc = [DateTime]::UtcNow.ToString('o')
 }

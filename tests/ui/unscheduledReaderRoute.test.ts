@@ -34,6 +34,7 @@ vi.mock('expo-secure-store', () => ({ getItemAsync: async (key: string) => bound
 vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ status: 'signed-in', session: boundary.session, epoch: 1, expiresAt: null }), getAuthSnapshot: () => ({ status: 'signed-in', session: boundary.session, epoch: 1, expiresAt: null }) }));
 vi.mock('../../src/services/reminderScheduler', () => ({ createReminderScheduler: () => ({}) }));
 vi.mock('../../src/services/reminderCompletion', () => ({ syncReadingReminderForCompletion: vi.fn() }));
+vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost: () => null }));
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ saveCompletion: boundary.completions, getProgress: async () => undefined }) }));
 vi.mock('../../src/storage/mobileDatabase', () => ({
   openQingmuRepository: () => ({ get: () => undefined, flush: async () => [], saveCompletion: boundary.completions }),

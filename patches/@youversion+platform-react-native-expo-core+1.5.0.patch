@@ -1,0 +1,84 @@
+diff --git a/node_modules/@youversion/platform-react-native-expo-core/build/bible-content/client.js b/node_modules/@youversion/platform-react-native-expo-core/build/bible-content/client.js
+index 73bbc13..ba25905 100644
+--- a/node_modules/@youversion/platform-react-native-expo-core/build/bible-content/client.js
++++ b/node_modules/@youversion/platform-react-native-expo-core/build/bible-content/client.js
+@@ -6,6 +6,10 @@ import { contentLifetimeMs } from './content-lifetime';
+ import { createBibleContentStore } from './content-store';
+ const CONTENT_PATH = /^\/v1\/bibles\/(\d+)(\/|$)/;
+ const DEFAULT_TIMEOUT_MS = 10_000;
++// Provider instances can be mounted independently (for example while a reader
++// surface is transitioning). Keep one producer for an exact native request so
++// preload and reader consumers cannot issue duplicate HTTP requests.
++const inflightRequests = new Map();
+ export function createBibleContentClient({ appKey, apiHost, installationId, fetch: fetchImpl = globalThis.fetch, timeoutMs = DEFAULT_TIMEOUT_MS, store = createBibleContentStore(), now = Date.now, }) {
+     return async ({ path }) => {
+         const [pathname] = path.split('?', 1);
+@@ -19,33 +23,47 @@ export function createBibleContentClient({ appKey, apiHost, installationId, fetc
+             // Entries keep no content type; stored bodies are always JSON (ADR 0020).
+             return { status: 200, body: cached.body, contentType: 'application/json' };
+         }
++        const requestKey = `${appKey}\u0000${installationId}\u0000${key}`;
++        const existing = inflightRequests.get(requestKey);
++        if (existing !== undefined)
++            return existing;
+         // RN's OkHttp client ships with no timeouts; without this an Android
+         // request on a stalled connection never settles.
+-        const controller = new AbortController();
+-        const timer = setTimeout(() => controller.abort(), timeoutMs);
+-        try {
+-            const response = await fetchImpl(`https://${apiHost}${path}`, {
+-                headers: {
+-                    'X-YVP-App-Key': appKey,
+-                    'X-YVP-Installation-Id': installationId,
+-                    ...getSdkHeaders(),
+-                },
+-                signal: controller.signal,
+-            });
+-            // Lifetime counts from header arrival, not body completion (ADR 0020).
+-            const receivedAt = now();
+-            const body = await response.text();
+-            if (response.ok) {
+-                const lifetimeMs = contentLifetimeMs(response.headers.get('cache-control'), response.headers.get('age'));
+-                // null: `no-cache`/`no-store`; 0: already expired — neither is stored (ADR 0020).
+-                if (lifetimeMs !== null && lifetimeMs > 0) {
+-                    store.write(versionId, key, { body, expiresAt: receivedAt + lifetimeMs });
++        const work = (async () => {
++            const controller = new AbortController();
++            const timer = setTimeout(() => controller.abort(), timeoutMs);
++            try {
++                const response = await fetchImpl(`https://${apiHost}${path}`, {
++                    headers: {
++                        'X-YVP-App-Key': appKey,
++                        'X-YVP-Installation-Id': installationId,
++                        ...getSdkHeaders(),
++                    },
++                    signal: controller.signal,
++                });
++                // Lifetime counts from header arrival, not body completion (ADR 0020).
++                const receivedAt = now();
++                const body = await response.text();
++                if (response.ok) {
++                    const lifetimeMs = contentLifetimeMs(response.headers.get('cache-control'), response.headers.get('age'));
++                    // null: `no-cache`/`no-store`; 0: already expired — neither is stored (ADR 0020).
++                    if (lifetimeMs !== null && lifetimeMs > 0) {
++                        store.write(versionId, key, { body, expiresAt: receivedAt + lifetimeMs });
++                    }
+                 }
++                return { status: response.status, body, contentType: response.headers.get('content-type') };
++            }
++            finally {
++                clearTimeout(timer);
+             }
+-            return { status: response.status, body, contentType: response.headers.get('content-type') };
++        })();
++        inflightRequests.set(requestKey, work);
++        try {
++            return await work;
+         }
+         finally {
+-            clearTimeout(timer);
++            if (inflightRequests.get(requestKey) === work)
++                inflightRequests.delete(requestKey);
+         }
+     };
+ }

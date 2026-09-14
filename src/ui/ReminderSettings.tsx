@@ -20,6 +20,7 @@ export function ReminderSettings({
   meetingAdvanceMinutes,
   onReadingTimeChange,
   onMeetingAdvanceChange,
+  showMeeting = true,
 }: ReminderSettingsModelInput & {
   onReadingChange: (enabled: boolean) => void;
   onMeetingChange: (enabled: boolean) => void;
@@ -27,6 +28,8 @@ export function ReminderSettings({
   onRetry?: () => Promise<void>;
   onReadingTimeChange: (value: string) => void;
   onMeetingAdvanceChange: (value: number) => void;
+  /** Compatibility rendering switch; the production account surface disables retired meeting reminders. */
+  showMeeting?: boolean;
 }) {
   const [draftReadingTime, setDraftReadingTime] = useState(readingTime);
   const [retrying, setRetrying] = useState(false);
@@ -45,14 +48,14 @@ export function ReminderSettings({
         <Text style={styles.label}>{model.readingTimeLabel}</Text>
         <TextInput accessibilityLabel="每日讀經時間" value={draftReadingTime} onChangeText={setDraftReadingTime} onEndEditing={() => { if (/^([01]\d|2[0-3]):[0-5]\d$/.test(draftReadingTime)) onReadingTimeChange(draftReadingTime); }} placeholder="08:00" keyboardType="numbers-and-punctuation" style={styles.timeInput} />
       </View>
-      <View style={styles.timeRow}>
+      {showMeeting && <View style={styles.timeRow}>
         <Text style={styles.label}>{model.meetingAdvanceLabel}</Text>
         <View style={styles.chips}>{[5, 15, 30, 60].map((minutes) => <Pressable key={minutes} accessibilityRole="button" accessibilityLabel={`聚會提前${minutes}分鐘`} accessibilityState={{ selected: meetingAdvanceMinutes === minutes }} onPress={() => onMeetingAdvanceChange(minutes)} style={[styles.chip, meetingAdvanceMinutes === minutes && styles.chipActive]}><Text style={[styles.chipText, meetingAdvanceMinutes === minutes && styles.chipTextActive]}>{minutes}</Text></Pressable>)}</View>
-      </View>
-      <Pressable style={styles.row} accessibilityRole="switch" accessibilityLabel="聚會提醒列" accessibilityState={{ checked: meetingEnabled }} onPress={() => onMeetingChange(!meetingEnabled)}>
+      </View>}
+      {showMeeting && <Pressable style={styles.row} accessibilityRole="switch" accessibilityLabel="聚會提醒列" accessibilityState={{ checked: meetingEnabled }} onPress={() => onMeetingChange(!meetingEnabled)}>
         <View style={styles.copy}><Text style={styles.label}>聚會提醒</Text><Text style={styles.body}>{model.deliveryLabel}</Text></View>
         <Switch accessibilityLabel="聚會提醒" value={meetingEnabled} onValueChange={onMeetingChange} />
-      </Pressable>
+      </Pressable>}
       {permission === 'denied' && onOpenSettings ? <Pressable accessibilityRole="button" accessibilityLabel="開啟系統通知設定" onPress={onOpenSettings} style={styles.button}><Text style={styles.buttonText}>開啟系統設定</Text></Pressable> : null}
     </View>
   );

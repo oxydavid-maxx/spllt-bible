@@ -1,7 +1,6 @@
 import type { AuthSnapshot } from './authSession';
 import type { HeadlessMeetingPayload, HeadlessValidationResult } from './reminderDelivery';
 import type { NotificationBehavior } from 'expo-notifications';
-import { canonicalSeptemberPlan, getReadingDay } from '../domain/calendar';
 export type ReminderEntryAuth = Pick<AuthSnapshot, 'status' | 'session' | 'epoch'>;
 type Options = { getAuth: () => ReminderEntryAuth; canNavigate: () => boolean; defaultActionIdentifier: string; validateLatest: (payload: HeadlessMeetingPayload) => Promise<HeadlessValidationResult>; openReadingDate: (date: string) => void; openMeeting: (meetingId: string) => void };
 type Disposition = 'handled' | 'ignored' | 'deferred';
@@ -14,12 +13,17 @@ function entryOf(notification: unknown): Entry | null {
   const data = record(dataOf(notification));
   if (!data || typeof data.memberId !== 'string' || !data.memberId.trim()) return null;
   if (data.kind === 'READING') {
-    if (typeof data.taskDate !== 'string' || data.targetId !== canonicalSeptemberPlan.planId || !getReadingDay(canonicalSeptemberPlan, data.taskDate) || data.reminderId !== `reading:${data.memberId}:${data.taskDate}`) return null;
+    if (typeof data.taskDate !== 'string' || !validDateOnly(data.taskDate) || typeof data.targetId !== 'string' || !data.targetId.trim() || data.reminderId !== `reading:${data.memberId}:${data.taskDate}`) return null;
     return { kind: 'READING', memberId: data.memberId, taskDate: data.taskDate };
   }
   const revision = typeof data.scheduleRevision === 'string' && data.scheduleRevision.trim() ? Number(data.scheduleRevision) : data.scheduleRevision;
   if (data.event !== 'MEETING_REMINDER' || typeof data.reminderId !== 'string' || !data.reminderId.trim() || typeof data.meetingId !== 'string' || !data.meetingId.trim() || typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) return null;
   return { kind: 'MEETING', memberId: data.memberId, payload: { event: 'MEETING_REMINDER', reminderId: data.reminderId, meetingId: data.meetingId, scheduleRevision: revision } };
+}
+function validDateOnly(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T12:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 function responseKey(response: unknown): string | null {
   const value = record(response); const notification = record(value?.notification); const request = record(notification?.request);

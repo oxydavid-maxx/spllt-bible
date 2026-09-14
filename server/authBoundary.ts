@@ -21,6 +21,7 @@ export function authenticate(
 export interface GoogleIdentityForSession {
   subject: string;
   provider: 'google';
+  displayName?: string;
 }
 
 export interface ProductionGoogleAuth {

@@ -5,7 +5,7 @@ export type QueuedCompletion = CompletionCommand;
 
 export type SyncResult =
   | { ok: true; revision: number; status: 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED'; reconciledConflict?: true }
-  | { ok: false; conflict: true; error?: 'REVISION_CONFLICT' | 'OPERATION_REPLAY_STALE'; revision: number; status: CompletionStatus }
+  | { ok: false; conflict: true; error?: 'REVISION_CONFLICT' | 'OPERATION_REPLAY_STALE'; revision: number; status: CompletionStatus; reconciledConflict?: true }
   | { ok: false; conflict?: false; error: string };
 
 export class Outbox {

@@ -6,7 +6,7 @@ interface CompletionReminderStore {
   getItemAsync: (key: string) => Promise<string | null>;
 }
 
-export async function syncReadingReminderForCompletion(options: { memberId: string; taskDate: string; status: 'COMPLETED' | 'NOT_COMPLETED' | 'UNREPORTED'; scheduler: ReminderScheduler; store: CompletionReminderStore }): Promise<void> {
+export async function syncReadingReminderForCompletion(options: { memberId: string; planId?: string; taskDate: string; status: 'COMPLETED' | 'NOT_COMPLETED' | 'UNREPORTED'; scheduler: ReminderScheduler; store: CompletionReminderStore }): Promise<void> {
   const runtime = getReminderRuntimeOwner();
   if (runtime) {
     await runtime.syncCompletion(options.memberId, options.taskDate);
@@ -20,6 +20,7 @@ export async function syncReadingReminderForCompletion(options: { memberId: stri
   const enabled = await options.store.getItemAsync('qingmu.reminder.readingEnabled');
   const readingTime = await options.store.getItemAsync('qingmu.reminder.readingTime');
   if (enabled !== 'true' || !readingTime) return;
-  const spec = buildReadingReminderSpecForDate(options.memberId, options.taskDate, readingTime);
+  if (!options.planId) return;
+  const spec = buildReadingReminderSpecForDate(options.memberId, options.taskDate, readingTime, options.planId);
   if (spec) await options.scheduler.schedule(spec);
 }
