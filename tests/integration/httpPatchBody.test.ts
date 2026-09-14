@@ -34,6 +34,14 @@ describe('HTTP mutation body handling', () => {
       });
       const updatedBody = await updatedResponse.json();
       expect({ status: updatedResponse.status, body: updatedBody }).toMatchObject({ status: 200, body: { costPoints: 3, revision: 2, active: true } });
+
+      const replayResponse = await fetch(`http://127.0.0.1:${address.port}/api/admin/rewards/${encodeURIComponent(created.rewardId)}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ operationId: '00000000-0000-4000-8000-000000000102', name: 'HTTP Test Reward', costPoints: 3, expectedRevision: created.revision }),
+      });
+      expect(replayResponse.status).toBe(200);
+      await expect(replayResponse.json()).resolves.toMatchObject({ costPoints: 3, revision: 2, active: true });
     } finally {
       await new Promise<void>((resolve) => backend.server.close(() => resolve()));
     }
