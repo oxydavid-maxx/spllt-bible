@@ -35,7 +35,9 @@ module.exports = function withQingmuReleaseSigning(config) {
     if (signingStart >= 0 && buildTypesStart > signingStart) {
       const signingSection = contents.slice(signingStart, buildTypesStart);
       if (!/\n\s*release\s*\{/.test(signingSection)) {
-        contents = `${contents.slice(0, buildTypesStart)}${releaseConfig}\n${contents.slice(buildTypesStart)}`;
+        const signingClose = contents.lastIndexOf('\n    }', buildTypesStart);
+        if (signingClose <= signingStart) throw new Error('QINGMU_SIGNING_CONFIG_BOUNDARY_NOT_FOUND');
+        contents = `${contents.slice(0, signingClose)}\n${releaseConfig}${contents.slice(signingClose)}`;
       }
       const updatedBuildTypesStart = contents.indexOf('buildTypes {', signingStart);
       const releaseStart = contents.indexOf('\n        release {', updatedBuildTypesStart);
