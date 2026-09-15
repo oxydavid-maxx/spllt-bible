@@ -56,7 +56,7 @@ describe('score profile chart', () => {
     expect(renderer.root.findByProps({ accessibilityRole: 'adjustable' }).props.accessibilityValue.text).toContain('9月8日');
 
     act(() => { renderer.root.findAll((node) => String(node.type) === 'Pressable').find((node) => node.props.accessibilityLabel === '月')?.props.onPress(); });
-    expect(onChartChange).toHaveBeenCalledWith({ range: 'month', anchor: '2026-09' });
+    expect(onChartChange).toHaveBeenCalledWith({ range: 'month' });
   });
 
   it('does not render private balance for a friend profile', () => {
@@ -79,10 +79,9 @@ describe('score profile chart', () => {
     expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '上一個積分期間')).toHaveLength(0);
   });
 
-  it('keeps a week boundary when moving to month or year', () => {
+  it('lets the server choose the current period when changing range', () => {
     const boundaryChart = { ...chart, periodStart: '2025-12-29', periodEnd: '2026-01-04' };
-    expect(chartQueryForRange(boundaryChart, 'month')).toEqual({ range: 'month', anchor: '2025-12' });
-    expect(chartQueryForRange(boundaryChart, 'year')).toEqual({ range: 'year', anchor: '2025' });
+    expect([chartQueryForRange(boundaryChart, 'month'), chartQueryForRange(boundaryChart, 'year')]).toEqual([{ range: 'month' }, { range: 'year' }]);
   });
 
   it('labels yearly buckets as year and month', () => {
@@ -104,5 +103,16 @@ describe('score profile chart', () => {
     expect(gridLine).toBeDefined();
     const tallestBar = renderer.root.findAll((node) => String(node.type) === 'View').find((node) => Array.isArray(node.props.style) && node.props.style.some((style: unknown) => style && typeof style === 'object' && (style as { height?: number }).height === 120));
     expect(tallestBar).toBeDefined();
+  });
+
+  it('keeps sparse month labels in a single-line shared row', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    const monthBuckets = Array.from({ length: 30 }, (_, index) => { const day = String(index + 1).padStart(2, '0'); return { key: `2026-09-${day}`, startDate: `2026-09-${day}`, endDate: `2026-09-${day}`, earnedPoints: index === 10 ? 1 : 0 }; });
+    const monthChart = { ...chart, range: 'month' as const, anchor: '2026-09', periodStart: '2026-09-01', periodEnd: '2026-09-30', buckets: monthBuckets, earnedPoints: 1 };
+    act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { profile: { ...profile(), chart: monthChart } })); });
+    const labels = renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.numberOfLines === 1);
+    expect(labels).toHaveLength(7);
+    expect(labels.every((node) => node.props.style.some((style: unknown) => style && typeof style === 'object' && Number((style as { width?: number }).width) >= 32))).toBe(true);
+    expect(labels.map((node) => node.props.children)).toEqual(['1', '6', '11', '16', '21', '26', '30']);
   });
 });

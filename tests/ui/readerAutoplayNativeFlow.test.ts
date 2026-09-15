@@ -118,6 +118,24 @@ describe('Reader continuous playback through the real chapter control', () => {
     expect(native.player.playing).toBe(false);
   });
 
+  it('re-arms the next EOF when enabled again during the same playing chapter without restarting it', async () => {
+    await mount();
+    await act(async () => { audioButton().props.onPress(); await Promise.resolve(); });
+    await act(async () => { native.player.finish(); await Promise.resolve(); });
+    expect(index).toBe(1);
+    native.player.currentTime = 27;
+    native.player.playing = true;
+    const toggle = renderer!.root.findAll(node => node.props?.accessibilityRole === 'switch')[0];
+    await act(async () => toggle.props.onPress());
+    await act(async () => toggle.props.onPress());
+    expect(boundary.context.enabled).toBe(true);
+    expect(native.player.currentTime).toBe(27);
+    expect(native.player.playing).toBe(true);
+    await act(async () => { native.player.finish(); await Promise.resolve(); });
+    expect(index).toBe(2);
+    expect(native.player.calls.filter((call: string) => call === 'play')).toHaveLength(3);
+  });
+
   it('stops on the next chapter when its recording is missing, without substituting another source', async () => {
     outcomeFor = usfm => usfm === 'JHN.19' ? { kind: 'unavailable', identity: { versionId: 46, usfm }, status: 'explicit_no_audio', message: '這一章沒有朗讀', retryable: false } : playable(usfm);
     await mount();

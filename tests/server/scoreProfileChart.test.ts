@@ -6,7 +6,7 @@ import { createApiHandler } from '../../server/routes';
 const databases: Array<{ close: () => void }> = [];
 afterEach(() => databases.splice(0).forEach((database) => database.close()));
 
-function setup() {
+function setup(now = new Date('2026-01-01T16:30:00.000Z')) {
   const database = createDatabase({
     members: [
       { id: 'member-chart', displayName: '小明', groupId: 'unassigned:member-chart' },
@@ -15,8 +15,7 @@ function setup() {
     ],
   });
   databases.push(database);
-  const now = () => new Date('2026-01-01T16:30:00.000Z');
-  const api = createApiHandler({ db: database, fixtureToken: 'chart-token', now });
+  const api = createApiHandler({ db: database, fixtureToken: 'chart-token', now: () => now });
   const headers = (memberId: string) => ({ authorization: 'Bearer chart-token', 'x-qingmu-member-id': memberId });
   return { database, api, headers };
 }
@@ -33,20 +32,20 @@ describe('score profile chart aggregation', () => {
     entitlement(database, '2025-12-29', 1);
     entitlement(database, '2025-12-31', 2);
     entitlement(database, '2026-01-01', 3);
-    entitlement(database, '2026-01-03', 9); // Taipei today is Jan 2; future points must not appear.
+    entitlement(database, '2026-01-03', 9); // A stored active award remains visible even when its task date is later than today.
 
     const response = await api({ method: 'GET', url: '/api/points/profiles/member-chart?scope=me&anchorMonth=2026-01&chartRange=week&chartAnchor=2025-12-31', headers: headers('member-chart') });
 
     expect(response.status).toBe(200);
     const weekChart = (response.body as any).chart;
-    expect(weekChart).toMatchObject({ range: 'week', anchor: '2025-12-29', periodStart: '2025-12-29', periodEnd: '2026-01-04', earnedPoints: 6, previousAnchor: '2025-12-22', nextAnchor: null });
+    expect(weekChart).toMatchObject({ range: 'week', anchor: '2025-12-29', periodStart: '2025-12-29', periodEnd: '2026-01-04', earnedPoints: 15, previousAnchor: '2025-12-22', nextAnchor: null });
     expect(weekChart.buckets).toEqual([
       { key: '2025-12-29', startDate: '2025-12-29', endDate: '2025-12-29', earnedPoints: 1 },
       { key: '2025-12-30', startDate: '2025-12-30', endDate: '2025-12-30', earnedPoints: 0 },
       { key: '2025-12-31', startDate: '2025-12-31', endDate: '2025-12-31', earnedPoints: 2 },
       { key: '2026-01-01', startDate: '2026-01-01', endDate: '2026-01-01', earnedPoints: 3 },
       { key: '2026-01-02', startDate: '2026-01-02', endDate: '2026-01-02', earnedPoints: 0 },
-      { key: '2026-01-03', startDate: '2026-01-03', endDate: '2026-01-03', earnedPoints: 0 },
+      { key: '2026-01-03', startDate: '2026-01-03', endDate: '2026-01-03', earnedPoints: 9 },
       { key: '2026-01-04', startDate: '2026-01-04', endDate: '2026-01-04', earnedPoints: 0 },
     ]);
   });
@@ -87,6 +86,21 @@ describe('score profile chart aggregation', () => {
       VALUES ('redemption-entry', 'member-chart', 'REDEMPTION_DEBIT', -5, NULL, 'redemption-1', 'operation-1', 2, NULL)`).run();
     const afterRedemption = await api({ method: 'GET', url: '/api/points/profiles/member-chart?scope=me&anchorMonth=2026-01&chartRange=year&chartAnchor=2026', headers: headers('member-chart') });
     expect((afterRedemption.body as any).chart.earnedPoints).toBe(7);
+
+    const legacy = setup(new Date('2026-09-15T04:00:00.000Z'));
+    entitlement(legacy.database, '2026-09-09', 1);
+    entitlement(legacy.database, '2026-09-14', 1);
+    entitlement(legacy.database, '2026-09-17', 1); // A real active legacy award can be future-dated relative to today.
+    const legacyMonth = await legacy.api({ method: 'GET', url: '/api/points/profiles/member-chart?scope=me&anchorMonth=2026-09&chartRange=month&chartAnchor=2026-09', headers: legacy.headers('member-chart') });
+    expect(legacyMonth.body).toMatchObject({ earnedTotal: 3 });
+    expect((legacyMonth.body as any).chart).toMatchObject({ earnedPoints: 3 });
+    legacy.database.db.prepare(`INSERT INTO wallet_entries (entry_id, member_id, kind, delta, task_date, redemption_id, operation_id, created_at, migration_id)
+      VALUES ('legacy-opening-entry', 'member-chart', 'LEGACY_OPENING_CREDIT', 5, NULL, NULL, NULL, 1, 'legacy-migration')`).run();
+    legacy.database.db.prepare(`INSERT INTO wallet_entries (entry_id, member_id, kind, delta, task_date, redemption_id, operation_id, created_at, migration_id)
+      VALUES ('legacy-redemption-entry', 'member-chart', 'REDEMPTION_DEBIT', -2, NULL, 'legacy-redemption-1', 'legacy-operation-1', 2, NULL)`).run();
+    const legacyAfterRedemption = await legacy.api({ method: 'GET', url: '/api/points/profiles/member-chart?scope=me&anchorMonth=2026-09&chartRange=all', headers: legacy.headers('member-chart') });
+    expect(legacyAfterRedemption.body).toMatchObject({ earnedTotal: 3, private: { redeemableBalance: 3 } });
+    expect((legacyAfterRedemption.body as any).chart).toMatchObject({ earnedPoints: 3 });
   });
 
   it('keeps an empty chart zero-only and strips private data for friends', async () => {

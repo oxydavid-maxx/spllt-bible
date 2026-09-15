@@ -37,6 +37,7 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   const [error, setError] = useState<string | null>(null);
   const autoplayControllerRef = useRef(createReaderAutoplayController());
   const automaticPlaybackRef = useRef<string | null>(null);
+  const currentPlaybackRef = useRef<AutoplayChapter | null>(null);
   const [autoplayIntent, setAutoplayIntent] = useState<AutoplayIntent | null>(null);
   const [autoplayNotice, setAutoplayNotice] = useState<string | null>(null);
   const [localAutoplayEnabled, setLocalAutoplayEnabled] = useState(continuousPlaybackEnabled !== false);
@@ -45,6 +46,7 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   const cancelAutoplay = useCallback(() => {
     autoplayControllerRef.current.cancel();
     automaticPlaybackRef.current = null;
+    currentPlaybackRef.current = null;
     setAutoplayIntent(null);
     setAutoplayNotice(null);
   }, []);
@@ -53,11 +55,15 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
     if (!autoplayEnabled) {
       setAutoplayIntent(null);
       setAutoplayNotice(null);
+    } else if (currentPlaybackRef.current) {
+      // Enabling while the same assigned chapter is already playing arms only its next EOF.
+      autoplayControllerRef.current.begin(currentPlaybackRef.current);
     }
   }, [autoplayEnabled]);
   useEffect(() => () => {
     autoplayControllerRef.current.cancel();
     automaticPlaybackRef.current = null;
+    currentPlaybackRef.current = null;
   }, []);
   useEffect(() => {
     // Any route identity change invalidates the old player's EOF handoff.
@@ -98,10 +104,14 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   }, [activeReferenceIndex, references.join('|')]);
   const handlePlaybackStarted = useCallback((chapterUsfm: string): void => {
     const current = currentAssignedChapter(chapterUsfm);
-    if (!current || !autoplayEnabled) {
-      if (!current && autoplayIntent) cancelAutoplay();
+    if (!current) {
+      if (autoplayIntent) cancelAutoplay();
       return;
     }
+    // Track a manually started assigned chapter even while continuous mode is off. Turning the
+    // switch on during that still-playing track may arm its next EOF, but never starts playback.
+    currentPlaybackRef.current = current;
+    if (!autoplayEnabled) return;
     const pending = autoplayIntent;
     const intent = autoplayControllerRef.current.begin(current);
     if (!intent) return;
@@ -113,13 +123,20 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   const handlePlaybackPaused = useCallback((chapterUsfm: string): void => {
     if (!currentAssignedChapter(chapterUsfm)) return;
     automaticPlaybackRef.current = null;
+    currentPlaybackRef.current = null;
     cancelAutoplay();
     setAutoplayNotice(null);
   }, [cancelAutoplay, currentAssignedChapter]);
   const handlePlaybackEnded = useCallback((chapterUsfm: string): void => {
     const current = currentAssignedChapter(chapterUsfm);
-    if (!current || !autoplayEnabled) return;
+    if (!current) return;
+    currentPlaybackRef.current = null;
     automaticPlaybackRef.current = null;
+    if (!autoplayEnabled) {
+      autoplayControllerRef.current.cancel();
+      setAutoplayIntent(null);
+      return;
+    }
     const nextReference = references[current.index + 1];
     const nextChapter = nextReference ? chapterForReference(nextReference) : null;
     const next = nextReference && nextChapter
@@ -147,6 +164,8 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
       : '朗讀暫時無法取得，已停止連續播放。');
   }, [autoplayIntent, currentAssignedChapter]);
   const handlePlaybackError = useCallback((chapterUsfm: string): void => {
+    const current = currentAssignedChapter(chapterUsfm);
+    if (current) currentPlaybackRef.current = null;
     const pendingAuto = autoplayIntent && currentAssignedChapter(chapterUsfm)
       && autoplayIntent.usfm === normalizeChapter(chapterUsfm)
       && autoplayControllerRef.current.isIntentCurrent(autoplayIntent);
@@ -161,8 +180,11 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
     autoplayControllerRef.current.setEnabled(next);
     if (!next) {
       automaticPlaybackRef.current = null;
-      cancelAutoplay();
+      setAutoplayIntent(null);
       setAutoplayNotice(null);
+    } else if (currentPlaybackRef.current) {
+      // A live assigned track may continue uninterrupted; arming does not call player.play().
+      autoplayControllerRef.current.begin(currentPlaybackRef.current);
     }
     void onContinuousPlaybackChange?.(next);
   }, [autoplayEnabled, cancelAutoplay, onContinuousPlaybackChange]);

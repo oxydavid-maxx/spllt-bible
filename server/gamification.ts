@@ -378,12 +378,12 @@ function chartMonthAnchor(value: string): boolean {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(value) && chartYearAnchor(value.slice(0, 4));
 }
 
-function activeEarnedByDate(db: DatabaseSync, memberId: string, from: string, to: string, today: string): Map<string, number> {
+function activeEarnedByDate(db: DatabaseSync, memberId: string, from: string, to: string): Map<string, number> {
   const result = new Map<string, number>();
   const rows = db.prepare(`SELECT task_date, COALESCE(SUM(amount), 0) AS total
     FROM daily_point_entitlements
-    WHERE member_id = ? AND active = 1 AND task_date >= ? AND task_date <= ? AND task_date <= ?
-    GROUP BY task_date`).all(memberId, from, to, today) as Array<{ task_date: string; total: number }>;
+    WHERE member_id = ? AND active = 1 AND task_date >= ? AND task_date <= ?
+    GROUP BY task_date`).all(memberId, from, to) as Array<{ task_date: string; total: number }>;
   for (const row of rows) result.set(row.task_date, Math.max(0, Number(row.total)));
   return result;
 }
@@ -409,7 +409,7 @@ function buildCalendarBuckets(db: DatabaseSync, memberId: string, range: Exclude
     periodStart = `${anchor}-01-01`;
     periodEnd = chartYearEnd(anchor);
   }
-  const earnedByDate = activeEarnedByDate(db, memberId, periodStart, periodEnd, today);
+  const earnedByDate = activeEarnedByDate(db, memberId, periodStart, periodEnd);
   const buckets: ScoreChartBucket[] = [];
   if (range === 'year') {
     for (let month = 1; month <= 12; month += 1) {
@@ -446,15 +446,15 @@ function chartAnchorFor(range: ScoreChartRange, requestedAnchor: string | undefi
   return raw;
 }
 
-function getAllChart(db: DatabaseSync, memberId: string, today: string): ScoreChart {
+function getAllChart(db: DatabaseSync, memberId: string): ScoreChart {
   const rows = db.prepare(`SELECT MIN(task_date) AS first_date, MAX(task_date) AS last_date
-    FROM daily_point_entitlements WHERE member_id = ? AND active = 1 AND task_date <= ?`).all(memberId, today) as Array<{ first_date: string | null; last_date: string | null }>;
+    FROM daily_point_entitlements WHERE member_id = ? AND active = 1`).all(memberId) as Array<{ first_date: string | null; last_date: string | null }>;
   const firstDate = rows[0]?.first_date ?? null;
   const lastDate = rows[0]?.last_date ?? null;
   if (!firstDate || !lastDate) return { range: 'all', anchor: null, periodStart: null, periodEnd: null, earnedPoints: 0, buckets: [], previousAnchor: null, nextAnchor: null };
   const firstYear = Number(firstDate.slice(0, 4));
   const lastYear = Number(lastDate.slice(0, 4));
-  const earnedByDate = activeEarnedByDate(db, memberId, `${firstYear.toString().padStart(4, '0')}-01-01`, today, today);
+  const earnedByDate = activeEarnedByDate(db, memberId, `${firstYear.toString().padStart(4, '0')}-01-01`, lastDate);
   const buckets: ScoreChartBucket[] = [];
   for (let year = firstYear; year <= lastYear; year += 1) {
     const key = year.toString().padStart(4, '0');
@@ -467,7 +467,7 @@ function getAllChart(db: DatabaseSync, memberId: string, today: string): ScoreCh
 
 export function getScoreChart(db: DatabaseSync, memberId: string, query: ScoreChartQuery, today: string, defaultMonth = today.slice(0, 7)): ScoreChart {
   if (!isScoreChartRange(query.range)) throw new Error('INVALID_CHART_RANGE');
-  if (query.range === 'all') return getAllChart(db, memberId, today);
+  if (query.range === 'all') return getAllChart(db, memberId);
   const anchor = chartAnchorFor(query.range, query.anchor, defaultMonth, today);
   if (!anchor) throw new Error('INVALID_CHART_ANCHOR');
   const calendar = buildCalendarBuckets(db, memberId, query.range, anchor, today);

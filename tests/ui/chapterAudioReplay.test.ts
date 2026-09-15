@@ -61,19 +61,22 @@ describe('single play intent after capability expiry and native EOF', () => {
   });
   it.each(['explicit_no_audio', 'temporarily_unavailable'])('shows the genuine refreshed %s state without playing the stale source', async status => {
     await mount(); await expire(); fetchImpl.mockImplementationOnce(async () => response({ identity: { versionId: 46, usfm: '1TI.1' }, text: true, audio: false, offline: false, status }));
-    await press(); expect(fetchImpl).toHaveBeenCalledTimes(2); expect(native.player.playing).toBe(false);
+    if (status === 'temporarily_unavailable') fetchImpl.mockImplementationOnce(async () => response({ identity: { versionId: 46, usfm: '1TI.1' }, text: true, audio: false, offline: false, status, reason: '' }));
+    await press();
+    if (status === 'temporarily_unavailable') await act(async () => { await vi.advanceTimersByTimeAsync(100); await Promise.resolve(); });
+    expect(fetchImpl).toHaveBeenCalledTimes(status === 'temporarily_unavailable' ? 3 : 2); expect(native.player.playing).toBe(false);
     const labels = view!.root.findAll(node => Boolean(node.props.accessibilityLabel)).map(node => String(node.props.accessibilityLabel));
     expect(labels.some(label => status === 'explicit_no_audio' ? label.includes('沒有朗讀') : label.includes('重試'))).toBe(true); expect(text()).not.toContain('播放失敗');
     expect(view!.root.findAll(node => String(node.type) === 'Pressable')).toHaveLength(status === 'explicit_no_audio' ? 0 : 1);
   });
   it('recovers from a failed refresh through the existing retry and prepares a fresh capability', async () => {
     await mount(); native.player.currentTime = 37; await expire();
-    fetchImpl.mockRejectedValueOnce(new Error('private transport detail'));
-    await press(); expect(native.player.playing).toBe(false);
+    fetchImpl.mockRejectedValueOnce(new Error('private transport detail')).mockRejectedValueOnce(new Error('private transport detail'));
+    await press(); await act(async () => { await vi.advanceTimersByTimeAsync(100); await Promise.resolve(); }); expect(native.player.playing).toBe(false);
     expect(button().props.accessibilityLabel).toContain('重試');
     expect(text()).not.toContain('private transport detail');
     expect(view!.root.findAll(node => Boolean(node.props.accessibilityLabel)).map(node => String(node.props.accessibilityLabel)).join(' ')).not.toContain('private transport detail');
-    await press(); expect(fetchImpl).toHaveBeenCalledTimes(3);
+    await press(); expect(fetchImpl).toHaveBeenCalledTimes(4);
     expect(native.player.calls.slice(-2)).toEqual(['replace:https://example.test/1TI.1.mp3', 'play']);
     expect(native.player.currentTime).toBe(0); expect(text()).not.toContain('播放失敗');
   });

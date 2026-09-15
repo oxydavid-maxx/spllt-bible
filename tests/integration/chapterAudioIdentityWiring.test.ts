@@ -514,7 +514,7 @@ describe('native status errors after play returned, retry and scope isolation', 
   async function mountCompact(transport: typeof fetch, chapter = 'PSA.90') {
     let r!: TestRenderer.ReactTestRenderer;
     await act(async () => { r = TestRenderer.create(React.createElement(ChapterAudioControls, { chapterUsfm: chapter, versionId: 1392, fetchImpl: transport, compact: true })); });
-    await act(async () => { await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); await vi.advanceTimersByTimeAsync(150); await Promise.resolve(); });
     return r;
   }
   async function play(r: TestRenderer.ReactTestRenderer, label = '詩90') {

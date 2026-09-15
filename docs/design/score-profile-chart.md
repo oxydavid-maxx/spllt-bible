@@ -15,6 +15,8 @@ chartAnchor=YYYY-MM-DD  # week
 
 省略 chart query 時，server 回傳目前 `anchorMonth` 的 month chart，讓舊 client 忽略 optional `chart` 仍能運作。回應的 `chart` 會帶 `range`、正規化後的 `anchor`、`periodStart`、`periodEnd`、`earnedPoints`、`buckets`、前後期間 anchor；`all` 以有紀錄的年份作桶，沒有 active 紀錄時回傳空桶與 0。
 
+切換週/月/年/全部時省略 `chartAnchor`，由 server 以 Taipei today 選擇目前期間；期間內的箭頭才會送出明確 anchor。
+
 | Range | Buckets | Anchor / navigation |
 |---|---|---|
 | 週 | Taipei calendar Mon-Sun 7 daily buckets | `YYYY-MM-DD`，前後週；未來週不提供 next |
@@ -27,6 +29,7 @@ chartAnchor=YYYY-MM-DD  # week
 - 所有 chart amount 都只從 `daily_point_entitlements WHERE active = 1` 依 `task_date` 聚合，語意時區是 `Asia/Taipei`。
 - current period 的 future calendar dates 只呈現 0；不由 UI 填入示例得分。
 - `REDEMPTION_DEBIT`、`REDEMPTION_REVERSAL` 與 wallet balance 不參與 chart，因此兌換不會降低 earned history、總積分或 chart total。
+- 已成立的 legacy active awards 即使其 `task_date` 晚於目前 Taipei 日期，也屬於 earned history，read projection 會保留；只有不存在實際 award 的未來 calendar day 才顯示 0。
 - inactive entitlement 不進 chart；completion reversal 由 active 狀態改變而反映回原 task date。
 
 ## UI behavior

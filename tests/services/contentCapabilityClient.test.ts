@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   capabilityUrl,
   createCapabilityCoordinator,
@@ -9,6 +9,7 @@ import {
 // no abort and no identity check, so a slow earlier response could overwrite the current chapter.
 
 const NOW = Date.parse('2026-09-12T00:00:00Z');
+afterEach(() => vi.useRealTimers());
 const prov = {
   publisher: 'Biblica',
   edition: '當代譯本(繁體)',
@@ -129,6 +130,91 @@ describe('a response about the WRONG chapter is refused even if it is the only o
 });
 
 describe('failures degrade honestly and never leak raw text to the surface (R5)', () => {
+  it('retries one transient transport or backend response and accepts a fresh capability', async () => {
+    const temporary = {
+      identity: { versionId: 1392, usfm: 'PSA.90' }, text: false, audio: false, offline: false,
+      status: 'temporarily_unavailable', reason: '暫時無法取得，稍後可再試',
+    };
+    for (const firstResult of ['transport', 'backend', 'body-read'] as const) {
+      let calls = 0;
+      const impl = (async () => {
+        calls += 1;
+        if (calls === 1 && firstResult === 'transport') throw new Error('transient transport');
+        if (calls === 1 && firstResult === 'body-read') return { ok: true, status: 200, json: async () => { throw new TypeError('transient body read'); } } as unknown as Response;
+        return jsonResponse(calls === 1 ? temporary : payload('PSA.90', 'https://cdn.example/psa90.mp3'));
+      }) as unknown as typeof fetch;
+      const out = await fetchChapterCapability({
+        baseUrl: 'https://api.example', identity: { versionId: 1392, usfm: 'PSA.90' }, now: () => NOW, fetchImpl: impl,
+      });
+      expect(out.kind).toBe('playable');
+      expect(calls).toBe(2);
+    }
+  });
+
+  it('does not retry explicit absence or authentication failures', async () => {
+    const explicit = vi.fn(async () => jsonResponse({
+      identity: { versionId: 1392, usfm: 'PSA.90' }, text: true, audio: false, offline: false,
+      status: 'explicit_no_audio', reason: '這一章沒有朗讀',
+    }));
+    const absent = await fetchChapterCapability({
+      baseUrl: 'https://api.example', identity: { versionId: 1392, usfm: 'PSA.90' }, now: () => NOW, fetchImpl: explicit,
+    });
+    expect(absent.kind).toBe('unavailable');
+    expect(explicit).toHaveBeenCalledTimes(1);
+    for (const status of [401, 403]) {
+      const auth = vi.fn(async () => ({ ok: false, status, json: async () => ({ error: 'AUTH_REQUIRED' }) }) as unknown as Response);
+      const out = await fetchChapterCapability({
+        baseUrl: 'https://api.example', identity: { versionId: 1392, usfm: 'PSA.90' }, now: () => NOW, fetchImpl: auth,
+      });
+      expect(out.kind).toBe('unavailable');
+      expect(auth).toHaveBeenCalledTimes(1);
+    }
+    const malformed = vi.fn(async () => jsonResponse({}));
+    const invalid = await fetchChapterCapability({
+      baseUrl: 'https://api.example', identity: { versionId: 1392, usfm: 'PSA.90' }, now: () => NOW, fetchImpl: malformed,
+    });
+    expect(invalid.kind).toBe('unavailable');
+    expect(malformed).toHaveBeenCalledTimes(1);
+
+    let throttledCalls = 0;
+    const throttled = (async () => {
+      throttledCalls += 1;
+      return throttledCalls === 1
+        ? ({ ok: false, status: 429, headers: new Headers({ 'retry-after': '0' }), json: async () => ({}) } as unknown as Response)
+        : jsonResponse(payload('PSA.90', 'https://cdn.example/psa90.mp3'));
+    }) as unknown as typeof fetch;
+    const recoveredThrottle = await fetchChapterCapability({
+      baseUrl: 'https://api.example', identity: { versionId: 1392, usfm: 'PSA.90' }, now: () => NOW, fetchImpl: throttled,
+    });
+    expect(recoveredThrottle.kind).toBe('playable');
+    expect(throttledCalls).toBe(2);
+
+    const noRetryAfter = vi.fn(async () => ({ ok: false, status: 429, headers: new Headers(), json: async () => ({}) }) as unknown as Response);
+    await fetchChapterCapability({
+      baseUrl: 'https://api.example', identity: { versionId: 1392, usfm: 'PSA.90' }, now: () => NOW, fetchImpl: noRetryAfter,
+    });
+    expect(noRetryAfter).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not issue a second request when the caller aborts during retry backoff', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    let calls = 0;
+    const impl = (async () => {
+      calls += 1;
+      return jsonResponse({ identity: { versionId: 1392, usfm: 'PSA.90' }, text: false, audio: false, offline: false, status: 'temporarily_unavailable', reason: '' });
+    }) as unknown as typeof fetch;
+    const pending = fetchChapterCapability({
+      baseUrl: 'https://api.example', identity: { versionId: 1392, usfm: 'PSA.90' }, now: () => NOW, fetchImpl: impl, signal: controller.signal,
+    });
+    await Promise.resolve();
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(200);
+    await pending;
+    expect(calls).toBe(1);
+    vi.useRealTimers();
+  });
+
   it('maps a thrown network error to temporarily_unavailable with a zh-TW message', async () => {
     const impl = (async () => { throw new Error('Network request failed'); }) as unknown as typeof fetch;
     const out = await fetchChapterCapability({

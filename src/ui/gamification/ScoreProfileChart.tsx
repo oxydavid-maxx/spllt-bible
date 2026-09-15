@@ -19,16 +19,8 @@ export interface ScoreProfileChartProps {
   onChartChange?: (query: ScoreChartQuery) => void;
 }
 
-export function chartQueryForRange(chart: ScoreChart, range: ScoreChartRange): ScoreChartQuery {
-  if (range === 'all') return { range };
-  if (chart.range === 'all') return { range };
-  const periodStart = chart.periodStart;
-  const anchor = range === 'week'
-    ? periodStart ?? undefined
-    : range === 'month'
-      ? periodStart?.slice(0, 7)
-      : periodStart?.slice(0, 4);
-  return anchor ? { range, anchor } : { range };
+export function chartQueryForRange(_chart: ScoreChart, range: ScoreChartRange): ScoreChartQuery {
+  return { range };
 }
 
 function daysInMonth(month: string): number {
@@ -121,6 +113,7 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
   const selectedBucket = chart.buckets[selectedIndex] ?? null;
   const upperBound = axisUpperBound(chart.buckets);
   const ticks = useMemo(() => axisTicks(upperBound), [upperBound]);
+  const xAxisLabelWidth = chart.range === 'all' ? 48 : chart.range === 'year' ? 40 : 32;
   const selectData = (offset: number) => {
     if (chart.buckets.length === 0) return;
     const nextIndex = Math.min(chart.buckets.length - 1, Math.max(0, selectedIndex + offset));
@@ -146,12 +139,16 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
         <View style={styles.gridLines}>{ticks.map((tick) => <View key={tick} style={[styles.gridLine, { top: tickPosition(tick, upperBound) }]} />)}</View>
         <View style={styles.barRow}>
           {chart.buckets.map((bucket, index) => {
-            const label = bucketLabel(chart, bucket, index);
             const height = bucket.earnedPoints > 0 ? Math.max(1, Math.round((bucket.earnedPoints / upperBound) * PLOT_HEIGHT)) : 0;
             return <View key={bucket.key} accessible accessibilityRole="image" accessibilityLabel={bucketAccessibilityLabel(chart, bucket)} accessibilityState={{ selected: bucket.key === selectedKey }} style={[styles.barColumn, bucket.key === selectedKey && styles.barColumnSelected]}>
               <View style={styles.barSlot}>{bucket.earnedPoints > 0 ? <View style={[styles.bar, { height }]} /> : null}</View>
-              <Text style={styles.xAxisLabel}>{label}</Text>
             </View>;
+          })}
+        </View>
+        <View style={styles.xAxisRow}>
+          {chart.buckets.map((bucket, index) => {
+            const label = bucketLabel(chart, bucket, index);
+            return label ? <Text key={bucket.key} numberOfLines={1} style={[styles.xAxisLabel, { width: xAxisLabelWidth, left: `${((index + 0.5) / chart.buckets.length) * 100}%`, transform: [{ translateX: -xAxisLabelWidth / 2 }] }]}>{label}</Text> : null;
           })}
         </View>
       </View>
@@ -185,12 +182,13 @@ const styles = StyleSheet.create({
   plotBody: { flex: 1, minWidth: 0, height: PLOT_HEIGHT + X_AXIS_HEIGHT, position: 'relative' },
   gridLines: { position: 'absolute', top: 0, left: 0, right: 0, height: PLOT_HEIGHT, pointerEvents: 'none' },
   gridLine: { position: 'absolute', left: 0, right: 0, height: 1, borderTopColor: theme.colors.border, borderTopWidth: theme.control.hairline },
-  barRow: { height: PLOT_HEIGHT + X_AXIS_HEIGHT, flexDirection: 'row', alignItems: 'flex-end', gap: 1 },
-  barColumn: { flex: 1, height: PLOT_HEIGHT + X_AXIS_HEIGHT, alignItems: 'center', justifyContent: 'flex-end' },
+  barRow: { height: PLOT_HEIGHT, flexDirection: 'row', alignItems: 'flex-end', gap: 1 },
+  barColumn: { flex: 1, height: PLOT_HEIGHT, alignItems: 'center', justifyContent: 'flex-end' },
   barColumnSelected: { borderColor: theme.colors.primary, borderLeftWidth: 1, borderRightWidth: 1 },
   barSlot: { width: '100%', height: PLOT_HEIGHT, alignItems: 'center', justifyContent: 'flex-end' },
   bar: { width: '56%', backgroundColor: theme.colors.primary, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  xAxisLabel: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, minHeight: X_AXIS_HEIGHT },
+  xAxisRow: { height: X_AXIS_HEIGHT, position: 'relative', overflow: 'visible' },
+  xAxisLabel: { position: 'absolute', color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, minHeight: X_AXIS_HEIGHT, textAlign: 'center', flexShrink: 0 },
   dataNav: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
   dataNavButton: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface },
   dataNavText: { color: theme.colors.primary, fontSize: 26, lineHeight: 30 },
