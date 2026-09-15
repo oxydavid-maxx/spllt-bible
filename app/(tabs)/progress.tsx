@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
 import { isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
-import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
+import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type ScoreChartQuery, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
 import type { PendingGamificationOperations } from '../../src/services/gamificationPendingStore';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../src/services/adminUnlockGuard';
 import { ActionSheet } from '../../src/ui/gamification/ActionSheet';
@@ -60,13 +60,21 @@ export default function ProgressScreen() {
     finally { setBusy(false); }
   }, [client, session]);
 
-  const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope) => {
+  const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope, chartQuery?: ScoreChartQuery) => {
     if (!client || !session) return; setBusy(true); setError(null);
     const generation = requestGeneration.current;
-    try { const value = await client.getProfile(memberId, nextScope, monthNow()); if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session) && (nextScope !== 'all' || guard.current.state === 'unlocked')) setProfile(value); }
+    try { const value = chartQuery ? await client.getProfile(memberId, nextScope, monthNow(), chartQuery) : await client.getProfile(memberId, nextScope, monthNow()); if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session) && (nextScope !== 'all' || guard.current.state === 'unlocked')) setProfile(value); }
     catch (reason) { if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session)) { setProfile(null); setError(messageFor(reason)); } }
     finally { setBusy(false); }
   }, [client, session]);
+  const loadProfileChart = useCallback((chartQuery: ScoreChartQuery) => {
+    if (!client || !session) return;
+    const memberId = activeMember.current;
+    const nextScope = activeScope.current;
+    if (!memberId || (nextScope === 'me' && memberId !== session.memberId)) return;
+    requestGeneration.current += 1;
+    void loadProfile(memberId, nextScope, chartQuery);
+  }, [client, session, loadProfile]);
   useEffect(() => { if (scope === 'me' && client && session && !profile) void loadProfile(session.memberId, 'me'); }, [client, session, scope, profile, loadProfile]);
   const refreshOwnProfile = useCallback(() => { if (!client || !session || !appActive.current) return; requestGeneration.current += 1; activeScope.current = 'me'; activeMember.current = session.memberId; setScope('me'); setSelected(null); setProfile(null); setRedemptions([]); setPendingOperations(null); setRetryAction(null); setSheet(null); void loadProfile(session.memberId, 'me'); }, [client, session, loadProfile]);
   useEffect(() => { if (foregroundRevision > 0) refreshOwnProfile(); }, [foregroundRevision, refreshOwnProfile]);
@@ -109,8 +117,8 @@ export default function ProgressScreen() {
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}{busy ? <Text style={styles.note}>載入中…</Text> : null}
     {scope === 'me' && !profile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
     {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
-    {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}
-    {scope === 'me' && profile ? <ScoreProfile profile={profile} onChooseReward={() => void loadRewards()} /> : null}
+    {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}
+    {scope === 'me' && profile ? <ScoreProfile profile={profile} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
     <ActionSheet visible={sheet === 'menu'} title="積分操作" onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: () => setSheet('qr') }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards().then(() => setSheet('admin-rewards')); } }] : [])]} />
     <ActionSheet visible={sheet === 'qr'} title="我的好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="show" /></ActionSheet>
     <ActionSheet visible={sheet === 'scan'} title="掃描好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="scan" onClaimed={scanClaimed} /></ActionSheet>

@@ -34,7 +34,7 @@ import {
   updateReward,
   type GamificationError,
 } from './gamification';
-import { isValidDateOnly, taipeiDate } from '../src/domain/gamificationV1';
+import { isScoreChartRange, isValidDateOnly, taipeiDate, type ScoreChartQuery } from '../src/domain/gamificationV1';
 
 export interface ApiRequest {
   method: string;
@@ -437,7 +437,19 @@ export function createApiHandler(options: ApiHandlerOptions) {
         const anchorMonth = url.searchParams.get('anchorMonth') ?? taipeiDate(now()).slice(0, 7);
         if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(anchorMonth)) return gamificationError({ status: 400, code: 'INVALID_MONTH' });
         if (anchorMonth > taipeiDate(now()).slice(0, 7)) return gamificationError({ status: 400, code: 'FUTURE_MONTH_NOT_ALLOWED' });
-        const profile = getScoreProfile(options.db.db, auth.memberId, memberId, anchorMonth, adminMembers);
+        const rawChartRange = url.searchParams.get('chartRange') ?? 'month';
+        if (!isScoreChartRange(rawChartRange)) return gamificationError({ status: 400, code: 'INVALID_CHART_RANGE' });
+        const rawChartAnchor = url.searchParams.get('chartAnchor');
+        if (rawChartRange === 'all' && rawChartAnchor !== null) return gamificationError({ status: 400, code: 'INVALID_CHART_ANCHOR' });
+        const chartQuery: ScoreChartQuery = { range: rawChartRange, ...(rawChartAnchor !== null ? { anchor: rawChartAnchor } : {}) };
+        let profile;
+        try {
+          profile = getScoreProfile(options.db.db, auth.memberId, memberId, anchorMonth, adminMembers, chartQuery, taipeiDate(now()));
+        } catch (error) {
+          const code = error instanceof Error ? error.message : '';
+          if (code === 'INVALID_CHART_ANCHOR' || code === 'FUTURE_CHART_PERIOD') return gamificationError({ status: 400, code });
+          throw error;
+        }
         if (isGamificationError(profile)) return gamificationError(profile);
         if (scope !== 'me' && scope !== 'all') delete profile.private;
         if (scope === 'all' && !adminMembers.includes(auth.memberId)) delete profile.private;

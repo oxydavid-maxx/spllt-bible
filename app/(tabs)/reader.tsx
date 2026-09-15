@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, Pressable, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { buildFixtureModels } from '../../src/ui/routes';
@@ -12,6 +12,7 @@ import { fixtureProfile } from '../../src/ui/fixtureProfile';
 import type { CompletionRecord } from '../../src/domain/completion';
 import { getYouVersionContentMetadata, getYouVersionVersionOptions } from '../../src/config/youVersionContent';
 import { createNativeReaderPreferencesStore } from '../../src/services/nativeReaderPreferences';
+import { createReaderAutoplayPreferencesStore } from '../../src/services/readerAutoplayPreferences';
 import type { ReaderPreferencesPatch } from '../../src/services/readerPreferences';
 import { useReaderPreferences } from '../../src/ui/useReaderPreferences';
 import { useReadingSession } from '../../src/ui/readingSession';
@@ -32,6 +33,16 @@ export default function ReaderScreen() {
   const references = day?.references ?? model.reader.references;
   const [preferencesStore] = useState(createNativeReaderPreferencesStore);
   const preferences = useReaderPreferences(memberId, preferencesStore);
+  const [autoplayPreferencesStore] = useState(() => createReaderAutoplayPreferencesStore({
+    getItem: key => SecureStore.getItemAsync(key),
+    setItem: (key, value) => SecureStore.setItemAsync(key, value),
+  }));
+  const autoplaySnapshot = useSyncExternalStore(
+    autoplayPreferencesStore.subscribe,
+    useCallback(() => autoplayPreferencesStore.getSnapshot(memberId), [autoplayPreferencesStore, memberId]),
+    useCallback(() => autoplayPreferencesStore.getSnapshot(memberId), [autoplayPreferencesStore, memberId]),
+  );
+  useEffect(() => { void autoplayPreferencesStore.load(memberId); }, [autoplayPreferencesStore, memberId]);
   const selectedVersionId = preferences.preferences.versionId;
   const versionOptions = getYouVersionVersionOptions();
   const allowedVersionIds = versionOptions.map((option) => option.versionId);
@@ -48,6 +59,11 @@ export default function ReaderScreen() {
     moreSaveOwner.current = null;
     try { await preferencesStore.update(memberId, patch); }
     catch { if (ownsReader()) Alert.alert('閱讀設定', '這項閱讀設定暫時無法保存，請再試一次。'); }
+  };
+  const updateAutoplayPreference = async (enabled: boolean): Promise<void> => {
+    if (!ownsReader()) return;
+    try { await autoplayPreferencesStore.update(memberId, enabled); }
+    catch { if (ownsReader()) Alert.alert('連續播放', '這項設定暫時無法保存，請再試一次。'); }
   };
   const chooseVersion = async (nextVersionId: number): Promise<void> => {
     if (!ownsReader() || !allowedVersionIds.includes(nextVersionId)) throw new Error('閱讀設定已變更，請重新選擇。');
@@ -272,7 +288,7 @@ export default function ReaderScreen() {
     freePositionRef.current = null;
     setSelection({ source: 'ASSIGNED', index });
   };
-  if (!preferences.ready || selectionOwner.current !== owner) return (
+  if (!preferences.ready || !autoplaySnapshot.ready || selectionOwner.current !== owner) return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#fff', paddingHorizontal: 16 }}>
       <Pressable accessibilityRole="button" accessibilityLabel="返回今日" onPress={() => router.replace('/today')} style={{ minWidth: 48, minHeight: 48, justifyContent: 'center' }}><Text>返回今日</Text></Pressable>
       <Text accessibilityLiveRegion="polite">正在載入閱讀設定…</Text>
@@ -294,6 +310,8 @@ export default function ReaderScreen() {
       onChapterChange={(chapter) => moveFreely({ chapter })}
       onVersionChange={(versionId) => { if (!ownsReader() || !allowedVersionIds.includes(versionId)) return; void updatePreferences({ versionId }); rememberCurrentAt(versionId); }}
       readerPreferences={{ ownerId: memberId, settings: preferences.preferences.settings, onChange: next => { void updatePreferences({ settings: next }); } }}
+      continuousPlaybackEnabled={autoplaySnapshot.preferences.enabled}
+      onContinuousPlaybackChange={enabled => { void updateAutoplayPreference(enabled); }}
       allowTechnicalProbe={process.env.EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE === 'true'}
       fullscreen
       onCanvasTap={chrome.toggleTools}

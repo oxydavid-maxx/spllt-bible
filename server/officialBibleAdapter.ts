@@ -11,7 +11,7 @@ export interface OfficialBibleRequest { method:string; url:string; headers?:Reco
 export interface OfficialBibleResponse { status:number; body:unknown; headers:Record<string,string>; raw?:boolean }
 export interface OfficialBibleAdapterOptions {
   fetcher?: (url:string, init?:RequestInit)=>Promise<Response>;
-  now?:()=>number; timeoutMs?:number; maxResponseBytes?:number; cacheTtlMs?:number; maxCacheEntries?:number; maxInflight?:number;
+  now?:()=>number; timeoutMs?:number; maxResponseBytes?:number; cacheTtlMs?:number; staleCacheTtlMs?:number; maxCacheEntries?:number; maxInflight?:number;
 }
 const VERSIONS = [46,40,111,406,114] as const;
 const CORS = { 'access-control-allow-origin':'*', 'access-control-allow-methods':'GET, OPTIONS', 'access-control-allow-headers':'Accept, Accept-Language, Content-Type, X-YVP-App-Key, X-YVP-Installation-Id, X-YVP-SDK, X-YVP-SDK-Version', 'cache-control':'no-store' };
@@ -22,7 +22,7 @@ const text = (n:Node):string => n.nodeName === '#text' ? (n as DefaultTreeAdapte
 function findAll(n:Node,predicate:(n:Element)=>boolean):Element[] { const result:Element[]=[]; const walk=(current:Node)=>{if(element(current)&&predicate(current))result.push(current);children(current).forEach(walk);};walk(n);return result; }
 const escape = (value:string):string => value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const classes = (n:Node):string[] => (attr(n,'class')??'').split(/\s+/).map(c=>c.replace(/^ChapterContent-module__[A-Za-z0-9_-]+?__/,'')).filter(Boolean);
-class AdapterError extends Error { constructor(readonly status:number,readonly code:string){super(code);} }
+class AdapterError extends Error { constructor(readonly status:number,readonly code:string,readonly invalidatesStale=false){super(code);} }
 const fail = (code='OFFICIAL_SOURCE_INVALID'):never => {throw new AdapterError(502,code);};
 const required = (v:unknown):string => typeof v==='string'&&v.trim()&&!/^\$[a-f0-9]+$/i.test(v)?v:fail();
 
@@ -149,14 +149,21 @@ function renderPage(page:Page,includeHeadings:boolean,includeNotes:boolean,selec
 
 export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={}) {
   const fetcher=options.fetcher??fetch; const now=options.now??Date.now;
-  const cache=new Map<string,{expires:number;value:unknown}>(); const inflight=new Map<string,Promise<unknown>>();
+  type CacheEntry<T>={freshUntil:number;staleUntil:number;verifiedAt:number;value:T};
+  type CacheResult<T>={value:T;verifiedAt:number;stale:boolean};
+  const cache=new Map<string,CacheEntry<unknown>>(); const inflight=new Map<string,Promise<CacheResult<unknown>>>();
   const maxBytes=Math.max(1,Math.min(options.maxResponseBytes??4_000_000,4_000_000));
   const timeout=Math.max(1,Math.min(options.timeoutMs??12_000,15_000));
+  const freshTtl=Math.max(1,Math.min(options.cacheTtlMs??1_800_000,3_600_000));
+  // Keep only already parsed, identity-verified values. Six hours is the total
+  // horizon from the last successful verification; failed refreshes never move it.
+  const staleTtl=Math.max(freshTtl,Math.min(options.staleCacheTtlMs??21_600_000,86_400_000));
   async function request(url:string,headers:Record<string,string>={'accept':'text/html'}):Promise<{body:string;type:string}> {
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
     const work=(async()=>{
       const response=await fetcher(url,{method:'GET',headers,redirect:'error',signal:controller.signal});
-      if(!response.ok||response.redirected)return fail('OFFICIAL_UPSTREAM_UNAVAILABLE');
+      if(response.redirected)return fail('OFFICIAL_UPSTREAM_UNAVAILABLE');
+      if(!response.ok)throw new AdapterError(502,'OFFICIAL_UPSTREAM_UNAVAILABLE',response.status===404||response.status===410);
       if(response.headers.has('content-length')&&Number(response.headers.get('content-length'))>maxBytes)return fail('OFFICIAL_RESPONSE_TOO_LARGE');
       const reader=response.body?.getReader();if(!reader)return fail();
       const chunks:Uint8Array[]=[];let size=0;
@@ -165,18 +172,26 @@ export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={
     })();
     try{return await Promise.race([work,new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new AdapterError(504,'OFFICIAL_UPSTREAM_TIMEOUT'));},timeout);})]);}finally{if(timer)clearTimeout(timer);}
   }
-  async function cached<T>(key:string,load:()=>Promise<T>):Promise<T> {
-    const entry=cache.get(key);if(entry&&entry.expires>now())return entry.value as T;
-    cache.delete(key);const pending=inflight.get(key);if(pending)return pending as Promise<T>;
+  function startLoad<T>(key:string,load:()=>Promise<T>):Promise<CacheResult<T>> {
+    const pending=inflight.get(key);if(pending)return pending as Promise<CacheResult<T>>;
     if(inflight.size>=(options.maxInflight??8))throw new AdapterError(503,'OFFICIAL_SOURCE_BUSY');
-    const work=load().then(value=>{cache.set(key,{expires:now()+Math.min(options.cacheTtlMs??1_800_000,3_600_000),value});while(cache.size>Math.min(options.maxCacheEntries??64,128))cache.delete(cache.keys().next().value!);return value;});
-    inflight.set(key,work);try{return await work;}finally{inflight.delete(key);}
+    const work=load().then(value=>{const verifiedAt=now();cache.set(key,{freshUntil:verifiedAt+freshTtl,staleUntil:verifiedAt+staleTtl,verifiedAt,value});while(cache.size>Math.min(options.maxCacheEntries??64,128))cache.delete(cache.keys().next().value!);return {value,verifiedAt,stale:false};});
+    inflight.set(key,work as Promise<CacheResult<unknown>>);
+    work.then(()=>{if(inflight.get(key)===work)inflight.delete(key);},error=>{if(inflight.get(key)===work)inflight.delete(key);if(error instanceof AdapterError&&error.invalidatesStale)cache.delete(key);});
+    return work;
+  }
+  async function cached<T>(key:string,load:()=>Promise<T>):Promise<CacheResult<T>> {
+    const at=now();const entry=cache.get(key) as CacheEntry<T>|undefined;
+    if(entry&&entry.freshUntil>at)return {value:entry.value,verifiedAt:entry.verifiedAt,stale:false};
+    if(entry&&entry.staleUntil>at){try{const refresh=startLoad(key,load);void refresh.catch(()=>{});}catch{/* Busy refresh cannot invalidate a still-bounded verified value. */}return {value:entry.value,verifiedAt:entry.verifiedAt,stale:true};}
+    cache.delete(key);return startLoad(key,load);
   }
   const chapter=(id:number,usfm:string)=>cached(`chapter:${id}:${usfm}`,async()=>parseChapter((await request(`https://www.bible.com/bible/${id}/${usfm}`)).body,id,usfm));
   const index=(id:number)=>cached(`index:${id}`,async()=>parseIndex((await request(`https://www.bible.com/versions/${id}`)).body,id));
-  const version=async(id:number)=>{const [page,books]=await Promise.all([chapter(id,'1TI.1'),index(id)]);const m=page.metadata;return {id,abbreviation:m.abbreviation,localized_abbreviation:m.abbreviation,title:m.title,localized_title:m.title,language_tag:m.languageTag,books:books.map(b=>b.id),copyright:m.copyright,info:m.publisher,youversion_deep_link:`https://www.bible.com/versions/${id}`};};
+  const stamp=(...parts:{verifiedAt:number;stale:boolean}[])=>({verifiedAt:Math.min(...parts.map(part=>part.verifiedAt)),stale:parts.some(part=>part.stale)});
+  const version=async(id:number)=>{const [page,books]=await Promise.all([chapter(id,'1TI.1'),index(id)]);const m=page.value.metadata;return {value:{id,abbreviation:m.abbreviation,localized_abbreviation:m.abbreviation,title:m.title,localized_title:m.title,language_tag:m.languageTag,books:books.value.map(b=>b.id),copyright:m.copyright,info:m.publisher,youversion_deep_link:`https://www.bible.com/versions/${id}`},...stamp(page,books)};};
   const response=(status:number,body:unknown,extra:Record<string,string>={},raw=false,cacheControl='no-store'):OfficialBibleResponse=>({status,body,headers:{...CORS,'content-type':raw?'text/css; charset=utf-8':'application/json; charset=utf-8','cache-control':cacheControl,...extra},...(raw?{raw:true}:{})});
-  const bibleJson=(status:number,body:unknown):OfficialBibleResponse=>response(status,body,{},false,'public, max-age=1800');
+  const bibleJson=(status:number,body:unknown,cacheState:{verifiedAt:number;stale:boolean}):OfficialBibleResponse=>response(status,body,{'age':String(Math.max(0,Math.floor((now()-cacheState.verifiedAt)/1000)))},false,cacheState.stale?'public, max-age=0, must-revalidate':'public, max-age=1800');
   const list=(data:unknown[])=>({data,next_page_token:null});
   return async function handleOfficialBibleRequest(input:OfficialBibleRequest):Promise<OfficialBibleResponse|null> {
     let url:URL;try{url=new URL(input.url,'https://adapter.invalid');}catch{return response(400,{error:'INVALID_URL'});}
@@ -200,32 +215,32 @@ export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={
       if(path==='/v1/bibles'){
         const ranges=url.searchParams.getAll('language_ranges[]');let ids=[...VERSIONS];
         if(ranges.length&&!ranges.includes('*'))ids=ids.filter(id=>ranges.some(r=>r.toLowerCase().startsWith(id===46||id===40?'zh':'en')));
-        const data=[];for(const id of ids)data.push(await version(id));return bibleJson(200,list(data));
+        const versions=[];for(const id of ids)versions.push(await version(id));return bibleJson(200,list(versions.map(item=>item.value)),versions.length?stamp(...versions):{verifiedAt:now(),stale:false});
       }
       const match=path.match(/^\/v1\/bibles\/(\d+)(?:\/(.*))?$/);if(!match)return response(400,{error:'INVALID_PATH'});
       const id=Number(match[1]);if(!(VERSIONS as readonly number[]).includes(id))return response(404,{error:'BIBLE_NOT_SUPPORTED'});
       const rest=match[2]??'';
-      if(!rest)return bibleJson(200,await version(id));
-      if(rest==='books')return bibleJson(200,list(await index(id)));
+      if(!rest){const item=await version(id);return bibleJson(200,item.value,item);}
+      if(rest==='books'){const item=await index(id);return bibleJson(200,list(item.value),item);}
       if(rest.startsWith('passages/')){
         let usfm:string;try{usfm=decodeURIComponent(rest.slice(9));}catch{return response(400,{error:'INVALID_REFERENCE'});}
         const ref=usfm.match(/^([A-Z0-9]{3}\.[1-9]\d{0,2})(?:\.(\d+)(?:-(\d+))?)?$/);if(!ref)return response(400,{error:'INVALID_REFERENCE'});
         const page=await chapter(id,ref[1]);let selected:Set<string>|undefined;
-        if(ref[2]){const end=Number(ref[3]??ref[2]),start=Number(ref[2]);if(end<start||end-start>199)return response(400,{error:'INVALID_REFERENCE'});selected=new Set(page.verses.filter(v=>intersectsVerse(v.id,start,end)).map(v=>v.id));if(!selected.size)return response(404,{error:'VERSE_NOT_FOUND'});}
-        const html=renderPage(page,url.searchParams.get('include_headings')!=='false',url.searchParams.get('include_notes')!=='false',selected);
+        if(ref[2]){const end=Number(ref[3]??ref[2]),start=Number(ref[2]);if(end<start||end-start>199)return response(400,{error:'INVALID_REFERENCE'});selected=new Set(page.value.verses.filter(v=>intersectsVerse(v.id,start,end)).map(v=>v.id));if(!selected.size)return response(404,{error:'VERSE_NOT_FOUND'});}
+        const html=renderPage(page.value,url.searchParams.get('include_headings')!=='false',url.searchParams.get('include_notes')!=='false',selected);
         const content=url.searchParams.get('format')==='text'?text(parse(html)):html;
-        return bibleJson(200,{id:usfm,content,reference:page.reference+(ref[2]?':'+ref[2]+(ref[3]?'-'+ref[3]:''):'')});
+        return bibleJson(200,{id:usfm,content,reference:page.value.reference+(ref[2]?':'+ref[2]+(ref[3]?'-'+ref[3]:''):'')},page);
       }
       const bookPath=rest.match(/^books\/([A-Z0-9]{3})(?:\/chapters(?:\/([1-9]\d{0,2})(?:\/verses(?:\/(\d+(?:-\d+)?))?)?)?)?$/);
       if(!bookPath)return response(404,{error:'BIBLE_RESOURCE_NOT_SUPPORTED'});
-      const book=(await index(id)).find(b=>b.id===bookPath[1]);if(!book)return response(404,{error:'BOOK_NOT_FOUND'});
-      if(rest===`books/${book.id}`)return bibleJson(200,book);
-      if(!bookPath[2])return bibleJson(200,list(book.chapters));
+      const indexed=await index(id);const book=indexed.value.find(b=>b.id===bookPath[1]);if(!book)return response(404,{error:'BOOK_NOT_FOUND'});
+      if(rest===`books/${book.id}`)return bibleJson(200,book,indexed);
+      if(!bookPath[2])return bibleJson(200,list(book.chapters),indexed);
       const current=book.chapters.find(c=>c.id===bookPath[2]);if(!current)return response(404,{error:'CHAPTER_NOT_FOUND'});
-      const page=await chapter(id,current.passage_id);
-      if(rest.endsWith('/verses'))return bibleJson(200,list(page.verses));
-      if(bookPath[3]){const verse=page.verses.find(v=>v.id===bookPath[3]||(!bookPath[3].includes('-')&&intersectsVerse(v.id,Number(bookPath[3]),Number(bookPath[3]))));return verse?bibleJson(200,verse):response(404,{error:'VERSE_NOT_FOUND'});}
-      return bibleJson(200,{...current,verses:page.verses});
+      const page=await chapter(id,current.passage_id);const combined=stamp(indexed,page);
+      if(rest.endsWith('/verses'))return bibleJson(200,list(page.value.verses),combined);
+      if(bookPath[3]){const verse=page.value.verses.find(v=>v.id===bookPath[3]||(!bookPath[3].includes('-')&&intersectsVerse(v.id,Number(bookPath[3]),Number(bookPath[3]))));return verse?bibleJson(200,verse,combined):response(404,{error:'VERSE_NOT_FOUND'});}
+      return bibleJson(200,{...current,verses:page.value.verses},combined);
     }catch(error){return error instanceof AdapterError?response(error.status,{error:error.code}):response(502,{error:'OFFICIAL_SOURCE_UNAVAILABLE'});}
   };
 }

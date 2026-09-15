@@ -19,7 +19,7 @@
 //   R5  the surface shows chapter, publisher and edition. No internal approval terminology, and no raw
 //       HTTP status or exception text.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAudioPlayer, type AudioStatus } from 'expo-audio';
 import { theme } from './Theme';
@@ -30,6 +30,8 @@ import { validateCapability } from '../domain/chapterAudioContract';
 import { createChapterBoundPlayback, type ChapterBoundPlayback } from '../services/expoAudioPlayback';
 import { createAudioSession } from '../services/audioSession';
 import { formatReferenceZhTw } from '../domain/scriptureReference';
+import type { AutoplayIntent } from '../services/readerAutoplayController';
+import type { ResolutionStatus } from '../domain/chapterAudioContract';
 
 // STATIC reads, and they must stay static. Expo's babel transform replaces only literal
 // process.env.EXPO_PUBLIC_* MEMBER EXPRESSIONS at build time. RC14m shipped this component reading a
@@ -52,6 +54,68 @@ interface PlaybackStatusEmitter {
   addListener(event: 'playbackStatusUpdate', listener: (status: AudioStatus) => void): { remove(): void };
 }
 
+export interface ChapterAudioAutoplayContextValue {
+  /** Provider presence is explicit so standalone chapter controls keep their old shape. */
+  available: boolean;
+  enabled: boolean;
+  intent: AutoplayIntent | null;
+  notice: string | null;
+  cancel(): void;
+  toggle(): void;
+  onPlaybackStarted(chapterUsfm: string): void;
+  onPlaybackPaused(chapterUsfm: string): void;
+  onPlaybackEnded(chapterUsfm: string): void;
+  onPlaybackError(chapterUsfm: string): void;
+  onAutoplayUnavailable(chapterUsfm: string, status: ResolutionStatus): void;
+}
+
+const noAutoplay: ChapterAudioAutoplayContextValue = {
+  available: false,
+  enabled: false,
+  intent: null,
+  notice: null,
+  cancel: () => {},
+  toggle: () => {},
+  onPlaybackStarted: () => {},
+  onPlaybackPaused: () => {},
+  onPlaybackEnded: () => {},
+  onPlaybackError: () => {},
+  onAutoplayUnavailable: () => {},
+};
+
+export const ChapterAudioAutoplayContext = createContext<ChapterAudioAutoplayContextValue>(noAutoplay);
+export const useChapterAudioAutoplay = (): ChapterAudioAutoplayContextValue => useContext(ChapterAudioAutoplayContext);
+
+/** Compact toolbar switch kept outside the fixed 48dp audio slot. */
+export function ChapterAudioAutoplayToggle({ active = true }: { active?: boolean }) {
+  const autoplay = useChapterAudioAutoplay();
+  if (!active || !autoplay.available) return null;
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityLabel="連續播放"
+      accessibilityState={{ checked: autoplay.enabled }}
+      onPress={autoplay.toggle}
+      style={styles.autoplayToggle}
+    >
+      <Text style={styles.autoplayToggleText}>{autoplay.enabled ? '連續' : '單次'}</Text>
+    </Pressable>
+  );
+}
+
+/** Stop/error notice rendered outside the interactive toolbar so it cannot cover controls. */
+export function ChapterAudioAutoplayNotice({ active = true }: { active?: boolean }) {
+  const autoplay = useChapterAudioAutoplay();
+  if (!active || !autoplay.available || !autoplay.notice) return null;
+  return (
+    <View style={styles.autoplayNoticeRow}>
+      <Text accessible accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.autoplayNoticeText}>
+        {autoplay.notice}
+      </Text>
+    </View>
+  );
+}
+
 /** The selection this component answers for. Identity, not a loose pair of strings. */
 export function selectionKey(versionId: number | null, chapterUsfm: string): string {
   return `${versionId ?? 'none'}::${chapterUsfm.trim().toUpperCase()}`;
@@ -65,6 +129,10 @@ export function ChapterAudioControls({
   coordinator,
   fetchImpl,
   active = true,
+  onPlaybackStarted,
+  onPlaybackPaused,
+  onPlaybackEnded,
+  onPlaybackError,
 }: {
   chapterUsfm: string;
   versionId: number | null;
@@ -86,7 +154,17 @@ export function ChapterAudioControls({
   detailsVisible?: boolean;
   /** @deprecated No playback panel is rendered. */
   onDetailsClose?: () => void;
+  /** Optional direct callbacks for isolated chapter-control hosts; the Reader uses the context below. */
+  onPlaybackStarted?: (chapterUsfm: string) => void;
+  onPlaybackPaused?: (chapterUsfm: string) => void;
+  onPlaybackEnded?: (chapterUsfm: string) => void;
+  onPlaybackError?: (chapterUsfm: string) => void;
 }) {
+  const autoplay = useChapterAudioAutoplay();
+  const autoplayRef = useRef(autoplay);
+  autoplayRef.current = autoplay;
+  const callbacksRef = useRef({ onPlaybackStarted, onPlaybackPaused, onPlaybackEnded, onPlaybackError });
+  callbacksRef.current = { onPlaybackStarted, onPlaybackPaused, onPlaybackEnded, onPlaybackError };
   const qaEnabled = isQaTestAudioEnabled(env);
   const audioAuthorized = isAuthorizedAudioEnabled(env);
   const key = selectionKey(versionId, chapterUsfm);
@@ -179,12 +257,31 @@ export function ChapterAudioControls({
   const playbackRef = useRef<ChapterBoundPlayback | null>(null);
   // Expo's didJustFinish is emitted once; currentStatus does not retain it.
   const finishedBinding = useRef<ChapterBoundPlayback | null>(null);
+  const eofNotifiedBinding = useRef<ChapterBoundPlayback | null>(null);
   const playbackSelectionRef = useRef('');
   // bumped whenever the binding changes, so an action that started under an older binding can tell
   const bindingGeneration = useRef(0);
   const [progress, setProgress] = useState({ positionSeconds: 0, durationSeconds: 0, playing: false, loaded: false, buffering: false });
   const [failure, setFailure] = useState<string | null>(null);
   const [needsRetry, setNeedsRetry] = useState(false);
+  const autoPlayClaimed = useRef<number | null>(null);
+
+  const notifyPlaybackStarted = (chapter: string) => {
+    autoplayRef.current.onPlaybackStarted(chapter);
+    callbacksRef.current.onPlaybackStarted?.(chapter);
+  };
+  const notifyPlaybackPaused = (chapter: string) => {
+    autoplayRef.current.onPlaybackPaused(chapter);
+    callbacksRef.current.onPlaybackPaused?.(chapter);
+  };
+  const notifyPlaybackEnded = (chapter: string) => {
+    autoplayRef.current.onPlaybackEnded(chapter);
+    callbacksRef.current.onPlaybackEnded?.(chapter);
+  };
+  const notifyPlaybackError = (chapter: string) => {
+    autoplayRef.current.onPlaybackError(chapter);
+    callbacksRef.current.onPlaybackError?.(chapter);
+  };
 
   // Stop the exact player instance when it is replaced or the component goes away. Deliberately
   // belt-and-braces with the binding effect below: a player that outlives its chapter is the worst
@@ -201,6 +298,7 @@ export function ChapterAudioControls({
     const p = player as unknown as { pause?: () => void; replace?: (s: unknown) => void };
     bindingGeneration.current += 1;
     finishedBinding.current = null;
+    eofNotifiedBinding.current = null;
     const generation = bindingGeneration.current;
     setFailure(null);
     setNeedsRetry(false);
@@ -224,13 +322,20 @@ export function ChapterAudioControls({
       setProgress(previous => ({ ...previous, playing: false, buffering: false, loaded: false }));
       setFailure('朗讀暫時無法播放，請重試。');
       setNeedsRetry(true);
+      notifyPlaybackError(chapterUsfm);
     };
     // Expo reports decoder/network failures after play() has returned. Polling currentStatus loses
     // these one-shot errors; subscribe per binding and retire the exact listener with that binding.
     const subscription = (player as unknown as PlaybackStatusEmitter).addListener('playbackStatusUpdate', status => {
       if (!bindingIsCurrent()) return;
       if (status.error) { reportPlaybackError(); return; }
-      if (status.didJustFinish) finishedBinding.current = bound;
+      if (status.didJustFinish) {
+        finishedBinding.current = bound;
+        if (eofNotifiedBinding.current !== bound) {
+          eofNotifiedBinding.current = bound;
+          notifyPlaybackEnded(chapterUsfm);
+        }
+      }
       setProgress(bound.getProgress());
     });
     const freshSource = !audioAuthorized || (capability !== null && versionId !== null
@@ -245,7 +350,9 @@ export function ChapterAudioControls({
       replayRequest.current = null;
       if (prepared && bindingIsCurrent()) {
         // replace() calls the platform's prepare; play queues playback until loading completes.
-        void playBoundWhenCurrent(bound, resolved.availability, capability).catch(reportPlaybackError);
+        void playBoundWhenCurrent(bound, resolved.availability, capability)
+          .then(started => { if (started) notifyPlaybackStarted(chapterUsfm); })
+          .catch(reportPlaybackError);
       }
     }
     return () => {
@@ -278,27 +385,58 @@ export function ChapterAudioControls({
     return bound && !bound.disposed && expectedSelection
       && playbackSelectionRef.current === expectedSelection ? bound : undefined;
   };
-  const playBoundWhenCurrent = async (bound: ChapterBoundPlayback | undefined, availability: typeof resolved.availability, confirmed: typeof capability) => {
+  const playBoundWhenCurrent = async (bound: ChapterBoundPlayback | undefined, availability: typeof resolved.availability, confirmed: typeof capability, canContinue?: () => boolean): Promise<boolean> => {
     const generation = bindingGeneration.current;
     const mayPlay = () => Boolean(bound && !bound.disposed && playbackRef.current === bound
       && bindingGeneration.current === generation && scopeIsCurrent() && authIsCurrent()
+      && (canContinue?.() ?? true)
       && (!audioAuthorized || (confirmed !== null && versionId !== null
         && validateCapability(confirmed, { versionId, usfm: chapterUsfm }, Date.now()).ok)));
-    if (!mayPlay() || !bound) return;
+    if (!mayPlay() || !bound) return false;
     const nativeProgress = bound.getProgress();
     if (finishedBinding.current === bound || (nativeProgress.durationSeconds > 0
       && nativeProgress.positionSeconds >= nativeProgress.durationSeconds && !nativeProgress.playing)) {
       // Native EOF can have isLoaded=false. That is not a failed stream and does
       // not require replace(): rewind, then recheck the exact binding after await.
       await player.seekTo(0);
-      if (!mayPlay()) return;
+      if (!mayPlay()) return false;
       finishedBinding.current = null;
+      eofNotifiedBinding.current = null;
     }
     await createAudioSession(availability, bound).play();
+    return mayPlay();
   };
+  // Autoplay intent is an action request, not a source-binding identity. Keep it in this separate
+  // effect so consuming the intent after play starts cannot tear down a live native player.
+  useEffect(() => {
+    const token = autoplay.intent?.token ?? null;
+    const requestedChapter = autoplay.intent?.usfm?.trim().toUpperCase() ?? null;
+    if (!autoplay.available || !autoplay.enabled || token === null || requestedChapter !== chapterUsfm.trim().toUpperCase()
+      || !resolved.source || autoPlayClaimed.current === token) return;
+    const bound = currentPlaybackBinding();
+    if (!bound) return;
+    autoPlayClaimed.current = token;
+    void playBoundWhenCurrent(bound, resolved.availability, capability, () => {
+      const latest = autoplayRef.current;
+      return latest.available && latest.enabled && latest.intent?.token === token
+        && latest.intent.usfm.trim().toUpperCase() === requestedChapter;
+    })
+      .then(started => { if (started) notifyPlaybackStarted(chapterUsfm); })
+      .catch(() => {
+        // The binding listener reports platform errors with the product-safe message and ownership
+        // checks. A rejected play still needs the same path when the player rejects synchronously.
+        notifyPlaybackError(chapterUsfm);
+      });
+  }, [autoplay.available, autoplay.enabled, autoplay.intent?.token, autoplay.intent?.usfm,
+    chapterUsfm, resolved.source?.uri]);
   // Expiry may forbid starting/seeking a stream, but must never forbid stopping this live binding.
   // An old chapter's callback has no current binding and cannot pause its successor.
-  const pauseCurrentPlayback = async () => { await currentPlaybackBinding()?.pause(); };
+  const pauseCurrentPlayback = async () => {
+    const bound = currentPlaybackBinding();
+    if (!bound) return;
+    await bound.pause();
+    notifyPlaybackPaused(chapterUsfm);
+  };
 
   const playCurrentPlayback = async () => {
     if (!scopeIsCurrent() || !authIsCurrent() || playRequest.current) return;
@@ -309,7 +447,11 @@ export function ChapterAudioControls({
     try {
       const fresh = !audioAuthorized || (capability !== null && versionId !== null
         && validateCapability(capability, { versionId, usfm: chapterUsfm }, Date.now()).ok);
-      if (fresh) { await playBoundWhenCurrent(bound, resolved.availability, capability); return; }
+      if (fresh) {
+        const started = await playBoundWhenCurrent(bound, resolved.availability, capability);
+        if (started) notifyPlaybackStarted(chapterUsfm);
+        return;
+      }
       if (versionId === null || !coordinatorRef.current) return;
       // Expiry is a request to reconfirm this source, not a playback error. Keep
       // the paused binding mounted while the same coordinator refreshes metadata.
@@ -322,7 +464,8 @@ export function ChapterAudioControls({
         const next = resolveChapterAudioSession({ chapterUsfm, versionId, qaTestAudioEnabled: qaEnabled, audioAuthorized, capability: outcome.capability });
         if (bound && next.source?.uri === resolved.source?.uri) {
           setAnswer({ key, sessionKey, outcome });
-          await playBoundWhenCurrent(bound, next.availability, outcome.capability);
+          const started = await playBoundWhenCurrent(bound, next.availability, outcome.capability);
+          if (started) notifyPlaybackStarted(chapterUsfm);
           return;
         }
         // A changed URI must be prepared by the normal binding effect before
@@ -364,6 +507,20 @@ export function ChapterAudioControls({
   const slotLabel = loading
     ? (!authValid ? '登入後即可使用朗讀' : '正在載入朗讀來源')
     : noAudio ? '本章沒有朗讀' : canRetry ? `重試${label}語音` : progress.playing ? `暫停${label}語音` : `播放${label}語音`;
+
+  const reportedAutoUnavailable = useRef<number | null>(null);
+  const currentUnavailableStatus = current?.kind === 'unavailable' ? current.status : undefined;
+  useEffect(() => {
+    const unavailable = currentUnavailableStatus;
+    if (!autoplay.available || !autoplay.intent || !active || !unavailable) return;
+    if (reportedAutoUnavailable.current === autoplay.intent.token) return;
+    if (autoplay.intent.usfm.trim().toUpperCase() !== chapterUsfm.trim().toUpperCase()) return;
+    reportedAutoUnavailable.current = autoplay.intent.token;
+    autoplay.onAutoplayUnavailable(chapterUsfm, unavailable);
+  }, [autoplay.available, autoplay.intent?.token, autoplay.intent?.usfm, active, chapterUsfm, currentUnavailableStatus]);
+  useEffect(() => {
+    if (!active) autoplay.cancel();
+  }, [active, autoplay.cancel]);
 
   // One persistent player and one control. Pause resumes the same native position;
   // Expired metadata is reconfirmed in place; native errors explicitly reprepare.
@@ -412,5 +569,9 @@ const styles = StyleSheet.create({
   slot: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
   button: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
   icon: { color: theme.colors.primary, fontSize: 24, fontWeight: '700' },
+  autoplayToggle: { minWidth: theme.control.tapCompact, minHeight: theme.control.tapCompact, flexShrink: 0, borderRadius: theme.radius.pill, borderColor: theme.colors.primary, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xs },
+  autoplayToggleText: { color: theme.colors.primary, fontSize: theme.type.micro.size, fontWeight: '800', textAlign: 'center' },
+  autoplayNoticeRow: { flexShrink: 0, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, backgroundColor: theme.colors.surfaceMuted },
+  autoplayNoticeText: { color: theme.colors.danger, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
   feedback: { position: 'absolute', left: theme.control.tap + theme.spacing.xs, top: 0, color: theme.colors.danger ?? theme.colors.ink, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, maxWidth: 160 },
 });

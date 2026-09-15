@@ -37,7 +37,7 @@ vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => void | (() => v
   }, [callback]);
 } }));
 // Audio implementation belongs to a separate lane; assert only its mounting/lifecycle contract.
-vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioControls: (props: any) => {
+vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice: () => null, ChapterAudioAutoplayToggle: () => null, ChapterAudioControls: (props: any) => {
   React.useEffect(() => { native.audioMounts++; return () => { native.audioUnmounts++; }; }, []);
   return React.createElement('ChapterAudioControls', props);
 } }));

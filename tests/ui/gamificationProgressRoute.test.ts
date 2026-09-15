@@ -39,6 +39,37 @@ describe('progress gamification route', () => {
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.private).toBeUndefined();
   });
 
+  it('reloads the selected profile with the requested chart period through the same scope', async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
+    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '好友')[0].props.onPress(); });
+    const list = renderer.root.findByType('PeopleList' as any);
+    await act(async () => { list.props.onSelect(list.props.people[0]); });
+    const profile = renderer.root.findByType('ScoreProfile' as any);
+    await act(async () => { profile.props.onChartChange({ range: 'year', anchor: '2025' }); });
+    expect(api.getProfile).toHaveBeenLastCalledWith('friend', 'friends', expect.stringMatching(/^\d{4}-\d{2}$/), { range: 'year', anchor: '2025' });
+  });
+
+  it('keeps only the latest chart response after rapid range changes', async () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
+    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '好友')[0].props.onPress(); });
+    const list = renderer.root.findByType('PeopleList' as any);
+    await act(async () => { list.props.onSelect(list.props.people[0]); });
+    type ProfileResponse = Awaited<ReturnType<typeof api.getProfile>>;
+    let resolveFirst!: (value: ProfileResponse) => void;
+    let resolveSecond!: (value: ProfileResponse) => void;
+    const chartProfile = (range: string, anchor: string) => ({ memberId: 'friend', displayName: '好友', earnedTotal: 4, band: 2, months: [], chart: { range, anchor, periodStart: '2026-01-01', periodEnd: '2026-12-31', earnedPoints: 4, buckets: [], previousAnchor: null, nextAnchor: null }, permissions: { canEditTarget: false, canRedeem: false } });
+    api.getProfile.mockImplementationOnce(() => new Promise<ProfileResponse>((resolve) => { resolveFirst = (value) => resolve(value); }));
+    api.getProfile.mockImplementationOnce(() => new Promise<ProfileResponse>((resolve) => { resolveSecond = (value) => resolve(value); }));
+    const profile = renderer.root.findByType('ScoreProfile' as any);
+    await act(async () => { profile.props.onChartChange({ range: 'month', anchor: '2026-08' }); });
+    await act(async () => { profile.props.onChartChange({ range: 'year', anchor: '2025' }); });
+    await act(async () => { resolveSecond(chartProfile('year', '2025')); await Promise.resolve(); });
+    await act(async () => { resolveFirst(chartProfile('month', '2026-08')); await Promise.resolve(); });
+    expect(renderer.root.findByType('ScoreProfile' as any).props.profile.chart).toMatchObject({ range: 'year', anchor: '2025' });
+  });
+
   it('makes redemption records and friend removal reachable through the shared action sheet', async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });

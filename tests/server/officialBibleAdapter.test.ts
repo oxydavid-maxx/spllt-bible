@@ -79,7 +79,40 @@ describe('official Bible SSR adapter',()=>{
   it('does not fall back to another version or turn upstream errors into empty success',async()=>{for(const status of [404,403,429,500]){const f=fixture({fetcher:async()=>new Response('upstream failure',{status})});const r=await f.get('/v1/bibles/46/passages/1TI.1');expect(r.status).toBe(502);expect(JSON.stringify(r.body)).not.toContain('upstream failure');}});
   it('never forwards authentication/key/cookies to bible.com and rejects redirects',async()=>{const f=fixture();await f.get('/v1/bibles/46/passages/1TI.1');const [url,init]=f.fetcher.mock.calls[0];expect(url).toBe('https://www.bible.com/bible/46/1TI.1');expect(init?.redirect).toBe('error');expect(Object.keys(init?.headers??{})).toEqual(['accept']);const g=fixture({fetcher:async()=>new Response(null,{status:302,headers:{location:'https://untrusted.example/'}})});expect((await g.get('/v1/bibles/46/passages/1TI.1')).status).toBe(502);});
   it('validates paths/query inputs before making bounded official requests',async()=>{const f=fixture();for(const p of ['/v1/bibles/46/passages/..%2Fsecrets','/v1/bibles/46/passages/https:%2F%2Fevil.example','/v1/bibles/46/passages/1TI.1?format=exe'])expect((await f.get(p)).status).toBe(400);expect(f.fetcher).not.toHaveBeenCalled();});
-  it('coalesces concurrent chapter reads and evicts expired cached data',async()=>{let now=0;const f=fixture({now:()=>now,cacheTtlMs:10});await Promise.all([f.get('/v1/bibles/46/passages/1TI.1'),f.get('/v1/bibles/46/passages/1TI.1')]);expect(f.fetcher).toHaveBeenCalledTimes(1);now=11;await f.get('/v1/bibles/46/passages/1TI.1');expect(f.fetcher).toHaveBeenCalledTimes(2);});
+  it('serves an exact verified stale chapter immediately while one background refresh replaces it',async()=>{
+    let now=0;let finishRefresh!:(response:Response)=>void;let calls=0;
+    const initial=chapterHtml(46,'1TI.1',`<span class="${prefix}verse" data-usfm="1TI.1.3"><span class="${prefix}content">Initial exact chapter.</span></span>`);
+    const refreshed=chapterHtml(46,'1TI.1',`<span class="${prefix}verse" data-usfm="1TI.1.3"><span class="${prefix}content">Refreshed exact chapter.</span></span>`);
+    const fetcher=vi.fn(async()=>{calls+=1;if(calls===1)return new Response(initial);return new Promise<Response>(resolve=>{finishRefresh=resolve;});});
+    const f=fixture({fetcher,now:()=>now,cacheTtlMs:1_000,staleCacheTtlMs:6_000});
+    const first=await f.get('/v1/bibles/46/passages/1TI.1');expect(first.body.content).toContain('Initial exact chapter.');
+    now=2_500;
+    const stale=await f.get('/v1/bibles/46/passages/1TI.1');
+    expect(stale.status).toBe(200);expect(stale.body.content).toContain('Initial exact chapter.');expect(stale.headers['cache-control']).toContain('max-age=0');expect(stale.headers.age).toBe('2');
+    const duplicate=await f.get('/v1/bibles/46/passages/1TI.1');expect(duplicate.body.content).toContain('Initial exact chapter.');expect(fetcher).toHaveBeenCalledTimes(2);
+    finishRefresh(new Response(refreshed));await new Promise(resolve=>setTimeout(resolve,0));
+    const fresh=await f.get('/v1/bibles/46/passages/1TI.1');expect(fresh.body.content).toContain('Refreshed exact chapter.');expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it('never extends the stale horizon or substitutes another chapter/version when refresh fails',async()=>{
+    let now=0;
+    const fetcher=vi.fn(async(url:string)=>url.endsWith('/46/1TI.1')&&fetcher.mock.calls.length===1?new Response(chapterHtml(46,'1TI.1')):new Response('unavailable',{status:503}));
+    const f=fixture({fetcher,now:()=>now,cacheTtlMs:10,staleCacheTtlMs:100});
+    expect((await f.get('/v1/bibles/46/passages/1TI.1')).status).toBe(200);
+    now=11;const stale=await f.get('/v1/bibles/46/passages/1TI.1');expect(stale.status).toBe(200);expect(stale.headers['cache-control']).toContain('max-age=0');
+    await Promise.resolve();await Promise.resolve();
+    const retained=await f.get('/v1/bibles/46/passages/1TI.1');expect(retained.status).toBe(200);expect(retained.body.id).toBe('1TI.1');
+    for(const path of ['/v1/bibles/46/passages/1TI.2','/v1/bibles/40/passages/1TI.1']){const miss=await f.get(path);expect(miss.status).toBe(502);expect(miss.headers['cache-control']).toBe('no-store');}
+    now=100;const beyond=await f.get('/v1/bibles/46/passages/1TI.1');expect(beyond.status).toBe(502);expect(beyond.headers['cache-control']).toBe('no-store');
+  });
+  it('invalidates a stale entry once the official source explicitly removes it',async()=>{
+    let now=0;let calls=0;
+    const fetcher=vi.fn(async()=>{calls+=1;return calls===1?new Response(chapterHtml(46,'1TI.1')):new Response('removed',{status:404});});
+    const f=fixture({fetcher,now:()=>now,cacheTtlMs:10,staleCacheTtlMs:100});
+    expect((await f.get('/v1/bibles/46/passages/1TI.1')).status).toBe(200);
+    now=11;expect((await f.get('/v1/bibles/46/passages/1TI.1')).status).toBe(200);
+    await new Promise(resolve=>setTimeout(resolve,0));
+    const removed=await f.get('/v1/bibles/46/passages/1TI.1');expect(removed.status).toBe(502);expect(removed.headers['cache-control']).toBe('no-store');expect(fetcher).toHaveBeenCalledTimes(3);
+  });
   it('rejects oversized content and times out a hanging upstream',async()=>{const f=fixture({maxResponseBytes:80});expect((await f.get('/v1/bibles/46/passages/1TI.1')).status).toBe(502);const g=fixture({timeoutMs:5,fetcher:async()=>new Promise(()=>{})});expect((await g.get('/v1/bibles/46/passages/1TI.1')).status).toBe(504);});
   it('serves single books/chapters/verse indexes from confirmed official content',async()=>{const f=fixture();expect((await f.get('/v1/bibles/46/books/1TI')).body.id).toBe('1TI');const r=await f.get('/v1/bibles/46/books/1TI/chapters/1');BibleChapterSchema.parse(r.body);expect(r.body.verses.map((v:any)=>v.passage_id)).toEqual(['1TI.1.1','1TI.1.2']);expect((await f.get('/v1/bibles/46/books/NOO')).status).toBe(404);});
 

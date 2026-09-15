@@ -1,8 +1,8 @@
 import { notifyAuthExpired } from './authState';
-import type { MonthPoints, PersonListItem, ScoreProfile, ScoreScope, ViewerCapabilities } from '../domain/gamificationV1';
+import { isScoreChartRange, type MonthPoints, type PersonListItem, type ScoreChart, type ScoreChartBucket, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile, type ScoreScope, type ViewerCapabilities } from '../domain/gamificationV1';
 import { createDefaultGamificationPendingStore, GamificationPendingStoreError, type GamificationPendingStore, type PendingGamificationOperations, type PendingRedemptionOperation, type PendingReverseOperation } from './gamificationPendingStore';
 
-export type { MonthPoints, PersonListItem, ScoreProfile, ScoreScope, ViewerCapabilities };
+export type { MonthPoints, PersonListItem, ScoreChart, ScoreChartBucket, ScoreChartQuery, ScoreChartRange, ScoreProfile, ScoreScope, ViewerCapabilities };
 
 export interface Reward {
   rewardId: string;
@@ -48,12 +48,31 @@ function string(value: unknown): value is string { return typeof value === 'stri
 function nonNegativeInt(value: unknown): value is number { return typeof value === 'number' && Number.isInteger(value) && value >= 0; }
 function positiveInt(value: unknown): value is number { return typeof value === 'number' && Number.isInteger(value) && value > 0; }
 function validMonth(value: unknown): value is string { return typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value); }
+function validDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T12:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
 function validEpoch(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0; }
 function validUuid(value: string): boolean { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
 function parseMonths(value: unknown): MonthPoints[] | null {
   if (!Array.isArray(value)) return null;
   const months = value.map((entry) => { const item = object(entry); return item && validMonth(item.month) && nonNegativeInt(item.earnedPoints) ? { month: item.month, earnedPoints: item.earnedPoints } : null; });
   return months.every(Boolean) ? months as MonthPoints[] : null;
+}
+function parseChartBucket(value: unknown, range: ScoreChart['range']): ScoreChartBucket | null {
+  const item = object(value);
+  const validKey = range === 'week' || range === 'month' ? typeof item?.key === 'string' && validDate(item.key) : range === 'year' ? typeof item?.key === 'string' && validMonth(item.key) : typeof item?.key === 'string' && /^\d{4}$/.test(item.key);
+  return item && validKey && validDate(item.startDate) && validDate(item.endDate) && item.startDate <= item.endDate && nonNegativeInt(item.earnedPoints)
+    ? { key: item.key as string, startDate: item.startDate, endDate: item.endDate, earnedPoints: item.earnedPoints } : null;
+}
+function parseChart(value: unknown): ScoreChart | null {
+  const item = object(value);
+  const range = item?.range;
+  if (!item || !isScoreChartRange(range) || !(item.anchor === null || string(item.anchor)) || !(item.periodStart === null || validDate(item.periodStart)) || !(item.periodEnd === null || validDate(item.periodEnd)) || !nonNegativeInt(item.earnedPoints) || !(item.previousAnchor === null || string(item.previousAnchor)) || !(item.nextAnchor === null || string(item.nextAnchor)) || !Array.isArray(item.buckets)) return null;
+  const buckets = item.buckets.map((entry) => parseChartBucket(entry, range));
+  if (buckets.some((bucket) => bucket === null)) return null;
+  return { range, anchor: item.anchor as string | null, periodStart: item.periodStart as string | null, periodEnd: item.periodEnd as string | null, earnedPoints: item.earnedPoints, buckets: buckets as ScoreChartBucket[], previousAnchor: item.previousAnchor as string | null, nextAnchor: item.nextAnchor as string | null };
 }
 function parseReward(value: unknown): Reward | null {
   const item = object(value);
@@ -75,10 +94,11 @@ function parseProfile(value: unknown): ScoreProfile | null {
   const item = object(value), permissions = item && object(item.permissions), privateData = item?.private === undefined ? undefined : object(item.private);
   if (!item || !string(item.memberId) || !string(item.displayName) || !nonNegativeInt(item.earnedTotal) || !(item.band === null || (positiveInt(item.band) && item.band <= 5)) || !permissions || typeof permissions.canEditTarget !== 'boolean' || typeof permissions.canRedeem !== 'boolean') return null;
   const months = parseMonths(item.months);
-  if (!months || (item.private !== undefined && (!privateData || !nonNegativeInt(privateData.redeemableBalance) || !(privateData.targetReward === null || parseReward(privateData.targetReward)))) ) return null;
+  const chart = item.chart === undefined ? undefined : parseChart(item.chart);
+  if (!months || (item.chart !== undefined && !chart) || (item.private !== undefined && (!privateData || !nonNegativeInt(privateData.redeemableBalance) || !(privateData.targetReward === null || parseReward(privateData.targetReward)))) ) return null;
   let targetReward: Reward | null = null;
   if (privateData && privateData.targetReward !== null) targetReward = parseReward(privateData.targetReward);
-  return { memberId: item.memberId, displayName: item.displayName, earnedTotal: item.earnedTotal, band: item.band, months, ...(privateData ? { private: { redeemableBalance: privateData.redeemableBalance as number, targetReward } } : {}), permissions: { canEditTarget: permissions.canEditTarget, canRedeem: permissions.canRedeem } };
+  return { memberId: item.memberId, displayName: item.displayName, earnedTotal: item.earnedTotal, band: item.band, months, ...(chart ? { chart } : {}), ...(privateData ? { private: { redeemableBalance: privateData.redeemableBalance as number, targetReward } } : {}), permissions: { canEditTarget: permissions.canEditTarget, canRedeem: permissions.canRedeem } };
 }
 function parsePeople(value: unknown): PersonListItem[] | null {
   const item = object(value); if (!item || !Array.isArray(item.people)) return null;
@@ -208,9 +228,11 @@ export function createGamificationApiClient(options: GamificationApiClientOption
       return { canViewAllScores: capabilities.canViewAllScores, canManageRewards: capabilities.canManageRewards, canRedeemRewards: capabilities.canRedeemRewards };
     },
     async getPeople(scope: Exclude<ScoreScope, 'me'>): Promise<PersonListItem[]> { const parsed = parsePeople(await request(`/api/points/people?scope=${scope}`)); if (!parsed) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return parsed; },
-    async getProfile(memberId: string, scope: ScoreScope, anchorMonth: string): Promise<ScoreProfile> {
+    async getProfile(memberId: string, scope: ScoreScope, anchorMonth: string, chartQuery?: ScoreChartQuery): Promise<ScoreProfile> {
       if (!validMonth(anchorMonth)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 400);
-      const parsed = parseProfile(await request(`/api/points/profiles/${encodeURIComponent(memberId)}?scope=${scope}&anchorMonth=${anchorMonth}`));
+      if (chartQuery && (!isScoreChartRange(chartQuery.range) || (chartQuery.anchor !== undefined && !string(chartQuery.anchor)))) throw new GamificationApiError('INVALID_API_RESPONSE', false, 400);
+      const chartParams = chartQuery ? `&chartRange=${chartQuery.range}${chartQuery.anchor !== undefined ? `&chartAnchor=${encodeURIComponent(chartQuery.anchor)}` : ''}` : '';
+      const parsed = parseProfile(await request(`/api/points/profiles/${encodeURIComponent(memberId)}?scope=${scope}&anchorMonth=${anchorMonth}${chartParams}`));
       if (!parsed || parsed.memberId !== memberId) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       if (scope === 'friends' && parsed.private !== undefined) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       return parsed;

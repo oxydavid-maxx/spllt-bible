@@ -4,11 +4,16 @@ import {
   calculateBand,
   canonicalMemberPair,
   isValidDateOnly,
+  isScoreChartRange,
   isWithinCompletionWindow,
   monthBuckets,
   taipeiDate,
   type MonthPoints,
   type PersonListItem,
+  type ScoreChart,
+  type ScoreChartBucket,
+  type ScoreChartQuery,
+  type ScoreChartRange,
   type ScoreProfile,
   type ViewerCapabilities,
 } from '../src/domain/gamificationV1';
@@ -324,6 +329,157 @@ function monthPoints(db: DatabaseSync, memberId: string, buckets: readonly strin
   return buckets.map((month) => ({ month, earnedPoints: result.get(month) ?? 0 }));
 }
 
+const SCORE_CHART_DAY_MS = 86_400_000;
+const SCORE_CHART_YEAR_PATTERN = /^\d{4}$/;
+
+function chartDate(value: string): Date {
+  return new Date(`${value}T12:00:00.000Z`);
+}
+
+function chartDateString(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function shiftChartDate(value: string, days: number): string {
+  return chartDateString(new Date(chartDate(value).getTime() + days * SCORE_CHART_DAY_MS));
+}
+
+function shiftChartMonth(value: string, months: number): string {
+  const [year, month] = value.split('-').map(Number);
+  const cursor = new Date(Date.UTC(year, month - 1 + months, 1, 12));
+  return `${cursor.getUTCFullYear().toString().padStart(4, '0')}-${(cursor.getUTCMonth() + 1).toString().padStart(2, '0')}`;
+}
+
+function shiftChartYear(value: string, years: number): string {
+  return (Number(value) + years).toString().padStart(4, '0');
+}
+
+function chartMonthEnd(anchor: string): string {
+  const [year, month] = anchor.split('-').map(Number);
+  return chartDateString(new Date(Date.UTC(year, month, 0, 12)));
+}
+
+function chartYearEnd(anchor: string): string {
+  return `${anchor}-12-31`;
+}
+
+function chartWeekStart(anchor: string): string {
+  const day = chartDate(anchor).getUTCDay();
+  return shiftChartDate(anchor, day === 0 ? -6 : 1 - day);
+}
+
+function chartYearAnchor(value: string): boolean {
+  if (!SCORE_CHART_YEAR_PATTERN.test(value)) return false;
+  const year = Number(value);
+  return year >= 1000 && year <= 9999;
+}
+
+function chartMonthAnchor(value: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(value) && chartYearAnchor(value.slice(0, 4));
+}
+
+function activeEarnedByDate(db: DatabaseSync, memberId: string, from: string, to: string, today: string): Map<string, number> {
+  const result = new Map<string, number>();
+  const rows = db.prepare(`SELECT task_date, COALESCE(SUM(amount), 0) AS total
+    FROM daily_point_entitlements
+    WHERE member_id = ? AND active = 1 AND task_date >= ? AND task_date <= ? AND task_date <= ?
+    GROUP BY task_date`).all(memberId, from, to, today) as Array<{ task_date: string; total: number }>;
+  for (const row of rows) result.set(row.task_date, Math.max(0, Number(row.total)));
+  return result;
+}
+
+function chartBucket(key: string, startDate: string, endDate: string, earnedPoints: number): ScoreChartBucket {
+  return { key, startDate, endDate, earnedPoints: Math.max(0, Math.round(earnedPoints)) };
+}
+
+function chartTotal(buckets: readonly ScoreChartBucket[]): number {
+  return buckets.reduce((total, bucket) => total + bucket.earnedPoints, 0);
+}
+
+function buildCalendarBuckets(db: DatabaseSync, memberId: string, range: Exclude<ScoreChartRange, 'all'>, anchor: string, today: string): { periodStart: string; periodEnd: string; buckets: ScoreChartBucket[] } {
+  let periodStart: string;
+  let periodEnd: string;
+  if (range === 'week') {
+    periodStart = chartWeekStart(anchor);
+    periodEnd = shiftChartDate(periodStart, 6);
+  } else if (range === 'month') {
+    periodStart = `${anchor}-01`;
+    periodEnd = chartMonthEnd(anchor);
+  } else {
+    periodStart = `${anchor}-01-01`;
+    periodEnd = chartYearEnd(anchor);
+  }
+  const earnedByDate = activeEarnedByDate(db, memberId, periodStart, periodEnd, today);
+  const buckets: ScoreChartBucket[] = [];
+  if (range === 'year') {
+    for (let month = 1; month <= 12; month += 1) {
+      const key = `${anchor}-${month.toString().padStart(2, '0')}`;
+      const startDate = `${key}-01`;
+      const endDate = chartMonthEnd(key);
+      let earnedPoints = 0;
+      for (let date = startDate; date <= endDate; date = shiftChartDate(date, 1)) earnedPoints += earnedByDate.get(date) ?? 0;
+      buckets.push(chartBucket(key, startDate, endDate, earnedPoints));
+    }
+  } else {
+    for (let date = periodStart; date <= periodEnd; date = shiftChartDate(date, 1)) buckets.push(chartBucket(date, date, date, earnedByDate.get(date) ?? 0));
+  }
+  return { periodStart, periodEnd, buckets };
+}
+
+function chartAnchorFor(range: ScoreChartRange, requestedAnchor: string | undefined, anchorMonth: string, today: string): string | null {
+  if (range === 'all') return null;
+  if (range === 'week') {
+    const raw = requestedAnchor ?? today;
+    if (!isValidDateOnly(raw) || !chartYearAnchor(raw.slice(0, 4))) throw new Error('INVALID_CHART_ANCHOR');
+    if (raw > today) throw new Error('FUTURE_CHART_PERIOD');
+    return chartWeekStart(raw);
+  }
+  if (range === 'month') {
+    const raw = requestedAnchor ?? anchorMonth;
+    if (!chartMonthAnchor(raw)) throw new Error('INVALID_CHART_ANCHOR');
+    if (raw > today.slice(0, 7)) throw new Error('FUTURE_CHART_PERIOD');
+    return raw;
+  }
+  const raw = requestedAnchor ?? anchorMonth.slice(0, 4);
+  if (!chartYearAnchor(raw)) throw new Error('INVALID_CHART_ANCHOR');
+  if (raw > today.slice(0, 4)) throw new Error('FUTURE_CHART_PERIOD');
+  return raw;
+}
+
+function getAllChart(db: DatabaseSync, memberId: string, today: string): ScoreChart {
+  const rows = db.prepare(`SELECT MIN(task_date) AS first_date, MAX(task_date) AS last_date
+    FROM daily_point_entitlements WHERE member_id = ? AND active = 1 AND task_date <= ?`).all(memberId, today) as Array<{ first_date: string | null; last_date: string | null }>;
+  const firstDate = rows[0]?.first_date ?? null;
+  const lastDate = rows[0]?.last_date ?? null;
+  if (!firstDate || !lastDate) return { range: 'all', anchor: null, periodStart: null, periodEnd: null, earnedPoints: 0, buckets: [], previousAnchor: null, nextAnchor: null };
+  const firstYear = Number(firstDate.slice(0, 4));
+  const lastYear = Number(lastDate.slice(0, 4));
+  const earnedByDate = activeEarnedByDate(db, memberId, `${firstYear.toString().padStart(4, '0')}-01-01`, today, today);
+  const buckets: ScoreChartBucket[] = [];
+  for (let year = firstYear; year <= lastYear; year += 1) {
+    const key = year.toString().padStart(4, '0');
+    let earnedPoints = 0;
+    for (const [date, amount] of earnedByDate) if (date.slice(0, 4) === key) earnedPoints += amount;
+    buckets.push(chartBucket(key, `${key}-01-01`, `${key}-12-31`, earnedPoints));
+  }
+  return { range: 'all', anchor: null, periodStart: firstDate, periodEnd: lastDate, earnedPoints: chartTotal(buckets), buckets, previousAnchor: null, nextAnchor: null };
+}
+
+export function getScoreChart(db: DatabaseSync, memberId: string, query: ScoreChartQuery, today: string, defaultMonth = today.slice(0, 7)): ScoreChart {
+  if (!isScoreChartRange(query.range)) throw new Error('INVALID_CHART_RANGE');
+  if (query.range === 'all') return getAllChart(db, memberId, today);
+  const anchor = chartAnchorFor(query.range, query.anchor, defaultMonth, today);
+  if (!anchor) throw new Error('INVALID_CHART_ANCHOR');
+  const calendar = buildCalendarBuckets(db, memberId, query.range, anchor, today);
+  const previousCandidate = query.range === 'week' ? shiftChartDate(anchor, -7) : query.range === 'month' ? shiftChartMonth(anchor, -1) : shiftChartYear(anchor, -1);
+  const previousYear = previousCandidate.slice(0, 4);
+  const previousAnchor = chartYearAnchor(previousYear) ? previousCandidate : null;
+  const nextCandidate = query.range === 'week' ? shiftChartDate(anchor, 7) : query.range === 'month' ? shiftChartMonth(anchor, 1) : shiftChartYear(anchor, 1);
+  const nextStart = query.range === 'week' ? nextCandidate : query.range === 'month' ? `${nextCandidate}-01` : `${nextCandidate}-01-01`;
+  const nextAnchor = nextStart <= today ? nextCandidate : null;
+  return { range: query.range, anchor, periodStart: calendar.periodStart, periodEnd: calendar.periodEnd, earnedPoints: chartTotal(calendar.buckets), buckets: calendar.buckets, previousAnchor, nextAnchor };
+}
+
 function allEarnedTotals(db: DatabaseSync): Array<{ memberId: string; total: number; enabled: boolean }> {
   const rows = db.prepare(`SELECT m.id AS member_id, m.disabled_at, COALESCE(SUM(CASE WHEN e.active = 1 THEN e.amount ELSE 0 END), 0) AS total
     FROM members m LEFT JOIN daily_point_entitlements e ON e.member_id = m.id GROUP BY m.id, m.disabled_at`).all() as Array<{ member_id: string; disabled_at: number | null; total: number }>;
@@ -369,7 +525,7 @@ export function getPeople(db: DatabaseSync, viewerId: string, scope: 'friends' |
     : 0);
 }
 
-export function getScoreProfile(db: DatabaseSync, viewerId: string, memberId: string, anchorMonth: string, adminMemberIds: readonly string[] = []): ScoreProfile | GamificationError {
+export function getScoreProfile(db: DatabaseSync, viewerId: string, memberId: string, anchorMonth: string, adminMemberIds: readonly string[] = [], chartQuery: ScoreChartQuery = { range: 'month' }, today = taipeiDate()): ScoreProfile | GamificationError {
   if (!memberExists(db, memberId) || !canViewMember(db, viewerId, memberId, adminMemberIds)) return { status: 404, code: 'MEMBER_NOT_ACCESSIBLE' };
   const member = db.prepare('SELECT display_name FROM members WHERE id = ?').get(memberId) as { display_name: string };
   const buckets = monthBuckets(anchorMonth);
@@ -382,6 +538,7 @@ export function getScoreProfile(db: DatabaseSync, viewerId: string, memberId: st
     earnedTotal,
     band: calculateBand(earnedTotal, totals),
     months: monthPoints(db, memberId, buckets),
+    chart: getScoreChart(db, memberId, { range: chartQuery.range, ...(chartQuery.anchor ? { anchor: chartQuery.anchor } : {}) }, today, anchorMonth),
     permissions: { canEditTarget: viewerId === memberId, canRedeem: adminMemberIds.includes(viewerId) },
   };
   if (isPrivate) result.private = { redeemableBalance: walletBalance(db, memberId), targetReward: targetReward(db, memberId) };

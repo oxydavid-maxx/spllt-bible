@@ -4,7 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationBar } from 'expo-navigation-bar';
-import { ChapterAudioControls } from './ChapterAudioControls';
+import { ChapterAudioAutoplayNotice, ChapterAudioAutoplayToggle, ChapterAudioControls } from './ChapterAudioControls';
 import { bookAbbreviationZhTw, formatReferenceListZhTw } from '../domain/scriptureReference';
 import { theme } from './Theme';
 import type { ReaderOverlayControls } from './YouVersionReader';
@@ -78,6 +78,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
         <View style={styles.toolbar} onTouchStart={chrome.showTools}>
           <Pressable accessibilityRole="button" accessibilityLabel="返回今日" onPress={onExit} style={styles.iconButton}><Text style={styles.icon}>‹</Text></Pressable>
           <ChapterAudioControls chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} compact active={chrome.focused} detailsVisible={chrome.audioOpen} onDetailsClose={chrome.closeAudio} />
+          <ChapterAudioAutoplayToggle active={chrome.focused} />
           {references.map((reference, index) => {
             const selected = isChapterInDailyReference(chapterUsfm, reference);
             return <Pressable key={`${index}:${reference}`} accessibilityRole="button" accessibilityLabel={`前往${formatReferenceListZhTw([reference])}`} accessibilityState={{ selected }} onPress={() => onSelectReference(index)} style={[styles.referenceButton, selected && styles.referenceSelected]}><Text style={[styles.referenceLabel, selected && styles.referenceLabelSelected]}>{formatReferenceListZhTw([reference])}</Text></Pressable>;
@@ -85,6 +86,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
           <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} style={styles.iconButton}><Text style={styles.icon}>⋯</Text></Pressable>
         </View>
       </SafeAreaView>
+      <ChapterAudioAutoplayNotice active={chrome.focused} />
       <View style={[styles.reader, { paddingTop: 0, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]} onTouchEnd={controls.ready ? undefined : chrome.toggleTools}>{reader}</View>
       <Modal transparent animationType="fade" visible={chrome.moreOpen} onRequestClose={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore}>
         {chrome.moreOpen && <View style={styles.scrim}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>

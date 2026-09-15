@@ -15,8 +15,8 @@ let fetchImpl: ReturnType<typeof vi.fn>;
 const env = { EXPO_PUBLIC_QINGMU_AUDIO_AUTHORIZED: 'true' };
 const payload = (usfm = '1TI.1', uri = `https://example.test/${usfm}.mp3`) => ({ identity: { versionId: 46, usfm }, text: true, audio: true, offline: false, status: 'verified_source', reason: '', uri, providerExpiry: null, validUntil: new Date(Date.now() + 300_000).toISOString(), provenance: { publisher: 'Test publisher', edition: 'Test edition', recordingId: 'test-source', reference: usfm, attribution: 'Test attribution' } });
 const response = (body: unknown) => new Response(JSON.stringify(body));
-const props = (chapterUsfm = '1TI.1') => ({ chapterUsfm, versionId: 46, env, baseUrl: 'https://in-memory.test', fetchImpl: fetchImpl as typeof fetch });
-async function mount() { await act(async () => { view = TestRenderer.create(React.createElement(ChapterAudioControls, props())); }); }
+const props = (chapterUsfm = '1TI.1', onPlaybackStarted?: (chapterUsfm: string) => void) => ({ chapterUsfm, versionId: 46, env, baseUrl: 'https://in-memory.test', fetchImpl: fetchImpl as typeof fetch, onPlaybackStarted });
+async function mount(onPlaybackStarted?: (chapterUsfm: string) => void) { await act(async () => { view = TestRenderer.create(React.createElement(ChapterAudioControls, props('1TI.1', onPlaybackStarted))); }); }
 const button = () => view!.root.findAll(node => String(node.type) === 'Pressable')[0];
 const text = () => view!.root.findAll(node => String(node.type) === 'Text').map(node => String(node.props.children)).join(' ');
 async function press() { await act(async () => { button().props.onPress(); }); }
@@ -51,6 +51,13 @@ describe('single play intent after capability expiry and native EOF', () => {
     fetchImpl.mockImplementationOnce(async () => response(payload('1TI.1', 'https://example.test/new.mp3')));
     await press(); expect(native.player.calls.slice(-2)).toEqual(['replace:https://example.test/new.mp3', 'play']);
     expect(native.player.currentTime).toBe(0); expect(native.player.playing).toBe(true);
+  });
+  it('reports a changed-URI refresh as a started playback so continuous mode can arm', async () => {
+    const started = vi.fn();
+    await mount(started); native.player.currentTime = 37; await expire();
+    fetchImpl.mockImplementationOnce(async () => response(payload('1TI.1', 'https://example.test/new.mp3')));
+    await press();
+    expect(started).toHaveBeenCalledWith('1TI.1');
   });
   it.each(['explicit_no_audio', 'temporarily_unavailable'])('shows the genuine refreshed %s state without playing the stale source', async status => {
     await mount(); await expire(); fetchImpl.mockImplementationOnce(async () => response({ identity: { versionId: 46, usfm: '1TI.1' }, text: true, audio: false, offline: false, status }));

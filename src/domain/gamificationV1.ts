@@ -8,6 +8,31 @@ export interface MonthPoints {
   earnedPoints: number;
 }
 
+export type ScoreChartRange = 'week' | 'month' | 'year' | 'all';
+
+export interface ScoreChartBucket {
+  key: string;
+  startDate: string;
+  endDate: string;
+  earnedPoints: number;
+}
+
+export interface ScoreChart {
+  range: ScoreChartRange;
+  anchor: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  earnedPoints: number;
+  buckets: ScoreChartBucket[];
+  previousAnchor: string | null;
+  nextAnchor: string | null;
+}
+
+export interface ScoreChartQuery {
+  range: ScoreChartRange;
+  anchor?: string;
+}
+
 export interface PersonListItem {
   memberId: string;
   displayName: string;
@@ -21,6 +46,7 @@ export interface ScoreProfile {
   earnedTotal: number;
   band: number | null;
   months: MonthPoints[];
+  chart?: ScoreChart;
   private?: {
     redeemableBalance: number;
     targetReward: {
@@ -91,6 +117,10 @@ export function monthBuckets(anchorMonth: string): string[] {
     result.push(`${value.getUTCFullYear().toString().padStart(4, '0')}-${(value.getUTCMonth() + 1).toString().padStart(2, '0')}`);
   }
   return result;
+}
+
+export function isScoreChartRange(value: unknown): value is ScoreChartRange {
+  return value === 'week' || value === 'month' || value === 'year' || value === 'all';
 }
 
 export function canonicalMemberPair(first: string, second: string): { memberLow: string; memberHigh: string } | null {
