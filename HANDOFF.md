@@ -14,5 +14,3 @@
 最新安裝候選為 Android 0.2.5/code7，APK SHA-256 `0dfabf3c55ec6aeb2375cc8d5d0663e21a3d59faede61326ec85f77ffbd68d24`。不要把「已完成所有產品驗收」當成現況：兩個獨立Google帳號的好友QR/可見性/移除仍缺真機驗收；public APK尚未release，main尚未merge。
 
 Local-only歷史/evidence在`.handoff/`（Git ignored）。工具payload與secret-shaped values已從session-history匯出排除。
-
-來源session：`01a09000-dc32-7bb2-bfb0-54760470f564`。接手project：`01a0a76a-bb20-7481-80e8-ab4a3611bdd0`；接手session：`01a0a76e-12f7-74c2-a33e-38ad6000ba68`（「青牧讀經 App｜開發接手」）。

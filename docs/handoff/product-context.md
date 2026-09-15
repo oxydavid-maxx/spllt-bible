@@ -2,7 +2,7 @@
 
 ## Owner與工作方式
 
-產品owner是光佑，使用繁體中文。偏好自主完成、先查事實再問、只跑少量有意義的focused tests，並以實機證據確認手機行為。模型/worker採「足夠且便宜」原則；rights、ledger、migration由root嚴格review。使用Markdown檔交付長內容，不在chat貼巨型spec。
+產品溝通使用繁體中文。開發時先查事實，只跑少量有意義的focused tests，並以實機證據確認手機行為；rights、ledger、migration需嚴格review。長內容使用Markdown檔交付。
 
 ## 產品焦點
 

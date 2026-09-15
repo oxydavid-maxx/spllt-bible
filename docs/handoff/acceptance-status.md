@@ -8,7 +8,7 @@
 - 積分完成3→4、restart仍4、undo回3。2026-09-15真機結果是9/9允許、9/8阻擋、9/16未來日期阻擋；「9/14時最早可補9/8」只是規則範例，不是該次真機日期。
 - 月/年/全部顯示3；週顯示2（保留合法舊9/17 credit）。
 - Backend verified-cache stale-serve/single refresh、404/410 invalidation、cap8 dedup與audio transient retry邊界已有proof。
-- Admin真實fingerprint、catalog create、redeem、reverse exact once在0.2.3完成。QA reward `b9235ce7-447f-47b8-8662-9c9621250d79`已inactive；redemption `1a71915d-8ad5-4c62-a644-a2eecce91060`為REVERSED。保留audit，不再重跑交易。
+- Admin真實fingerprint、catalog create、redeem、reverse exact once在0.2.3完成。QA reward已inactive，該redemption已REVERSED；保留audit，不再重跑交易。Exact audit identifiers只保存在local handoff evidence。
 - 0.2.5在真機rapid text→numeric→BACK回原Create bounds，reopen/hide與REVERSED history多次UI dump穩定。
 
 ## 有限證據

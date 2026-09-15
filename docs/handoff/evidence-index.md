@@ -4,7 +4,7 @@ Local-only evidence位於`.handoff/archive/`，由`.git/info/exclude`排除。
 
 - `source-tmp/`：原source `.tmp`測試、手機、API與設計proof。
 - `native-receipts/`：`C:/w/qm/docs/receipts`完整release receipts與歷史APK。
-- `origin-attachments/`：原thread `01a09000-dc32-7bb2-bfb0-54760470f564`的exact images。
+- `origin-attachments/`：原session的exact images；session ID只保存在local private context。
 - `removed-from-old-obsidian/origin-thread-attachments/`：從舊ec5b Obsidian worktree移出的同一組15個attachments，作為可回復原件；active Vault已無該thread附件。
 - `vault-cleanup/2026-W38-系統建議.before.md`：live Vault週檢視清理前exact snapshot；只移除7條已失效qingmu legacy repo建議，其他bytes保留。
 - `rollback-manifest.json`：原path→archive path、bytes、SHA-256與runtime dependency位置。
