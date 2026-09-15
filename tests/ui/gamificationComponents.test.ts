@@ -3,7 +3,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 
 const { primitive } = vi.hoisted(() => ({ primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children) }));
-vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), KeyboardAvoidingView: primitive('KeyboardAvoidingView'), Platform: { OS: 'android' }, FlatList: (props: any) => React.createElement('FlatList', props, props.data?.map((item: any) => props.renderItem({ item }))), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value }, Modal: primitive('Modal'), TextInput: primitive('TextInput'), ActivityIndicator: primitive('ActivityIndicator') }));
+vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), KeyboardAvoidingView: primitive('KeyboardAvoidingView'), FlatList: (props: any) => React.createElement('FlatList', props, props.data?.map((item: any) => props.renderItem({ item }))), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value }, Modal: primitive('Modal'), TextInput: primitive('TextInput'), ActivityIndicator: primitive('ActivityIndicator') }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaProvider: primitive('SafeAreaProvider'), SafeAreaView: primitive('SafeAreaView') }));
 
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
@@ -46,7 +46,7 @@ describe('shared gamification UI', () => {
     expect(safeArea.props.edges).toEqual(['bottom', 'left', 'right']);
     expect(safeArea.props.style.maxHeight).toBe('85%');
     const keyboard = renderer.root.findByType('KeyboardAvoidingView' as any);
-    expect(keyboard.props.behavior).toBe('height');
+    expect(keyboard.props.behavior).toBe('padding');
     const body = renderer.root.findByType('ScrollView' as any);
     expect(body.props.keyboardShouldPersistTaps).toBe('handled');
     expect(body.props.style.flexShrink).toBe(1);
