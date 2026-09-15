@@ -3,11 +3,13 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 
 const { primitive } = vi.hoisted(() => ({ primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children) }));
-vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), FlatList: (props: any) => React.createElement('FlatList', props, props.data?.map((item: any) => props.renderItem({ item }))), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value }, Modal: primitive('Modal'), TextInput: primitive('TextInput'), ActivityIndicator: primitive('ActivityIndicator') }));
+vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), KeyboardAvoidingView: primitive('KeyboardAvoidingView'), Platform: { OS: 'android' }, FlatList: (props: any) => React.createElement('FlatList', props, props.data?.map((item: any) => props.renderItem({ item }))), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value }, Modal: primitive('Modal'), TextInput: primitive('TextInput'), ActivityIndicator: primitive('ActivityIndicator') }));
+vi.mock('react-native-safe-area-context', () => ({ SafeAreaProvider: primitive('SafeAreaProvider'), SafeAreaView: primitive('SafeAreaView') }));
 
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { RedemptionList } from '../../src/ui/gamification/RedemptionList';
+import { ActionSheet } from '../../src/ui/gamification/ActionSheet';
 
 describe('shared gamification UI', () => {
   it('uses one people list shape and keeps every row at least 48dp', () => {
@@ -34,5 +36,21 @@ describe('shared gamification UI', () => {
     const confirm = renderer.root.findByProps({ accessibilityLabel: '確認撤銷兌換' });
     act(() => { confirm.props.onPress(); });
     expect(onReverse).toHaveBeenCalledWith('r1', '現場更正');
+  });
+
+  it('keeps modal actions above the system bottom inset and scrollable', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(React.createElement(ActionSheet, { visible: true, title: '管理獎品', onClose: vi.fn(), actions: [{ label: '建立獎品', onPress: vi.fn() }] }, React.createElement('View', null, React.createElement('Text', null, '長內容')))); });
+    expect(renderer.root.findByType('SafeAreaProvider' as any)).toBeDefined();
+    const safeArea = renderer.root.findByType('SafeAreaView' as any);
+    expect(safeArea.props.edges).toEqual(['bottom', 'left', 'right']);
+    expect(safeArea.props.style.maxHeight).toBe('85%');
+    const keyboard = renderer.root.findByType('KeyboardAvoidingView' as any);
+    expect(keyboard.props.behavior).toBe('height');
+    const body = renderer.root.findByType('ScrollView' as any);
+    expect(body.props.keyboardShouldPersistTaps).toBe('handled');
+    expect(body.props.style.flexShrink).toBe(1);
+    const actionStyle = renderer.root.findByProps({ accessibilityLabel: '建立獎品' }).props.style;
+    expect((Array.isArray(actionStyle) ? actionStyle[0] : actionStyle).minHeight).toBeGreaterThanOrEqual(48);
   });
 });
