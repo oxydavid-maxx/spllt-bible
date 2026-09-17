@@ -96,6 +96,9 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
             <MenuButton label="選擇譯本" disabled={!curatedVersions && !controls.ready} onPress={() => curatedVersions ? setVersionPageOpen(true) : openOfficial(controls.openVersionPicker)} />
             <MenuButton label="調整字體" disabled={!controls.ready} onPress={() => openOfficial(controls.openSettings)} />
             <MenuButton label="選擇其他章節" disabled={!controls.ready} onPress={() => openOfficial(controls.openChapterPicker)} />
+            <Text accessibilityRole="header" style={styles.heading}>連讀是什麼？</Text>
+            <Text style={styles.body}>連讀開啟後，按播放便會從目前章節開始，依序朗讀當日剩餘章節，並自動換頁；最後一章結束就停止。這不是加快語速。</Text>
+            <Text style={styles.body}>工具列的「開/關」表示目前設定，點一下即可切換。關閉後會讀完目前章節再停止；開啟設定不會立即播放。遇到沒有朗讀的章節會停下並提示。</Text>
             <MenuButton label="版本資訊" onPress={chrome.openInfo} />
           </ScrollView>
           </>}

@@ -74,6 +74,14 @@ const text = () => JSON.stringify(renderer!.toJSON());
 async function mount() { await act(async () => { renderer = TestRenderer.create(React.createElement(Harness)); }); }
 
 describe('fullscreen reader layout and chrome', () => {
+  it('explains continuous reading in More, including current-state labels and playback boundaries', async () => {
+    await mount();
+    act(() => { button('更多閱讀工具').props.onPress(); });
+    expect(text()).toContain('連讀是什麼？');
+    expect(text()).toContain('這不是加快語速');
+    expect(text()).toContain('開啟設定不會立即播放');
+    expect(text()).toContain('遇到沒有朗讀的章節會停下並提示');
+  });
   beforeEach(() => {
     vi.useFakeTimers();
     NavigationBar.setHidden(false);

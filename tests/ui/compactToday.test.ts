@@ -159,6 +159,24 @@ describe('compact Today home', () => {
     expect(boundary.repository.get({ memberId: 'component:test-member', planId: 'church-2026-09', taskDate: '2026-09-14' })).toMatchObject({ status: 'COMPLETED' });
   });
 
+  it('does not show a previous date as completed when its save finishes after navigation', async () => {
+    signIn();
+    setSelectedReadingDate('2026-09-14');
+    let finish!: (value: any) => void;
+    boundary.saveCompletion.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const renderer = await render();
+    await act(async () => { button(renderer, '確認今日已完成讀經').props.onPress(); });
+    await act(async () => { setSelectedReadingDate('2026-09-17'); });
+    expect(button(renderer, '確認今日已完成讀經')).toBeDefined();
+    await act(async () => { finish({ ok: true, revision: 1, status: 'COMPLETED' }); });
+    expect(textContent(renderer)).toContain('9月17日');
+    expect(button(renderer, '撤銷今日讀經完成確認')).toBeUndefined();
+    expect(button(renderer, '確認今日已完成讀經')).toBeDefined();
+    expect(boundary.repository.get({ memberId: 'component:test-member', planId: 'church-2026-09', taskDate: '2026-09-17' })).toBeUndefined();
+    await act(async () => { setSelectedReadingDate('2026-09-14'); });
+    expect(button(renderer, '撤銷今日讀經完成確認')).toBeDefined();
+  });
+
   it('keeps the actionable sync error visible when the progress request fails', async () => {
     signIn();
     boundary.getReadingDays.mockRejectedValue(new Error('offline-test'));

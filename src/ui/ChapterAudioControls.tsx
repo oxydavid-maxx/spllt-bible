@@ -93,12 +93,13 @@ export function ChapterAudioAutoplayToggle({ active = true }: { active?: boolean
   return (
     <Pressable
       accessibilityRole="switch"
-      accessibilityLabel="連續播放"
+      accessibilityLabel="連讀"
+      accessibilityHint={autoplay.enabled ? '目前開啟，點一下關閉連讀' : '目前關閉，點一下開啟連讀；按播放才開始朗讀'}
       accessibilityState={{ checked: autoplay.enabled }}
       onPress={autoplay.toggle}
-      style={styles.autoplayToggle}
+      style={{ ...styles.autoplayToggle, ...(autoplay.enabled ? styles.autoplayToggleOn : {}) }}
     >
-      <Text style={styles.autoplayToggleText}>{autoplay.enabled ? '連續' : '單次'}</Text>
+      <Text style={[styles.autoplayToggleText, autoplay.enabled && styles.autoplayToggleTextOn]}>連讀{'\n'}{autoplay.enabled ? '開' : '關'}</Text>
     </Pressable>
   );
 }
@@ -571,6 +572,8 @@ const styles = StyleSheet.create({
   icon: { color: theme.colors.primary, fontSize: 24, fontWeight: '700' },
   autoplayToggle: { minWidth: theme.control.tapCompact, minHeight: theme.control.tapCompact, flexShrink: 0, borderRadius: theme.radius.pill, borderColor: theme.colors.primary, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xs },
   autoplayToggleText: { color: theme.colors.primary, fontSize: theme.type.micro.size, fontWeight: '800', textAlign: 'center' },
+  autoplayToggleOn: { backgroundColor: theme.colors.primary },
+  autoplayToggleTextOn: { color: theme.colors.white },
   autoplayNoticeRow: { flexShrink: 0, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, backgroundColor: theme.colors.surfaceMuted },
   autoplayNoticeText: { color: theme.colors.danger, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
   feedback: { position: 'absolute', left: theme.control.tap + theme.spacing.xs, top: 0, color: theme.colors.danger ?? theme.colors.ink, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, maxWidth: 160 },

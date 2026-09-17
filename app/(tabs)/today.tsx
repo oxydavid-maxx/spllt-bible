@@ -33,6 +33,12 @@ export default function TodayScreen() {
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
   const memberId = session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
+  const ownerRef = useRef({ memberId, planId, date: selectedDate, session });
+  if (ownerRef.current.memberId !== memberId || ownerRef.current.planId !== planId || ownerRef.current.date !== selectedDate || ownerRef.current.session !== session) {
+    ownerRef.current = { memberId, planId, date: selectedDate, session };
+  }
+  const owner = ownerRef.current;
+  const ownsView = () => ownerRef.current === owner && isCurrentAuthSession(session);
   const [readerPreferencesStore] = useState(createNativeReaderPreferencesStore);
   const readerPreferences = useReaderPreferences(memberId, readerPreferencesStore);
   const selectedVersionId = readerPreferences.ready ? readerPreferences.preferences.versionId : null;
@@ -150,8 +156,8 @@ export default function TodayScreen() {
   const save = async (desiredStatus: 'COMPLETED' | 'NOT_COMPLETED') => {
     const repository = repositoryRef.current;
     const actionSession = session;
-    if (!repository || !memberId || !isCurrentAuthSession(actionSession)) return;
-    const visibleRecord = record.memberId === memberId ? record : { memberId, planId, taskDate: selectedDate, status: 'UNREPORTED' as const, revision: 0, syncStatus: 'CONFIRMED' as const };
+    if (!repository || !memberId || !ownsView()) return;
+    const visibleRecord = record.memberId === memberId && record.planId === planId && record.taskDate === selectedDate ? record : { memberId, planId, taskDate: selectedDate, status: 'UNREPORTED' as const, revision: 0, syncStatus: 'CONFIRMED' as const };
     const current = repository.get({ memberId, planId, taskDate: selectedDate }) ?? visibleRecord;
     const next = repository.saveCompletion({
       memberId: visibleRecord.memberId,
@@ -170,6 +176,7 @@ export default function TodayScreen() {
         const client = clientRef.current;
         if (!client || !isCurrentAuthSession(actionSession)) return;
         const results = await repository.flush((command) => client.saveCompletion(command), memberId);
+        if (!ownsView()) return;
         const confirmed = repository.get(next);
         if (confirmed && isCurrentAuthSession(actionSession)) {
           setRecord(confirmed);
@@ -179,11 +186,11 @@ export default function TodayScreen() {
           if (last && !last.ok) setSyncError(true);
         }
       } catch {
-        if (isCurrentAuthSession(actionSession)) setSyncError(true);
+        if (ownsView()) setSyncError(true);
       }
     }
   };
-  const visibleRecord = record.memberId === (memberId ?? 'signed-out') ? record : { memberId: memberId ?? 'signed-out', planId, taskDate: selectedDate, status: 'UNREPORTED' as const, revision: 0, syncStatus: 'CONFIRMED' as const };
+  const visibleRecord = record.memberId === (memberId ?? 'signed-out') && record.planId === planId && record.taskDate === selectedDate ? record : { memberId: memberId ?? 'signed-out', planId, taskDate: selectedDate, status: 'UNREPORTED' as const, revision: 0, syncStatus: 'CONFIRMED' as const };
   const canComplete = isWithinCompletionWindow(selectedDate, taipeiDate(new Date()));
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>

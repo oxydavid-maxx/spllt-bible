@@ -2,6 +2,8 @@
 
 這是新session的最小入口。先讀：
 
+**2026-09-17 Fable 接手補充：** 本機接手請先讀 Git ignored 的 `.handoff/FABLE-HANDOFF.md`，內含最新使用者回饋、未提交修正、路徑搬移現況及完整剩餘主線；不要將本機交接或私人附件公開。以下版本狀態是既有已安裝基準，不包含該補充中的未發布修改。
+
 1. [docs/handoff/README.md](docs/handoff/README.md)
 2. [已核准 Detailed Implementation Design Spec v1.0](docs/design/reading-gamification-v1.md)
 3. [docs/handoff/product-context.md](docs/handoff/product-context.md)
