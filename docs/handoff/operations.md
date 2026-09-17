@@ -5,8 +5,8 @@
 ## Source與release
 
 - Public source：[oxydavid-maxx/spllt-bible](https://github.com/oxydavid-maxx/spllt-bible)，branch `codex/qm-gamification-v1`。
-- 產品程式基準是`5ee870ca9beead8c07e9381eeb50a9eb65335aed`；本handoff之後的commit只含文件。
-- `main`尚未merge；最新APK尚未建立public release。
+- 產品程式基準是`88b589ddb651bfc3a05748068f88dae9bc34b3f1`（0.2.6/code8，含連讀改名與完成狀態日期隔離修正）。
+- `main`已於2026-09-17 fast-forward到`88b589d`；release tag `android-beta-2026-09-17-continuous-reading`。
 - 正式release必須維持原package、release signer、四ABI、production audio enabled、fixture disabled、QA audio disabled，並從APK本體驗證manifest/signature/ABIs/embedded flags，不能只回報shell env。
 
 ## Android build
@@ -15,7 +15,7 @@
 - 使用既有短路徑native build tree、JDK 17、Android SDK與single Gradle worker；不要為handoff重建/重掛buildtree或改toolchain。
 - 保留短路徑Ninja remedy。只有version變更時，guarded修改generated `android/app/build.gradle`兩行；沒有dependency/plugin/native config變更時不要跑Expo prebuild。
 - Native build tree使用既有外部Git common store。新repo產生candidate後，由build owner讓buildtree fetch/checkout exact commit；不要假設兩者共享本repo的`.git`。
-- Release build必須在同一個PowerShell process先載入local private binding，再呼叫官方entry。Exact loader、hash與env bindings見`.handoff/operations-local.md`。
+- Release build必須在同一個PowerShell process先載入local private binding，再呼叫官方entry；請從原生PowerShell啟動，不要從Git Bash派生的powershell（缺`Get-FileHash`會在Gradle前失敗）。Exact loader、hash與env bindings見`.handoff/operations-local.md`。
 
 ## Source map與focused checks
 

@@ -2,6 +2,8 @@
 
 ## 已驗證
 
+- 0.2.6/code8（88b589d）真機：連讀開/關兩態、48dp、切換不觸發播放、「連讀是什麼？」說明；切日與重開後完成狀態正確；提醒開啟正確排程、關閉清除並與伺服器同步。
+
 - 五版本在真機顯示正確的1TI.2/PSA.93；ERV明確無audio。
 - 連續播放自然鏈1TI.2→1TI.3→PSA.93並在最後停止；OFF→ON rearm通過。
 - 字級、翻譯、連續播放設定持久化。
@@ -14,12 +16,12 @@
 ## 有限證據
 
 - 一次preload約1.215秒（settings→first paragraph），不是tap-to-content絕對benchmark，也不代表所有冷啟動；首次uncached仍受upstream影響。
-- 讀經reminder修復存在，但沒有一份可支撐「完整通知交付全通過」的root receipt。
+- 讀經reminder：0.2.6已驗排程/取消/同步；實際通知交付與點入沿用2026-09-15證據（reminder程式碼自5cea282後未變）。
 
 ## 尚未完成
 
 - 兩個獨立真實Google帳號的friend QR、visibility與removal未在手機完整驗收。不可用fake identity或test bypass代替。
-- 全產品並未全部qualification；publish前需把同一candidate與full-scope結果重新綁定。
-- Main未merge，latest APK未public release。
+- 9/14、9/17兩筆舊完成紀錄已判定為QA遺留，待產品owner在App內按「撤銷」清除（正式撤銷交易，保留稽核）。
+- Main已merge至88b589d；public release見repo Releases。
 
 下一session應從本handoff、versioned spec與已保存proof開始，只針對剩餘acceptance做reconciliation；不要重新開始Bible/audio POC研究，也不要重跑已綁定的整套證據。
