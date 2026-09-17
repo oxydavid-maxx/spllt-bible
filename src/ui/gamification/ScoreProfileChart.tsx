@@ -1,22 +1,28 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { MonthPoints, ScoreChart, ScoreChartBucket, ScoreChartQuery, ScoreChartRange } from '../../services/gamificationApiClient';
+import { taipeiDate } from '../../domain/gamificationV1';
 import { theme } from '../Theme';
 
-const PLOT_HEIGHT = 120;
-const X_AXIS_HEIGHT = 20;
+// Reading calendar. One point per day means a bar chart degenerates into 0/1 hairlines; a
+// calendar shows at a glance which days were read, which were missed, and what is still ahead.
+// 週 = one row, 月 = month grid (Monday first), 年 = 12 month cells, 全部 = one cell per year.
+
 const RANGE_OPTIONS: Array<{ range: ScoreChartRange; label: string }> = [
   { range: 'week', label: '週' },
   { range: 'month', label: '月' },
   { range: 'year', label: '年' },
   { range: 'all', label: '全部' },
 ];
+const WEEKDAY_HEADERS = ['一', '二', '三', '四', '五', '六', '日'];
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
 export interface ScoreProfileChartProps {
   chart?: ScoreChart;
   fallbackMonths: MonthPoints[];
   onChartChange?: (query: ScoreChartQuery) => void;
+  /** Taipei calendar date used to mark "today"; injectable for tests. */
+  today?: string;
 }
 
 export function chartQueryForRange(_chart: ScoreChart, range: ScoreChartRange): ScoreChartQuery {
@@ -60,9 +66,12 @@ function yearMonthLabel(value: string): string {
   return `${year}年${Number(month)}月`;
 }
 
+function isDayKey(key: string): boolean { return /^\d{4}-\d{2}-\d{2}$/.test(key); }
+function isMonthKey(key: string): boolean { return /^\d{4}-\d{2}$/.test(key); }
+
 function periodLabel(chart: ScoreChart): string {
   if (chart.range === 'all') return '全部紀錄';
-  if (!chart.periodStart || !chart.periodEnd) return '積分紀錄';
+  if (!chart.periodStart || !chart.periodEnd) return '讀經紀錄';
   if (chart.range === 'month') return yearMonthLabel(chart.periodStart.slice(0, 7));
   if (chart.range === 'year') return `${chart.periodStart.slice(0, 4)}年`;
   return chart.periodStart.slice(0, 4) === chart.periodEnd.slice(0, 4)
@@ -70,60 +79,90 @@ function periodLabel(chart: ScoreChart): string {
     : `${shortDateLabel(chart.periodStart)}–${dateLabel(chart.periodEnd)}`;
 }
 
-function bucketLabel(chart: ScoreChart, bucket: ScoreChartBucket, index: number): string {
-  if (chart.range === 'week') return `週${WEEKDAY_LABELS[new Date(`${bucket.startDate}T12:00:00.000Z`).getUTCDay()]}`;
-  if (chart.range === 'month') {
-    if (/^\d{4}-\d{2}$/.test(bucket.key)) return `${Number(bucket.key.slice(5, 7))}月`;
-    return index === 0 || index % 5 === 0 || index === chart.buckets.length - 1 ? String(Number(bucket.key.slice(8, 10))) : '';
+function bucketPeriodLabel(bucket: ScoreChartBucket): string {
+  if (isDayKey(bucket.key)) return shortDateLabel(bucket.key);
+  if (isMonthKey(bucket.key)) return yearMonthLabel(bucket.key);
+  return `${bucket.key}年`;
+}
+
+/** Screen-reader label: keeps the ISO key so the day is unambiguous, then the plain outcome. */
+function bucketAccessibilityLabel(bucket: ScoreChartBucket, today: string): string {
+  if (isDayKey(bucket.key)) {
+    const state = bucket.key > today ? '未到' : bucket.earnedPoints > 0 ? '已讀' : '未讀';
+    return `${bucket.key} ${bucket.earnedPoints} 分 ${state}${bucket.key === today ? ' 今天' : ''}`;
   }
-  if (chart.range === 'year') return index % 2 === 0 || index === chart.buckets.length - 1 ? `${Number(bucket.key.slice(5, 7))}月` : '';
-  return bucket.key;
+  return `${bucketPeriodLabel(bucket)} ${bucket.earnedPoints} 天`;
 }
 
-function bucketAccessibilityLabel(chart: ScoreChart, bucket: ScoreChartBucket): string {
-  const period = chart.range === 'all' ? `${bucket.key}年` : chart.range === 'year' ? yearMonthLabel(bucket.key) : /^\d{4}-\d{2}$/.test(bucket.key) ? bucket.key : bucket.startDate;
-  return `${period} ${bucket.earnedPoints} 分`;
+function selectedLabel(bucket: ScoreChartBucket, today: string): string {
+  if (isDayKey(bucket.key)) {
+    const state = bucket.key > today ? '未到' : bucket.earnedPoints > 0 ? '已讀 ✓' : '未讀';
+    return `選取：${shortDateLabel(bucket.key)}${bucket.key === today ? '（今天）' : ''}　${state}`;
+  }
+  return `選取：${bucketPeriodLabel(bucket)}，${bucket.earnedPoints} 天`;
 }
 
-function axisUpperBound(buckets: readonly ScoreChartBucket[]): number {
-  return Math.max(1, ...buckets.map((bucket) => bucket.earnedPoints));
+/** Days read in the period. Daily buckets count days; coarser buckets carry a day count as points (1 point/day). */
+function readDays(chart: ScoreChart): number {
+  return chart.buckets.every((bucket) => isDayKey(bucket.key))
+    ? chart.buckets.filter((bucket) => bucket.earnedPoints > 0).length
+    : chart.buckets.reduce((total, bucket) => total + bucket.earnedPoints, 0);
 }
 
-function axisTicks(upperBound: number): number[] {
-  if (upperBound <= 1) return [1, 0];
-  const middle = Math.max(1, Math.ceil(upperBound / 2));
-  return [upperBound, middle, 0];
+function cellState(bucket: ScoreChartBucket, today: string): 'read' | 'missed' | 'future' | 'count' {
+  if (!isDayKey(bucket.key)) return 'count';
+  if (bucket.key > today) return 'future';
+  return bucket.earnedPoints > 0 ? 'read' : 'missed';
 }
 
-function tickPosition(tick: number, upperBound: number): number {
-  return Math.round((1 - tick / upperBound) * (PLOT_HEIGHT - 1));
+/** Monday-first column index (0–6) for an ISO date. */
+function mondayIndex(date: string): number {
+  return (new Date(`${date}T12:00:00.000Z`).getUTCDay() + 6) % 7;
 }
 
-function selectedLabel(chart: ScoreChart, bucket: ScoreChartBucket): string {
-  const period = chart.range === 'all' ? `${bucket.key}年` : chart.range === 'year' ? yearMonthLabel(bucket.key) : /^\d{4}-\d{2}$/.test(bucket.key) ? yearMonthLabel(bucket.key) : shortDateLabel(bucket.startDate);
-  return `選取：${period}，${bucket.earnedPoints} 分`;
+function DayCell({ bucket, today, selected, onSelect }: { bucket: ScoreChartBucket; today: string; selected: boolean; onSelect: (key: string) => void }) {
+  const state = cellState(bucket, today);
+  const isToday = bucket.key === today;
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={bucketAccessibilityLabel(bucket, today)}
+    accessibilityState={{ selected }}
+    onPress={() => onSelect(bucket.key)}
+    style={[styles.cell, state === 'read' && styles.cellRead, state === 'missed' && styles.cellMissed, state === 'future' && styles.cellFuture, isToday && styles.cellToday, selected && !isToday && styles.cellSelected]}
+  >
+    <Text style={[styles.cellText, state === 'read' && styles.cellTextRead, state === 'future' && styles.cellTextFuture]}>{Number(bucket.key.slice(8, 10))}</Text>
+  </Pressable>;
 }
 
-export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChartChange }: ScoreProfileChartProps) {
+function CountCell({ bucket, label, selected, onSelect, today }: { bucket: ScoreChartBucket; label: string; selected: boolean; onSelect: (key: string) => void; today: string }) {
+  const strong = bucket.earnedPoints >= 15;
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={bucketAccessibilityLabel(bucket, today)}
+    accessibilityState={{ selected }}
+    onPress={() => onSelect(bucket.key)}
+    style={[styles.countCell, bucket.earnedPoints > 0 && styles.countCellSome, strong && styles.countCellStrong, selected && styles.cellSelected]}
+  >
+    <Text style={[styles.countLabel, strong && styles.cellTextRead]}>{label}</Text>
+    <Text style={[styles.countValue, strong && styles.cellTextRead]}>{bucket.earnedPoints} 天</Text>
+  </Pressable>;
+}
+
+export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChartChange, today: suppliedToday }: ScoreProfileChartProps) {
   const chart = suppliedChart ?? fallbackChart(fallbackMonths);
   const isLegacyFallback = suppliedChart === undefined;
-  const [selectedKey, setSelectedKey] = useState<string | null>(chart.buckets.at(-1)?.key ?? null);
-  useEffect(() => { setSelectedKey(chart.buckets.at(-1)?.key ?? null); }, [chart.range, chart.anchor, chart.periodStart, chart.periodEnd, chart.buckets.length]);
-  const selectedIndex = Math.max(0, chart.buckets.findIndex((bucket) => bucket.key === selectedKey));
-  const selectedBucket = chart.buckets[selectedIndex] ?? null;
-  const upperBound = axisUpperBound(chart.buckets);
-  const ticks = useMemo(() => axisTicks(upperBound), [upperBound]);
-  const xAxisLabelWidth = chart.range === 'all' ? 48 : chart.range === 'year' ? 40 : 32;
-  const selectData = (offset: number) => {
-    if (chart.buckets.length === 0) return;
-    const nextIndex = Math.min(chart.buckets.length - 1, Math.max(0, selectedIndex + offset));
-    setSelectedKey(chart.buckets[nextIndex].key);
-  };
+  const today = suppliedToday ?? taipeiDate(new Date());
+  const defaultKey = () => chart.buckets.find((bucket) => bucket.key === today)?.key ?? chart.buckets.find((bucket) => bucket.key === today.slice(0, 7))?.key ?? chart.buckets.find((bucket) => bucket.key === today.slice(0, 4))?.key ?? chart.buckets.at(-1)?.key ?? null;
+  const [selectedKey, setSelectedKey] = useState<string | null>(defaultKey);
+  useEffect(() => { setSelectedKey(defaultKey()); }, [chart.range, chart.anchor, chart.periodStart, chart.periodEnd, chart.buckets.length, today]);
+  const selectedBucket = chart.buckets.find((bucket) => bucket.key === selectedKey) ?? null;
+  const dailyBuckets = chart.buckets.length > 0 && chart.buckets.every((bucket) => isDayKey(bucket.key));
+  const leadingBlanks = dailyBuckets && chart.range === 'month' && chart.buckets[0] ? mondayIndex(chart.buckets[0].key) : 0;
 
   return <View style={styles.card}>
     <View style={styles.headingRow}>
-      <Text style={styles.cardTitle}>{isLegacyFallback ? '近六個月' : '積分趨勢'}</Text>
-      <Text accessibilityLabel={`本期 ${chart.earnedPoints} 分`} style={styles.periodTotal}>{`本期 ${chart.earnedPoints} 分`}</Text>
+      <Text style={styles.cardTitle}>{isLegacyFallback ? '近六個月' : '讀經日曆'}</Text>
+      <Text accessibilityLabel={`本期 ${readDays(chart)} 天`} style={styles.periodTotal}>{`本期 ${readDays(chart)} 天`}</Text>
     </View>
     {!isLegacyFallback ? <View accessibilityRole="tablist" style={styles.rangeSelector}>
       {RANGE_OPTIONS.map((option) => <Pressable key={option.range} accessibilityRole="tab" accessibilityLabel={option.label} accessibilityState={{ selected: chart.range === option.range }} onPress={() => onChartChange?.(chartQueryForRange(chart, option.range))} style={[styles.rangeOption, chart.range === option.range && styles.rangeOptionActive]}><Text style={[styles.rangeText, chart.range === option.range && styles.rangeTextActive]}>{option.label}</Text></Pressable>)}
@@ -133,31 +172,18 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
       <Text accessibilityLabel={`目前積分期間 ${periodLabel(chart)}`} style={styles.periodLabel}>{periodLabel(chart)}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="下一個積分期間" accessibilityState={{ disabled: !chart.nextAnchor || !onChartChange }} disabled={!chart.nextAnchor || !onChartChange} onPress={() => chart.nextAnchor && onChartChange?.({ range: chart.range, anchor: chart.nextAnchor })} style={styles.navButton}><Text style={styles.navText}>›</Text></Pressable>
     </View>}
-    {chart.buckets.length === 0 ? <Text style={styles.empty}>尚無已獲得積分</Text> : <View style={styles.plotRow}>
-      <View style={styles.yAxis}>{ticks.map((tick) => <Text key={tick} style={[styles.axisLabel, { top: Math.max(0, Math.min(PLOT_HEIGHT - 8, tickPosition(tick, upperBound) - 8)) }]}>{tick}</Text>)}</View>
-      <View style={styles.plotBody}>
-        <View style={styles.gridLines}>{ticks.map((tick) => <View key={tick} style={[styles.gridLine, { top: tickPosition(tick, upperBound) }]} />)}</View>
-        <View style={styles.barRow}>
-          {chart.buckets.map((bucket, index) => {
-            const height = bucket.earnedPoints > 0 ? Math.max(1, Math.round((bucket.earnedPoints / upperBound) * PLOT_HEIGHT)) : 0;
-            return <View key={bucket.key} accessible accessibilityRole="image" accessibilityLabel={bucketAccessibilityLabel(chart, bucket)} accessibilityState={{ selected: bucket.key === selectedKey }} style={[styles.barColumn, bucket.key === selectedKey && styles.barColumnSelected]}>
-              <View style={styles.barSlot}>{bucket.earnedPoints > 0 ? <View style={[styles.bar, { height }]} /> : null}</View>
-            </View>;
-          })}
-        </View>
-        <View style={styles.xAxisRow}>
-          {chart.buckets.map((bucket, index) => {
-            const label = bucketLabel(chart, bucket, index);
-            return label ? <Text key={bucket.key} numberOfLines={1} style={[styles.xAxisLabel, { width: xAxisLabelWidth, left: `${((index + 0.5) / chart.buckets.length) * 100}%`, transform: [{ translateX: -xAxisLabelWidth / 2 }] }]}>{label}</Text> : null;
-          })}
-        </View>
+    {chart.buckets.length === 0 ? <Text style={styles.empty}>尚無讀經紀錄</Text> : dailyBuckets ? <View>
+      <View style={styles.grid}>
+        {(chart.range === 'month' ? WEEKDAY_HEADERS : chart.buckets.map((bucket) => WEEKDAY_LABELS[new Date(`${bucket.key}T12:00:00.000Z`).getUTCDay()])).map((label, index) => <Text key={`h${index}`} style={styles.weekday}>{label}</Text>)}
       </View>
+      <View style={styles.grid}>
+        {Array.from({ length: leadingBlanks }, (_, index) => <View key={`b${index}`} style={styles.cellBlank} />)}
+        {chart.buckets.map((bucket) => <DayCell key={bucket.key} bucket={bucket} today={today} selected={bucket.key === selectedKey} onSelect={setSelectedKey} />)}
+      </View>
+    </View> : <View style={styles.countGrid}>
+      {chart.buckets.map((bucket) => <CountCell key={bucket.key} bucket={bucket} today={today} label={isMonthKey(bucket.key) ? `${Number(bucket.key.slice(5, 7))}月` : `${bucket.key}年`} selected={bucket.key === selectedKey} onSelect={setSelectedKey} />)}
     </View>}
-    {selectedBucket ? <View style={styles.dataNav}>
-      <Pressable accessibilityRole="button" accessibilityLabel="上一個資料柱" accessibilityState={{ disabled: selectedIndex <= 0 }} disabled={selectedIndex <= 0} onPress={() => selectData(-1)} style={styles.dataNavButton}><Text style={styles.dataNavText}>‹</Text></Pressable>
-      <Text accessible accessibilityRole="adjustable" accessibilityLabel="圖表資料選取" accessibilityValue={{ text: selectedLabel(chart, selectedBucket) }} accessibilityActions={[{ name: 'decrement', label: '上一個資料柱' }, { name: 'increment', label: '下一個資料柱' }]} onAccessibilityAction={(event) => selectData(event.nativeEvent.actionName === 'increment' ? 1 : -1)} style={styles.selectedLabel}>{selectedLabel(chart, selectedBucket)}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="下一個資料柱" accessibilityState={{ disabled: selectedIndex >= chart.buckets.length - 1 }} disabled={selectedIndex >= chart.buckets.length - 1} onPress={() => selectData(1)} style={styles.dataNavButton}><Text style={styles.dataNavText}>›</Text></Pressable>
-    </View> : null}
+    {selectedBucket ? <Text accessibilityLiveRegion="polite" style={styles.selectedLabel}>{selectedLabel(selectedBucket, today)}</Text> : null}
   </View>;
 }
 
@@ -176,22 +202,25 @@ const styles = StyleSheet.create({
   navButton: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface },
   navText: { color: theme.colors.primary, fontSize: 30, lineHeight: 32 },
   periodLabel: { flex: 1, color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '800', textAlign: 'center' },
-  plotRow: { minHeight: PLOT_HEIGHT + X_AXIS_HEIGHT, flexDirection: 'row', gap: theme.spacing.xs },
-  yAxis: { width: 26, height: PLOT_HEIGHT + X_AXIS_HEIGHT, position: 'relative', alignItems: 'flex-end' },
-  axisLabel: { position: 'absolute', color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
-  plotBody: { flex: 1, minWidth: 0, height: PLOT_HEIGHT + X_AXIS_HEIGHT, position: 'relative' },
-  gridLines: { position: 'absolute', top: 0, left: 0, right: 0, height: PLOT_HEIGHT, pointerEvents: 'none' },
-  gridLine: { position: 'absolute', left: 0, right: 0, height: 1, borderTopColor: theme.colors.border, borderTopWidth: theme.control.hairline },
-  barRow: { height: PLOT_HEIGHT, flexDirection: 'row', alignItems: 'flex-end', gap: 1 },
-  barColumn: { flex: 1, height: PLOT_HEIGHT, alignItems: 'center', justifyContent: 'flex-end' },
-  barColumnSelected: { borderColor: theme.colors.primary, borderLeftWidth: 1, borderRightWidth: 1 },
-  barSlot: { width: '100%', height: PLOT_HEIGHT, alignItems: 'center', justifyContent: 'flex-end' },
-  bar: { width: '56%', backgroundColor: theme.colors.primary, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  xAxisRow: { height: X_AXIS_HEIGHT, position: 'relative', overflow: 'visible' },
-  xAxisLabel: { position: 'absolute', color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, minHeight: X_AXIS_HEIGHT, textAlign: 'center', flexShrink: 0 },
-  dataNav: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
-  dataNavButton: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface },
-  dataNavText: { color: theme.colors.primary, fontSize: 26, lineHeight: 30 },
-  selectedLabel: { flex: 1, color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700', textAlign: 'center' },
+  // 7 columns; each cell takes 1/7 minus the gap so the grid wraps exactly one week per row.
+  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 5, columnGap: 5 },
+  weekday: { width: '13.2%', color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, textAlign: 'center' },
+  cellBlank: { width: '13.2%', height: 32 },
+  cell: { width: '13.2%', height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted },
+  cellRead: { backgroundColor: theme.colors.primary },
+  cellMissed: { backgroundColor: theme.colors.surfaceMuted },
+  cellFuture: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: theme.colors.border },
+  cellToday: { borderWidth: 2, borderColor: theme.colors.primaryDeep },
+  cellSelected: { borderWidth: 2, borderColor: theme.colors.borderStrong },
+  cellText: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
+  cellTextRead: { color: theme.colors.white },
+  cellTextFuture: { color: theme.colors.border },
+  countGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 6, columnGap: 6 },
+  countCell: { width: '23.5%', minHeight: theme.control.tap, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted, paddingVertical: theme.spacing.xs },
+  countCellSome: { backgroundColor: theme.colors.primarySoft },
+  countCellStrong: { backgroundColor: theme.colors.primary },
+  countLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, fontWeight: '800' },
+  countValue: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+  selectedLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
   empty: { color: theme.colors.muted, fontSize: theme.type.body.size, paddingVertical: theme.spacing.lg },
 });

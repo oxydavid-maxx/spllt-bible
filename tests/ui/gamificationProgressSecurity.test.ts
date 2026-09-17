@@ -75,10 +75,10 @@ describe('progress protected response lifecycle', () => {
     api.getPendingOperations.mockImplementationOnce(() => new Promise((resolve) => { resolvePending = resolve; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全部')[0].props.onPress(); await Promise.resolve(); });
+    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); await Promise.resolve(); });
     await act(async () => { appListeners[appListeners.length - 1]?.('background'); resolvePending({ ownerMemberId: 'self', redemptions: [], reversals: [] }); });
     expect(api.getPeople).not.toHaveBeenCalledWith('all');
-    expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '全部' && node.props.accessibilityState?.selected)).toHaveLength(0);
+    expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）' && node.props.accessibilityState?.selected)).toHaveLength(0);
   });
 
 });

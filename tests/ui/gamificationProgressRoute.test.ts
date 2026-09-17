@@ -90,7 +90,7 @@ describe('progress gamification route', () => {
   it('requires admin unlock before the all scope and reaches redeem/reverse actions', async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    const all = renderer.root.findAll((node) => node.props.accessibilityLabel === '全部')[0];
+    const all = renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0];
     await act(async () => { all.props.onPress(); });
     expect(api.getPeople).toHaveBeenCalledWith('all');
     const list = renderer.root.findByType('PeopleList' as any);
@@ -122,7 +122,7 @@ describe('progress gamification route', () => {
     api.redeem.mockRejectedValueOnce(new ApiError('timeout')).mockResolvedValueOnce({});
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全部')[0].props.onPress(); });
+    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
     const list = renderer.root.findByType('PeopleList' as any);
     await act(async () => { list.props.onSelect(list.props.people[0]); });
     await act(async () => { renderer.root.findByType('ScoreProfile' as any).props.onOpenActions(); });
@@ -142,7 +142,7 @@ describe('progress gamification route', () => {
     });
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全部')[0].props.onPress(); });
+    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
     await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); });
     const pendingAction = renderer.root.findByType('ActionSheet' as any).props.actions.find((action: any) => action.label === '尚未確認操作 (2)');
     await act(async () => { pendingAction.onPress(); });
@@ -160,14 +160,14 @@ describe('progress gamification route', () => {
     const openMenu = async () => { await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); }); };
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label.startsWith('尚未確認操作'))).toBe(false);
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全部')[0].props.onPress(); });
+    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label === '尚未確認操作 (1)')).toBe(true);
 
     await act(async () => { appListeners[appListeners.length - 1]?.('background'); appListeners[appListeners.length - 1]?.('active'); await Promise.resolve(); });
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label.startsWith('尚未確認操作'))).toBe(false);
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全部')[0].props.onPress(); });
+    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label === '尚未確認操作 (1)')).toBe(true);
     expect(api.getPendingOperations).toHaveBeenCalledTimes(2);
@@ -206,7 +206,7 @@ describe('progress gamification route', () => {
     api.redeem.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRedeem = reject; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全部')[0].props.onPress(); });
+    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
     const list = renderer.root.findByType('PeopleList' as any);
     await act(async () => { list.props.onSelect(list.props.people[0]); });
     await act(async () => { renderer.root.findByType('ScoreProfile' as any).props.onOpenActions(); });

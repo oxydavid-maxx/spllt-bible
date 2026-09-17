@@ -8,6 +8,11 @@ vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), ScrollView: 
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { chartQueryForRange } from '../../src/ui/gamification/ScoreProfileChart';
 
+const TODAY = '2026-09-10';
+const flat = (style: unknown): Record<string, unknown> => Object.assign({}, ...([] as unknown[]).concat(style as unknown[]).filter(Boolean));
+const texts = (renderer: TestRenderer.ReactTestRenderer) => renderer.root.findAll((node) => String(node.type) === 'Text').map((node) => String(node.props.children)).join(' ');
+const cells = (renderer: TestRenderer.ReactTestRenderer) => renderer.root.findAll((node) => String(node.type) === 'Pressable' && typeof node.props.accessibilityLabel === 'string' && /^\d{4}-\d{2}-\d{2} /.test(node.props.accessibilityLabel));
+
 const chart = {
   range: 'week' as const,
   anchor: '2026-09-07',
@@ -31,47 +36,88 @@ function profile() {
   return { memberId: 'member-chart', displayName: '小明', earnedTotal: 4, band: null, months: [{ month: '2026-09', earnedPoints: 4 }], chart, permissions: { canEditTarget: false, canRedeem: false } };
 }
 
-describe('score profile chart', () => {
-  it('renders conventional range controls, period navigation, integer axis, and accessible daily bars', () => {
-    let renderer!: TestRenderer.ReactTestRenderer;
+function render(props: Record<string, unknown>) {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { today: TODAY, ...props } as never)); });
+  return renderer;
+}
+
+describe('score profile reading calendar', () => {
+  it('renders range controls, period navigation, one accessible cell per day, and counts read days', () => {
     const onChartChange = vi.fn();
-    act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { profile: profile(), onChartChange })); });
+    const renderer = render({ profile: profile(), onChartChange });
 
     for (const label of ['週', '月', '年', '全部']) expect(renderer.root.findByProps({ children: label })).toBeDefined();
     expect(renderer.root.findByProps({ accessibilityLabel: '上一個積分期間' }).props.style.minHeight).toBeGreaterThanOrEqual(48);
     expect(renderer.root.findByProps({ accessibilityLabel: '下一個積分期間' }).props.style.minHeight).toBeGreaterThanOrEqual(48);
-    expect(renderer.root.findAll((node) => String(node.type) === 'Text').map((node) => String(node.props.children)).join(' ')).toContain('本期 4 分');
+    expect(texts(renderer)).toContain('讀經日曆');
+    expect(texts(renderer)).toContain('本期 2 天');
+    expect(texts(renderer)).not.toContain('本期 4 分');
 
-    const bars = renderer.root.findAll((node) => String(node.type) === 'View' && typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.includes('2026-09-08'));
-    expect(bars).toHaveLength(1);
-    expect(bars[0].props.accessibilityLabel).toContain('1 分');
-    expect(renderer.root.findAll((node) => String(node.type) === 'Pressable' && typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.includes('2026-09-08'))).toHaveLength(0);
-    expect(renderer.root.findByProps({ accessibilityLabel: '上一個資料柱' }).props.style.minHeight).toBeGreaterThanOrEqual(48);
-    expect(renderer.root.findByProps({ accessibilityLabel: '下一個資料柱' }).props.style.minHeight).toBeGreaterThanOrEqual(48);
-    expect(renderer.root.findAll((node) => Array.isArray(node.props.style) && node.props.style.some((style: unknown) => style && typeof style === 'object' && 'backgroundColor' in style && (style as { backgroundColor?: string }).backgroundColor === '#1A5544')).length).toBeGreaterThan(0);
-    expect(renderer.root.findAll((node) => Array.isArray(node.props.style) && node.props.style.some((style: unknown) => style && typeof style === 'object' && 'backgroundColor' in style && (style as { backgroundColor?: string }).backgroundColor === '#F4F7F2')).length).toBe(0);
+    const dayCells = cells(renderer);
+    expect(dayCells).toHaveLength(7);
+    const read = dayCells.find((node) => node.props.accessibilityLabel.startsWith('2026-09-08'))!;
+    const missed = dayCells.find((node) => node.props.accessibilityLabel.startsWith('2026-09-09'))!;
+    const future = dayCells.find((node) => node.props.accessibilityLabel.startsWith('2026-09-12'))!;
+    const today = dayCells.find((node) => node.props.accessibilityLabel.startsWith('2026-09-10'))!;
+    expect(read.props.accessibilityLabel).toContain('已讀');
+    expect(missed.props.accessibilityLabel).toContain('未讀');
+    expect(future.props.accessibilityLabel).toContain('未到');
+    expect(today.props.accessibilityLabel).toContain('今天');
+    expect(flat(read.props.style).backgroundColor).toBe('#1A5544');
+    expect(flat(missed.props.style).backgroundColor).toBe('#F4F7F2');
+    expect(flat(future.props.style).borderStyle).toBe('dashed');
+    expect(flat(today.props.style).borderColor).toBe('#123B30');
+    expect(dayCells.every((node) => flat(node.props.style).height === 32)).toBe(true);
 
-    for (let index = 0; index < 5; index += 1) act(() => { renderer.root.findByProps({ accessibilityLabel: '上一個資料柱' }).props.onPress(); });
-    expect(renderer.root.findAll((node) => String(node.type) === 'Text').map((node) => String(node.props.children)).join(' ')).toContain('選取：9月8日，1 分');
-    expect(renderer.root.findByProps({ accessibilityRole: 'adjustable' }).props.accessibilityValue.text).toContain('9月8日');
+    // Defaults to today and states the outcome in words; no data slider remains.
+    expect(texts(renderer)).toContain('選取：9月10日（今天）　已讀 ✓');
+    expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '上一個資料柱')).toHaveLength(0);
+    act(() => { missed.props.onPress(); });
+    expect(texts(renderer)).toContain('選取：9月9日　未讀');
 
     act(() => { renderer.root.findAll((node) => String(node.type) === 'Pressable').find((node) => node.props.accessibilityLabel === '月')?.props.onPress(); });
     expect(onChartChange).toHaveBeenCalledWith({ range: 'month' });
   });
 
+  it('lays a month out Monday-first with leading blanks and weekday headers', () => {
+    const monthBuckets = Array.from({ length: 30 }, (_, index) => { const day = String(index + 1).padStart(2, '0'); return { key: `2026-09-${day}`, startDate: `2026-09-${day}`, endDate: `2026-09-${day}`, earnedPoints: index === 9 ? 1 : 0 }; });
+    const monthChart = { ...chart, range: 'month' as const, anchor: '2026-09', periodStart: '2026-09-01', periodEnd: '2026-09-30', buckets: monthBuckets, earnedPoints: 1 };
+    const renderer = render({ profile: { ...profile(), chart: monthChart } });
+    for (const header of ['一', '二', '三', '四', '五', '六', '日']) expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === header)).toHaveLength(1);
+    // 2026-09-01 is a Tuesday: exactly one blank before it.
+    expect(renderer.root.findAll((node) => String(node.type) === 'View' && flat(node.props.style).height === 32 && !node.props.accessibilityLabel)).toHaveLength(1);
+    expect(cells(renderer)).toHaveLength(30);
+    expect(texts(renderer)).toContain('2026年9月');
+    expect(texts(renderer)).toContain('本期 1 天');
+  });
+
   it('does not render private balance for a friend profile', () => {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { profile: { ...profile(), private: undefined } })); });
-    const text = renderer.root.findAll((node) => String(node.type) === 'Text').map((node) => String(node.props.children)).join(' ');
-    expect(text).not.toContain('可兌換積分');
+    const renderer = render({ profile: { ...profile(), private: undefined } });
+    expect(texts(renderer)).not.toContain('可兌換積分');
+  });
+
+  it('hides the redeemable balance while it still equals the total and shows what was spent once it differs', () => {
+    const same = render({ profile: { ...profile(), private: { redeemableBalance: 4, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } }, onChooseReward: () => undefined });
+    expect(texts(same)).not.toContain('可兌換積分');
+    expect(texts(same)).toContain('目標獎品');
+    expect(same.root.findByProps({ accessibilityLabel: '選擇獎品' })).toBeDefined();
+    const spent = render({ profile: { ...profile(), private: { redeemableBalance: 1, targetReward: null } } });
+    expect(texts(spent)).toContain('可兌換積分');
+    expect(texts(spent)).toContain('已兌換 3 分');
+  });
+
+  it('explains the missing band instead of printing a dash', () => {
+    expect(texts(render({ profile: profile() }))).toContain('滿 10 人開始分梯隊');
+    expect(texts(render({ profile: profile() }))).not.toContain('梯隊 —');
+    expect(texts(render({ profile: { ...profile(), band: 2 } }))).toContain('第 2 梯隊');
   });
 
   it('keeps old six-month responses honest until chart data is available', () => {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { profile: { memberId: 'member-chart', displayName: '小明', earnedTotal: 3, band: null, months: [{ month: '2026-08', earnedPoints: 1 }, { month: '2026-09', earnedPoints: 2 }], permissions: { canEditTarget: false, canRedeem: false } } })); });
-    const text = renderer.root.findAll((node) => String(node.type) === 'Text').map((node) => String(node.props.children)).join(' ');
+    const renderer = render({ profile: { memberId: 'member-chart', displayName: '小明', earnedTotal: 3, band: null, months: [{ month: '2026-08', earnedPoints: 1 }, { month: '2026-09', earnedPoints: 2 }], permissions: { canEditTarget: false, canRedeem: false } } });
+    const text = texts(renderer);
     expect(text).toContain('近六個月');
-    expect(text).toContain('本期 3 分');
+    expect(text).toContain('本期 3 天');
     expect(text).toContain('8月');
     expect(text).toContain('9月');
     expect(text).not.toContain('NaN');
@@ -84,35 +130,16 @@ describe('score profile chart', () => {
     expect([chartQueryForRange(boundaryChart, 'month'), chartQueryForRange(boundaryChart, 'year')]).toEqual([{ range: 'month' }, { range: 'year' }]);
   });
 
-  it('labels yearly buckets as year and month', () => {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    const yearChart = { ...chart, range: 'year' as const, anchor: '2026', periodStart: '2026-01-01', periodEnd: '2026-12-31', buckets: [{ key: '2026-09', startDate: '2026-09-01', endDate: '2026-09-30', earnedPoints: 5 }] };
-    act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { profile: { ...profile(), chart: yearChart } })); });
-    const text = renderer.root.findAll((node) => String(node.type) === 'Text').map((node) => String(node.props.children)).join(' ');
-    expect(text).toContain('2026年9月');
+  it('renders yearly buckets as month cells with day counts and selects the current month', () => {
+    const yearChart = { ...chart, range: 'year' as const, anchor: '2026', periodStart: '2026-01-01', periodEnd: '2026-12-31', buckets: [{ key: '2026-08', startDate: '2026-08-01', endDate: '2026-08-31', earnedPoints: 16 }, { key: '2026-09', startDate: '2026-09-01', endDate: '2026-09-30', earnedPoints: 5 }], earnedPoints: 21 };
+    const renderer = render({ profile: { ...profile(), chart: yearChart } });
+    const text = texts(renderer);
+    expect(text).toContain('2026年');
+    expect(text).toContain('本期 21 天');
+    expect(text).toContain('選取：2026年9月，5 天');
     expect(text).not.toContain('2026-09年');
-  });
-
-  it('places y-axis guides on the same value scale as the bars', () => {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    const scaledChart = { ...chart, buckets: chart.buckets.map((bucket, index) => ({ ...bucket, earnedPoints: index === 1 ? 5 : index === 3 ? 3 : 0 })), earnedPoints: 8 };
-    act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { profile: { ...profile(), chart: scaledChart } })); });
-    const middleTick = renderer.root.findAll((node) => String(node.type) === 'Text').find((node) => node.props.children === 3);
-    expect(middleTick?.props.style[1].top).toBe(40);
-    const gridLine = renderer.root.findAll((node) => String(node.type) === 'View').find((node) => Array.isArray(node.props.style) && node.props.style.some((style: unknown) => style && typeof style === 'object' && (style as { borderTopColor?: string }).borderTopColor === '#C6D5C9') && node.props.style.some((style: unknown) => style && typeof style === 'object' && (style as { top?: number }).top === 48));
-    expect(gridLine).toBeDefined();
-    const tallestBar = renderer.root.findAll((node) => String(node.type) === 'View').find((node) => Array.isArray(node.props.style) && node.props.style.some((style: unknown) => style && typeof style === 'object' && (style as { height?: number }).height === 120));
-    expect(tallestBar).toBeDefined();
-  });
-
-  it('keeps sparse month labels in a single-line shared row', () => {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    const monthBuckets = Array.from({ length: 30 }, (_, index) => { const day = String(index + 1).padStart(2, '0'); return { key: `2026-09-${day}`, startDate: `2026-09-${day}`, endDate: `2026-09-${day}`, earnedPoints: index === 10 ? 1 : 0 }; });
-    const monthChart = { ...chart, range: 'month' as const, anchor: '2026-09', periodStart: '2026-09-01', periodEnd: '2026-09-30', buckets: monthBuckets, earnedPoints: 1 };
-    act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { profile: { ...profile(), chart: monthChart } })); });
-    const labels = renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.numberOfLines === 1);
-    expect(labels).toHaveLength(7);
-    expect(labels.every((node) => node.props.style.some((style: unknown) => style && typeof style === 'object' && Number((style as { width?: number }).width) >= 32))).toBe(true);
-    expect(labels.map((node) => node.props.children)).toEqual(['1', '6', '11', '16', '21', '26', '30']);
+    const strong = renderer.root.findByProps({ accessibilityLabel: '2026年8月 16 天' });
+    expect(flat(strong.props.style).backgroundColor).toBe('#1A5544');
+    expect(renderer.root.findByProps({ accessibilityLabel: '2026年9月 5 天' }).props.style.some((style: unknown) => style && typeof style === 'object' && (style as { minHeight?: number }).minHeight === 48)).toBe(true);
   });
 });

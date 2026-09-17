@@ -77,8 +77,14 @@ describe('ChapterAudioControls EOF handoff', () => {
     expect(switchControl.props.accessibilityHint).toContain(enabled ? '目前開啟' : '目前關閉');
     expect(JSON.stringify(view!.toJSON())).toContain('連讀');
     expect(switchControl.props.accessibilityState).toMatchObject({ checked: enabled });
-    expect(switchControl.findAll(node => String(node.type) === 'Text').map(node => node.props.children.flat().join('')).join('')).toContain(enabled ? '連讀\n開' : '連讀\n關');
-    expect(switchControl.props.style.backgroundColor).toBe(enabled ? '#1A5544' : '#FFFFFF');
+    expect(switchControl.findAll(node => String(node.type) === 'Text').map(node => String(node.props.children)).join('')).toBe('連讀');
+    const track = switchControl.findAll(node => node.props?.testID === 'autoplay-track')[0];
+    const knob = switchControl.findAll(node => node.props?.testID === 'autoplay-knob')[0];
+    const flat = (style: unknown) => Object.assign({}, ...([] as unknown[]).concat(style as unknown[]).filter(Boolean));
+    // System-switch semantics: green track + knob on the right = on; grey track + knob on the left = off.
+    expect(flat(track.props.style).backgroundColor).toBe(enabled ? '#1A5544' : '#768D7E');
+    expect(enabled ? flat(knob.props.style).right : flat(knob.props.style).left).toBe(2);
+    expect(enabled ? flat(knob.props.style).left : flat(knob.props.style).right).toBeUndefined();
     expect(switchControl.props.style).toMatchObject({ minWidth: 48, minHeight: 48, flexShrink: 0 });
     expect(switchControl.props.style.position).toBeUndefined();
     expect(native.player.calls).not.toContain('play');

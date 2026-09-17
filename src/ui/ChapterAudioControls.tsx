@@ -86,7 +86,9 @@ const noAutoplay: ChapterAudioAutoplayContextValue = {
 export const ChapterAudioAutoplayContext = createContext<ChapterAudioAutoplayContextValue>(noAutoplay);
 export const useChapterAudioAutoplay = (): ChapterAudioAutoplayContextValue => useContext(ChapterAudioAutoplayContext);
 
-/** Compact toolbar switch kept outside the fixed 48dp audio slot. */
+/** Compact toolbar switch kept outside the fixed 48dp audio slot. Looks like the system
+ * settings switch (green track, knob right = on; grey track, knob left = off) so the state
+ * is readable without decoding a colour convention. Tapping only changes the setting. */
 export function ChapterAudioAutoplayToggle({ active = true }: { active?: boolean }) {
   const autoplay = useChapterAudioAutoplay();
   if (!active || !autoplay.available) return null;
@@ -97,9 +99,12 @@ export function ChapterAudioAutoplayToggle({ active = true }: { active?: boolean
       accessibilityHint={autoplay.enabled ? '目前開啟，點一下關閉連讀' : '目前關閉，點一下開啟連讀；按播放才開始朗讀'}
       accessibilityState={{ checked: autoplay.enabled }}
       onPress={autoplay.toggle}
-      style={{ ...styles.autoplayToggle, ...(autoplay.enabled ? styles.autoplayToggleOn : {}) }}
+      style={styles.autoplayToggle}
     >
-      <Text style={[styles.autoplayToggleText, autoplay.enabled && styles.autoplayToggleTextOn]}>連讀{'\n'}{autoplay.enabled ? '開' : '關'}</Text>
+      <View testID="autoplay-track" style={[styles.autoplayTrack, autoplay.enabled ? styles.autoplayTrackOn : styles.autoplayTrackOff]}>
+        <View testID="autoplay-knob" style={[styles.autoplayKnob, autoplay.enabled ? styles.autoplayKnobOn : styles.autoplayKnobOff]} />
+      </View>
+      <Text style={[styles.autoplayToggleText, autoplay.enabled ? styles.autoplayToggleTextOn : styles.autoplayToggleTextOff]}>連讀</Text>
     </Pressable>
   );
 }
@@ -568,12 +573,19 @@ export function ChapterAudioControls({
 const styles = StyleSheet.create({
   host: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   slot: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
-  button: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
+  // Play/pause/retry sits in a round outline so it reads as a button like its neighbours.
+  button: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.pill, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, backgroundColor: theme.colors.surface },
   icon: { color: theme.colors.primary, fontSize: 24, fontWeight: '700' },
-  autoplayToggle: { minWidth: theme.control.tapCompact, minHeight: theme.control.tapCompact, flexShrink: 0, borderRadius: theme.radius.pill, borderColor: theme.colors.primary, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xs },
-  autoplayToggleText: { color: theme.colors.primary, fontSize: theme.type.micro.size, fontWeight: '800', textAlign: 'center' },
-  autoplayToggleOn: { backgroundColor: theme.colors.primary },
-  autoplayToggleTextOn: { color: theme.colors.white },
+  autoplayToggle: { minWidth: theme.control.tapCompact, minHeight: theme.control.tapCompact, flexShrink: 0, alignItems: 'center', justifyContent: 'center', gap: 3 },
+  autoplayTrack: { width: 34, height: 18, borderRadius: 9, justifyContent: 'center' },
+  autoplayTrackOn: { backgroundColor: theme.colors.primary },
+  autoplayTrackOff: { backgroundColor: theme.colors.borderStrong },
+  autoplayKnob: { width: 14, height: 14, borderRadius: 7, backgroundColor: theme.colors.white, position: 'absolute', top: 2 },
+  autoplayKnobOn: { right: 2 },
+  autoplayKnobOff: { left: 2 },
+  autoplayToggleText: { fontSize: 10.5, lineHeight: 12, fontWeight: '800', textAlign: 'center' },
+  autoplayToggleTextOn: { color: theme.colors.primary },
+  autoplayToggleTextOff: { color: theme.colors.muted },
   autoplayNoticeRow: { flexShrink: 0, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, backgroundColor: theme.colors.surfaceMuted },
   autoplayNoticeText: { color: theme.colors.danger, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
   feedback: { position: 'absolute', left: theme.control.tap + theme.spacing.xs, top: 0, color: theme.colors.danger ?? theme.colors.ink, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, maxWidth: 160 },
