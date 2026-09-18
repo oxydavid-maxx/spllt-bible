@@ -7,8 +7,8 @@ import { theme } from '../Theme';
 // Ownership + CD2 progress bar; the "last mile" is shown as an honest fraction, never as a nag).
 // Copy rules from the product owner: the fraction reads `72/120 分`; no "還差 N 分", no slogans.
 
-const RING_SIZE = 88;
-const RING_STROKE = 9;
+const RING_SIZE = 72;
+const RING_STROKE = 8;
 
 export function ProgressRing({ value, max, size = RING_SIZE }: { value: number; max: number; size?: number }) {
   const radius = (size - RING_STROKE) / 2;
@@ -24,7 +24,7 @@ export function ProgressRing({ value, max, size = RING_SIZE }: { value: number; 
   </View>;
 }
 
-export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards, canEditTarget, onChooseTarget, onOpenPicker }: {
+export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards, canEditTarget, onChooseTarget, onOpenPicker, displayName, band }: {
   target: Reward | null;
   redeemableBalance: number;
   earnedTotal: number;
@@ -34,6 +34,9 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
   onChooseTarget?: (rewardId: string) => void;
   /** Legacy picker sheet; kept for callers that still open it. */
   onOpenPicker?: () => void;
+  /** When given, the member's total/band line joins this card so the page top is one compact block. */
+  displayName?: string;
+  band?: number | null;
 }) {
   const redeemed = Math.max(0, earnedTotal - redeemableBalance);
   const shelf = (rewards ?? []).filter((reward) => reward.active);
@@ -66,23 +69,29 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
       })}
     </ScrollView> : null}
     {canEditTarget && onOpenPicker && shelf.length === 0 ? <Pressable accessibilityRole="button" accessibilityLabel="選擇獎品" onPress={onOpenPicker} style={styles.button}><Text style={styles.buttonText}>選擇獎品</Text></Pressable> : null}
+    {displayName !== undefined ? <View style={styles.totalRow}><Text style={styles.totalName} numberOfLines={1}>{displayName}</Text><Text style={styles.totalValue}>{earnedTotal}</Text><Text style={styles.totalLabel}>總積分</Text><Text style={styles.totalBand} numberOfLines={1}>{band == null ? '滿 10 人開始分梯隊' : `第 ${band} 梯隊`}</Text></View> : null}
   </View>;
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, borderLeftColor: theme.colors.primary, borderLeftWidth: theme.control.rail, padding: theme.spacing.lg, gap: theme.spacing.md },
-  goalRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.lg },
+  card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, borderLeftColor: theme.colors.primary, borderLeftWidth: theme.control.rail, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md, gap: theme.spacing.sm },
+  goalRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  totalRow: { flexDirection: 'row', alignItems: 'baseline', gap: theme.spacing.sm, borderTopColor: theme.colors.border, borderTopWidth: theme.control.hairline, paddingTop: theme.spacing.sm },
+  totalName: { color: theme.colors.ink, fontSize: theme.type.label.size, fontWeight: '800', flexShrink: 1 },
+  totalValue: { color: theme.colors.primaryDeep, fontSize: theme.type.metric.size, lineHeight: theme.type.metric.line, fontWeight: '800' },
+  totalLabel: { color: theme.colors.muted, fontSize: theme.type.caption.size },
+  totalBand: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginLeft: 'auto', flexShrink: 1 },
   goalCopy: { flex: 1, minWidth: 0, gap: theme.spacing.xxs },
   eyebrow: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
-  goalName: { color: theme.colors.ink, fontSize: theme.type.title.size, lineHeight: theme.type.title.line, fontWeight: '800' },
+  goalName: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
   goalCost: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
   ready: { color: theme.colors.primaryDeep, fontSize: theme.type.label.size, fontWeight: '800' },
   muted: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   ringLabel: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  ringValue: { color: theme.colors.primaryDeep, fontSize: 24, lineHeight: 28, fontWeight: '800' },
+  ringValue: { color: theme.colors.primaryDeep, fontSize: 20, lineHeight: 24, fontWeight: '800' },
   ringMax: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '700' },
-  shelf: { gap: theme.spacing.sm, paddingRight: theme.spacing.sm },
-  shelfCard: { width: 132, minHeight: theme.control.tap, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface, padding: theme.spacing.sm, gap: theme.spacing.xxs },
+  shelf: { gap: theme.spacing.sm },
+  shelfCard: { width: 116, minHeight: theme.control.tap, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, gap: theme.spacing.xxs },
   shelfCardSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
   shelfName: { color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
   shelfNameSelected: { color: theme.colors.white },

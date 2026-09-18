@@ -214,7 +214,7 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.sm },
+  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, borderLeftColor: theme.colors.primary, borderLeftWidth: theme.control.rail, padding: theme.spacing.md, gap: theme.spacing.sm },
   headingRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm },
   cardTitle: { color: theme.colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
   periodTotal: { color: theme.colors.primaryDeep, fontSize: theme.type.label.size, fontWeight: '800' },
