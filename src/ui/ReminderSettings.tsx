@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { TimeWheelPicker } from './TimeWheelPicker';
+import { useState } from 'react';
 import { theme } from './Theme';
 import { buildReminderSettingsModel, type ReminderSettingsModelInput } from './reminderSettingsModel';
 export { buildReminderSettingsModel } from './reminderSettingsModel';
@@ -31,9 +32,7 @@ export function ReminderSettings({
   /** Compatibility rendering switch; the production account surface disables retired meeting reminders. */
   showMeeting?: boolean;
 }) {
-  const [draftReadingTime, setDraftReadingTime] = useState(readingTime);
   const [retrying, setRetrying] = useState(false);
-  useEffect(() => { setDraftReadingTime(readingTime); }, [readingTime]);
   const model = buildReminderSettingsModel({ ready, error, saving, readingEnabled, meetingEnabled, remoteDeliveryStatus, permission, readingTime, meetingAdvanceMinutes });
   return (
     <View accessibilityLabel="提醒設定" style={styles.card}>
@@ -46,7 +45,7 @@ export function ReminderSettings({
       </Pressable>
       <View style={styles.timeRow}>
         <Text style={styles.label}>{model.readingTimeLabel}</Text>
-        <TextInput accessibilityLabel="每日讀經時間" value={draftReadingTime} onChangeText={setDraftReadingTime} onEndEditing={() => { if (/^([01]\d|2[0-3]):[0-5]\d$/.test(draftReadingTime)) onReadingTimeChange(draftReadingTime); }} placeholder="08:00" keyboardType="numbers-and-punctuation" style={styles.timeInput} />
+        <TimeWheelPicker value={readingTime} onChange={onReadingTimeChange} />
       </View>
       {showMeeting && <View style={styles.timeRow}>
         <Text style={styles.label}>{model.meetingAdvanceLabel}</Text>

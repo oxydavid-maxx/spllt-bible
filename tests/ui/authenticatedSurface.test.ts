@@ -11,7 +11,7 @@ vi.mock('expo-secure-store', () => ({
   setItemAsync: vi.fn(async () => undefined),
   deleteItemAsync: vi.fn(async () => undefined),
 }));
-vi.mock('react-native', () => ({
+vi.mock('react-native', () => ({ ScrollView: 'ScrollView',
   Image: 'Image',
   Linking: { openSettings: vi.fn() },
   Pressable: 'Pressable',

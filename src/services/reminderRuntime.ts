@@ -42,7 +42,7 @@ export interface ReminderRuntimeOptions {
   getCompletionStatus?: (memberId: string, taskDate: string, planId?: string) => 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED' | null;
 }
 
-const emptyState: ReminderRuntimeState = { ready: false, error: null, readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'REMOTE_PENDING', permission: 'undetermined', meeting: null };
+const emptyState: ReminderRuntimeState = { ready: false, error: null, readingEnabled: false, meetingEnabled: false, readingTime: '06:30', meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'REMOTE_PENDING', permission: 'undetermined', meeting: null };
 type Preferences = { readingEnabled: boolean; meetingEnabled: boolean; readingTime: string; meetingAdvanceMinutes: number };
 function preferencePatch(value: Partial<Preferences>): Partial<Preferences> {
   return {

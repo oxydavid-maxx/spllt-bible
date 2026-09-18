@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({
   reminders: { ready: true, error: null, readingEnabled: true, meetingEnabled: true, readingTime: '08:00', meetingAdvanceMinutes: 5, permission: 'granted', remoteDeliveryStatus: 'REMOTE_READY' },
   save: vi.fn(async (_patch: unknown) => undefined),
 }));
-vi.mock('react-native', () => ({ Image: 'Image', Pressable: 'Pressable', Switch: 'Switch', Text: 'Text', TextInput: 'TextInput', View: 'View', Linking: { openSettings: vi.fn() }, StyleSheet: { create: (value: unknown) => value } }));
+vi.mock('react-native', () => ({ Image: 'Image', Pressable: 'Pressable', ScrollView: 'ScrollView', Switch: 'Switch', Text: 'Text', TextInput: 'TextInput', View: 'View', Linking: { openSettings: vi.fn() }, StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('../../src/services/authSession', () => ({
   clearAuthSession: vi.fn(), retryAuthProfile: vi.fn(),
   useAuthSnapshot: () => ({ status: 'signed-in', session: { memberId: 'member:test', sessionToken: 'test-session' }, profileStatus: 'ready', profile: { memberId: 'member:test', displayName: 'Test', avatarUrl: null, groupId: 'test-group', groupName: 'Test group' } }),
@@ -29,12 +29,10 @@ describe('mounted account reminder change producers', () => {
     await act(async () => { renderer = TestRenderer.create(React.createElement(AccountSurface)); });
     await act(async () => {
       renderer.root.findByProps({ accessibilityLabel: '讀經提醒' }).props.onValueChange(false);
-      renderer.root.findByProps({ accessibilityLabel: '聚會提醒' }).props.onValueChange(false);
-      renderer.root.findByProps({ accessibilityLabel: '聚會提前30分鐘' }).props.onPress();
-      renderer.root.findByProps({ accessibilityLabel: '每日讀經時間' }).props.onChangeText('09:30');
     });
-    await act(async () => { renderer.root.findByProps({ accessibilityLabel: '每日讀經時間' }).props.onEndEditing(); });
-    expect(state.save.mock.calls.map(([patch]) => patch)).toEqual([{ readingEnabled: false }, { meetingEnabled: false }, { meetingAdvanceMinutes: 30 }, { readingTime: '09:30' }]);
+    // The wheel commits on every settle; the screen-reader path steps one wheel row (5 minutes).
+    await act(async () => { renderer.root.findByProps({ accessibilityLabel: '每日讀經時間' }).props.onAccessibilityAction({ nativeEvent: { actionName: 'increment' } }); });
+    expect(state.save.mock.calls.map(([patch]) => patch)).toEqual([{ readingEnabled: false }, { readingTime: '08:05' }]);
     await act(async () => { renderer.unmount(); });
   });
 
@@ -52,8 +50,8 @@ describe('mounted account reminder change producers', () => {
   it('keeps whole-row taps as single-field patches', async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(AccountSurface)); });
-    await act(async () => { renderer.root.findByProps({ accessibilityLabel: '讀經提醒列' }).props.onPress(); renderer.root.findByProps({ accessibilityLabel: '聚會提醒列' }).props.onPress(); });
-    expect(state.save.mock.calls.map(([patch]) => patch)).toEqual([{ readingEnabled: false }, { meetingEnabled: false }]);
+    await act(async () => { renderer.root.findByProps({ accessibilityLabel: '讀經提醒列' }).props.onPress(); });
+    expect(state.save.mock.calls.map(([patch]) => patch)).toEqual([{ readingEnabled: false }]);
     await act(async () => { renderer.unmount(); });
   });
 });

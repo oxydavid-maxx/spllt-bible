@@ -47,7 +47,7 @@ describe('live-baseline reminder deployment candidate', () => {
 
   it('lets the real App client read defaults without creating synthetic settings or meeting schedules', async () => {
     const { client, database } = assembled();
-    expect(await client().getReminderSnapshot()).toEqual({ memberId: 'test:alice', readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30, preferenceGeneration: 0, remoteDeliveryStatus: 'REMOTE_PENDING', meetings: [] });
+    expect(await client().getReminderSnapshot()).toEqual({ memberId: 'test:alice', readingEnabled: true, meetingEnabled: false, readingTime: '06:30', meetingAdvanceMinutes: 30, preferenceGeneration: 0, remoteDeliveryStatus: 'REMOTE_PENDING', meetings: [] });
     expect(database.db.prepare('SELECT count(*) AS n FROM reminder_preferences').get()).toMatchObject({ n: 0 });
   });
 
@@ -61,7 +61,7 @@ describe('live-baseline reminder deployment candidate', () => {
   it('binds settings to the authenticated member rather than a spoofed header', async () => {
     const { client } = assembled();
     expect(await client('test:alice', 'test:bob').saveReminderPreferences({ readingEnabled: true, meetingEnabled: false, readingTime: '22:30', preferenceGeneration: 3 })).toMatchObject({ memberId: 'test:alice', readingTime: '22:30' });
-    expect(await client('test:bob').getReminderSnapshot()).toMatchObject({ memberId: 'test:bob', readingEnabled: false, readingTime: '08:00' });
+    expect(await client('test:bob').getReminderSnapshot()).toMatchObject({ memberId: 'test:bob', readingEnabled: true, readingTime: '06:30' });
   });
 
   it('ignores a late older preference generation', async () => {
@@ -138,7 +138,8 @@ describe('live-baseline reminder deployment candidate', () => {
     expect(first.database.db.prepare('SELECT disabled_at FROM members').all()).toEqual(members.map(() => ({ disabled_at: null })));
     const profileColumns = first.database.db.prepare('PRAGMA table_info(member_group_profiles)').all();
     expect(profileColumns.slice(0, oldColumns.member_group_profiles.length)).toEqual(oldColumns.member_group_profiles);
-    expect(migratedDefinitions.filter((row) => !tables.includes(row.name)).map((row) => row.name)).toEqual(['auth_sessions', 'device_delivery_tokens', 'reminder_deliveries', 'reminder_preferences']);
+    // Gamification later added its own tables additively; the reminder tables must still be among the new ones.
+    expect(migratedDefinitions.filter((row) => !tables.includes(row.name)).map((row) => row.name)).toEqual(expect.arrayContaining(['auth_sessions', 'device_delivery_tokens', 'reminder_deliveries', 'reminder_preferences']));
     expect(first.database.db.prepare('SELECT count(*) AS n FROM auth_sessions').get()).toMatchObject({ n: 0 });
     handles.splice(handles.indexOf(first.database), 1); first.database.close();
     const restarted = assembled(createDatabase({ filename }));

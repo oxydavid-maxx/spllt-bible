@@ -35,9 +35,11 @@ export function readReminderPreferences(db: DatabaseSync, memberId: string, remo
   const row = db.prepare('SELECT reading_enabled, meeting_enabled, reading_time, meeting_advance_minutes, preference_generation FROM reminder_preferences WHERE member_id = ?').get(memberId) as PreferenceRow | undefined;
   return {
     memberId,
-    readingEnabled: row?.reading_enabled === 1,
+    // Product default (2026-09-18): a member who has never saved preferences gets the daily reading
+    // reminder on at 06:30. A stored row, even one that turned it off, always wins.
+    readingEnabled: row ? row.reading_enabled === 1 : true,
     meetingEnabled: row?.meeting_enabled === 1,
-    readingTime: row?.reading_time ?? '08:00',
+    readingTime: row?.reading_time ?? '06:30',
     meetingAdvanceMinutes: row?.meeting_advance_minutes ?? 30,
     preferenceGeneration: row?.preference_generation ?? 0,
     remoteDeliveryStatus: remoteStatus,
