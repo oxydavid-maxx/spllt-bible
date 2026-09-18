@@ -88,6 +88,10 @@ describe('score profile reading calendar', () => {
     // 2026-09-01 is a Tuesday: exactly one blank before it.
     expect(renderer.root.findAll((node) => String(node.type) === 'View' && flat(node.props.style).height === 32 && !node.props.accessibilityLabel)).toHaveLength(1);
     expect(cells(renderer)).toHaveLength(30);
+    // Every header, blank and day sits in a 1/7-wide slot so seven always fit on one row (device regression: 日 wrapped).
+    const slots = renderer.root.findAll((node) => String(node.type) === 'View' && flat(node.props.style).width === '14.2857%');
+    expect(slots).toHaveLength(7 + 1 + 30);
+    expect(renderer.root.findAll((node) => typeof flat(node.props.style).columnGap === 'number')).toHaveLength(0);
     expect(texts(renderer)).toContain('2026年9月');
     expect(texts(renderer)).toContain('本期 1 天');
   });

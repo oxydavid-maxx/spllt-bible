@@ -123,7 +123,7 @@ function mondayIndex(date: string): number {
 function DayCell({ bucket, today, selected, onSelect }: { bucket: ScoreChartBucket; today: string; selected: boolean; onSelect: (key: string) => void }) {
   const state = cellState(bucket, today);
   const isToday = bucket.key === today;
-  return <Pressable
+  return <View style={styles.slot}><Pressable
     accessibilityRole="button"
     accessibilityLabel={bucketAccessibilityLabel(bucket, today)}
     accessibilityState={{ selected }}
@@ -131,12 +131,12 @@ function DayCell({ bucket, today, selected, onSelect }: { bucket: ScoreChartBuck
     style={[styles.cell, state === 'read' && styles.cellRead, state === 'missed' && styles.cellMissed, state === 'future' && styles.cellFuture, isToday && styles.cellToday, selected && !isToday && styles.cellSelected]}
   >
     <Text style={[styles.cellText, state === 'read' && styles.cellTextRead, state === 'future' && styles.cellTextFuture]}>{Number(bucket.key.slice(8, 10))}</Text>
-  </Pressable>;
+  </Pressable></View>;
 }
 
 function CountCell({ bucket, label, selected, onSelect, today }: { bucket: ScoreChartBucket; label: string; selected: boolean; onSelect: (key: string) => void; today: string }) {
   const strong = bucket.earnedPoints >= 15;
-  return <Pressable
+  return <View style={styles.countSlot}><Pressable
     accessibilityRole="button"
     accessibilityLabel={bucketAccessibilityLabel(bucket, today)}
     accessibilityState={{ selected }}
@@ -145,7 +145,7 @@ function CountCell({ bucket, label, selected, onSelect, today }: { bucket: Score
   >
     <Text style={[styles.countLabel, strong && styles.cellTextRead]}>{label}</Text>
     <Text style={[styles.countValue, strong && styles.cellTextRead]}>{bucket.earnedPoints} 天</Text>
-  </Pressable>;
+  </Pressable></View>;
 }
 
 export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChartChange, today: suppliedToday }: ScoreProfileChartProps) {
@@ -174,10 +174,10 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
     </View>}
     {chart.buckets.length === 0 ? <Text style={styles.empty}>尚無讀經紀錄</Text> : dailyBuckets ? <View>
       <View style={styles.grid}>
-        {(chart.range === 'month' ? WEEKDAY_HEADERS : chart.buckets.map((bucket) => WEEKDAY_LABELS[new Date(`${bucket.key}T12:00:00.000Z`).getUTCDay()])).map((label, index) => <Text key={`h${index}`} style={styles.weekday}>{label}</Text>)}
+        {(chart.range === 'month' ? WEEKDAY_HEADERS : chart.buckets.map((bucket) => WEEKDAY_LABELS[new Date(`${bucket.key}T12:00:00.000Z`).getUTCDay()])).map((label, index) => <View key={`h${index}`} style={styles.slot}><Text style={styles.weekday}>{label}</Text></View>)}
       </View>
       <View style={styles.grid}>
-        {Array.from({ length: leadingBlanks }, (_, index) => <View key={`b${index}`} style={styles.cellBlank} />)}
+        {Array.from({ length: leadingBlanks }, (_, index) => <View key={`b${index}`} style={styles.slot}><View style={styles.cellBlank} /></View>)}
         {chart.buckets.map((bucket) => <DayCell key={bucket.key} bucket={bucket} today={today} selected={bucket.key === selectedKey} onSelect={setSelectedKey} />)}
       </View>
     </View> : <View style={styles.countGrid}>
@@ -202,11 +202,13 @@ const styles = StyleSheet.create({
   navButton: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface },
   navText: { color: theme.colors.primary, fontSize: 30, lineHeight: 32 },
   periodLabel: { flex: 1, color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '800', textAlign: 'center' },
-  // 7 columns; each cell takes 1/7 minus the gap so the grid wraps exactly one week per row.
-  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 5, columnGap: 5 },
-  weekday: { width: '13.2%', color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, textAlign: 'center' },
-  cellBlank: { width: '13.2%', height: 32 },
-  cell: { width: '13.2%', height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted },
+  // Exactly 7 slots per row: each slot is 1/7 of the width and carries the gutter as padding,
+  // so no gap arithmetic can push the seventh column onto the next line.
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  slot: { width: '14.2857%', paddingHorizontal: 2.5, paddingVertical: 2.5 },
+  weekday: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, textAlign: 'center' },
+  cellBlank: { height: 32 },
+  cell: { height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted },
   cellRead: { backgroundColor: theme.colors.primary },
   cellMissed: { backgroundColor: theme.colors.surfaceMuted },
   cellFuture: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: theme.colors.border },
@@ -215,8 +217,9 @@ const styles = StyleSheet.create({
   cellText: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
   cellTextRead: { color: theme.colors.white },
   cellTextFuture: { color: theme.colors.border },
-  countGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 6, columnGap: 6 },
-  countCell: { width: '23.5%', minHeight: theme.control.tap, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted, paddingVertical: theme.spacing.xs },
+  countGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  countSlot: { width: '25%', padding: 3 },
+  countCell: { minHeight: theme.control.tap, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted, paddingVertical: theme.spacing.xs },
   countCellSome: { backgroundColor: theme.colors.primarySoft },
   countCellStrong: { backgroundColor: theme.colors.primary },
   countLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, fontWeight: '800' },
