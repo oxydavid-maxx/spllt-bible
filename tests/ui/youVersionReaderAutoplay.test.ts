@@ -50,6 +50,23 @@ async function mount(props: Partial<React.ComponentProps<typeof YouVersionReader
   });
 }
 
+describe('YouVersionReader reading highlight', () => {
+  it('passes the narrated verse to the reader only while the narrated chapter is the displayed one', async () => {
+    await mount();
+    const reader = () => renderer!.root.findAll((node) => String(node.type) === 'Reader')[0];
+    expect(reader().props.playingVerse).toBeNull();
+    await act(async () => boundary.context.onPlayingVerse?.('JHN.18', 4));
+    expect(reader().props.playingVerse).toBe(4);
+    // A verse of another chapter must never paint the chapter on screen.
+    await act(async () => boundary.context.onPlayingVerse?.('JHN.19', 2));
+    expect(reader().props.playingVerse).toBeNull();
+    await act(async () => boundary.context.onPlayingVerse?.('JHN.18', 5));
+    expect(reader().props.playingVerse).toBe(5);
+    await act(async () => boundary.context.onPlayingVerse?.('JHN.18', null));
+    expect(reader().props.playingVerse).toBeNull();
+  });
+});
+
 describe('YouVersionReader continuous playback orchestration', () => {
   it('advances one assigned reference per real EOF and stops after the last', async () => {
     await mount();

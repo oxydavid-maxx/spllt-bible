@@ -53,6 +53,31 @@ const mount = async (onPlaybackEnded: ReturnType<typeof vi.fn>, context?: Chapte
   });
 };
 
+describe('ChapterAudioControls reading highlight', () => {
+  it('reports the narrated verse once per change from status ticks, and clears it at EOF and on teardown', async () => {
+    fetchImpl.mockImplementation(async () => response({ ...payload, verseTiming: [{ verse: 1, start: 2.9, end: 9.5 }, { verse: 2, start: 9.5, end: 14 }] }));
+    const onPlayingVerse = vi.fn();
+    const context: ChapterAudioAutoplayContextValue = {
+      available: true, enabled: false, intent: null, notice: null, cancel: vi.fn(), toggle: vi.fn(),
+      onPlaybackStarted: vi.fn(), onPlaybackPaused: vi.fn(), onPlaybackEnded: vi.fn(), onPlaybackError: vi.fn(), onAutoplayUnavailable: vi.fn(), onPlayingVerse,
+    };
+    await mount(vi.fn(), context);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const tick = (currentTime: number) => act(async () => { for (const listener of listeners) listener({ currentTime, playing: true }); });
+    await tick(1.0);
+    expect(onPlayingVerse).toHaveBeenCalledWith('1TI.1', null);
+    await tick(3.0); await tick(3.5); await tick(9.0);
+    expect(onPlayingVerse.mock.calls.filter(([, verse]) => verse === 1)).toHaveLength(1);
+    await tick(9.5); await tick(10.0);
+    expect(onPlayingVerse.mock.calls.map(([, verse]) => verse)).toEqual([null, 1, 2]);
+    await act(async () => { native.player.finish(); });
+    expect(onPlayingVerse.mock.calls.at(-1)).toEqual(['1TI.1', null]);
+    const before = onPlayingVerse.mock.calls.length;
+    await act(async () => view!.unmount()); view = null;
+    expect(onPlayingVerse.mock.calls.length).toBe(before); // already null; teardown does not spam
+  });
+});
+
 describe('ChapterAudioControls EOF handoff', () => {
   it('reports a real EOF once even if native status emits duplicate finish events', async () => {
     const ended = vi.fn();

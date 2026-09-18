@@ -23,7 +23,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAudioPlayer, type AudioStatus } from 'expo-audio';
 import { theme } from './Theme';
-import { isAuthorizedAudioEnabled, isQaTestAudioEnabled, resolveChapterAudioSession } from '../services/audioChapterResolver';
+import { isAuthorizedAudioEnabled, isQaTestAudioEnabled, resolveChapterAudioSession, verseAtPosition } from '../services/audioChapterResolver';
 import { createCapabilityCoordinator, type CapabilityCoordinator, type CapabilityOutcome } from '../services/contentCapabilityClient';
 import { getAuthSnapshot, useAuthSnapshot, type AuthSession } from '../services/authSession';
 import { validateCapability } from '../domain/chapterAudioContract';
@@ -67,6 +67,8 @@ export interface ChapterAudioAutoplayContextValue {
   onPlaybackEnded(chapterUsfm: string): void;
   onPlaybackError(chapterUsfm: string): void;
   onAutoplayUnavailable(chapterUsfm: string, status: ResolutionStatus): void;
+  /** Verse currently narrated in `chapterUsfm` (null = none). Emitted only when it changes. */
+  onPlayingVerse?(chapterUsfm: string, verse: number | null): void;
 }
 
 const noAutoplay: ChapterAudioAutoplayContextValue = {
@@ -271,6 +273,15 @@ export function ChapterAudioControls({
   const [failure, setFailure] = useState<string | null>(null);
   const [needsRetry, setNeedsRetry] = useState(false);
   const autoPlayClaimed = useRef<number | null>(null);
+  // Reading highlight: last verse we told the reader about, per chapter binding, so the reader hears
+  // one message per verse change instead of one per 500 ms status tick.
+  const playingVerseRef = useRef<{ chapter: string; verse: number | null } | null>(null);
+  const notifyPlayingVerse = (chapter: string, verse: number | null) => {
+    const last = playingVerseRef.current;
+    if (last && last.chapter === chapter && last.verse === verse) return;
+    playingVerseRef.current = { chapter, verse };
+    autoplayRef.current.onPlayingVerse?.(chapter, verse);
+  };
 
   const notifyPlaybackStarted = (chapter: string) => {
     autoplayRef.current.onPlaybackStarted(chapter);
@@ -335,7 +346,9 @@ export function ChapterAudioControls({
     const subscription = (player as unknown as PlaybackStatusEmitter).addListener('playbackStatusUpdate', status => {
       if (!bindingIsCurrent()) return;
       if (status.error) { reportPlaybackError(); return; }
+      if (typeof status.currentTime === 'number') notifyPlayingVerse(chapterUsfm, verseAtPosition(resolved.source?.verseTiming, status.currentTime));
       if (status.didJustFinish) {
+        notifyPlayingVerse(chapterUsfm, null);
         finishedBinding.current = bound;
         if (eofNotifiedBinding.current !== bound) {
           eofNotifiedBinding.current = bound;
@@ -363,6 +376,7 @@ export function ChapterAudioControls({
     }
     return () => {
       subscription.remove();
+      notifyPlayingVerse(chapterUsfm, null);
       try { p?.pause?.(); } catch { /* already released */ }
       bound.dispose();
       if (playbackRef.current === bound) {

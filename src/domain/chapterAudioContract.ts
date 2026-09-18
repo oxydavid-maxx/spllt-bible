@@ -48,6 +48,13 @@ export interface SourceProvenance {
   attribution: string;
 }
 
+/** One verse's position inside the chapter recording, as published by the provider's timing track. */
+export interface VerseTiming {
+  verse: number;
+  start: number;
+  end: number;
+}
+
 export interface ContentCapability {
   identity: ChapterAudioIdentity;
   text: boolean;
@@ -62,6 +69,8 @@ export interface ContentCapability {
   /** OUR re-confirmation policy boundary. */
   validUntil?: string | null;
   provenance?: SourceProvenance;
+  /** Ascending per-verse timing for the selected recording; absent when the provider gives none. */
+  verseTiming?: VerseTiming[];
 }
 
 export type CapabilityRejection =
@@ -141,6 +150,16 @@ export function validateCapability(
     return { ok: false, playable: false, rejection: 'IDENTITY_MISMATCH' };
   }
 
+  // Per-verse timing is optional and advisory (it only drives the reading highlight); keep the
+  // well-formed ascending rows and silently drop the rest rather than rejecting the whole answer.
+  const verseTiming: VerseTiming[] = Array.isArray(c.verseTiming)
+    ? (c.verseTiming as unknown[]).flatMap((row) => {
+        const r = row as { verse?: unknown; start?: unknown; end?: unknown } | null;
+        return r && typeof r === 'object' && Number.isInteger(r.verse) && (r.verse as number) >= 1
+          && typeof r.start === 'number' && Number.isFinite(r.start) && typeof r.end === 'number' && Number.isFinite(r.end) && r.end >= r.start
+          ? [{ verse: r.verse as number, start: r.start, end: r.end }] : [];
+      }).sort((left, right) => left.start - right.start)
+    : [];
   const parsed: ContentCapability = {
     identity: { versionId: id.versionId, usfm: id.usfm },
     text: c.text,
@@ -152,6 +171,7 @@ export function validateCapability(
     validUntil: c.validUntil ?? null,
     provenance: c.provenance,
     uri: c.uri,
+    ...(verseTiming.length > 0 ? { verseTiming } : {}),
   };
 
   // a non-audio answer is legitimate; hand it back so the surface can say so honestly

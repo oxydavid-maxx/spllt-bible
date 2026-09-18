@@ -40,6 +40,11 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   const currentPlaybackRef = useRef<AutoplayChapter | null>(null);
   const [autoplayIntent, setAutoplayIntent] = useState<AutoplayIntent | null>(null);
   const [autoplayNotice, setAutoplayNotice] = useState<string | null>(null);
+  // Verse the narrator is on, bound to its chapter so a chapter shown while another one plays never paints it.
+  const [playingVerse, setPlayingVerse] = useState<{ chapter: string; verse: number } | null>(null);
+  const handlePlayingVerse = useCallback((chapterUsfm: string, verse: number | null): void => {
+    setPlayingVerse(verse === null ? null : { chapter: normalizeChapter(chapterUsfm), verse });
+  }, []);
   const [localAutoplayEnabled, setLocalAutoplayEnabled] = useState(continuousPlaybackEnabled !== false);
   const autoplayEnabled = localAutoplayEnabled;
   useEffect(() => { setLocalAutoplayEnabled(continuousPlaybackEnabled !== false); }, [continuousPlaybackEnabled]);
@@ -200,7 +205,8 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
     onPlaybackEnded: handlePlaybackEnded,
     onPlaybackError: handlePlaybackError,
     onAutoplayUnavailable: handleAutoplayUnavailable,
-  }), [autoplayEnabled, autoplayIntent, autoplayNotice, cancelAutoplay, toggleAutoplay, handlePlaybackStarted, handlePlaybackPaused, handlePlaybackEnded, handlePlaybackError, handleAutoplayUnavailable, externalControlledChange]);
+    onPlayingVerse: handlePlayingVerse,
+  }), [handlePlayingVerse, autoplayEnabled, autoplayIntent, autoplayNotice, cancelAutoplay, toggleAutoplay, handlePlaybackStarted, handlePlaybackPaused, handlePlaybackEnded, handlePlaybackError, handleAutoplayUnavailable, externalControlledChange]);
   const [retryNonce, setRetryNonce] = useState(0);
   const configs = appKey && versionId ? references.map((reference) => buildYouVersionReaderConfig({ references: [reference], appKey, versionId, allowTechnicalProbe })) : [];
   // Assigned tasks are optional. A controlled free-browse location is sufficient
@@ -209,6 +215,7 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
     ? { book, chapter, versionId, references: [], allowTechnicalProbe }
     : null;
   const activeConfig = configs[activeReferenceIndex] ?? configs[0] ?? freeBrowseConfig;
+  const displayedChapter = book !== undefined && chapter !== undefined ? normalizeChapter(`${book}.${chapter}`) : (chapterForReference(references[activeReferenceIndex] ?? '') ?? null);
   const contentMetadata = getYouVersionContentMetadata(versionId);
   const hasVersionMetadata = Boolean(contentMetadata);
   const hasConfig = Boolean(activeConfig);
@@ -278,7 +285,7 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
         {safeIndex < references.length - 1 && <Pressable accessibilityRole="button" accessibilityLabel="下一段指定經文" onPress={() => setActiveReferenceIndex(safeIndex + 1)} style={styles.nextButton}><Text style={styles.nextButtonText}>下一段 ›</Text></Pressable>}
       </View>}
         <View style={fullscreen ? styles.fullscreen : styles.passage}>
-          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} showToolbar={!fullscreen} theme="light" />
+          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} showToolbar={!fullscreen} theme="light" playingVerse={playingVerse && playingVerse.chapter === displayedChapter ? playingVerse.verse : null} />
         </View>
       {!fullscreen && <Text style={styles.attribution} numberOfLines={2}>{attributionMode === 'compact'
         ? `${contentMetadata?.translationName ?? `YouVersion ${versionId}`}／${contentMetadata?.publisher ?? '官方內容'}`

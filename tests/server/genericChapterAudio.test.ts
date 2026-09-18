@@ -19,6 +19,25 @@ beforeEach(() => {
 });
 afterEach(() => { db.close(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+describe('per-verse timing travels with the capability', () => {
+  it('keeps ascending timing rows of the chosen recording for the requested chapter only, dropping malformed rows', async () => {
+    upstream.mockImplementation(async () => answer([source(46, 'PSA.103', { timing: [
+      { usfm: 'PSA.103.2', start: 9.5, end: 14 }, { usfm: 'PSA.103.1', start: 2.9, end: 9.5 },
+      { usfm: 'PSA.104.1', start: 0, end: 3 }, { usfm: 'PSA.103.3', start: 'x', end: 20 }, { usfm: 'PSA.103.4', start: 20.4 },
+      { usfm: 'psa.103.5', start: 25.7, end: 30.1 }, { start: 1, end: 2 }, { usfm: 'PSA.103.2', start: 9.5, end: 14 },
+    ] })]));
+    const result = await request();
+    expect(result.status).toBe(200);
+    expect(result.body.verseTiming).toEqual([{ verse: 1, start: 2.9, end: 9.5 }, { verse: 2, start: 9.5, end: 14 }, { verse: 5, start: 25.7, end: 30.1 }]);
+  });
+  it('omits verseTiming instead of inventing one when the provider gives none usable', async () => {
+    upstream.mockImplementation(async () => answer([source(46, 'PSA.103', { timing: [{ usfm: 'PSA.103.1', start: 0 }] })]));
+    const result = await request();
+    expect(result.status).toBe(200); expect(result.body.status).toBe('verified_source');
+    expect(result.body).not.toHaveProperty('verseTiming');
+  });
+});
+
 describe('production chapter endpoint dynamically resolves provider metadata', () => {
   it('serves a chapter absent from the registry using the requested tuple and the existing App DTO', async () => {
     const result = await request();

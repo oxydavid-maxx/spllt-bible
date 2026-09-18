@@ -1,4 +1,4 @@
-import { statusMessage, type ContentCapability, type ResolutionStatus } from '../src/domain/chapterAudioContract';
+import { statusMessage, type ContentCapability, type ResolutionStatus, type VerseTiming } from '../src/domain/chapterAudioContract';
 import { formatReferenceZhTw } from '../src/domain/scriptureReference';
 import observedAttributions from './chapterAudioAttributions.json';
 
@@ -21,6 +21,24 @@ function matchedChapter(timing: unknown, usfm: string): boolean {
     const row = object(value);
     return typeof row?.usfm === 'string' && row.usfm.toUpperCase().startsWith(`${usfm}.`);
   });
+}
+/** Per-verse timing of THIS recording for THIS chapter; malformed or foreign rows are dropped, never guessed. */
+export function verseTimingOf(timing: unknown, usfm: string): VerseTiming[] {
+  if (!Array.isArray(timing)) return [];
+  const rows: VerseTiming[] = [];
+  for (const value of timing) {
+    const row = object(value);
+    if (!row || typeof row.usfm !== 'string') continue;
+    const match = /^([A-Z0-9]{2,5}\.[0-9]{1,3})\.([0-9]{1,3})$/.exec(row.usfm.trim().toUpperCase());
+    if (!match || match[1] !== usfm) continue;
+    const verse = Number(match[2]);
+    const start = Number(row.start);
+    const end = Number(row.end);
+    if (!Number.isInteger(verse) || verse < 1 || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start) continue;
+    rows.push({ verse, start, end });
+  }
+  rows.sort((left, right) => left.start - right.start || left.verse - right.verse);
+  return rows.filter((row, index) => index === 0 || row.verse !== rows[index - 1].verse);
 }
 function streamUri(downloads: unknown): string | null {
   const values = object(downloads);
@@ -63,9 +81,11 @@ export function resolveChapterAudioMetadata(payload: unknown, versionId: number,
   // it only when both observed version and recording id match the live source.
   const edition = observedAttributions.find(value => value.versionId === versionId);
   const recording = edition?.recordings.find(value => String(value.id) === String(row.id));
+  const verseTiming = verseTimingOf(row.timing, usfm);
   return {
     identity: { versionId, usfm }, text: true, audio: true, offline: false, status: 'verified_source', reason: '', uri,
     providerExpiry: null, validUntil: new Date(observedAtMs + RECONFIRM_MS).toISOString(),
+    ...(verseTiming.length > 0 ? { verseTiming } : {}),
     provenance: {
       publisher: recording?.publisher ?? '錄音出版者未由目錄提供', edition: edition?.edition ?? `版本 ${versionId}`, recordingId: String(row.id),
       reference: formatReferenceZhTw(usfm),

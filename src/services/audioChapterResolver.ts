@@ -26,7 +26,7 @@
 
 import { getAudioAvailability, getYouVersionContentMetadata, type AudioAvailability } from '../config/youVersionContent';
 import { resolveAudio, type AudioRegistryEntry } from './audioProvider';
-import type { ContentCapability, SourceProvenance } from '../domain/chapterAudioContract';
+import type { ContentCapability, SourceProvenance, VerseTiming } from '../domain/chapterAudioContract';
 
 /**
  * A capability that has already passed validateCapability: identity checked against the request, not
@@ -92,6 +92,18 @@ export interface ChapterAudioSource {
   attribution: string;
   /** From the capability row, never defaulted from another edition (review 119 R5). */
   publisher: string;
+  /** Per-verse timing of this recording when the provider publishes one; drives the reading highlight. */
+  verseTiming?: VerseTiming[];
+}
+
+/** Verse being narrated at `positionSeconds`, or null before the first verse / without timing. Last start <= position wins. */
+export function verseAtPosition(timing: readonly VerseTiming[] | undefined, positionSeconds: number): number | null {
+  if (!timing || timing.length === 0 || !Number.isFinite(positionSeconds)) return null;
+  let current: number | null = null;
+  for (const row of timing) {
+    if (row.start <= positionSeconds) current = row.verse; else break;
+  }
+  return current;
 }
 
 export interface ChapterAudioSession {
@@ -185,6 +197,7 @@ export function resolveChapterAudioSession(input: {
         recordingEdition: prov.edition,
         attribution: prov.attribution,
         publisher: prov.publisher,
+        ...(Array.isArray(capability.verseTiming) && capability.verseTiming.length > 0 ? { verseTiming: capability.verseTiming } : {}),
       },
       sourceClass: 'authorized-source',
       productionDeliveryEntitlement: 'USER_AUTHORIZED',

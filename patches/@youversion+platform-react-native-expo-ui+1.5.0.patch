@@ -46,28 +46,35 @@ index 333d445..c476f4b 100644
 +Project patch: patches/@youversion+platform-react-native-expo-ui+1.5.0.patch
 +Project receipt: docs/receipts/sdk-reader-settings-extension-20260912.json
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
-index c48ec7c..4983ba9 100644
+index c48ec7c..d28e766 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
-@@ -4,4 +4,7 @@ export { useSignOutGuard } from './native';
+@@ -4,4 +4,8 @@ export { useSignOutGuard } from './native';
  export { useTokens } from './hooks';
  export { getTokens } from './theme';
  export type { Tokens } from './theme';
 +/** Qingmu extension; these APIs are not supplied by upstream SDK 1.5.0/1.6.0. */
++export { mergePlayingVerseHighlight, PLAYING_VERSE_HIGHLIGHT_COLOR } from './native/bible-reader';
 +export { getReaderSettings, getDefaultReaderSettings, setReaderSettings, subscribeReaderSettings } from './stores/reader-settings-store';
 +export type { ReaderSettingsSnapshot } from './stores/reader-settings-store';
  //# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/index.js b/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
-index b47510f..403c721 100644
+index b47510f..4b2315a 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
-@@ -4,4 +4,6 @@ export { BibleCard, BibleChapterPickerSheet, BibleReader, BibleReaderSettingsShe
+@@ -2,6 +2,10 @@ import { ensureDomImpls } from './native/register-dom-impls';
+ ensureDomImpls();
+ export { BibleCard, BibleChapterPickerSheet, BibleReader, BibleReaderSettingsSheet, BibleTextView, BibleVersionPickerSheet, VerseOfTheDay, YouVersionAuthButton, YouVersionProvider, } from './native';
  export { useSignOutGuard } from './native';
++// Qingmu extension: transient reading highlight helper (see README).
++export { mergePlayingVerseHighlight, PLAYING_VERSE_HIGHLIGHT_COLOR } from './native/bible-reader';
  export { useTokens } from './hooks';
  export { getTokens } from './theme';
 +// Qingmu extension; maintained by the host project for pinned SDK 1.5.0.
 +export { getReaderSettings, getDefaultReaderSettings, setReaderSettings, subscribeReaderSettings } from './stores/reader-settings-store';
  //# sourceMappingURL=index.js.map
+\ No newline at end of file
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/lib/web-yv-provider.js b/node_modules/@youversion/platform-react-native-expo-ui/build/lib/web-yv-provider.js
 index 4d1e6a4..a20ded1 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/lib/web-yv-provider.js
@@ -91,8 +98,75 @@ index 4d1e6a4..a20ded1 100644
          additionalHeaders: mergeSdkHeaders(additionalHeaders),
      });
  }
+diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts
+index 103616e..7baf326 100644
+--- a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts
++++ b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts
+@@ -1,3 +1,4 @@
++import type { Highlight } from '@youversion/platform-react-native-expo-core';
+ import type { BibleReaderShareData, BibleVersionPickerPressData, FootnoteData } from '@youversion/platform-react-ui';
+ import type { Ref } from 'react';
+ import { type ReactNode } from 'react';
+@@ -51,11 +52,19 @@ export type BibleReaderProps = Omit<DomBibleReaderProps, 'appKey' | 'highlights'
+      * screen; render an offline or pending hint rather than an error toast.
+      */
+     onHighlightError?: (error: HighlightWriteError) => void;
++    /**
++     * Qingmu extension. Verse number currently being narrated in the displayed chapter, painted as a
++     * transient light-grey highlight through the controlled highlights channel. `null` paints nothing.
++     * Never scrolls the reader.
++     */
++    playingVerse?: number | null;
+     /**
+      * Imperative handle — see {@link BibleReaderHandle}. React 19 passes `ref`
+      * as an ordinary prop, so there is no `forwardRef` here.
+      */
+     ref?: Ref<BibleReaderHandle>;
+ };
+-export declare function BibleReader({ theme, book: controlledBook, defaultBook, onBookChange, chapter: controlledChapter, defaultChapter, onChapterChange, versionId: controlledVersionId, defaultVersionId, onVersionChange, showToolbar, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, clearSelectionSignal, onCopy: consumerOnCopy, onShare: consumerOnShare, onHighlightError, backgroundColor, foregroundColor, dom, ref, }: BibleReaderProps): ReactNode;
++export declare const PLAYING_VERSE_HIGHLIGHT_COLOR: string;
++export declare function mergePlayingVerseHighlight(highlights: Highlight[], scope: { versionId: number | undefined; book: string | undefined; chapter: string | undefined; playingVerse: number | null | undefined }): Highlight[];
++export declare function BibleReader({ theme, book: controlledBook, defaultBook, onBookChange, chapter: controlledChapter, defaultChapter, onChapterChange, versionId: controlledVersionId, defaultVersionId, onVersionChange, showToolbar, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, playingVerse, clearSelectionSignal, onCopy: consumerOnCopy, onShare: consumerOnShare, onHighlightError, backgroundColor, foregroundColor, dom, ref, }: BibleReaderProps): ReactNode;
+ //# sourceMappingURL=bible-reader.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js
+index e6974a0..dceb530 100644
+--- a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js
++++ b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js
+@@ -54,7 +54,22 @@ const NO_PROMPT = { kind: 'none' };
+ function sameScope(a, b) {
+     return a.versionId === b.versionId && a.book === b.book && a.chapter === b.chapter;
+ }
++/**
++ * Qingmu extension (not upstream 1.5.0/1.6.0): paint the verse the narrator is reading as a
++ * transient highlight. Reuses the controlled highlights channel so the DOM reader paints it exactly
++ * like a user highlight and never scrolls. The entry is derived, never written to the user's
++ * highlights; a user highlight on the same verse is shadowed only while that verse is playing.
++ */
++export const PLAYING_VERSE_HIGHLIGHT_COLOR = 'd5ddd8';
++export function mergePlayingVerseHighlight(highlights, { versionId, book, chapter, playingVerse }) {
++    if (!Number.isInteger(playingVerse) || playingVerse < 1 || !Number.isInteger(versionId) || !book || !chapter) return highlights;
++    const passageId = `${book}.${chapter}.${playingVerse}`;
++    const rest = highlights.filter((entry) => !(entry.version_id === versionId && entry.passage_id === passageId));
++    return [...rest, { version_id: versionId, passage_id: passageId, color: PLAYING_VERSE_HIGHLIGHT_COLOR }];
++}
+ export function BibleReader({ theme, book: controlledBook, defaultBook = DEFAULT_BOOK, onBookChange, chapter: controlledChapter, defaultChapter = DEFAULT_CHAPTER, onChapterChange, versionId: controlledVersionId, defaultVersionId = DEFAULT_BIBLE_VERSION_ID, onVersionChange, showToolbar = true, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, 
++// Qingmu extension: transient reading highlight (see README).
++playingVerse = null, 
+ // Defaulted to `0` so a number always crosses the bridge from first mount.
+ // The Web SDK treats the value it sees at mount as a baseline and clears the
+ // selection on every change after that. Leaving this `undefined` means a
+@@ -379,7 +394,7 @@ clearSelectionSignal = 0, onCopy: consumerOnCopy, onShare: consumerOnShare, onHi
+         ...dom,
+         style: StyleSheet.flatten([dom?.style, { flex: 1 }]),
+     }), [dom]);
+-    return (_jsxs(_Fragment, { children: [_jsx(View, { style: { flex: 1 }, children: _jsx(BibleReaderDOM, { ...authProps, appKey: context.appKey, apiHost: context.apiHost, installationId: context.installationId, fetchBibleContent: context.fetchBibleContent, permittedVersionIds: context.permittedVersionIds, excludedVersionIds: context.excludedVersionIds, permittedLanguageTags: context.permittedLanguageTags, locale: lng, highlights: highlights, verseActions: VERSE_ACTIONS, onVerseSelect: handleVerseSelect, clearSelectionSignal: clearSelectionSignal + internalClearCount, onSignInPress: signIn, onSignOutPress: guardedSignOut, userInfo: userInfo, theme: resolvedTheme, book: book, chapter: chapter, versionId: versionId, fontSize: fontSize, fontFamily: encodeFontFamilyForDom(fontFamily), lineSpacing: lineSpacing, onFontSizeChange: setFontSize, onFontFamilyChange: setFontFamily, onLineSpacingChange: setLineSpacing, onOpenBibleThemeSettings: Platform.OS !== 'web' ? handleOpenBibleThemeSettings : undefined, onBookChange: handleBookChange, onChapterChange: handleChapterChange, onVersionChange: handleVersionChange, showToolbar: showToolbar, onChapterPickerPress: handleChapterPickerPress, onVersionPickerPress: handleVersionPickerPress, onFootnotePress: onFootnotePress, onExternalLinkPress: Platform.OS !== 'web' ? onExternalLinkPress : undefined, backgroundColor: backgroundColor, foregroundColor: foregroundColor, bottomScrollPadding: bottomScrollPadding, dom: readerDom }) }), Platform.OS !== 'web' && (_jsx(BibleReaderSettingsSheet, { isSettingsSheetOpen: isSettingsSheetOpen, onClose: () => setIsSettingsSheetOpen(false) })), Platform.OS !== 'web' && (_jsx(BibleVerseActionSheet
++    return (_jsxs(_Fragment, { children: [_jsx(View, { style: { flex: 1 }, children: _jsx(BibleReaderDOM, { ...authProps, appKey: context.appKey, apiHost: context.apiHost, installationId: context.installationId, fetchBibleContent: context.fetchBibleContent, permittedVersionIds: context.permittedVersionIds, excludedVersionIds: context.excludedVersionIds, permittedLanguageTags: context.permittedLanguageTags, locale: lng, highlights: mergePlayingVerseHighlight(highlights, { versionId, book, chapter, playingVerse }), verseActions: VERSE_ACTIONS, onVerseSelect: handleVerseSelect, clearSelectionSignal: clearSelectionSignal + internalClearCount, onSignInPress: signIn, onSignOutPress: guardedSignOut, userInfo: userInfo, theme: resolvedTheme, book: book, chapter: chapter, versionId: versionId, fontSize: fontSize, fontFamily: encodeFontFamilyForDom(fontFamily), lineSpacing: lineSpacing, onFontSizeChange: setFontSize, onFontFamilyChange: setFontFamily, onLineSpacingChange: setLineSpacing, onOpenBibleThemeSettings: Platform.OS !== 'web' ? handleOpenBibleThemeSettings : undefined, onBookChange: handleBookChange, onChapterChange: handleChapterChange, onVersionChange: handleVersionChange, showToolbar: showToolbar, onChapterPickerPress: handleChapterPickerPress, onVersionPickerPress: handleVersionPickerPress, onFootnotePress: onFootnotePress, onExternalLinkPress: Platform.OS !== 'web' ? onExternalLinkPress : undefined, backgroundColor: backgroundColor, foregroundColor: foregroundColor, bottomScrollPadding: bottomScrollPadding, dom: readerDom }) }), Platform.OS !== 'web' && (_jsx(BibleReaderSettingsSheet, { isSettingsSheetOpen: isSettingsSheetOpen, onClose: () => setIsSettingsSheetOpen(false) })), Platform.OS !== 'web' && (_jsx(BibleVerseActionSheet
+             // Yielded, not displaced. A prompt that takes over the sheet host
+             // would fire this sheet's `onClose`, which clears the selection the
+             // prompt's own answer still needs.
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts
-index bcd2248..80c8c8f 100644
+index bcd2248..c2292b8 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts
 @@ -24,5 +24,23 @@ export declare const useReaderSettingsStore: import("zustand").UseBoundStore<Omi
@@ -120,8 +194,9 @@ index bcd2248..80c8c8f 100644
 +/** Emits detached snapshots only on value changes; does not emit immediately. */
 +export declare function subscribeReaderSettings(listener: (snapshot: ReaderSettingsSnapshot) => void): () => void;
  //# sourceMappingURL=reader-settings-store.d.ts.map
+\ No newline at end of file
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js
-index 2e79053..f334e92 100644
+index 2e79053..0783798 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.js
 @@ -4,7 +4,7 @@ import { create } from 'zustand';
@@ -181,3 +256,4 @@ index 2e79053..f334e92 100644
 +    });
 +}
  //# sourceMappingURL=reader-settings-store.js.map
+\ No newline at end of file

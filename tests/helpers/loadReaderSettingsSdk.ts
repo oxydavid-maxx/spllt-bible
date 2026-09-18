@@ -32,7 +32,7 @@ export function loadReaderSettingsSdk() {
       if (name === 'zustand/middleware') return middleware;
       if (name === 'zod') return zod;
       if (file === resolve(build, 'index.js') && name === './native/register-dom-impls') return { ensureDomImpls() {} };
-      if (file === resolve(build, 'index.js') && ['./native', './hooks', './theme'].includes(name)) return {};
+      if (file === resolve(build, 'index.js') && ['./native', './hooks', './theme', './native/bible-reader'].includes(name)) return {};
       if (name.startsWith('.')) return evaluate(resolve(dirname(file), name.endsWith('.js') ? name : `${name}.js`));
       throw new Error(`Unexpected SDK dependency: ${name}`);
     };
