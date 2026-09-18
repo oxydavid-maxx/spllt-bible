@@ -120,7 +120,7 @@ function mondayIndex(date: string): number {
   return (new Date(`${date}T12:00:00.000Z`).getUTCDay() + 6) % 7;
 }
 
-function DayCell({ bucket, today, selected, onSelect }: { bucket: ScoreChartBucket; today: string; selected: boolean; onSelect: (key: string) => void }) {
+function DayCell({ bucket, today, selected, onSelect, perfect = false }: { bucket: ScoreChartBucket; today: string; selected: boolean; onSelect: (key: string) => void; perfect?: boolean }) {
   const state = cellState(bucket, today);
   const isToday = bucket.key === today;
   return <View style={styles.slot}><Pressable
@@ -128,23 +128,47 @@ function DayCell({ bucket, today, selected, onSelect }: { bucket: ScoreChartBuck
     accessibilityLabel={bucketAccessibilityLabel(bucket, today)}
     accessibilityState={{ selected }}
     onPress={() => onSelect(bucket.key)}
-    style={[styles.cell, state === 'read' && styles.cellRead, state === 'missed' && styles.cellMissed, state === 'future' && styles.cellFuture, isToday && styles.cellToday, selected && !isToday && styles.cellSelected]}
+    style={[styles.cell, state === 'read' && styles.cellRead, perfect && styles.cellPerfect, state === 'missed' && styles.cellMissed, state === 'future' && styles.cellFuture, isToday && styles.cellToday, selected && !isToday && styles.cellSelected]}
   >
     <Text style={[styles.cellText, state === 'read' && styles.cellTextRead, state === 'future' && styles.cellTextFuture]}>{Number(bucket.key.slice(8, 10))}</Text>
   </Pressable></View>;
 }
 
+/** Days a bucket could hold: the month's length, or the year's; used for the proportional bar. */
+function bucketCapacity(bucket: ScoreChartBucket): number {
+  if (isMonthKey(bucket.key)) return daysInMonth(bucket.key);
+  const year = Number(bucket.key.slice(0, 4));
+  return Number.isInteger(year) ? (new Date(Date.UTC(year, 1, 29)).getUTCMonth() === 1 ? 366 : 365) : 365;
+}
+
+/** Monday-first rows of the month grid whose seven days were all read ("完整週", capped by nature). */
+export function perfectWeekKeys(buckets: readonly ScoreChartBucket[]): Set<string> {
+  const keys = new Set<string>();
+  let row: ScoreChartBucket[] = [];
+  const flush = () => { if (row.length === 7 && row.every((bucket) => bucket.earnedPoints > 0)) row.forEach((bucket) => keys.add(bucket.key)); row = []; };
+  for (const bucket of buckets) {
+    if (!isDayKey(bucket.key)) return keys;
+    if (mondayIndex(bucket.key) === 0) flush();
+    row.push(bucket);
+  }
+  flush();
+  return keys;
+}
+
 function CountCell({ bucket, label, selected, onSelect, today }: { bucket: ScoreChartBucket; label: string; selected: boolean; onSelect: (key: string) => void; today: string }) {
   const strong = bucket.earnedPoints >= 15;
+  const ratio = Math.max(0, Math.min(1, bucket.earnedPoints / bucketCapacity(bucket)));
+  const future = bucket.startDate > today;
   return <View style={styles.countSlot}><Pressable
     accessibilityRole="button"
     accessibilityLabel={bucketAccessibilityLabel(bucket, today)}
     accessibilityState={{ selected }}
     onPress={() => onSelect(bucket.key)}
-    style={[styles.countCell, bucket.earnedPoints > 0 && styles.countCellSome, strong && styles.countCellStrong, selected && styles.cellSelected]}
+    style={[styles.countCell, bucket.earnedPoints > 0 && styles.countCellSome, strong && styles.countCellStrong, future && styles.countCellFuture, selected && styles.cellSelected]}
   >
-    <Text style={[styles.countLabel, strong && styles.cellTextRead]}>{label}</Text>
-    <Text style={[styles.countValue, strong && styles.cellTextRead]}>{bucket.earnedPoints} 天</Text>
+    <Text style={[styles.countLabel, strong && styles.cellTextRead, future && styles.cellTextFuture]}>{label}</Text>
+    <Text style={[styles.countValue, strong && styles.cellTextRead, future && styles.cellTextFuture]}>{future ? '—' : `${bucket.earnedPoints} 天`}</Text>
+    {!future ? <View style={styles.countBar} testID="count-bar"><View style={[styles.countBarFill, strong && styles.countBarFillStrong, { width: `${Math.round(ratio * 100)}%` }]} /></View> : null}
   </Pressable></View>;
 }
 
@@ -158,11 +182,13 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
   const selectedBucket = chart.buckets.find((bucket) => bucket.key === selectedKey) ?? null;
   const dailyBuckets = chart.buckets.length > 0 && chart.buckets.every((bucket) => isDayKey(bucket.key));
   const leadingBlanks = dailyBuckets && chart.range === 'month' && chart.buckets[0] ? mondayIndex(chart.buckets[0].key) : 0;
+  const perfect = dailyBuckets && chart.range === 'month' ? perfectWeekKeys(chart.buckets) : new Set<string>();
+  const perfectWeeks = perfect.size / 7;
 
   return <View style={styles.card}>
     <View style={styles.headingRow}>
       <Text style={styles.cardTitle}>{isLegacyFallback ? '近六個月' : '讀經日曆'}</Text>
-      <Text accessibilityLabel={`本期 ${readDays(chart)} 天`} style={styles.periodTotal}>{`本期 ${readDays(chart)} 天`}</Text>
+      <Text accessibilityLabel={`本期 ${readDays(chart)} 天${perfectWeeks > 0 ? `，完整週 ${perfectWeeks}` : ''}`} style={styles.periodTotal}>{`本期 ${readDays(chart)} 天${perfectWeeks > 0 ? ` · 完整週 ${perfectWeeks}` : ''}`}</Text>
     </View>
     {!isLegacyFallback ? <View accessibilityRole="tablist" style={styles.rangeSelector}>
       {RANGE_OPTIONS.map((option) => <Pressable key={option.range} accessibilityRole="tab" accessibilityLabel={option.label} accessibilityState={{ selected: chart.range === option.range }} onPress={() => onChartChange?.(chartQueryForRange(chart, option.range))} style={[styles.rangeOption, chart.range === option.range && styles.rangeOptionActive]}><Text style={[styles.rangeText, chart.range === option.range && styles.rangeTextActive]}>{option.label}</Text></Pressable>)}
@@ -178,7 +204,7 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
       </View>
       <View style={styles.grid}>
         {Array.from({ length: leadingBlanks }, (_, index) => <View key={`b${index}`} style={styles.slot}><View style={styles.cellBlank} /></View>)}
-        {chart.buckets.map((bucket) => <DayCell key={bucket.key} bucket={bucket} today={today} selected={bucket.key === selectedKey} onSelect={setSelectedKey} />)}
+        {chart.buckets.map((bucket) => <DayCell key={bucket.key} bucket={bucket} today={today} selected={bucket.key === selectedKey} onSelect={setSelectedKey} perfect={perfect.has(bucket.key)} />)}
       </View>
     </View> : <View style={styles.countGrid}>
       {chart.buckets.map((bucket) => <CountCell key={bucket.key} bucket={bucket} today={today} label={isMonthKey(bucket.key) ? `${Number(bucket.key.slice(5, 7))}月` : `${bucket.key}年`} selected={bucket.key === selectedKey} onSelect={setSelectedKey} />)}
@@ -210,6 +236,8 @@ const styles = StyleSheet.create({
   cellBlank: { height: 32 },
   cell: { height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted },
   cellRead: { backgroundColor: theme.colors.primary },
+  // A whole Monday–Sunday row read: the seven cells deepen together, a capped "streak" that never punishes.
+  cellPerfect: { backgroundColor: theme.colors.primaryDeep },
   cellMissed: { backgroundColor: theme.colors.surfaceMuted },
   cellFuture: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: theme.colors.border },
   cellToday: { borderWidth: 2, borderColor: theme.colors.primaryDeep },
@@ -222,6 +250,10 @@ const styles = StyleSheet.create({
   countCell: { minHeight: theme.control.tap, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted, paddingVertical: theme.spacing.xs },
   countCellSome: { backgroundColor: theme.colors.primarySoft },
   countCellStrong: { backgroundColor: theme.colors.primary },
+  countCellFuture: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: theme.colors.border },
+  countBar: { width: '80%', height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden', marginTop: 3 },
+  countBarFill: { height: 4, borderRadius: 2, backgroundColor: theme.colors.primary },
+  countBarFillStrong: { backgroundColor: theme.colors.white },
   countLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, fontWeight: '800' },
   countValue: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
   selectedLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },

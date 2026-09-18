@@ -9,6 +9,7 @@ const { primitive, api, auth, appListeners, focusCallbacks } = vi.hoisted(() => 
   appListeners: [] as Array<(state: string) => void>, focusCallbacks: [] as Array<() => (() => void) | void>,
 }));
 vi.mock('react-native', () => ({ AppState: { addEventListener: vi.fn((_event: string, listener: (state: string) => void) => { appListeners.push(listener); return { remove: vi.fn() }; }) }, Pressable: primitive('Pressable'), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle') }; });
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | void) => { focusCallbacks.push(callback); require('react').useEffect(callback, []); } }));
 vi.mock('expo-local-authentication', () => ({ authenticateAsync: vi.fn(async () => ({ success: true })) }));
 vi.mock('../../src/services/authSession', () => ({ isCurrentAuthSession: () => true, registerAuthLifecycleListener: () => vi.fn(), useAuthSnapshot: () => auth }));
@@ -55,7 +56,8 @@ describe('progress protected response lifecycle', () => {
     await act(async () => { appListeners[appListeners.length - 1]?.('background'); appListeners[appListeners.length - 1]?.('active'); });
     await act(async () => { await Promise.resolve(); });
     expect(api.getProfile.mock.calls.length).toBeGreaterThan(initialCalls);
-    expect(api.getProfile.mock.calls.at(-1)).toEqual(['self', 'me', expect.stringMatching(/^\d{4}-\d{2}$/)]);
+    // The refresh is the plain 3-argument call; range prefetches (4 arguments) may follow it.
+    expect(api.getProfile.mock.calls.slice(initialCalls).some((call) => call.length === 3 && call[0] === 'self' && call[1] === 'me' && /^\d{4}-\d{2}$/.test(String(call[2])))).toBe(true);
     expect(renderer.root.findAll((node) => String(node.type) === 'ScoreProfile')).toHaveLength(1);
   });
 

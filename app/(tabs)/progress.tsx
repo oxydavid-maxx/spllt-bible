@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
 import { isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
-import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type ScoreChartQuery, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
+import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
 import type { PendingGamificationOperations } from '../../src/services/gamificationPendingStore';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../src/services/adminUnlockGuard';
 import { ActionSheet } from '../../src/ui/gamification/ActionSheet';
@@ -38,6 +38,15 @@ export default function ProgressScreen() {
   const appActive = useRef(true);
   const activeScope = useRef<ScoreScope>('me');
   const activeMember = useRef<string | null>(session?.memberId ?? null);
+  // Range tabs used to round-trip the server on every tap (~0.5–2 s over the tunnel). Charts are small
+  // and immutable for a given day, so keep every chart we have seen and prefetch the other ranges once.
+  const chartCache = useRef(new Map<string, NonNullable<ScoreProfileData['chart']>>());
+  const chartKey = (memberId: string, nextScope: ScoreScope, query: ScoreChartQuery) => `${memberId}|${nextScope}|${query.range}|${query.anchor ?? ''}`;
+  const rememberChart = (memberId: string, nextScope: ScoreScope, query: ScoreChartQuery | undefined, chart: ScoreProfileData['chart']) => {
+    if (!chart) return;
+    chartCache.current.set(chartKey(memberId, nextScope, query ?? { range: chart.range }), chart);
+    if (chart.anchor !== null) chartCache.current.set(chartKey(memberId, nextScope, { range: chart.range, anchor: chart.anchor }), chart);
+  };
   const accountKey = session ? `${session.memberId}:${session.sessionToken}` : null;
   const isLive = (generation: number, expectedScope: ScoreScope, expectedMember?: string | null, requiresUnlock = false) => Boolean(appActive.current && requestGeneration.current === generation && activeScope.current === expectedScope && (expectedMember === undefined || expectedMember === activeMember.current || expectedMember === session?.memberId) && session && isCurrentAuthSession(session) && (!requiresUnlock || guard.current.state === 'unlocked'));
 
@@ -63,9 +72,17 @@ export default function ProgressScreen() {
   const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope, chartQuery?: ScoreChartQuery) => {
     if (!client || !session) return; setBusy(true); setError(null);
     const generation = requestGeneration.current;
-    try { const value = chartQuery ? await client.getProfile(memberId, nextScope, monthNow(), chartQuery) : await client.getProfile(memberId, nextScope, monthNow()); if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session) && (nextScope !== 'all' || guard.current.state === 'unlocked')) setProfile(value); }
+    try { const value = chartQuery ? await client.getProfile(memberId, nextScope, monthNow(), chartQuery) : await client.getProfile(memberId, nextScope, monthNow()); rememberChart(memberId, nextScope, chartQuery, value.chart); if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session) && (nextScope !== 'all' || guard.current.state === 'unlocked')) { setProfile(value); if (!chartQuery) void prefetchCharts(memberId, nextScope, value.chart?.range ?? 'month'); } }
     catch (reason) { if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session)) { setProfile(null); setError(messageFor(reason)); } }
     finally { setBusy(false); }
+  }, [client, session]);
+  const prefetchCharts = useCallback(async (memberId: string, nextScope: ScoreScope, currentRange: ScoreChartRange) => {
+    if (!client || !session) return;
+    const missing = (['week', 'month', 'year', 'all'] as ScoreChartRange[]).filter((range) => range !== currentRange && !chartCache.current.has(chartKey(memberId, nextScope, { range })));
+    await Promise.all(missing.map(async (range) => {
+      try { const value = await client.getProfile(memberId, nextScope, monthNow(), { range }); if (isCurrentAuthSession(session)) rememberChart(memberId, nextScope, { range }, value.chart); }
+      catch { /* prefetch is best effort; the tap path still fetches on a miss */ }
+    }));
   }, [client, session]);
   const loadProfileChart = useCallback((chartQuery: ScoreChartQuery) => {
     if (!client || !session) return;
@@ -73,6 +90,8 @@ export default function ProgressScreen() {
     const nextScope = activeScope.current;
     if (!memberId || (nextScope === 'me' && memberId !== session.memberId)) return;
     requestGeneration.current += 1;
+    const cached = chartCache.current.get(chartKey(memberId, nextScope, chartQuery));
+    if (cached) { setProfile((previous) => previous && previous.memberId === memberId ? { ...previous, chart: cached } : previous); return; }
     void loadProfile(memberId, nextScope, chartQuery);
   }, [client, session, loadProfile]);
   useEffect(() => { if (scope === 'me' && client && session && !profile) void loadProfile(session.memberId, 'me'); }, [client, session, scope, profile, loadProfile]);
@@ -103,6 +122,15 @@ export default function ProgressScreen() {
   const scanClaimed = (memberId: string) => { requestGeneration.current += 1; activeScope.current = 'friends'; activeMember.current = memberId; setSheet(null); setScope('friends'); setSelected({ memberId, displayName: '好友', earnedTotal: 0 }); setProfile(null); void loadProfile(memberId, 'friends'); };
   const selectedRewardId = profile?.private?.targetReward?.rewardId ?? null;
   const setTarget = async (rewardId: string) => { if (!client || !session) return; try { await client.setRewardTarget(rewardId); setSheet(null); await loadProfile(session.memberId, 'me'); } catch (reason) { setError(messageFor(reason)); } };
+  // The shelf on the member's own page needs the active catalogue without opening the picker sheet.
+  const [shelfRewards, setShelfRewards] = useState<Reward[] | null>(null);
+  useEffect(() => {
+    if (!client || !session || scope !== 'me' || !profile?.private || shelfRewards !== null || typeof client.getRewards !== 'function') return;
+    let active = true;
+    void client.getRewards().then((value) => { if (active && isCurrentAuthSession(session)) setShelfRewards(value); }).catch(() => { if (active) setShelfRewards([]); });
+    return () => { active = false; };
+  }, [client, session, scope, profile?.private, shelfRewards]);
+  useEffect(() => { setShelfRewards(null); }, [session?.memberId]);
   const redeemSelected = async (rewardId: string) => { if (!client || !selected) return; const reward = rewards.find((item) => item.rewardId === rewardId); if (!reward) return; const generation = requestGeneration.current; const memberId = selected.memberId; try { await client.redeem({ memberId, rewardId, expectedRewardRevision: reward.revision }); if (!isLive(generation, 'all', memberId, true)) return; setRetryAction(null); setSheet(null); await loadProfile(memberId, 'all'); } catch (reason) { if (isLive(generation, 'all', memberId, true) && reason instanceof GamificationApiError && reason.retryable) { setRetryAction(() => () => { void redeemSelected(rewardId); }); setError('尚未確認，點此重試。'); } else if (isLive(generation, 'all', memberId, true)) setError(messageFor(reason)); } };
   const openRedeem = async () => { if (!client || !session || !selected) return; const generation = requestGeneration.current; const memberId = selected.memberId; try { const value = await client.getRewards(); if (isLive(generation, 'all', memberId, true)) { setRewards(value); setSheet('redeem'); } } catch (reason) { if (isLive(generation, 'all', memberId, true)) setError(messageFor(reason)); } };
   const reverseSelected = async (redemptionId: string, reason: string) => { if (!client || !session) return; const generation = requestGeneration.current; const expectedScope = scope; const memberId = selected?.memberId; try { await client.reverseRedemption(redemptionId, reason); if (!isLive(generation, expectedScope, memberId, expectedScope === 'all')) return; setRetryAction(null); await loadRedemptions(expectedScope === 'all', memberId); if (expectedScope === 'all' && memberId) await loadProfile(memberId, 'all'); else await loadProfile(session.memberId, 'me'); } catch (errorValue) { if (isLive(generation, expectedScope, memberId, expectedScope === 'all') && errorValue instanceof GamificationApiError && errorValue.retryable) { setRetryAction(() => () => { void reverseSelected(redemptionId, reason); }); setError('尚未確認，點此重試。'); } else if (isLive(generation, expectedScope, memberId, expectedScope === 'all')) setError(messageFor(errorValue)); } };
@@ -118,7 +146,7 @@ export default function ProgressScreen() {
     {scope === 'me' && !profile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
     {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
     {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}
-    {scope === 'me' && profile ? <ScoreProfile profile={profile} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
+    {scope === 'me' && profile ? <ScoreProfile profile={profile} rewards={shelfRewards ?? undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId).then(() => setShelfRewards(null)); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
     <ActionSheet visible={sheet === 'menu'} title="積分操作" onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: () => setSheet('qr') }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards().then(() => setSheet('admin-rewards')); } }] : [])]} />
     <ActionSheet visible={sheet === 'qr'} title="我的好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="show" /></ActionSheet>
     <ActionSheet visible={sheet === 'scan'} title="掃描好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="scan" onClaimed={scanClaimed} /></ActionSheet>

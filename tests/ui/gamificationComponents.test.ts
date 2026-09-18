@@ -9,6 +9,7 @@ const { primitive, keyboard } = vi.hoisted(() => {
   return { primitive, keyboard };
 });
 vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), KeyboardAvoidingView: primitive('KeyboardAvoidingView'), Keyboard: keyboard, Platform: { OS: 'android' }, FlatList: (props: any) => React.createElement('FlatList', props, props.data?.map((item: any) => props.renderItem({ item }))), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value }, Modal: primitive('Modal'), TextInput: primitive('TextInput'), ActivityIndicator: primitive('ActivityIndicator') }));
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle') }; });
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaProvider: primitive('SafeAreaProvider'), SafeAreaView: primitive('SafeAreaView') }));
 
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
