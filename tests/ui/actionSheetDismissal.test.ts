@@ -10,7 +10,7 @@ vi.mock('react-native', () => ({
   Pressable: primitive('Pressable'),
   ScrollView: primitive('ScrollView'),
   Text: primitive('Text'),
-  View: primitive('View'),
+  TextInput: primitive('TextInput'), View: primitive('View'),
   KeyboardAvoidingView: primitive('KeyboardAvoidingView'),
   Keyboard: { isVisible: () => false, addListener: () => ({ remove: () => undefined }) },
   Platform: { OS: 'android' },

@@ -7,7 +7,7 @@ const state = vi.hoisted(() => ({
   retry: vi.fn(async () => undefined),
 }));
 vi.mock('react-native', () => ({
-  Image: 'Image', Linking: {}, Pressable: 'Pressable', Text: 'Text', View: 'View',
+  Image: 'Image', Linking: {}, Pressable: 'Pressable', Text: 'Text', TextInput: 'TextInput', View: 'View',
   StyleSheet: { create: (value: unknown) => value },
 }));
 vi.mock('../../src/services/authSession', () => ({

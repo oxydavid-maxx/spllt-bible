@@ -11,7 +11,7 @@ const primitive = vi.hoisted(() => (name: string) => (props: any) => require('re
 const native = vi.hoisted(() => ({ player: null as any }));
 const boundary = vi.hoisted(() => ({ context: null as any }));
 
-vi.mock('react-native', () => ({ ActivityIndicator: primitive('ActivityIndicator'), BackHandler: { addEventListener: () => ({ remove() {} }) }, Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (value: unknown) => value }, Text: primitive('Text'), View: primitive('View') }));
+vi.mock('react-native', () => ({ ActivityIndicator: primitive('ActivityIndicator'), BackHandler: { addEventListener: () => ({ remove() {} }) }, Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (value: unknown) => value }, Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View') }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView') }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {} }));
 vi.mock('expo-audio', () => ({ useAudioPlayer: () => native.player }));

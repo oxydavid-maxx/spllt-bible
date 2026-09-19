@@ -3,7 +3,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 
 const { primitive, requestPermission, authenticateAsync } = vi.hoisted(() => ({ primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children), requestPermission: vi.fn(async () => ({ granted: true, status: 'granted' })), authenticateAsync: vi.fn(async () => ({ success: true })) }));
-vi.mock('react-native', () => ({ ActivityIndicator: primitive('ActivityIndicator'), Pressable: primitive('Pressable'), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
+vi.mock('react-native', () => ({ ActivityIndicator: primitive('ActivityIndicator'), Pressable: primitive('Pressable'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('expo-camera', () => ({ CameraView: (props: any) => React.createElement('CameraView', props), useCameraPermissions: () => [{ granted: false, status: 'undetermined' }, requestPermission] }));
 vi.mock('react-native-qrcode-svg', () => ({ default: (props: any) => React.createElement('QRCode', props) }));
 vi.mock('expo-local-authentication', () => ({ authenticateAsync }));

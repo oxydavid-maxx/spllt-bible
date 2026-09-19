@@ -31,7 +31,7 @@ function chapterForReference(reference: string): string | null {
   return match ? `${match[1]}.${match[2]}` : null;
 }
 
-export function YouVersionReader({ date, references, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasTap, onCanvasScroll, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader }: { date: string; references: string[]; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasTap?: () => void; onCanvasScroll?: () => void; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode }) {
+export function YouVersionReader({ date, references, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasTap, onCanvasScroll, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied }: { date: string; references: string[]; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasTap?: () => void; onCanvasScroll?: () => void; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void }) {
   const [readerModule, setReaderModule] = useState<YouVersionReaderUiModule | null>(null);
   const preferencesBinding = useReaderPreferencesBinding(readerModule, readerPreferences);
   const [error, setError] = useState<string | null>(null);
@@ -289,13 +289,34 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
         {safeIndex < references.length - 1 && <Pressable accessibilityRole="button" accessibilityLabel="下一段指定經文" onPress={() => setActiveReferenceIndex(safeIndex + 1)} style={styles.nextButton}><Text style={styles.nextButtonText}>下一段 ›</Text></Pressable>}
       </View>}
         <View style={fullscreen ? styles.fullscreen : styles.passage}>
-          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} onFootnotePress={async (data) => { setFootnote({ verseNum: data.verseNum, notes: data.notes, reference: data.reference }); }} showToolbar={!fullscreen} theme="light" playingVerse={playingVerse && playingVerse.chapter === displayedChapter ? playingVerse.verse : null} />
+          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} onFootnotePress={async (data) => { setFootnote({ verseNum: data.verseNum, notes: data.notes, reference: data.reference }); }} onCopy={(data) => { void copyVerses(data); }} showToolbar={!fullscreen} theme="light" playingVerse={playingVerse && playingVerse.chapter === displayedChapter ? playingVerse.verse : null} />
         </View>
       {!fullscreen && <Text style={styles.attribution} numberOfLines={2}>{attributionMode === 'compact'
         ? `${contentMetadata?.translationName ?? `YouVersion ${versionId}`}／${contentMetadata?.publisher ?? '官方內容'}`
         : `日期：${date}。指定範圍：${formatReferenceListZhTw(references)}。版本：${contentMetadata ? `${contentMetadata.translationName}（${contentMetadata.versionId}）／${contentMetadata.publisher}` : `YouVersion ${versionId}`}`}</Text>}
     </View>
   );
+  /**
+   * The reader's own Copy button, intercepted.
+   *
+   * Two things make this necessary rather than optional. The SDK's verse action list is not
+   * configurable from here — `verseActions` is excluded from the props it accepts — so Copy is the
+   * only place a selected verse's TEXT is ever handed to us; `onVerseSelect` gives numbers only.
+   * And supplying `onCopy` REPLACES the SDK's own clipboard fallback, so if we did not write to the
+   * clipboard ourselves we would silently break copying for everyone who just wanted to copy.
+   *
+   * So: always copy, and additionally hand the quote to the journal when it is listening.
+   */
+  const copyVerses = async (data: { text: string; reference: string; verseText: string }) => {
+    // Loaded on demand, the way this app already loads expo-notifications: a native module imported
+    // at the top of a screen has to exist before the screen can render at all, including under test.
+    try {
+      const clipboard = await import('expo-clipboard');
+      await clipboard.setStringAsync(data.text);
+    } catch { /* copying is best effort; the quote below still reaches the journal */ }
+    onVerseCopied?.(`「${data.verseText}」${data.reference}`);
+  };
+
   const footnotePanel = footnote ? <Modal transparent animationType="fade" visible onRequestClose={closeFootnote}>
     <Pressable accessibilityRole="button" accessibilityLabel="關閉註腳" onPress={closeFootnote} style={styles.footnoteScrim}>
       <Pressable onPress={() => undefined} style={styles.footnoteSheet} accessibilityViewIsModal>

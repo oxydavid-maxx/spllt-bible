@@ -74,7 +74,7 @@ vi.mock('react-native', () => ({
   ScrollView: primitive('ScrollView'),
   StyleSheet: { create: (value: unknown) => value },
   Text: primitive('Text'),
-  View: primitive('View'),
+  TextInput: primitive('TextInput'), View: primitive('View'),
   Linking: { openURL: vi.fn() },
 }));
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => React.createElement('AccountEntryButton') }));
@@ -111,6 +111,7 @@ vi.mock('../../src/storage/mobileDatabase', () => {
   return {
     openQingmuRepository: vi.fn(() => ({ get: vi.fn(() => undefined), flush: vi.fn(async () => []) })),
     openQingmuReaderPositionStore: vi.fn(() => store),
+    openQingmuJournalStore: vi.fn(() => ({ get: () => null, save: (command: Record<string, unknown>) => command })),
   };
 });
 

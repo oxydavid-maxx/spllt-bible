@@ -23,7 +23,7 @@ const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknow
   return R.createElement(name, props, props.children as React.ReactNode);
 });
 const rn = vi.hoisted(() => ({
-  ActivityIndicator: primitive('ActivityIndicator'), View: primitive('View'), Text: primitive('Text'),
+  ActivityIndicator: primitive('ActivityIndicator'), TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'),
   Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'),
   Platform: { OS: 'android' }, useWindowDimensions: () => ({ width: 390, height: 844 }),
   StyleSheet: { create: (x: unknown) => x, flatten: (x: unknown) => Object.assign({}, ...[x].flat(Infinity)), absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } },

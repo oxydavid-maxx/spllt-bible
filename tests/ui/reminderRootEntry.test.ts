@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
   revokeResult: vi.fn(async () => 'REVOKED' as 'REVOKED' | 'RETRY'),
 }));
 vi.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: (props: { children?: unknown }) => require('react').createElement('GestureRoot', props, props.children) }));
-vi.mock('react-native', () => ({ View: 'View', Text: 'Text', StyleSheet: { create: (x: unknown) => x }, AppState: { addEventListener: (_event: string, listener: (value: string) => void) => { state.appStateListener = listener; return { remove: state.removeAppState }; } } }));
+vi.mock('react-native', () => ({ TextInput: 'TextInput', View: 'View', Text: 'Text', StyleSheet: { create: (x: unknown) => x }, AppState: { addEventListener: (_event: string, listener: (value: string) => void) => { state.appStateListener = listener; return { remove: state.removeAppState }; } } }));
 vi.mock('expo-router', () => ({
   Stack: () => React.createElement('Stack', { readingDate: useReadingSession().selectedDate }),
   router: { push: state.push },

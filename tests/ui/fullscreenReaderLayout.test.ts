@@ -11,7 +11,7 @@ const native = vi.hoisted(() => ({
   safeInsets: { top: 0, bottom: 0, left: 0, right: 0 },
 }));
 vi.mock('react-native', () => ({
-  View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView',
+  TextInput: 'TextInput', View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView',
   Modal: (props: any) => props.visible ? React.createElement('Modal', props, props.children) : null,
   StyleSheet: { create: (value: unknown) => value },
   Appearance: { getColorScheme: () => 'light' }, useColorScheme: () => 'light',

@@ -6,6 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { buildFixtureModels } from '../../src/ui/routes';
 import { YouVersionReader } from '../../src/ui/YouVersionReader';
 import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
+import { JournalPanel } from '../../src/ui/JournalPanel';
+import { formatReadingDateLabel } from '../../src/ui/ReadingDateNavigator';
 import { openQingmuReaderPositionStore, openQingmuRepository } from '../../src/storage/mobileDatabase';
 import type { ReaderPosition } from '../../src/storage/readerPosition';
 import { fixtureProfile } from '../../src/ui/fixtureProfile';
@@ -25,6 +27,8 @@ import { syncReadingReminderForCompletion } from '../../src/services/reminderCom
 export default function ReaderScreen() {
   const chrome = useReaderChrome();
   const { selectedDate, planId, day, period, previousDate, nextDate } = useReadingSession();
+  // Set when a verse is copied while the journal is open, cleared once the panel has taken it.
+  const [pendingQuote, setPendingQuote] = useState<string | null>(null);
   const auth = useAuthSnapshot();
   const session = auth.session;
   const [reminderScheduler] = useState(() => createReminderScheduler());
@@ -316,6 +320,7 @@ export default function ReaderScreen() {
       fullscreen
       onCanvasTap={chrome.toggleTools}
       onCanvasScroll={chrome.hideTools}
+      onVerseCopied={(quote) => { if (chrome.journalOpen) setPendingQuote(quote); }}
       renderScreen={(reader, controls) => (
         <FullscreenReaderLayout
           reader={reader}
@@ -328,6 +333,17 @@ export default function ReaderScreen() {
           versionOptions={versionOptions}
           onSelectVersion={chooseVersion}
           onExit={() => router.replace('/today')}
+          journal={<JournalPanel
+            visible={chrome.journalOpen}
+            memberId={memberId}
+            planId={planId}
+            taskDate={selectedDate}
+            dateLabel={formatReadingDateLabel(selectedDate)}
+            newOperationId={randomUUID}
+            onClose={chrome.closeJournal}
+            pendingQuote={pendingQuote}
+            onQuoteConsumed={() => setPendingQuote(null)}
+          />}
           metadata={contentMetadata}
         />
       )}

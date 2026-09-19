@@ -3,7 +3,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('expo-secure-store', () => ({ getItemAsync: vi.fn(), setItemAsync: vi.fn(), deleteItemAsync: vi.fn() }));
-vi.mock('react-native', () => ({ Text: 'Text', View: 'View' }));
+vi.mock('react-native', () => ({ Text: 'Text', TextInput: 'TextInput', View: 'View' }));
 vi.mock('../../src/ui/GoogleLoginCard', () => ({ GoogleLoginCard: ({ baseUrl }: { baseUrl: string }) => React.createElement('GoogleLoginCard', { baseUrl }) }));
 vi.mock('../../src/ui/StatusCard', () => ({ StatusCard: ({ title }: { title: string }) => React.createElement('StatusCard', { title }) }));
 

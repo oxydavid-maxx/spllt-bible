@@ -9,7 +9,7 @@ const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknow
   return R.createElement(name, props, props.children as React.ReactNode);
 });
 vi.mock('react-native', () => ({
-  ActivityIndicator: primitive('ActivityIndicator'), View: primitive('View'), Text: primitive('Text'),
+  ActivityIndicator: primitive('ActivityIndicator'), TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'),
   Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'),
   StyleSheet: { create: (x: unknown) => x },
   BackHandler: { addEventListener: (_: string, callback: () => boolean) => {

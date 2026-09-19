@@ -18,7 +18,7 @@ const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknow
 });
 const boundary = vi.hoisted(() => ({ sdk: null as any, sdkLoads: 0, positions: new Map<string, ReaderPosition>(), preferences: new Map<string, string>(), requests: [] as { versionId: number; usfm: string }[], completions: vi.fn(), session: { memberId: 'A', sessionToken: 'test-session' } }));
 vi.mock('react-native', () => ({
-  ActivityIndicator: primitive('ActivityIndicator'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'),
+  ActivityIndicator: primitive('ActivityIndicator'), TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'),
   Modal: (props: { visible: boolean; children?: React.ReactNode }) => props.visible ? React.createElement('Modal', props, props.children) : null,
   StyleSheet: { create: (x: unknown) => x, absoluteFill: {} }, Alert: { alert: vi.fn() }, Linking: { openURL: vi.fn() },
   BackHandler: { addEventListener: () => ({ remove() {} }) },
@@ -38,6 +38,7 @@ vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ saveCompletion: boundary.completions, getProgress: async () => undefined }) }));
 vi.mock('../../src/storage/mobileDatabase', () => ({
   openQingmuRepository: () => ({ get: () => undefined, flush: async () => [], saveCompletion: boundary.completions }),
+  openQingmuJournalStore: () => ({ get: () => null, save: (command: Record<string, unknown>) => command }),
   openQingmuReaderPositionStore: () => ({
     get: (memberId: string, _plan: string, date: string) => boundary.positions.get(`${memberId}:${date}`),
     save: (position: ReaderPosition) => { boundary.positions.set(`${position.memberId}:${position.taskDate}`, position); }, resetToAssigned: vi.fn(),

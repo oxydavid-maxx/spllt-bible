@@ -10,7 +10,7 @@ const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknow
   const R = require('react') as typeof React;
   return R.createElement(name, props, props.children as React.ReactNode);
 });
-vi.mock('react-native', () => ({ ActivityIndicator: primitive('ActivityIndicator'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (x: unknown) => x }, BackHandler: { addEventListener: () => ({ remove() {} }) } }));
+vi.mock('react-native', () => ({ ActivityIndicator: primitive('ActivityIndicator'), TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (x: unknown) => x }, BackHandler: { addEventListener: () => ({ remove() {} }) } }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView') }));
 vi.mock('../../src/services/youVersionAdapter', () => ({ createYouVersionAdapter: () => ({ loadReaderUi: async () => ({ status: 'READER_UI_READY', module: boundary.module }) }) }));
 import { YouVersionReader, type ReaderOverlayControls } from '../../src/ui/YouVersionReader';

@@ -4,7 +4,7 @@ vi.mock('react-native', () => ({
   Pressable: 'Pressable',
   StyleSheet: { create: (value: unknown) => value },
   Text: 'Text',
-  View: 'View',
+  TextInput: 'TextInput', View: 'View',
 }));
 
 import { buildCompletionFeedbackModel } from '../../src/ui/completionFeedback';
