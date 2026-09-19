@@ -94,6 +94,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   const worker = reminderDelivery?.enabled ? createReminderWorker({ db: database.db, send: reminderDelivery.send, now: options.reminderWorker?.now, intervalMs: options.reminderWorker?.intervalMs, timer: options.reminderWorker?.timer }) : null;
   const handle = createApiHandler({
     remoteReminderStatus: remoteStatus,
+    prewarmChapterAudio: true,
     db: database,
     instanceId: process.env.QINGMU_INSTANCE_ID?.trim() || 'unconfigured',
     authMode: googleAudience ? 'google-only' : 'fixture',

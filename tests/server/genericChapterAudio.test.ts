@@ -19,6 +19,25 @@ beforeEach(() => {
 });
 afterEach(() => { db.close(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+describe('chapter audio prewarm', () => {
+  it('warms today and tomorrow assigned chapters across the curated versions with bounded concurrency', async () => {
+    const { prewarmChapterAudio } = await import('../../server/genericChapterAudio');
+    const calls: string[] = []; let active = 0; let peak = 0;
+    const resolve = async (versionId: number, usfm: string) => { active++; peak = Math.max(peak, active); calls.push(`${versionId}:${usfm}`); await new Promise((r) => setTimeout(r, 1)); active--; return { identity: { versionId, usfm }, text: true, audio: true, offline: false as const, status: 'verified_source' as const, reason: '' }; };
+    const done = await prewarmChapterAudio(resolve, [46, 111], ['PSA.103', '1TI.4'], 2);
+    expect(done).toBe(4); expect(peak).toBeLessThanOrEqual(2);
+    expect(calls.sort()).toEqual(['111:1TI.4', '111:PSA.103', '46:1TI.4', '46:PSA.103']);
+  });
+  it('keeps a verified answer cached well beyond a minute so the next open does not pay the upstream hop', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-19T00:00:00Z'));
+    await request(); expect(upstream).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(new Date('2026-09-19T02:00:00Z'));
+    await request(); expect(upstream).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(new Date('2026-09-19T07:00:00Z'));
+    await request(); expect(upstream).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('per-verse timing travels with the capability', () => {
   it('keeps ascending timing rows of the chosen recording for the requested chapter only, dropping malformed rows', async () => {
     upstream.mockImplementation(async () => answer([source(46, 'PSA.103', { timing: [
@@ -116,7 +135,7 @@ describe('production chapter endpoint dynamically resolves provider metadata', (
     const [a, b] = await Promise.all([request(), request()]);
     expect(upstream).toHaveBeenCalledTimes(1); expect(a.body).toEqual(b.body);
     expect(Date.parse(String(a.body.validUntil))).toBeGreaterThan(Date.now());
-    vi.setSystemTime('2026-09-13T09:10:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(2);
+    vi.setSystemTime('2026-09-13T09:10:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(1); vi.setSystemTime('2026-09-13T15:10:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(2);
   });
   it.each([[0, 'PSA.103'], [46, 'PSA.0'], [46, 'PSA.103.1']])('rejects invalid input before requesting the provider', async (versionId, usfm) => {
     expect((await request(Number(versionId), String(usfm))).status).toBe(400); expect(upstream).not.toHaveBeenCalled();

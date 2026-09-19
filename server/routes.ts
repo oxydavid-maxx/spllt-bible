@@ -7,7 +7,7 @@ import { authenticate, authenticateGoogle, authenticateSessionOrGoogle, type Pro
 import { claimMemberInvite } from './membership';
 import { createSessionToken } from './session';
 import { parseCapabilityQuery } from './contentCapabilities';
-import { createChapterAudioResolver } from './genericChapterAudio';
+import { createChapterAudioResolver, prewarmChapterAudio } from './genericChapterAudio';
 import { getMemberGroupProfile } from './groups';
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
 import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
@@ -51,6 +51,9 @@ export interface ApiResponse {
 
 export interface ApiHandlerOptions {
   remoteReminderStatus?: 'REMOTE_PENDING' | 'REMOTE_READY';
+  /** Warm the chapter-audio metadata cache for today's/tomorrow's assigned chapters at start and hourly. */
+  prewarmChapterAudio?: boolean;
+  prewarmVersionIds?: readonly number[];
   db: { db: DatabaseSync };
   instanceId?: string;
   authMode?: 'fixture' | 'google-only';
@@ -281,6 +284,21 @@ export function createApiHandler(options: ApiHandlerOptions) {
     // only when the caller has explicitly inserted it into reading_days.
   }
   const resolveChapterAudio = createChapterAudioResolver();
+  if (options.prewarmChapterAudio) {
+    const versions = options.prewarmVersionIds ?? [46, 40, 111, 406, 114];
+    const warm = () => {
+      try {
+        const today = taipeiDate(now());
+        const tomorrow = new Date(`${today}T12:00:00.000Z`); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+        const rows = options.db.db.prepare('SELECT references_json FROM reading_days WHERE task_date >= ? AND task_date <= ?').all(today, tomorrow.toISOString().slice(0, 10)) as Array<{ references_json: string }>;
+        const usfms = [...new Set(rows.flatMap((row) => { try { return JSON.parse(row.references_json) as string[]; } catch { return []; } }))];
+        void prewarmChapterAudio(resolveChapterAudio, versions, usfms);
+      } catch { /* prewarm never affects serving */ }
+    };
+    const unref = (timer: unknown) => { (timer as { unref?: () => void }).unref?.(); };
+    unref(setTimeout(warm, 3_000));
+    unref(setInterval(warm, 60 * 60 * 1000));
+  }
   const sessions = { resolveDevice: (token: string) => resolveDeviceSession(options.db.db, token), isLegacyRevoked: (token: string) => isLegacySessionRevoked(options.db.db, token) };
   const remoteStatus = options.remoteReminderStatus ?? 'REMOTE_PENDING';
   const policy = options.pointPolicy ?? DEFAULT_POLICY;

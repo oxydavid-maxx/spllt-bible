@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, type AuthSession, type VerifiedProfile } from '../src/services/authSession';
 import { revokeConfiguredReminderDeviceBinding, revokeConfiguredReminderDeviceBindingResult } from '../src/services/configuredReminderHeadless';
 import { runtimeConfig } from '../src/config/runtime';
@@ -41,5 +42,6 @@ export default function RootLayout() {
     return createApiClient({ baseUrl: config.apiBaseUrl, token: session.sessionToken, memberId: session.memberId }).getProfile();
   }, []);
   configureReminderRuntime(reminderRuntime);
-  return <AuthProvider loadProfile={loadProfile}><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><Stack screenOptions={{ headerShown: false }} /></AuthProvider>;
+  // The SDK's footnote/verse/settings sheets are @gorhom/bottom-sheet; without a gesture root their backdrop tap and swipe-down never fire.
+  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><Stack screenOptions={{ headerShown: false }} /></AuthProvider></GestureHandlerRootView>;
 }

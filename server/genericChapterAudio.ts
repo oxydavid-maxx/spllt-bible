@@ -6,7 +6,9 @@ import observedAttributions from './chapterAudioAttributions.json';
  * No chapter registry, filename construction, app credential or media download is used.
  */
 export const CHAPTER_AUDIO_ENDPOINT = 'https://audio-bible.youversionapi.com/3.1/chapter.json';
-const CACHE_MS = 60_000;
+// Provider catalogue rows are stable; a 6 h server cache means a chapter's first open of the day
+// does not pay the 1–8 s upstream hop (the client re-confirms every 5 min against this cache).
+const CACHE_MS = 6 * 60 * 60 * 1000;
 const RECONFIRM_MS = 300_000; // Our refresh policy, never a claimed provider expiry.
 const MAX_ENTRIES = 128;
 const MAX_METADATA_BYTES = 2_000_000;
@@ -112,7 +114,7 @@ export function createChapterAudioResolver(options: { fetchImpl?: typeof fetch; 
     } catch { return unavailable(versionId, usfm, 'temporarily_unavailable'); }
     finally { clearTimeout(timeout); }
   }
-  return async (versionId: number, reference: string): Promise<ContentCapability> => {
+  const resolve = async (versionId: number, reference: string): Promise<ContentCapability> => {
     const usfm = reference.trim().toUpperCase();
     if (!Number.isSafeInteger(versionId) || versionId < 1 || !/^[A-Z0-9]{2,5}\.[1-9][0-9]{0,2}$/.test(usfm)) return unavailable(versionId, usfm, 'temporarily_unavailable');
     const key = `${versionId}:${usfm}`;
@@ -129,4 +131,18 @@ export function createChapterAudioResolver(options: { fetchImpl?: typeof fetch; 
     }).finally(() => inflight.delete(key));
     inflight.set(key, work); return work;
   };
+  return resolve;
+}
+
+/** Warm the metadata cache for the given chapters × versions with bounded concurrency; failures are ignored. */
+export async function prewarmChapterAudio(resolve: (versionId: number, reference: string) => Promise<ContentCapability>, versionIds: readonly number[], usfms: readonly string[], concurrency = 2): Promise<number> {
+  const pairs = usfms.flatMap((usfm) => versionIds.map((versionId) => ({ versionId, usfm })));
+  let index = 0; let done = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, pairs.length) }, async () => {
+    while (index < pairs.length) {
+      const pair = pairs[index++];
+      try { await resolve(pair.versionId, pair.usfm); done++; } catch { /* best effort */ }
+    }
+  }));
+  return done;
 }
