@@ -35,12 +35,19 @@ function storageKey(memberId: string): string {
   return `qingmu.journal.folder.v1.m-${encoded || 'empty'}`;
 }
 
-/** Loaded on demand: a native module imported at the top of a screen must exist before it renders. */
+/**
+ * Loaded on demand from the LEGACY entry point, which is where this lives in SDK 56.
+ *
+ * `expo-file-system` now exports a new file API from its main entry, and folder access granted by
+ * the user is not part of it — that is only under `expo-file-system/legacy`. Importing the main
+ * entry gets a module with no StorageAccessFramework, and since choosing a folder fails softly by
+ * design, the symptom is a picker that never opens and a message saying nothing was chosen.
+ */
 async function storageAccess() {
-  const fileSystem = await import('expo-file-system');
-  const saf = (fileSystem as unknown as { StorageAccessFramework?: Record<string, Function> }).StorageAccessFramework;
+  const legacy = await import('expo-file-system/legacy');
+  const saf = (legacy as unknown as { StorageAccessFramework?: Record<string, Function> }).StorageAccessFramework;
   if (!saf) throw new Error('STORAGE_ACCESS_UNAVAILABLE');
-  return { saf, fileSystem: fileSystem as unknown as Record<string, Function> };
+  return { saf, fileSystem: legacy as unknown as Record<string, Function> };
 }
 
 export function createJournalFolderMirror(storage: ReaderPreferencesStorage): JournalFolderMirror {
@@ -60,11 +67,13 @@ export function createJournalFolderMirror(storage: ReaderPreferencesStorage): Jo
       try {
         const { saf } = await storageAccess();
         const permission = await saf.requestDirectoryPermissionsAsync!(null) as { granted: boolean; directoryUri: string };
-        if (!permission?.granted) return null;
+        if (!permission?.granted) return null; // the member backed out of the picker
         folders.set(memberId, permission.directoryUri);
         await storage.setItem(storageKey(memberId), permission.directoryUri);
         return permission.directoryUri;
-      } catch {
+      } catch (error) {
+        // Distinguishable in logcat: a missing API and a cancelled picker look identical otherwise.
+        console.warn('[journal-mirror] folder picker failed', error);
         return null;
       }
     },

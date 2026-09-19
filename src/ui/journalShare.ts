@@ -17,7 +17,10 @@ const FILE_NAME = 'qingmu-journal.md';
 
 export async function shareJournalExport(document: string): Promise<ShareOutcome> {
   try {
-    const [sharing, fileSystem] = await Promise.all([import('expo-sharing'), import('expo-file-system')]);
+    // The legacy entry point, because SDK 56's new file API does not expose cacheDirectory or
+    // writeAsStringAsync. Importing the main entry silently yields neither, and the only symptom is
+    // that the file route never runs and export quietly degrades to sharing plain text.
+    const [sharing, fileSystem] = await Promise.all([import('expo-sharing'), import('expo-file-system/legacy')]);
     if (await sharing.isAvailableAsync()) {
       // ASCII filename on purpose: share targets mangle CJK names, and a file called ??????.md is
       // worse than one called qingmu-journal.md.
