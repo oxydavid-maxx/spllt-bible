@@ -5,7 +5,8 @@
 ## Source與release
 
 - Public source：[oxydavid-maxx/spllt-bible](https://github.com/oxydavid-maxx/spllt-bible)，branch `codex/qm-gamification-v1`。
-- 產品程式基準是`9e6768b140f6bf977155127e1b5c1d31080daa5c`（0.2.8/code10：朗讀中經節灰底、目標獎品置頂＋獎品架、圖表快取、提醒預設 06:30 與滾輪）。
+- 產品程式基準是`8c29b89`（0.2.12/code14：朗讀快取綁 validUntil＋4 min 預熱、註腳自家面板、GestureHandlerRootView、積分頁 compact 區塊；沿用 0.2.8 的經節灰底、目標獎品、提醒 06:30）。
+- 0.2.8 基準 `9e6768b140f6bf977155127e1b5c1d31080daa5c`。
 - `main`與branch同步至`c239a3e`；最新release tag `android-beta-2026-09-18-reading-highlight`（前一版`android-beta-2026-09-18-reading-calendar`）（前一版`android-beta-2026-09-17-continuous-reading`）。
 - 正式release必須維持原package、release signer、四ABI、production audio enabled、fixture disabled、QA audio disabled，並從APK本體驗證manifest/signature/ABIs/embedded flags，不能只回報shell env。
 
