@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useJournalEntry } from './useJournalEntry';
 import { theme } from './Theme';
@@ -32,15 +32,13 @@ export interface JournalPanelProps {
 export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, newOperationId, onClose, pendingQuote, onQuoteConsumed, mirror }: JournalPanelProps) {
   const entry = useJournalEntry({ memberId, planId, taskDate, newOperationId, mirror });
 
-  // A verse copied in the reader lands here. Appending during render would be a side effect in the
-  // middle of one, so it waits for the commit and then clears the pending slot.
-  const consumed = useRef<string | null>(null);
-  useEffect(() => {
-    if (!visible || !pendingQuote || consumed.current === pendingQuote) return;
-    consumed.current = pendingQuote;
-    entry.appendQuote(pendingQuote);
-    onQuoteConsumed?.();
-  }, [visible, pendingQuote, entry, onQuoteConsumed]);
+  // A verse copied in the reader is OFFERED here, not inserted.
+  //
+  // The panel covers the reader while it is open, so nobody selects a verse with it up; the real
+  // sequence is read, copy, then open the journal. Inserting whatever was last copied would then
+  // drop text into the page of someone who only wanted it on their clipboard. One tap, no surprise.
+  const [offered, setOffered] = useState<string | null>(null);
+  useEffect(() => { if (visible && pendingQuote) setOffered(pendingQuote); }, [visible, pendingQuote]);
 
   const close = () => { entry.flushNow(); onClose(); };
 
@@ -66,6 +64,9 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
             style={styles.input}
             textAlignVertical="top"
           />
+          {offered ? <Pressable accessibilityRole="button" accessibilityLabel="插入剛複製的經文" onPress={() => { entry.appendQuote(offered); setOffered(null); onQuoteConsumed?.(); }} style={styles.quoteOffer}>
+            <Text numberOfLines={2} style={styles.quoteOfferText}>{`插入剛複製的經文：${offered}`}</Text>
+          </Pressable> : null}
           {entry.conflict
             ? <View style={styles.conflict}>
                 <Text style={styles.conflictText}>這一天的日記在其他裝置上已更新，你的內容尚未上傳。</Text>
@@ -91,6 +92,8 @@ const styles = StyleSheet.create({
   doneText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
   body: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, gap: theme.spacing.sm },
   input: { minHeight: 180, color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  quoteOffer: { minHeight: theme.control.tap, justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs },
+  quoteOfferText: { color: theme.colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   note: { color: theme.colors.muted, fontSize: theme.type.caption.size },
   conflict: { gap: theme.spacing.xs },
   conflictText: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },

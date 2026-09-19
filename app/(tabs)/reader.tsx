@@ -337,7 +337,9 @@ export default function ReaderScreen() {
       fullscreen
       onCanvasTap={chrome.toggleTools}
       onCanvasScroll={chrome.hideTools}
-      onVerseCopied={(quote) => { if (chrome.journalOpen) setPendingQuote(quote); }}
+      // Held whether or not the journal is open: the panel covers the reader, so a verse is always
+      // copied with it closed. The panel offers it on the next open rather than inserting it.
+      onVerseCopied={(quote) => setPendingQuote(quote)}
       narrationSpeed={narrationSpeed}
       renderScreen={(reader, controls) => (
         <FullscreenReaderLayout
