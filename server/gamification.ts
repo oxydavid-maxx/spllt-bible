@@ -627,6 +627,20 @@ export function getRedemptions(db: DatabaseSync, memberId: string): Array<Record
   }));
 }
 
+/**
+ * The single place a `rewards` row is born.
+ *
+ * Two paths create rewards now — a 輔導 adding one directly, and a 輔導 approving a student's
+ * nomination — and a prize created down one path must be indistinguishable from the other. Sharing
+ * the insert is what guarantees that rather than hoping two call sites stay in step.
+ */
+export function insertReward(db: DatabaseSync, actorMemberId: string, name: string, costPoints: number, nowMs: number): Record<string, unknown> {
+  const rewardId = randomUUID();
+  db.prepare('INSERT INTO rewards(reward_id, name, cost_points, active, revision, created_at, updated_at, updated_by) VALUES(?,?,?,?,?,?,?,?)')
+    .run(rewardId, name.trim(), costPoints, 1, 1, nowMs, nowMs, actorMemberId);
+  return { rewardId, name: name.trim(), costPoints, active: true, revision: 1 };
+}
+
 export function createReward(db: DatabaseSync, actorMemberId: string, operationId: string, name: string, costPoints: number, options: GamificationDatabaseOptions = {}): Record<string, unknown> | GamificationError {
   const payload = { name, costPoints };
   const prior = readMutationReceipt(db, actorMemberId, operationId, payload);
@@ -634,9 +648,8 @@ export function createReward(db: DatabaseSync, actorMemberId: string, operationI
   if (!name.trim() || !Number.isSafeInteger(costPoints) || costPoints <= 0) return { status: 400, code: 'INVALID_REWARD' };
   const now = nowMs(undefined, options.now ?? (() => new Date()));
   return transaction(db, () => {
-    const rewardId = randomUUID();
-    db.prepare('INSERT INTO rewards(reward_id, name, cost_points, active, revision, created_at, updated_at, updated_by) VALUES(?,?,?,?,?,?,?,?)').run(rewardId, name.trim(), costPoints, 1, 1, now, now, actorMemberId);
-    const result = { rewardId, name: name.trim(), costPoints, active: true, revision: 1 };
+    const result = insertReward(db, actorMemberId, name, costPoints, now);
+    const rewardId = result.rewardId as string;
     writeMutationReceipt(db, actorMemberId, operationId, 'REWARD_CREATE', payload, 'reward', rewardId, result, now);
     return result;
   });
