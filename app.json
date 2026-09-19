@@ -2,7 +2,7 @@
   "expo": {
     "name": "青牧青年",
     "slug": "qingmu-youth",
-    "version": "0.2.11",
+    "version": "0.3.0",
     "orientation": "portrait",
     "scheme": "org.qingmu.youth",
     "userInterfaceStyle": "automatic",
@@ -11,6 +11,7 @@
       "expo-sqlite",
       "./plugins/withQingmuReleaseSigning",
       "./plugins/withQingmuNetworkSecurity",
+      "./plugins/withQingmuReleaseSlimming",
       [
         "expo-camera",
         {
@@ -27,7 +28,7 @@
     ],
     "android": {
       "package": "org.qingmu.youth",
-      "versionCode": 13,
+      "versionCode": 15,
       "adaptiveIcon": {
         "backgroundColor": "#1E5C4B"
       }
