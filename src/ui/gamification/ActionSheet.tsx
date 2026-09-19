@@ -4,10 +4,18 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../Theme';
 
 export interface ActionSheetAction { label: string; onPress: () => void; destructive?: boolean; disabled?: boolean; }
-export function ActionSheet({ visible, title, actions, onClose, children }: { visible: boolean; title: string; actions?: ActionSheetAction[]; onClose: () => void; children?: React.ReactNode }) {
+/**
+ * `dismissOnOutsideTap` is per sheet, not global, and the default is the safe one.
+ *
+ * A sheet that only shows things should close when you tap away; that is what people expect and it
+ * was missing. But some of these hold work in progress — a redemption being confirmed in front of a
+ * student, a reason being typed, a camera mid-scan — and closing those on a stray tap loses what
+ * someone was doing. Each caller says which kind it is.
+ */
+export function ActionSheet({ visible, title, actions, onClose, children, dismissOnOutsideTap = false }: { visible: boolean; title: string; actions?: ActionSheetAction[]; onClose: () => void; children?: React.ReactNode; dismissOnOutsideTap?: boolean }) {
   const androidKeyboardVisible = useAndroidKeyboardVisible();
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} accessibilityViewIsModal>
-    <SafeAreaProvider><KeyboardAvoidingView style={styles.keyboardRoot} behavior="padding" enabled={Platform.OS !== 'android' || androidKeyboardVisible}><View style={styles.scrim}><SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']}><View style={styles.heading}><Text style={styles.title}>{title}</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉操作" onPress={onClose} style={styles.close}><Text style={styles.closeText}>×</Text></Pressable></View><ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">{children}{actions?.map((action) => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} disabled={action.disabled} onPress={action.onPress} style={[styles.action, action.destructive && styles.destructive, action.disabled && styles.disabled]}><Text style={[styles.actionText, action.destructive && styles.destructiveText]}>{action.label}</Text></Pressable>)}</ScrollView></SafeAreaView></View></KeyboardAvoidingView></SafeAreaProvider>
+    <SafeAreaProvider><KeyboardAvoidingView style={styles.keyboardRoot} behavior="padding" enabled={Platform.OS !== 'android' || androidKeyboardVisible}><Pressable accessibilityRole={dismissOnOutsideTap ? 'button' : 'none'} accessibilityLabel={dismissOnOutsideTap ? `關閉${title}` : undefined} onPress={dismissOnOutsideTap ? onClose : undefined} style={styles.scrim}><Pressable onPress={() => undefined}><SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']}><View style={styles.heading}><Text style={styles.title}>{title}</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉操作" onPress={onClose} style={styles.close}><Text style={styles.closeText}>×</Text></Pressable></View><ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">{children}{actions?.map((action) => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} disabled={action.disabled} onPress={action.onPress} style={[styles.action, action.destructive && styles.destructive, action.disabled && styles.disabled]}><Text style={[styles.actionText, action.destructive && styles.destructiveText]}>{action.label}</Text></Pressable>)}</ScrollView></SafeAreaView></Pressable></Pressable></KeyboardAvoidingView></SafeAreaProvider>
   </Modal>;
 }
 function useAndroidKeyboardVisible(): boolean {

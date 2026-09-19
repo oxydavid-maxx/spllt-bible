@@ -14,6 +14,7 @@ export function useReaderChrome() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [journalOpen, setJournalOpen] = useState(false);
   useFocusEffect(useCallback(() => {
     setFocused(true);
     return () => {
@@ -21,6 +22,7 @@ export function useReaderChrome() {
       setMoreOpen(false);
       setAudioOpen(false);
       setInfoOpen(false);
+      setJournalOpen(false);
     };
   }, []));
 
@@ -34,8 +36,10 @@ export function useReaderChrome() {
   const closeAudio = useCallback(() => { setAudioOpen(false); showTools(); }, [showTools]);
   const openInfo = useCallback(() => { setInfoOpen(true); setMoreOpen(false); setAudioOpen(false); showTools(); }, [showTools]);
   const closeInfo = useCallback(() => { setInfoOpen(false); showTools(); }, [showTools]);
-  return { focused, toolsVisible: focused, moreOpen, audioOpen, infoOpen, toggleTools, hideTools, showTools,
-    openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo };
+  const openJournal = useCallback(() => { setJournalOpen(true); setMoreOpen(false); setAudioOpen(false); setInfoOpen(false); showTools(); }, [showTools]);
+  const closeJournal = useCallback(() => { setJournalOpen(false); showTools(); }, [showTools]);
+  return { focused, toolsVisible: focused, moreOpen, audioOpen, infoOpen, journalOpen, toggleTools, hideTools, showTools,
+    openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo, openJournal, closeJournal };
 }
 export interface FullscreenReaderLayoutProps {
   reader: ReactNode;
@@ -49,8 +53,10 @@ export interface FullscreenReaderLayoutProps {
   versionOptions?: Array<{ versionId: number; translationName: string; languageTag: string }>;
   onSelectVersion?: (versionId: number) => void | Promise<void>;
   metadata: { translationName: string; publisher: string; copyrightNotice: string; officialUrl: string; audioAttribution?: string } | null;
+  /** Rendered beside the reader, never above it, so typing does not repaint the chapter. */
+  journal?: ReactNode;
 }
-export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, versionId, references, onSelectReference, onExit, versionOptions, onSelectVersion, metadata }: FullscreenReaderLayoutProps) {
+export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, versionId, references, onSelectReference, onExit, versionOptions, onSelectVersion, metadata, journal }: FullscreenReaderLayoutProps) {
   const insets = useSafeAreaInsets();
   const [versionPageOpen, setVersionPageOpen] = useState(false);
   const curatedVersions = versionOptions !== undefined && onSelectVersion !== undefined;
@@ -83,15 +89,17 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
             const selected = isChapterInDailyReference(chapterUsfm, reference);
             return <Pressable key={`${index}:${reference}`} accessibilityRole="button" accessibilityLabel={`前往${formatReferenceListZhTw([reference])}`} accessibilityState={{ selected }} onPress={() => onSelectReference(index)} style={[styles.referenceButton, selected && styles.referenceSelected]}><Text style={[styles.referenceLabel, selected && styles.referenceLabelSelected]}>{formatReferenceListZhTw([reference])}</Text></Pressable>;
           })}
+          {journal ? <Pressable accessibilityRole="button" accessibilityLabel="靈修日記" onPress={chrome.openJournal} style={styles.iconButton}><Text style={styles.icon}>✎</Text></Pressable> : null}
           <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} style={styles.iconButton}><Text style={styles.icon}>⋯</Text></Pressable>
         </View>
       </SafeAreaView>
       <ChapterAudioAutoplayNotice active={chrome.focused} />
       <View style={[styles.reader, { paddingTop: 0, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]} onTouchEnd={controls.ready ? undefined : chrome.toggleTools}>{reader}</View>
+      {journal}
       <Modal transparent animationType="fade" visible={chrome.moreOpen} onRequestClose={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore}>
-        {chrome.moreOpen && <View style={styles.scrim}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
+        {chrome.moreOpen && <Pressable accessibilityRole="button" accessibilityLabel="關閉更多閱讀工具" onPress={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore} style={styles.scrim}><Pressable onPress={() => undefined}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
           {versionPageOpen && curatedVersions ? <CuratedVersionChoices options={versionOptions} versionId={versionId} onSelect={onSelectVersion} onBack={() => setVersionPageOpen(false)} onClose={closeVersionPage} /> : <>
-          <View style={styles.sheetHeader}><Text accessibilityRole="header" style={styles.heading}>更多閱讀工具</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉更多閱讀工具" onPress={chrome.closeMore} style={styles.iconButton}><Text style={styles.close}>關閉</Text></Pressable></View>
+          <View style={styles.sheetHeader}><Text accessibilityRole="header" style={styles.heading}>更多閱讀工具</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={chrome.closeMore} style={styles.iconButton}><Text style={styles.close}>關閉</Text></Pressable></View>
           <ScrollView contentContainerStyle={styles.menuContent}>
             <MenuButton label="選擇譯本" disabled={!curatedVersions && !controls.ready} onPress={() => curatedVersions ? setVersionPageOpen(true) : openOfficial(controls.openVersionPicker)} />
             <MenuButton label="調整字體" disabled={!controls.ready} onPress={() => openOfficial(controls.openSettings)} />
@@ -102,15 +110,15 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
             <MenuButton label="版本資訊" onPress={chrome.openInfo} />
           </ScrollView>
           </>}
-        </SafeAreaView></View>}
+        </SafeAreaView></Pressable></Pressable>}
       </Modal>
       <Modal transparent animationType="fade" visible={chrome.infoOpen} onRequestClose={chrome.closeInfo}>
-        {chrome.infoOpen && <View style={styles.scrim}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
-          <View style={styles.sheetHeader}><Text accessibilityRole="header" style={styles.heading}>版本資訊</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉版本資訊" onPress={chrome.closeInfo} style={styles.iconButton}><Text style={styles.close}>關閉</Text></Pressable></View>
+        {chrome.infoOpen && <Pressable accessibilityRole="button" accessibilityLabel="關閉版本資訊" onPress={chrome.closeInfo} style={styles.scrim}><Pressable onPress={() => undefined}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
+          <View style={styles.sheetHeader}><Text accessibilityRole="header" style={styles.heading}>版本資訊</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={chrome.closeInfo} style={styles.iconButton}><Text style={styles.close}>關閉</Text></Pressable></View>
           <ScrollView contentContainerStyle={styles.menuContent}>
             {metadata ? <><Text style={styles.heading}>{metadata.translationName}</Text><Text selectable style={styles.body}>{metadata.publisher}</Text><Text selectable style={styles.body}>{metadata.copyrightNotice}</Text>{metadata.audioAttribution && <Text selectable style={styles.body}>{metadata.audioAttribution}</Text>}{metadata.officialUrl && <MenuButton label="開啟官方版本資訊" onPress={() => { void Linking.openURL(metadata.officialUrl).catch(() => {}); }} />}</> : <Text style={styles.body}>版本資訊尚未載入。</Text>}
           </ScrollView>
-        </SafeAreaView></View>}
+        </SafeAreaView></Pressable></Pressable>}
       </Modal>
     </View>
   );

@@ -282,12 +282,26 @@ describe('fullscreen reader layout and chrome', () => {
     expect(native.setNavigationHidden).toHaveBeenLastCalledWith(false);
   });
 
+  it('closes a sheet when you tap outside it, which is what people expect and what was missing', async () => {
+    await mount();
+    act(() => { chrome.showTools(); button('更多閱讀工具').props.onPress(); });
+    expect(chrome.moreOpen).toBe(true);
+    act(() => { button('關閉更多閱讀工具').props.onPress(); });
+    expect(chrome.moreOpen).toBe(false);
+
+    act(() => { chrome.openInfo(); });
+    expect(chrome.infoOpen).toBe(true);
+    act(() => { button('關閉版本資訊').props.onPress(); });
+    expect(chrome.infoOpen).toBe(false);
+  });
+
   it('keeps only version, font settings, other chapters and information in More', async () => {
     await mount();
     act(() => { chrome.showTools(); button('更多閱讀工具').props.onPress(); });
     expect(chrome.moreOpen).toBe(true);
     const menu = all('Modal')[0];
-    expect(menu.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual(['關閉更多閱讀工具', '選擇譯本', '調整字體', '選擇其他章節', '版本資訊']);
+    // The backdrop closes the sheet, an unlabelled wrapper swallows taps inside it, then the controls.
+    expect(menu.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual(['關閉更多閱讀工具', undefined, '關閉', '選擇譯本', '調整字體', '選擇其他章節', '版本資訊']);
     act(() => { button('選擇譯本').props.onPress(); });
     expect(controls.openVersionPicker).toHaveBeenCalledOnce();
     expect(chrome.moreOpen).toBe(false);
