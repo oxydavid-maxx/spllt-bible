@@ -9,6 +9,7 @@ import { createSessionToken } from './session';
 import { parseCapabilityQuery } from './contentCapabilities';
 import { createChapterAudioResolver, prewarmChapterAudio } from './genericChapterAudio';
 import { getMemberGroupProfile } from './groups';
+import { ensureJournalSchema, getJournalEntry, listJournalEntries, saveJournalEntry } from './journal';
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
 import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
@@ -105,7 +106,7 @@ function isGamificationError(value: unknown): value is GamificationError {
 }
 
 function isGamificationPath(pathname: string): boolean {
-  return pathname === '/api/me/profile' || pathname.startsWith('/api/me/reading-days') || pathname.startsWith('/api/me/completions/') || pathname.startsWith('/api/me/reward-target') || pathname.startsWith('/api/me/redemptions') || pathname.startsWith('/api/points/') || pathname === '/api/rewards' || pathname.startsWith('/api/friends/') || pathname.startsWith('/api/admin/');
+  return pathname === '/api/me/profile' || pathname.startsWith('/api/me/reading-days') || pathname.startsWith('/api/me/completions/') || pathname.startsWith('/api/me/reward-target') || pathname.startsWith('/api/me/redemptions') || pathname.startsWith('/api/me/journal') || pathname.startsWith('/api/points/') || pathname === '/api/rewards' || pathname.startsWith('/api/friends/') || pathname.startsWith('/api/admin/');
 }
 
 function parseBody(body: string | undefined): Record<string, unknown> {
@@ -277,6 +278,7 @@ function handleProgress(db: DatabaseSync, viewerId: string, date: string, policy
 
 export function createApiHandler(options: ApiHandlerOptions) {
   ensureGamificationSchema(options.db.db);
+  ensureJournalSchema(options.db.db);
   if (options.scheduleDates && options.scheduleDates.length > 0) {
     // Existing tests and local deployments can narrow the aggregate period without
     // replacing the canonical reading-day source. Dates already present retain their
@@ -487,6 +489,29 @@ export function createApiHandler(options: ApiHandlerOptions) {
         if (scope !== 'me' && scope !== 'all') delete profile.private;
         if (scope === 'all' && !adminMembers.includes(auth.memberId)) delete profile.private;
         return gamificationJson(200, profile as unknown as Record<string, unknown>);
+      }
+      // The journal family takes no member parameter, by design: there is no shape of request
+      // that names someone else, so there is no access rule to get wrong. See server/journal.ts.
+      if (url.pathname === '/api/me/journal' && request.method === 'GET') {
+        const entries = listJournalEntries(options.db.db, auth.memberId, url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '');
+        return isGamificationError(entries) ? gamificationError(entries) : gamificationJson(200, entries);
+      }
+      if (url.pathname.startsWith('/api/me/journal/')) {
+        const taskDate = decodeURIComponent(url.pathname.slice('/api/me/journal/'.length));
+        if (request.method === 'GET') {
+          const entry = getJournalEntry(options.db.db, auth.memberId, taskDate);
+          return isGamificationError(entry) ? gamificationError(entry) : gamificationJson(200, entry as unknown as Record<string, unknown>);
+        }
+        if (request.method === 'PUT') {
+          const payload = parseBody(request.body);
+          const saved = saveJournalEntry(options.db.db, auth.memberId, taskDate, {
+            operationId: String(payload.operationId ?? ''),
+            expectedRevision: typeof payload.expectedRevision === 'number' ? payload.expectedRevision : -1,
+            planId: String(payload.planId ?? ''),
+            body: typeof payload.body === 'string' ? payload.body : '',
+          }, now().getTime());
+          return isGamificationError(saved) ? gamificationError(saved) : gamificationJson(200, saved);
+        }
       }
       if (request.method === 'GET' && url.pathname === '/api/me/redemptions') {
         // Projected, not filtered: see projectMemberRedemption for why the acting administrator

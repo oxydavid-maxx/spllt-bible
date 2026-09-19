@@ -4,6 +4,7 @@ import { ensureMeetingSchema } from './meetingSchedules';
 import { LOCAL_SCHEMA } from '../src/storage/schema';
 import { buildCompletionOperationFingerprint } from './operationFingerprint';
 import { defaultReadingDays, ensureGamificationSchema, seedReadingDays, type ReadingDaySeed } from './gamification';
+import { ensureJournalSchema } from './journal';
 
 export interface ServerMember {
   id: string;
@@ -200,6 +201,7 @@ export function createDatabase(options: { filename?: string; members?: ServerMem
   ensureMeetingSchema(db);
   ensureMobileSessionSchema(db);
   ensureGamificationSchema(db);
+  ensureJournalSchema(db);
   const readingDayCount = Number((db.prepare('SELECT COUNT(*) AS count FROM reading_days').get() as { count: number }).count);
   if (readingDayCount === 0) seedReadingDays(db, options.readingDays ?? defaultReadingDays());
   const insert = db.prepare(

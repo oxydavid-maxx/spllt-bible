@@ -123,7 +123,7 @@ function throwError(error: GamificationError): never {
   throw Object.assign(new Error(error.code), { gamification: error });
 }
 
-function transaction<T>(db: DatabaseSync, run: () => T): T {
+export function transaction<T>(db: DatabaseSync, run: () => T): T {
   db.exec('BEGIN IMMEDIATE');
   try {
     const result = run();
@@ -549,14 +549,14 @@ export function getRewards(db: DatabaseSync): Array<{ rewardId: string; name: st
   return (db.prepare('SELECT reward_id, name, cost_points, active, revision FROM rewards WHERE active = 1 ORDER BY cost_points, name, reward_id').all() as Array<{ reward_id: string; name: string; cost_points: number; active: number; revision: number }>).map((row) => ({ rewardId: row.reward_id, name: row.name, costPoints: row.cost_points, active: true, revision: row.revision }));
 }
 
-function readReceipt(db: DatabaseSync, actorMemberId: string, operationId: string, payload: unknown): { result: Record<string, unknown> } | GamificationError | null {
+export function readMutationReceipt(db: DatabaseSync, actorMemberId: string, operationId: string, payload: unknown): { result: Record<string, unknown> } | GamificationError | null {
   const row = db.prepare('SELECT payload_hash, result_json FROM mutation_receipts WHERE actor_member_id = ? AND operation_id = ?').get(actorMemberId, operationId) as { payload_hash: string; result_json: string } | undefined;
   if (!row) return null;
   if (row.payload_hash !== payloadDigest(payload)) return { status: 409, code: 'OPERATION_ID_REUSED' };
   return { result: JSON.parse(row.result_json) as Record<string, unknown> };
 }
 
-function writeReceipt(db: DatabaseSync, actorMemberId: string, operationId: string, operationType: string, payload: unknown, entityType: string, entityId: string, result: Record<string, unknown>, now: number): void {
+export function writeMutationReceipt(db: DatabaseSync, actorMemberId: string, operationId: string, operationType: string, payload: unknown, entityType: string, entityId: string, result: Record<string, unknown>, now: number): void {
   db.prepare(`INSERT INTO mutation_receipts(actor_member_id, operation_id, operation_type, payload_hash, entity_type, entity_id, result_json, created_at)
     VALUES(?,?,?,?,?,?,?,?)`).run(actorMemberId, operationId, operationType, payloadDigest(payload), entityType, entityId, JSON.stringify(result), now);
 }
@@ -573,7 +573,7 @@ export function issueFriendToken(db: DatabaseSync, ownerMemberId: string, option
 export function claimFriend(db: DatabaseSync, actorMemberId: string, operationId: string, token: string, options: GamificationDatabaseOptions = {}): Record<string, unknown> | GamificationError {
   if (!memberEnabled(db, actorMemberId)) return { status: 401, code: 'AUTH_INVALID' };
   const payload = { token };
-  const prior = readReceipt(db, actorMemberId, operationId, payload);
+  const prior = readMutationReceipt(db, actorMemberId, operationId, payload);
   if (prior) return 'result' in prior ? prior.result : prior;
   const now = nowMs(undefined, options.now ?? (() => new Date()));
   return transaction(db, () => {
@@ -584,7 +584,7 @@ export function claimFriend(db: DatabaseSync, actorMemberId: string, operationId
     if (!pair) return { status: 409, code: 'SELF_FRIEND_NOT_ALLOWED' };
     const inserted = db.prepare('INSERT INTO friendships(member_low, member_high, created_at, created_by, operation_id) VALUES(?,?,?,?,?) ON CONFLICT(member_low, member_high) DO NOTHING').run(pair.memberLow, pair.memberHigh, now, actorMemberId, operationId);
     const result = { memberId: row.owner_member_id, friendshipCreated: Number(inserted.changes) === 1, createdAt: now };
-    writeReceipt(db, actorMemberId, operationId, 'FRIEND_CLAIM', payload, 'friendship', `${pair.memberLow}:${pair.memberHigh}`, result, now);
+    writeMutationReceipt(db, actorMemberId, operationId, 'FRIEND_CLAIM', payload, 'friendship', `${pair.memberLow}:${pair.memberHigh}`, result, now);
     return result;
   });
 }
@@ -629,7 +629,7 @@ export function getRedemptions(db: DatabaseSync, memberId: string): Array<Record
 
 export function createReward(db: DatabaseSync, actorMemberId: string, operationId: string, name: string, costPoints: number, options: GamificationDatabaseOptions = {}): Record<string, unknown> | GamificationError {
   const payload = { name, costPoints };
-  const prior = readReceipt(db, actorMemberId, operationId, payload);
+  const prior = readMutationReceipt(db, actorMemberId, operationId, payload);
   if (prior) return 'result' in prior ? prior.result : prior;
   if (!name.trim() || !Number.isSafeInteger(costPoints) || costPoints <= 0) return { status: 400, code: 'INVALID_REWARD' };
   const now = nowMs(undefined, options.now ?? (() => new Date()));
@@ -637,14 +637,14 @@ export function createReward(db: DatabaseSync, actorMemberId: string, operationI
     const rewardId = randomUUID();
     db.prepare('INSERT INTO rewards(reward_id, name, cost_points, active, revision, created_at, updated_at, updated_by) VALUES(?,?,?,?,?,?,?,?)').run(rewardId, name.trim(), costPoints, 1, 1, now, now, actorMemberId);
     const result = { rewardId, name: name.trim(), costPoints, active: true, revision: 1 };
-    writeReceipt(db, actorMemberId, operationId, 'REWARD_CREATE', payload, 'reward', rewardId, result, now);
+    writeMutationReceipt(db, actorMemberId, operationId, 'REWARD_CREATE', payload, 'reward', rewardId, result, now);
     return result;
   });
 }
 
 export function updateReward(db: DatabaseSync, actorMemberId: string, operationId: string, rewardId: string, input: { name?: string; costPoints?: number; active?: boolean; expectedRevision: number }, options: GamificationDatabaseOptions = {}): Record<string, unknown> | GamificationError {
   const payload = { rewardId, ...input };
-  const prior = readReceipt(db, actorMemberId, operationId, payload);
+  const prior = readMutationReceipt(db, actorMemberId, operationId, payload);
   if (prior) return 'result' in prior ? prior.result : prior;
   const now = nowMs(undefined, options.now ?? (() => new Date()));
   return transaction(db, () => {
@@ -658,7 +658,7 @@ export function updateReward(db: DatabaseSync, actorMemberId: string, operationI
     const revision = current.revision + 1;
     db.prepare('UPDATE rewards SET name=?, cost_points=?, active=?, revision=?, updated_at=?, updated_by=? WHERE reward_id=?').run(name, costPoints, active ? 1 : 0, revision, now, actorMemberId, rewardId);
     const result = { rewardId, name, costPoints, active, revision };
-    writeReceipt(db, actorMemberId, operationId, 'REWARD_UPDATE', payload, 'reward', rewardId, result, now);
+    writeMutationReceipt(db, actorMemberId, operationId, 'REWARD_UPDATE', payload, 'reward', rewardId, result, now);
     return result;
   });
 }
@@ -676,7 +676,7 @@ function currentRedemptionResult(db: DatabaseSync, cached: Record<string, unknow
 
 export function redeemReward(db: DatabaseSync, actorMemberId: string, input: { operationId: string; memberId: string; rewardId: string; expectedRewardRevision: number }, options: GamificationDatabaseOptions = {}): Record<string, unknown> | GamificationError {
   const payload = { memberId: input.memberId, rewardId: input.rewardId, expectedRewardRevision: input.expectedRewardRevision };
-  const prior = readReceipt(db, actorMemberId, input.operationId, payload);
+  const prior = readMutationReceipt(db, actorMemberId, input.operationId, payload);
   if (prior) return 'result' in prior ? currentRedemptionResult(db, prior.result) : prior;
   const now = nowMs(undefined, options.now ?? (() => new Date()));
   return transaction(db, () => {
@@ -691,14 +691,14 @@ export function redeemReward(db: DatabaseSync, actorMemberId: string, input: { o
       VALUES(?,?,?,?,?,?,?,?,?,?)`).run(redemptionId, input.memberId, input.rewardId, reward.name, reward.cost_points, reward.revision, 'COMPLETED', actorMemberId, now, input.operationId);
     db.prepare(`INSERT INTO wallet_entries(entry_id, member_id, kind, delta, redemption_id, operation_id, created_at) VALUES(?,?,?,?,?,?,?)`).run(randomUUID(), input.memberId, 'REDEMPTION_DEBIT', -reward.cost_points, redemptionId, input.operationId, now);
     const result = { redemptionId, memberId: input.memberId, rewardId: input.rewardId, rewardName: reward.name, costPoints: reward.cost_points, status: 'COMPLETED', redeemableBalance: balance - reward.cost_points };
-    writeReceipt(db, actorMemberId, input.operationId, 'REDEMPTION_CREATE', payload, 'redemption', redemptionId, result, now);
+    writeMutationReceipt(db, actorMemberId, input.operationId, 'REDEMPTION_CREATE', payload, 'redemption', redemptionId, result, now);
     return result;
   });
 }
 
 export function reverseRedemption(db: DatabaseSync, actorMemberId: string, redemptionId: string, operationId: string, reason: string, options: GamificationDatabaseOptions = {}): Record<string, unknown> | GamificationError {
   const payload = { redemptionId, reason };
-  const prior = readReceipt(db, actorMemberId, operationId, payload);
+  const prior = readMutationReceipt(db, actorMemberId, operationId, payload);
   if (prior) return 'result' in prior ? prior.result : prior;
   if (!reason.trim()) return { status: 400, code: 'REVERSAL_REASON_REQUIRED' };
   const now = nowMs(undefined, options.now ?? (() => new Date()));
@@ -709,7 +709,7 @@ export function reverseRedemption(db: DatabaseSync, actorMemberId: string, redem
     db.prepare('UPDATE redemptions SET status=?, reversed_by=?, reversed_at=?, reversal_reason=?, reversal_operation_id=? WHERE redemption_id=? AND status=\'COMPLETED\'').run('REVERSED', actorMemberId, now, reason.trim(), operationId, redemptionId);
     db.prepare(`INSERT INTO wallet_entries(entry_id, member_id, kind, delta, redemption_id, operation_id, created_at) VALUES(?,?,?,?,?,?,?)`).run(randomUUID(), redemption.member_id, 'REDEMPTION_REVERSAL', redemption.cost_points_snapshot, redemptionId, operationId, now);
     const result = { redemptionId, memberId: redemption.member_id, status: 'REVERSED', redeemableBalance: walletBalance(db, redemption.member_id) };
-    writeReceipt(db, actorMemberId, operationId, 'REDEMPTION_REVERSE', payload, 'redemption', redemptionId, result, now);
+    writeMutationReceipt(db, actorMemberId, operationId, 'REDEMPTION_REVERSE', payload, 'redemption', redemptionId, result, now);
     return result;
   });
 }
