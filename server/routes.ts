@@ -297,7 +297,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
     };
     const unref = (timer: unknown) => { (timer as { unref?: () => void }).unref?.(); };
     unref(setTimeout(warm, 3_000));
-    unref(setInterval(warm, 4 * 60 * 1000)); // inside the 5 min validity window, so first open is always warm
+    unref(setInterval(warm, 60 * 60 * 1000)); // well inside the cache window, so the first open of the day is warm
   }
   const sessions = { resolveDevice: (token: string) => resolveDeviceSession(options.db.db, token), isLegacyRevoked: (token: string) => isLegacySessionRevoked(options.db.db, token) };
   const remoteStatus = options.remoteReminderStatus ?? 'REMOTE_PENDING';

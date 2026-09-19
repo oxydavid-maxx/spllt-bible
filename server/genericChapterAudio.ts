@@ -10,7 +10,11 @@ export const CHAPTER_AUDIO_ENDPOINT = 'https://audio-bible.youversionapi.com/3.1
 // does not pay the 1–8 s upstream hop (the client re-confirms every 5 min against this cache).
 const CACHE_MS = 6 * 60 * 60 * 1000; // ceiling only: an entry never outlives its own validUntil (see cacheUntil)
 const CACHE_MARGIN_MS = 15_000; // hand the app a body that is still valid after the network hop
-const RECONFIRM_MS = 300_000; // Our refresh policy, never a claimed provider expiry.
+// Our own re-confirmation boundary, never a claimed provider expiry. Scripture text and the
+// recordings themselves do not change; the observed address is content-hashed and the CDN
+// itself states max-age=432000 (5 days). We re-confirm daily only so a catalogue change
+// (a withdrawn or replaced recording) cannot be served indefinitely from one observation.
+const RECONFIRM_MS = 24 * 60 * 60 * 1000;
 const MAX_ENTRIES = 128;
 const MAX_METADATA_BYTES = 2_000_000;
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
