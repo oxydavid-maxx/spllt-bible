@@ -7,6 +7,7 @@ import { buildFixtureModels } from '../../src/ui/routes';
 import { YouVersionReader } from '../../src/ui/YouVersionReader';
 import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
 import { JournalPanel } from '../../src/ui/JournalPanel';
+import { createJournalFolderMirror } from '../../src/services/journalFolderMirror';
 import { createReaderSpeedStore, DEFAULT_READER_SPEED, isReaderSpeed, type ReaderSpeed } from '../../src/services/readerSpeedPreference';
 import { formatReadingDateLabel } from '../../src/ui/ReadingDateNavigator';
 import { openQingmuReaderPositionStore, openQingmuRepository } from '../../src/storage/mobileDatabase';
@@ -43,6 +44,11 @@ export default function ReaderScreen() {
     setItem: (key, value) => SecureStore.setItemAsync(key, value),
   }));
   const [narrationSpeed, setNarrationSpeed] = useState<ReaderSpeed>(DEFAULT_READER_SPEED);
+  const [journalMirror] = useState(() => createJournalFolderMirror({
+    getItem: key => SecureStore.getItemAsync(key),
+    setItem: (key, value) => SecureStore.setItemAsync(key, value),
+  }));
+  useEffect(() => { void journalMirror.load(memberId); }, [journalMirror, memberId]);
   useEffect(() => {
     let current = true;
     void speedStore.load(memberId).then(() => { if (current) setNarrationSpeed(speedStore.getSpeed(memberId)); });
@@ -357,6 +363,7 @@ export default function ReaderScreen() {
             onClose={chrome.closeJournal}
             pendingQuote={pendingQuote}
             onQuoteConsumed={() => setPendingQuote(null)}
+            mirror={(taskDate, body) => { void journalMirror.write(memberId, taskDate, body); }}
           />}
           metadata={contentMetadata}
         />

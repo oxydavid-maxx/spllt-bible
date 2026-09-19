@@ -25,10 +25,12 @@ export interface JournalPanelProps {
   /** Set by the reader when a verse is copied while this panel is open. */
   pendingQuote?: string | null;
   onQuoteConsumed?: () => void;
+  /** Optional copy into the member's chosen folder; see journalFolderMirror. */
+  mirror?: (taskDate: string, body: string) => void;
 }
 
-export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, newOperationId, onClose, pendingQuote, onQuoteConsumed }: JournalPanelProps) {
-  const entry = useJournalEntry({ memberId, planId, taskDate, newOperationId });
+export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, newOperationId, onClose, pendingQuote, onQuoteConsumed, mirror }: JournalPanelProps) {
+  const entry = useJournalEntry({ memberId, planId, taskDate, newOperationId, mirror });
 
   // A verse copied in the reader lands here. Appending during render would be a side effect in the
   // middle of one, so it waits for the commit and then clears the pending slot.

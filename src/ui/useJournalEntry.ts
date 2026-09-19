@@ -43,6 +43,12 @@ export interface JournalEntryOptions {
   newOperationId: () => string;
   /** Injectable for tests; defaults to the shared device store. */
   openStore?: typeof openQingmuJournalStore;
+  /**
+   * Optional copy into a folder the member picked. Best effort by definition: the entry is already
+   * in the local store and on its way to the server before this runs, so a folder that has gone
+   * away must never cost somebody their writing.
+   */
+  mirror?: (taskDate: string, body: string) => void;
 }
 
 const blank = (memberId: string, planId: string, taskDate: string): JournalRecord => ({
@@ -54,8 +60,8 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
   // Callers pass these as inline lambdas, which is the natural way to write the call site. Holding
   // them in a ref keeps them out of every dependency array: a fresh function identity on each render
   // would otherwise re-run the load effect, which sets state, which renders again, forever.
-  const latest = useRef({ newOperationId: options.newOperationId, openStore: options.openStore ?? openQingmuJournalStore });
-  latest.current = { newOperationId: options.newOperationId, openStore: options.openStore ?? openQingmuJournalStore };
+  const latest = useRef({ newOperationId: options.newOperationId, openStore: options.openStore ?? openQingmuJournalStore, mirror: options.mirror });
+  latest.current = { newOperationId: options.newOperationId, openStore: options.openStore ?? openQingmuJournalStore, mirror: options.mirror };
 
   const ownerRef = useRef({ memberId, taskDate });
   if (ownerRef.current.memberId !== memberId || ownerRef.current.taskDate !== taskDate) {
@@ -75,6 +81,8 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
       memberId, planId, taskDate, body: draftRef.current, operationId: latest.current.newOperationId(), expectedRevision: 0,
     });
     if (owns()) setRecord(saved);
+    // After the local store has it, never before: the mirror is a copy of something already safe.
+    try { latest.current.mirror?.(taskDate, draftRef.current); } catch { /* a copy failing is not a save failing */ }
   }, [memberId, planId, taskDate, owner]);
 
   const cancelPending = () => {
@@ -95,6 +103,7 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
       // Leaving with unsaved keystrokes is exactly how a debounce loses a day's writing.
       if (draftRef.current !== stored.body) {
         store.save({ memberId, planId, taskDate, body: draftRef.current, operationId: latest.current.newOperationId(), expectedRevision: 0 });
+        try { latest.current.mirror?.(taskDate, draftRef.current); } catch { /* see above */ }
       }
     };
   }, [memberId, planId, taskDate]);

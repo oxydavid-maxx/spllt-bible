@@ -101,6 +101,44 @@ describe('a day of writing survives every way it could be dropped', () => {
     expect(hook.view().body).toBe('我的想法\n「神賜給我們的不是膽怯的心」提後 1:7\n');
   });
 
+  it('copies each save to the mirror, after the local store already has it', () => {
+    const mirrored: Array<[string, string]> = [];
+    const seen: { view: ReturnType<typeof useJournalEntry> | null } = { view: null };
+    function Probe() {
+      seen.view = useJournalEntry({
+        memberId: 'member-self', planId: 'church-2026-09', taskDate: '2026-09-12',
+        newOperationId: () => `op-${++ids}`, openStore: () => store,
+        mirror: (taskDate, body) => { mirrored.push([taskDate, body]); },
+      });
+      return null;
+    }
+    act(() => { create(React.createElement(Probe)); });
+    act(() => { seen.view!.setBody('寫給自己看的'); });
+    act(() => { vi.advanceTimersByTime(2_000); });
+
+    expect(store.get({ memberId: 'member-self', taskDate: '2026-09-12' })?.body).toBe('寫給自己看的');
+    expect(mirrored).toEqual([['2026-09-12', '寫給自己看的']]);
+  });
+
+  // The mirror is a copy of something already saved. If copying it out could lose it, adding the
+  // feature would have made the journal less trustworthy than it was without it.
+  it('keeps the entry when the mirror throws', () => {
+    const seen: { view: ReturnType<typeof useJournalEntry> | null } = { view: null };
+    function Probe() {
+      seen.view = useJournalEntry({
+        memberId: 'member-self', planId: 'church-2026-09', taskDate: '2026-09-12',
+        newOperationId: () => `op-${++ids}`, openStore: () => store,
+        mirror: () => { throw new Error('folder went away'); },
+      });
+      return null;
+    }
+    act(() => { create(React.createElement(Probe)); });
+    act(() => { seen.view!.setBody('資料夾壞掉也不能掉字'); });
+    act(() => { vi.advanceTimersByTime(2_000); });
+
+    expect(store.get({ memberId: 'member-self', taskDate: '2026-09-12' })?.body).toBe('資料夾壞掉也不能掉字');
+  });
+
   it('reports a conflict so the panel can offer to save anyway, and never blanks the text', async () => {
     vi.useRealTimers();
     store.save({ memberId: 'member-self', planId: 'church-2026-09', taskDate: '2026-09-12', body: '這台寫的', operationId: 'seed', expectedRevision: 0 });

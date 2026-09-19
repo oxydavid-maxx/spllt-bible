@@ -8,6 +8,8 @@ import { createJournalApiClient } from '../../src/services/journalApiClient';
 import { openQingmuJournalStore } from '../../src/storage/mobileDatabase';
 import { buildJournalExport, countExportableDays } from '../../src/domain/journalExport';
 import { shareJournalExport } from '../../src/ui/journalShare';
+import * as SecureStore from 'expo-secure-store';
+import { createJournalFolderMirror } from '../../src/services/journalFolderMirror';
 import { JournalPanel } from '../../src/ui/JournalPanel';
 import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
 import { formatReadingDateFull } from '../../src/ui/ReadingDateNavigator';
@@ -38,6 +40,38 @@ export default function JournalScreen() {
   const [entries, setEntries] = useState<Array<{ taskDate: string; body: string }>>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [mirror] = useState(() => createJournalFolderMirror({
+    getItem: (key) => SecureStore.getItemAsync(key),
+    setItem: (key, value) => SecureStore.setItemAsync(key, value),
+  }));
+  const [mirrorFolder, setMirrorFolder] = useState<string | null>(null);
+  useEffect(() => {
+    let current = true;
+    void mirror.load(memberId).then(() => { if (current) setMirrorFolder(mirror.folderUri(memberId)); });
+    return () => { current = false; };
+  }, [mirror, memberId]);
+
+  // Writing the whole journal out at once: turning the setting on should bring what is already
+  // written with it, not just whatever gets typed from here on.
+  const mirrorEverything = async () => {
+    let written = 0;
+    let skipped = 0;
+    for (const entry of entries) {
+      const outcome = await mirror.write(memberId, entry.taskDate, entry.body);
+      if (outcome.ok) written += 1;
+      else if (outcome.reason === 'FOREIGN_FILE') skipped += 1;
+    }
+    setResult(skipped > 0
+      ? `已寫入 ${written} 天；${skipped} 天因為資料夾裡已經有同名檔案而跳過`
+      : `已寫入 ${written} 天到你選的資料夾`);
+  };
+
+  const chooseFolder = async () => {
+    const chosen = await mirror.choose(memberId);
+    if (!chosen) { setResult('沒有選擇資料夾'); return; }
+    setMirrorFolder(chosen);
+    await mirrorEverything();
+  };
 
   const reload = useCallback(() => {
     if (!memberId) { setEntries([]); return; }
@@ -98,6 +132,12 @@ export default function JournalScreen() {
       <Pressable accessibilityRole="button" accessibilityLabel="匯出靈修日記" onPress={() => { void exportAll(); }} style={styles.exportButton}>
         <Text style={styles.exportText}>匯出全部</Text>
       </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={mirrorFolder ? '更換同步資料夾' : '同時存到我選的資料夾'} onPress={() => { void chooseFolder(); }} style={styles.exportButton}>
+        <Text style={styles.exportText}>{mirrorFolder ? '更換同步資料夾' : '同時存到我選的資料夾'}</Text>
+      </Pressable>
+      {mirrorFolder ? <Pressable accessibilityRole="button" accessibilityLabel="停止同步到資料夾" onPress={() => { void mirror.forget(memberId).then(() => { setMirrorFolder(null); setResult('已停止同步；已經寫出去的檔案留在原地'); }); }} style={styles.stopButton}>
+        <Text style={styles.stopText}>停止同步</Text>
+      </Pressable> : null}
       {result ? <Text accessibilityLiveRegion="polite" style={styles.result}>{result}</Text> : null}
     </View> : null}
     {editing ? <JournalPanel
@@ -108,6 +148,7 @@ export default function JournalScreen() {
       dateLabel={formatReadingDateFull(editing)}
       newOperationId={randomUUID}
       onClose={() => setEditing(null)}
+      mirror={(taskDate, body) => { void mirror.write(memberId, taskDate, body); }}
     /> : null}
   </SafeAreaView>;
 }
@@ -124,5 +165,7 @@ const styles = StyleSheet.create({
   footer: { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.md, gap: theme.spacing.xs },
   exportButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.primary },
   exportText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  stopButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' },
+  stopText: { color: theme.colors.muted, fontSize: theme.type.caption.size },
   result: { color: theme.colors.muted, fontSize: theme.type.caption.size, textAlign: 'center' },
 });
