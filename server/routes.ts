@@ -34,7 +34,7 @@ import {
   updateReward,
   type GamificationError,
 } from './gamification';
-import { isScoreChartRange, isValidDateOnly, taipeiDate, type ScoreChartQuery } from '../src/domain/gamificationV1';
+import { isScoreChartRange, isValidDateOnly, projectMemberRedemption, taipeiDate, type ScoreChartQuery } from '../src/domain/gamificationV1';
 
 export interface ApiRequest {
   method: string;
@@ -474,7 +474,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
         return gamificationJson(200, profile as unknown as Record<string, unknown>);
       }
       if (request.method === 'GET' && url.pathname === '/api/me/redemptions') {
-        return gamificationJson(200, { redemptions: getRedemptions(options.db.db, auth.memberId) });
+        // Projected, not filtered: see projectMemberRedemption for why the acting administrator
+        // never appears in a member's own history.
+        return gamificationJson(200, { redemptions: getRedemptions(options.db.db, auth.memberId).map(projectMemberRedemption) });
       }
       if (request.method === 'PUT' && url.pathname === '/api/me/reward-target') {
         const body = parseBody(request.body);

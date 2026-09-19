@@ -133,3 +133,28 @@ export function canonicalMemberPair(first: string, second: string): { memberLow:
 export function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
+
+/**
+ * The member-facing half of a redemption row.
+ *
+ * `confirmedBy` and `reversedBy` are the ADMINISTRATOR's member id, and `reversalReason` is text an
+ * adult wrote about a young person. Those belong to the audit view, not to the member: a member is
+ * told what they redeemed and when, never which adult processed it. `rewardRevision` is catalogue
+ * bookkeeping they have no use for.
+ *
+ * This BUILDS a new object from an enumerated key list rather than deleting fields from the audit
+ * row, so a column added to `redemptions` later cannot ride along into a member's response. The key
+ * list is exactly what the client parser consumes (`parseRedemption` in the gamification API client),
+ * which is the property worth preserving: the wire shape and the consumed shape are the same thing.
+ */
+export function projectMemberRedemption(row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    redemptionId: row.redemptionId,
+    memberId: row.memberId,
+    rewardId: row.rewardId,
+    rewardName: row.rewardName,
+    costPoints: row.costPoints,
+    status: row.status,
+    confirmedAt: row.confirmedAt,
+  };
+}
