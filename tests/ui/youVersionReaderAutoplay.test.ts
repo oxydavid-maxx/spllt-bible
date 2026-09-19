@@ -8,7 +8,7 @@ const boundary = vi.hoisted(() => ({ context: null as any }));
 
 vi.mock('react-native', () => ({
   ActivityIndicator: primitive('ActivityIndicator'), BackHandler: { addEventListener: () => ({ remove() {} }) },
-  Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (value: unknown) => value },
+  Modal: primitive('Modal'), Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (value: unknown) => value },
   Text: primitive('Text'), View: primitive('View'),
 }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView') }));
@@ -49,6 +49,26 @@ async function mount(props: Partial<React.ComponentProps<typeof YouVersionReader
     await Promise.resolve();
   });
 }
+
+describe('YouVersionReader footnotes', () => {
+  it('shows provider footnotes in its own panel that closes from the scrim, the close button and the back request', async () => {
+    await mount();
+    const reader = () => renderer!.root.findAll((node) => String(node.type) === 'Reader')[0];
+    expect(typeof reader().props.onFootnotePress).toBe('function');
+    await act(async () => reader().props.onFootnotePress({ verseNum: '9', notes: ['<span>#的：或譯為</span>&nbsp;妝飾'], verseHtml: '', reference: '詩篇 96' }));
+    const text = () => JSON.stringify(renderer!.toJSON());
+    expect(text()).toContain('詩篇 96 第 9 節 註腳');
+    expect(text()).toContain('a. #的：或譯為 妝飾');
+    await act(async () => renderer!.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '關閉註腳')[0].props.onPress());
+    expect(text()).not.toContain('註腳');
+    await act(async () => reader().props.onFootnotePress({ verseNum: '2', notes: ['x'], verseHtml: '' }));
+    expect(text()).toContain('第 2 節 註腳');
+    await act(async () => renderer!.root.findAll((node) => String(node.type) === 'Modal')[0].props.onRequestClose());
+    expect(text()).not.toContain('註腳');
+    // The reader itself stays mounted through all of that.
+    expect(reader()).toBeDefined();
+  });
+});
 
 describe('YouVersionReader reading highlight', () => {
   it('passes the narrated verse to the reader only while the narrated chapter is the displayed one', async () => {

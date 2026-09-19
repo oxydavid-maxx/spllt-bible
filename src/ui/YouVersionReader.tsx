@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createYouVersionAdapter } from '../services/youVersionAdapter';
 import type { YouVersionReaderUiModule } from '../services/youVersionAdapter';
@@ -220,6 +220,10 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   const hasVersionMetadata = Boolean(contentMetadata);
   const hasConfig = Boolean(activeConfig);
   const [overlay, setOverlay] = useState<'settings' | 'chapter' | 'version' | null>(null);
+  // Footnotes are shown in our own modal: the SDK's footnote sheet could not be dismissed on device
+  // (backdrop tap and swipe never closed it, only the hardware back which also leaves the reader).
+  const [footnote, setFootnote] = useState<{ verseNum: string; notes: string[]; reference?: string } | null>(null);
+  const closeFootnote = useCallback(() => setFootnote(null), []);
   const closeOverlay = useCallback(() => setOverlay(null), []);
   useLayoutEffect(() => { setOverlay(null); }, [readerPreferences?.ownerId]);
   const ready = Boolean(readerModule && preferencesBinding.ready && hasConfig && allowTechnicalProbe && appKey && versionId !== null && !error);
@@ -285,16 +289,25 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
         {safeIndex < references.length - 1 && <Pressable accessibilityRole="button" accessibilityLabel="下一段指定經文" onPress={() => setActiveReferenceIndex(safeIndex + 1)} style={styles.nextButton}><Text style={styles.nextButtonText}>下一段 ›</Text></Pressable>}
       </View>}
         <View style={fullscreen ? styles.fullscreen : styles.passage}>
-          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} showToolbar={!fullscreen} theme="light" playingVerse={playingVerse && playingVerse.chapter === displayedChapter ? playingVerse.verse : null} />
+          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} onFootnotePress={async (data) => { setFootnote({ verseNum: data.verseNum, notes: data.notes, reference: data.reference }); }} showToolbar={!fullscreen} theme="light" playingVerse={playingVerse && playingVerse.chapter === displayedChapter ? playingVerse.verse : null} />
         </View>
       {!fullscreen && <Text style={styles.attribution} numberOfLines={2}>{attributionMode === 'compact'
         ? `${contentMetadata?.translationName ?? `YouVersion ${versionId}`}／${contentMetadata?.publisher ?? '官方內容'}`
         : `日期：${date}。指定範圍：${formatReferenceListZhTw(references)}。版本：${contentMetadata ? `${contentMetadata.translationName}（${contentMetadata.versionId}）／${contentMetadata.publisher}` : `YouVersion ${versionId}`}`}</Text>}
     </View>
   );
+  const footnotePanel = footnote ? <Modal transparent animationType="fade" visible onRequestClose={closeFootnote}>
+    <Pressable accessibilityRole="button" accessibilityLabel="關閉註腳" onPress={closeFootnote} style={styles.footnoteScrim}>
+      <Pressable onPress={() => undefined} style={styles.footnoteSheet} accessibilityViewIsModal>
+        <View style={styles.footnoteHeader}><Text accessibilityRole="header" style={styles.footnoteTitle}>{`${footnote.reference ?? formatReferenceZhTw(references[activeReferenceIndex] ?? '')} 第 ${footnote.verseNum} 節 註腳`}</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={closeFootnote} hitSlop={8} style={styles.footnoteClose}><Text style={styles.footnoteCloseText}>關閉</Text></Pressable></View>
+        <ScrollView contentContainerStyle={styles.footnoteBody}>{footnote.notes.map((note, index) => <Text key={index} style={styles.footnoteNote}>{`${String.fromCharCode(97 + index)}. ${stripHtml(note)}`}</Text>)}</ScrollView>
+      </Pressable>
+    </Pressable>
+  </Modal> : null;
   return (
     <ChapterAudioAutoplayContext.Provider value={autoplayContext}>
       <View style={styles.host}>
+        {footnotePanel}
         {/* The tracked SDK patch also carries apiHost across the native-to-DOM provider boundary. */}
         <Provider appKey={appKey} apiHost={resolveReaderContentApiHost(process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL)} locale="zh-Hant-TW" permittedVersionIds={allowedVersionIds}>
           <View style={styles.host} accessibilityElementsHidden={Boolean(overlay)} importantForAccessibility={overlay ? 'no-hide-descendants' : 'auto'}>
@@ -335,7 +348,20 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   );
 }
 
+/** Footnote HTML from the provider is a short inline fragment; show it as plain text. */
+export function stripHtml(value: string): string {
+  return value.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+}
+
 const styles = StyleSheet.create({
+  footnoteScrim: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
+  footnoteSheet: { maxHeight: '60%', backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, paddingBottom: theme.spacing.lg },
+  footnoteHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md },
+  footnoteTitle: { flex: 1, color: theme.colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
+  footnoteClose: { minHeight: theme.control.tap, minWidth: theme.control.tap, alignItems: 'center', justifyContent: 'center' },
+  footnoteCloseText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  footnoteBody: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, gap: theme.spacing.sm },
+  footnoteNote: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   host: { flex: 1, minHeight: 0 },
   fullscreen: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface },
   settingsHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2001, elevation: 20, backgroundColor: theme.colors.surface },
