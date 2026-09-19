@@ -125,6 +125,11 @@ export function ChapterAudioAutoplayNotice({ active = true }: { active?: boolean
 }
 
 /** The selection this component answers for. Identity, not a loose pair of strings. */
+/** Diagnostics stay off the product surface (R5) but reach logcat: a first-open failure the retry then clears is otherwise invisible to support. */
+function logUnavailable(chapterUsfm: string, versionId: number | null, outcome: CapabilityOutcome): void {
+  if (outcome.kind === 'unavailable') console.warn(`[chapter-audio] ${chapterUsfm} v${versionId ?? 'none'} ${outcome.status} retryable=${outcome.retryable} ${outcome.diagnostic ?? ''}`);
+}
+
 export function selectionKey(versionId: number | null, chapterUsfm: string): string {
   return `${versionId ?? 'none'}::${chapterUsfm.trim().toUpperCase()}`;
 }
@@ -241,7 +246,7 @@ export function ChapterAudioControls({
       if (outcome.kind === 'stale') return; // superseded; never applied
       if (applied) return;
       if (outcome.kind !== 'playable') replayRequest.current = null;
-      setAnswer({ key: selectionKey(versionId, chapterUsfm), sessionKey, outcome });
+      logUnavailable(chapterUsfm, versionId, outcome); setAnswer({ key: selectionKey(versionId, chapterUsfm), sessionKey, outcome });
     });
     return () => {
       applied = true;
@@ -476,6 +481,8 @@ export function ChapterAudioControls({
       // Expiry is a request to reconfirm this source, not a playback error. Keep
       // the paused binding mounted while the same coordinator refreshes metadata.
       const outcome = await coordinatorRef.current.request({ versionId, usfm: chapterUsfm });
+      // Diagnostics stay off the product surface (R5) but must reach logcat: a first-open failure that
+      // the retry then clears is otherwise invisible to support.
       if (playRequest.current !== operation || generation !== bindingGeneration.current
         || !scopeIsCurrent() || !authIsCurrent() || outcome.kind === 'stale') return;
       setFailure(null);
@@ -483,7 +490,7 @@ export function ChapterAudioControls({
       if (outcome.kind === 'playable') {
         const next = resolveChapterAudioSession({ chapterUsfm, versionId, qaTestAudioEnabled: qaEnabled, audioAuthorized, capability: outcome.capability });
         if (bound && next.source?.uri === resolved.source?.uri) {
-          setAnswer({ key, sessionKey, outcome });
+          logUnavailable(chapterUsfm, versionId, outcome); setAnswer({ key, sessionKey, outcome });
           const started = await playBoundWhenCurrent(bound, next.availability, outcome.capability);
           if (started) notifyPlaybackStarted(chapterUsfm);
           return;
@@ -492,7 +499,7 @@ export function ChapterAudioControls({
         // satisfying this same play intent. No extra user tap is required.
         replayRequest.current = { key, sessionKey, attempt: retryNonce };
       } else replayRequest.current = null;
-      setAnswer({ key, sessionKey, outcome });
+      logUnavailable(chapterUsfm, versionId, outcome); setAnswer({ key, sessionKey, outcome });
     } finally { if (playRequest.current === operation) playRequest.current = null; }
   };
 
