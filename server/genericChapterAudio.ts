@@ -8,7 +8,7 @@ import observedAttributions from './chapterAudioAttributions.json';
 export const CHAPTER_AUDIO_ENDPOINT = 'https://audio-bible.youversionapi.com/3.1/chapter.json';
 // Provider catalogue rows are stable; a 6 h server cache means a chapter's first open of the day
 // does not pay the 1–8 s upstream hop (the client re-confirms every 5 min against this cache).
-const CACHE_MS = 6 * 60 * 60 * 1000; // ceiling only: an entry never outlives its own validUntil (see cacheUntil)
+const CACHE_MS = 24 * 60 * 60 * 1000; // ceiling only: an entry never outlives its own validUntil (see cacheUntil)
 const CACHE_MARGIN_MS = 15_000; // hand the app a body that is still valid after the network hop
 // Our own re-confirmation boundary, never a claimed provider expiry. Scripture text and the
 // recordings themselves do not change; the observed address is content-hashed and the CDN

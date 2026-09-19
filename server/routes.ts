@@ -51,7 +51,7 @@ export interface ApiResponse {
 
 export interface ApiHandlerOptions {
   remoteReminderStatus?: 'REMOTE_PENDING' | 'REMOTE_READY';
-  /** Warm the chapter-audio metadata cache for today's/tomorrow's assigned chapters at start and hourly. */
+  /** Warm the chapter-audio metadata cache for today's and tomorrow's assigned chapters at start-up and at each Taipei midnight. */
   prewarmChapterAudio?: boolean;
   prewarmVersionIds?: readonly number[];
   db: { db: DatabaseSync };
@@ -283,6 +283,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
     // references; a new date is represented by its plan and an empty reference list
     // only when the caller has explicitly inserted it into reading_days.
   }
+  const now = options.now ?? (() => new Date());
   const resolveChapterAudio = createChapterAudioResolver();
   if (options.prewarmChapterAudio) {
     const versions = options.prewarmVersionIds ?? [46, 40, 111, 406, 114];
@@ -296,8 +297,23 @@ export function createApiHandler(options: ApiHandlerOptions) {
       } catch { /* prewarm never affects serving */ }
     };
     const unref = (timer: unknown) => { (timer as { unref?: () => void }).unref?.(); };
+    // Scripture does not change and the observed audio address is content-hashed, so there is
+    // nothing to poll for. The only thing that moves is which chapters are assigned, and that
+    // moves once, at Taipei midnight. So warm then: once at start-up (a mid-day restart still
+    // gets a warm cache), then at each date rollover.
+    const msUntilTaipeiMidnight = () => {
+      const current = now();
+      const [year, month, day] = taipeiDate(current).split('-').map(Number);
+      // Taipei is UTC+8 all year, so the next local midnight is 16:00 UTC on the same civil day.
+      const rollover = Date.UTC(year, month - 1, day, 16, 0, 0, 0);
+      const remaining = rollover - current.getTime();
+      return remaining > 0 ? remaining : remaining + 24 * 60 * 60 * 1000;
+    };
+    const scheduleNextDay = () => {
+      unref(setTimeout(() => { warm(); scheduleNextDay(); }, msUntilTaipeiMidnight()));
+    };
     unref(setTimeout(warm, 3_000));
-    unref(setInterval(warm, 60 * 60 * 1000)); // well inside the cache window, so the first open of the day is warm
+    scheduleNextDay();
   }
   const sessions = { resolveDevice: (token: string) => resolveDeviceSession(options.db.db, token), isLegacyRevoked: (token: string) => isLegacySessionRevoked(options.db.db, token) };
   const remoteStatus = options.remoteReminderStatus ?? 'REMOTE_PENDING';
@@ -313,7 +329,6 @@ export function createApiHandler(options: ApiHandlerOptions) {
     }
     return [...ids];
   };
-  const now = options.now ?? (() => new Date());
   const disableMeetingReminders = options.disableMeetingReminders ?? process.env.QINGMU_DISABLE_MEETING_REMINDERS === 'true';
   return async function handle(request: ApiRequest): Promise<ApiResponse> {
     const url = parsePath(request.url);

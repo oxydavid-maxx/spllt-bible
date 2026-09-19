@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDatabase } from '../../server/db';
+import { seedReadingDays } from '../../server/gamification';
 import { createApiHandler } from '../../server/routes';
 import { validateCapability } from '../../src/domain/chapterAudioContract';
 
@@ -36,7 +37,48 @@ describe('chapter audio prewarm', () => {
       const answered = await request();
       expect(validateCapability(answered.body, { versionId: 46, usfm: 'PSA.103' }, Date.now()).ok).toBe(true);
     }
-    expect(upstream).toHaveBeenCalledTimes(2); // one observation per 6 h cache window, not one per open
+    expect(upstream).toHaveBeenCalledTimes(1); // one observation per cache window, not one per open
+  });
+
+  it('warms the new day at Taipei midnight, not on an hourly timer that mostly hits the same cached answer', async () => {
+    vi.useFakeTimers();
+    // 2026-10-19 23:50 Taipei is 15:50 UTC. Ten minutes from the date rolling over.
+    vi.setSystemTime(new Date('2026-10-19T15:50:00Z'));
+    const scheduled = createDatabase({ filename: ':memory:', members: [{ id: 'test:a', displayName: 'A', groupId: 'G' }] });
+    seedReadingDays(scheduled.db, [
+      { taskDate: '2026-10-19', planId: 'p', references: ['PSA.103'] },
+      { taskDate: '2026-10-20', planId: 'p', references: ['PSA.104'] },
+      { taskDate: '2026-10-21', planId: 'p', references: ['PSA.105'] },
+    ]);
+    createApiHandler({ db: scheduled, fixtureToken: 'synthetic-fixture', prewarmChapterAudio: true, prewarmVersionIds: [46], now: () => new Date() });
+
+    await vi.advanceTimersByTimeAsync(5_000); // the start-up warm
+    const warmedAtStart = upstream.mock.calls.map((call) => String(call[0]));
+    expect(warmedAtStart.some((url) => url.includes('PSA.103'))).toBe(true);
+    expect(warmedAtStart.some((url) => url.includes('PSA.105'))).toBe(false); // the day after tomorrow is not ours yet
+
+    upstream.mockClear();
+    await vi.advanceTimersByTimeAsync(9 * 60_000); // still 2026-10-19 in Taipei
+    expect(upstream).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(2 * 60_000); // now past Taipei midnight
+    const warmedAtMidnight = upstream.mock.calls.map((call) => String(call[0]));
+    expect(warmedAtMidnight.some((url) => url.includes('PSA.105'))).toBe(true);
+    scheduled.close();
+  });
+
+  it('serves one observation for a whole day, because a day is how long we said the answer is good for', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-19T00:00:00Z'));
+    const start = Date.now();
+    for (const hours of [0, 6, 12, 23]) {
+      vi.setSystemTime(new Date(start + hours * 3_600_000));
+      const answered = await request();
+      expect(validateCapability(answered.body, { versionId: 46, usfm: 'PSA.103' }, Date.now()).ok).toBe(true);
+    }
+    expect(upstream).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(new Date(start + 25 * 3_600_000));
+    await request();
+    expect(upstream).toHaveBeenCalledTimes(2);
   });
 
   it('re-confirms the catalogue once a day rather than once every few minutes: scripture does not change and the address is content-hashed', async () => {
@@ -143,7 +185,7 @@ describe('production chapter endpoint dynamically resolves provider metadata', (
     const [a, b] = await Promise.all([request(), request()]);
     expect(upstream).toHaveBeenCalledTimes(1); expect(a.body).toEqual(b.body);
     expect(Date.parse(String(a.body.validUntil))).toBeGreaterThan(Date.now());
-    vi.setSystemTime('2026-09-13T09:10:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(1); vi.setSystemTime('2026-09-13T15:10:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(2);
+    vi.setSystemTime('2026-09-13T15:10:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(1); vi.setSystemTime('2026-09-14T10:00:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(2);
   });
   it.each([[0, 'PSA.103'], [46, 'PSA.0'], [46, 'PSA.103.1']])('rejects invalid input before requesting the provider', async (versionId, usfm) => {
     expect((await request(Number(versionId), String(usfm))).status).toBe(400); expect(upstream).not.toHaveBeenCalled();
