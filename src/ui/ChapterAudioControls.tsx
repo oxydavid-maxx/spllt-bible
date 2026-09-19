@@ -69,6 +69,8 @@ export interface ChapterAudioAutoplayContextValue {
   onAutoplayUnavailable(chapterUsfm: string, status: ResolutionStatus): void;
   /** Verse currently narrated in `chapterUsfm` (null = none). Emitted only when it changes. */
   onPlayingVerse?(chapterUsfm: string, verse: number | null): void;
+  /** Narration speed, applied to the live player and remembered per member. */
+  speed?: number;
 }
 
 const noAutoplay: ChapterAudioAutoplayContextValue = {
@@ -267,6 +269,17 @@ export function ChapterAudioControls({
   // ONE player for the component's lifetime, driven by replace(). expo-audio releases the player it
   // owns on UNMOUNT, and this component stays mounted across chapter changes.
   const player = useAudioPlayer(null, { updateInterval: 500 });
+
+  // Applied to the live player rather than only at prepare time, so changing speed mid-chapter
+  // takes effect on the sentence being read instead of the next one. Pitch correction stays on:
+  // scripture read aloud at 1.5x should still sound like a person.
+  const requestedSpeed = autoplay.speed ?? 1;
+  useEffect(() => {
+    try {
+      player.shouldCorrectPitch = true;
+      player.playbackRate = requestedSpeed;
+    } catch { /* a player that has not prepared yet picks the rate up on the next binding */ }
+  }, [player, requestedSpeed, resolved.source?.uri]);
   const playbackRef = useRef<ChapterBoundPlayback | null>(null);
   // Expo's didJustFinish is emitted once; currentStatus does not retain it.
   const finishedBinding = useRef<ChapterBoundPlayback | null>(null);

@@ -8,6 +8,7 @@ import { ChapterAudioAutoplayNotice, ChapterAudioAutoplayToggle, ChapterAudioCon
 import { bookAbbreviationZhTw, formatReferenceListZhTw } from '../domain/scriptureReference';
 import { theme } from './Theme';
 import type { ReaderOverlayControls } from './YouVersionReader';
+import { READER_SPEEDS } from '../services/readerSpeedPreference';
 
 export function useReaderChrome() {
   const [focused, setFocused] = useState(false);
@@ -55,8 +56,10 @@ export interface FullscreenReaderLayoutProps {
   metadata: { translationName: string; publisher: string; copyrightNotice: string; officialUrl: string; audioAttribution?: string } | null;
   /** Rendered beside the reader, never above it, so typing does not repaint the chapter. */
   journal?: ReactNode;
+  narrationSpeed?: number;
+  onSelectNarrationSpeed?: (speed: number) => void;
 }
-export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, versionId, references, onSelectReference, onExit, versionOptions, onSelectVersion, metadata, journal }: FullscreenReaderLayoutProps) {
+export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, versionId, references, onSelectReference, onExit, versionOptions, onSelectVersion, metadata, journal, narrationSpeed = 1, onSelectNarrationSpeed }: FullscreenReaderLayoutProps) {
   const insets = useSafeAreaInsets();
   const [versionPageOpen, setVersionPageOpen] = useState(false);
   const curatedVersions = versionOptions !== undefined && onSelectVersion !== undefined;
@@ -107,6 +110,17 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
             <Text accessibilityRole="header" style={styles.heading}>連讀是什麼？</Text>
             <Text style={styles.body}>連讀開啟後，按播放便會從目前章節開始，依序朗讀當日剩餘章節，並自動換頁；最後一章結束就停止。這不是加快語速。</Text>
             <Text style={styles.body}>工具列的「開/關」表示目前設定，點一下即可切換。關閉後會讀完目前章節再停止；開啟設定不會立即播放。遇到沒有朗讀的章節會停下並提示。</Text>
+            {onSelectNarrationSpeed ? <>
+              <Text accessibilityRole="header" style={styles.heading}>朗讀速度</Text>
+              <View style={styles.speedRow}>
+                {READER_SPEEDS.map((speed) => {
+                  const selected = speed === narrationSpeed;
+                  return <Pressable key={speed} accessibilityRole="button" accessibilityLabel={`朗讀速度 ${speed} 倍`} accessibilityState={{ selected }} onPress={() => onSelectNarrationSpeed(speed)} style={[styles.speedChoice, selected && styles.speedChoiceSelected]}>
+                    <Text style={[styles.speedLabel, selected && styles.speedLabelSelected]}>{`${speed}x`}</Text>
+                  </Pressable>;
+                })}
+              </View>
+            </> : null}
             <MenuButton label="版本資訊" onPress={chrome.openInfo} />
           </ScrollView>
           </>}
@@ -208,6 +222,11 @@ const styles = StyleSheet.create({
   referenceLabel: { color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700', textAlign: 'center' },
   referenceLabelSelected: { color: theme.colors.white },
   disabled: { opacity: 0.4 },
+  speedRow: { flexDirection: 'row', gap: theme.spacing.sm },
+  speedChoice: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong },
+  speedChoiceSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  speedLabel: { color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '700' },
+  speedLabelSelected: { color: theme.colors.white },
   scrim: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
   sheet: { maxHeight: '85%', backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg },

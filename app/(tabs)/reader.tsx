@@ -7,6 +7,7 @@ import { buildFixtureModels } from '../../src/ui/routes';
 import { YouVersionReader } from '../../src/ui/YouVersionReader';
 import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
 import { JournalPanel } from '../../src/ui/JournalPanel';
+import { createReaderSpeedStore, DEFAULT_READER_SPEED, isReaderSpeed, type ReaderSpeed } from '../../src/services/readerSpeedPreference';
 import { formatReadingDateLabel } from '../../src/ui/ReadingDateNavigator';
 import { openQingmuReaderPositionStore, openQingmuRepository } from '../../src/storage/mobileDatabase';
 import type { ReaderPosition } from '../../src/storage/readerPosition';
@@ -37,6 +38,16 @@ export default function ReaderScreen() {
   const references = day?.references ?? model.reader.references;
   const [preferencesStore] = useState(createNativeReaderPreferencesStore);
   const preferences = useReaderPreferences(memberId, preferencesStore);
+  const [speedStore] = useState(() => createReaderSpeedStore({
+    getItem: key => SecureStore.getItemAsync(key),
+    setItem: (key, value) => SecureStore.setItemAsync(key, value),
+  }));
+  const [narrationSpeed, setNarrationSpeed] = useState<ReaderSpeed>(DEFAULT_READER_SPEED);
+  useEffect(() => {
+    let current = true;
+    void speedStore.load(memberId).then(() => { if (current) setNarrationSpeed(speedStore.getSpeed(memberId)); });
+    return () => { current = false; };
+  }, [speedStore, memberId]);
   const [autoplayPreferencesStore] = useState(() => createReaderAutoplayPreferencesStore({
     getItem: key => SecureStore.getItemAsync(key),
     setItem: (key, value) => SecureStore.setItemAsync(key, value),
@@ -321,6 +332,7 @@ export default function ReaderScreen() {
       onCanvasTap={chrome.toggleTools}
       onCanvasScroll={chrome.hideTools}
       onVerseCopied={(quote) => { if (chrome.journalOpen) setPendingQuote(quote); }}
+      narrationSpeed={narrationSpeed}
       renderScreen={(reader, controls) => (
         <FullscreenReaderLayout
           reader={reader}
@@ -333,6 +345,8 @@ export default function ReaderScreen() {
           versionOptions={versionOptions}
           onSelectVersion={chooseVersion}
           onExit={() => router.replace('/today')}
+          narrationSpeed={narrationSpeed}
+          onSelectNarrationSpeed={(speed) => { if (isReaderSpeed(speed)) { setNarrationSpeed(speed); void speedStore.update(memberId, speed); } }}
           journal={<JournalPanel
             visible={chrome.journalOpen}
             memberId={memberId}
