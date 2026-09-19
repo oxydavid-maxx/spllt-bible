@@ -5,7 +5,7 @@ import { theme } from '../Theme';
 import { RewardGoalCard } from './RewardGoalCard';
 import { ScoreProfileChart } from './ScoreProfileChart';
 
-export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onOpenActions, onChartChange, today, nominations }: {
+export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onOpenActions, onChartChange, today, nominations, community }: {
   profile: ScoreProfileData;
   /** Active reward catalogue for the member's own shelf. */
   rewards?: Reward[];
@@ -19,6 +19,8 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
    * the route would nest one scroller inside another, which is how a list stops scrolling properly.
    */
   nominations?: ReactNode;
+  /** Sits below the calendar: the group's reading, never a target. */
+  community?: ReactNode;
 }) {
   const privateData = profile.private;
   return <ScrollView contentContainerStyle={styles.content}>
@@ -30,6 +32,7 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
     </View>}
     {nominations}
     <ScoreProfileChart chart={profile.chart} fallbackMonths={profile.months} onChartChange={onChartChange} today={today} />
+    {community}
     {profile.permissions.canRedeem && onOpenActions ? <Pressable accessibilityRole="button" accessibilityLabel="管理兌換" onPress={onOpenActions} style={styles.adminButton}><Text style={styles.adminText}>現場兌換</Text></Pressable> : null}
   </ScrollView>;
 }

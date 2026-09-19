@@ -89,3 +89,35 @@ describe('the board makes it clear whose idea a prize was', () => {
     expect(onNominate).not.toHaveBeenCalled();
   });
 });
+
+import { CommunityProgress } from '../../src/ui/gamification/CommunityProgress';
+
+describe('the group line never turns a quiet week into an accusation', () => {
+  const show = (props: { books: string[]; personDays: number | null }) => {
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(React.createElement(CommunityProgress, props)); });
+    return JSON.stringify(tree.toJSON());
+  };
+
+  it('names the books the group has walked through', () => {
+    expect(show({ books: ['提後', '多'], personDays: null })).toContain('一起走過：提後、多');
+  });
+
+  it('says nothing at all before the plan has started', () => {
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(React.createElement(CommunityProgress, { books: [], personDays: 5 })); });
+    expect(tree.toJSON()).toBeNull();
+  });
+
+  it('omits the count entirely when the server withheld it', () => {
+    const rendered = show({ books: ['提後'], personDays: null });
+    expect(rendered).not.toContain('天次');
+  });
+
+  it('shows the count as a plain total, with no goal and nothing remaining', () => {
+    const rendered = show({ books: ['提後'], personDays: 248 });
+    expect(rendered).toContain('到目前一起讀了 248 天次');
+    expect(rendered).not.toContain('目標');
+    expect(rendered).not.toContain('還差');
+  });
+});

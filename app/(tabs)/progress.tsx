@@ -11,6 +11,7 @@ import { FriendQrPanel } from '../../src/ui/gamification/FriendQrPanel';
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
 import { RewardControls } from '../../src/ui/gamification/RewardControls';
 import { RedemptionList } from '../../src/ui/gamification/RedemptionList';
+import { CommunityProgress } from '../../src/ui/gamification/CommunityProgress';
 import { NominationBoard } from '../../src/ui/gamification/NominationBoard';
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { theme } from '../../src/ui/Theme';
@@ -142,6 +143,16 @@ export default function ProgressScreen() {
     return () => { active = false; };
   }, [client, session, scope, nominations]);
   useEffect(() => { setNominations(null); }, [session?.memberId]);
+  const [community, setCommunity] = useState<{ books: string[]; personDays: number | null } | null>(null);
+  useEffect(() => {
+    if (!client || !session || scope !== 'me' || community !== null || typeof client.getCommunityProgress !== 'function') return;
+    let active = true;
+    void client.getCommunityProgress()
+      .then((value) => { if (active && isCurrentAuthSession(session)) setCommunity(value); })
+      .catch(() => { if (active) setCommunity({ books: [], personDays: null }); });
+    return () => { active = false; };
+  }, [client, session, scope, community]);
+  useEffect(() => { setCommunity(null); }, [session?.memberId]);
   // Every mutation just drops the cache; the effect above refetches, so the board always reflects
   // the server rather than a locally guessed vote count.
   const refreshNominations = () => setNominations(null);
@@ -166,7 +177,7 @@ export default function ProgressScreen() {
       onNominate={(name, note) => { void client?.nominateReward({ name, ...(note ? { note } : {}) }).then(refreshNominations).catch((reason) => setError(messageFor(reason))); }}
       onVote={(nominationId, voting) => { void client?.setNominationVote(nominationId, voting).then(refreshNominations).catch((reason) => setError(messageFor(reason))); }}
       onDecide={(nominationId, decision, revision, costPoints) => { void client?.decideNomination(nominationId, decision, { expectedRevision: revision, ...(costPoints ? { costPoints } : {}) }).then(() => { refreshNominations(); setShelfRewards(null); }).catch((reason) => setError(messageFor(reason))); }}
-    /> : undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId).then(() => setShelfRewards(null)); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
+    /> : undefined} community={community ? <CommunityProgress books={community.books} personDays={community.personDays} /> : undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId).then(() => setShelfRewards(null)); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
     <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: () => setSheet('qr') }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards().then(() => setSheet('admin-rewards')); } }] : [])]} />
     <ActionSheet visible={sheet === 'qr'} title="我的好友 QR" dismissOnOutsideTap onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="show" /></ActionSheet>
     <ActionSheet visible={sheet === 'scan'} title="掃描好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="scan" onClaimed={scanClaimed} /></ActionSheet>

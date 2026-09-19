@@ -10,6 +10,7 @@ import { parseCapabilityQuery } from './contentCapabilities';
 import { createChapterAudioResolver, prewarmChapterAudio } from './genericChapterAudio';
 import { getMemberGroupProfile } from './groups';
 import { ensureJournalSchema, getJournalEntry, listJournalEntries, saveJournalEntry } from './journal';
+import { getCommunityProgress } from './communityProgress';
 import { createNomination, decideNomination, ensureNominationSchema, listNominations, listNominationsForAdmin, setVote, type NominationDecision } from './rewardNominations';
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
 import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
@@ -514,6 +515,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
           }, now().getTime());
           return isGamificationError(saved) ? gamificationError(saved) : gamificationJson(200, saved);
         }
+      }
+      if (request.method === 'GET' && url.pathname === '/api/points/community') {
+        return gamificationJson(200, getCommunityProgress(options.db.db, taipeiDate(now())) as unknown as Record<string, unknown>);
       }
       if (url.pathname === '/api/rewards/nominations' && request.method === 'GET') {
         return gamificationJson(200, listNominations(options.db.db, auth.memberId));
