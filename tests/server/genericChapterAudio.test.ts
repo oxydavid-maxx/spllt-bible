@@ -28,13 +28,14 @@ describe('chapter audio prewarm', () => {
     expect(done).toBe(4); expect(peak).toBeLessThanOrEqual(2);
     expect(calls.sort()).toEqual(['111:1TI.4', '111:PSA.103', '46:1TI.4', '46:PSA.103']);
   });
-  it('keeps a verified answer cached well beyond a minute so the next open does not pay the upstream hop', async () => {
+  it('never serves a cached body past its own validUntil (0.2.10 regression: 6 h cache vs 5 min validity left every reader open on 重試)', async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-19T00:00:00Z'));
-    await request(); expect(upstream).toHaveBeenCalledTimes(1);
-    vi.setSystemTime(new Date('2026-09-19T02:00:00Z'));
-    await request(); expect(upstream).toHaveBeenCalledTimes(1);
-    vi.setSystemTime(new Date('2026-09-19T07:00:00Z'));
-    await request(); expect(upstream).toHaveBeenCalledTimes(2);
+    const first = await request(); expect(upstream).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(new Date('2026-09-19T00:04:00Z'));
+    await request(); expect(upstream).toHaveBeenCalledTimes(1); // inside validity: served warm
+    vi.setSystemTime(new Date(Date.parse(String(first.body.validUntil)) + 1_000));
+    const later = await request(); expect(upstream).toHaveBeenCalledTimes(2); // re-confirmed, not the stale body
+    expect(validateCapability(later.body, { versionId: 46, usfm: 'PSA.103' }, Date.now()).ok).toBe(true);
   });
 });
 
@@ -135,7 +136,7 @@ describe('production chapter endpoint dynamically resolves provider metadata', (
     const [a, b] = await Promise.all([request(), request()]);
     expect(upstream).toHaveBeenCalledTimes(1); expect(a.body).toEqual(b.body);
     expect(Date.parse(String(a.body.validUntil))).toBeGreaterThan(Date.now());
-    vi.setSystemTime('2026-09-13T09:10:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(1); vi.setSystemTime('2026-09-13T15:10:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(2);
+    vi.setSystemTime('2026-09-13T09:04:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(1); vi.setSystemTime('2026-09-13T09:10:00Z'); await request(); expect(upstream).toHaveBeenCalledTimes(2);
   });
   it.each([[0, 'PSA.103'], [46, 'PSA.0'], [46, 'PSA.103.1']])('rejects invalid input before requesting the provider', async (versionId, usfm) => {
     expect((await request(Number(versionId), String(usfm))).status).toBe(400); expect(upstream).not.toHaveBeenCalled();

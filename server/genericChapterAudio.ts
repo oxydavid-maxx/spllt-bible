@@ -8,7 +8,8 @@ import observedAttributions from './chapterAudioAttributions.json';
 export const CHAPTER_AUDIO_ENDPOINT = 'https://audio-bible.youversionapi.com/3.1/chapter.json';
 // Provider catalogue rows are stable; a 6 h server cache means a chapter's first open of the day
 // does not pay the 1–8 s upstream hop (the client re-confirms every 5 min against this cache).
-const CACHE_MS = 6 * 60 * 60 * 1000;
+const CACHE_MS = 6 * 60 * 60 * 1000; // ceiling only: an entry never outlives its own validUntil (see cacheUntil)
+const CACHE_MARGIN_MS = 15_000; // hand the app a body that is still valid after the network hop
 const RECONFIRM_MS = 300_000; // Our refresh policy, never a claimed provider expiry.
 const MAX_ENTRIES = 128;
 const MAX_METADATA_BYTES = 2_000_000;
@@ -125,13 +126,19 @@ export function createChapterAudioResolver(options: { fetchImpl?: typeof fetch; 
     const work = query(versionId, usfm).then(value => {
       if (value.status !== 'temporarily_unavailable') {
         if (cache.size >= MAX_ENTRIES) cache.delete(cache.keys().next().value!);
-        cache.set(key, { expiresAt: now() + CACHE_MS, value });
+        cache.set(key, { expiresAt: cacheUntil(value, now()), value });
       }
       return value;
     }).finally(() => inflight.delete(key));
     inflight.set(key, work); return work;
   };
   return resolve;
+}
+
+/** A cached body must be re-confirmed before the app would reject it as EXPIRED. */
+function cacheUntil(value: ContentCapability, nowMs: number): number {
+  const bounds = [nowMs + CACHE_MS, value.validUntil ? Date.parse(value.validUntil) - CACHE_MARGIN_MS : NaN, value.providerExpiry ? Date.parse(value.providerExpiry) - CACHE_MARGIN_MS : NaN].filter((n) => Number.isFinite(n));
+  return Math.min(...bounds);
 }
 
 /** Warm the metadata cache for the given chapters × versions with bounded concurrency; failures are ignored. */
