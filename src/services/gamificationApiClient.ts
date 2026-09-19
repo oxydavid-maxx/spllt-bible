@@ -79,6 +79,44 @@ function parseReward(value: unknown): Reward | null {
   return item && string(item.rewardId) && string(item.name) && positiveInt(item.costPoints) && typeof item.active === 'boolean' && positiveInt(item.revision)
     ? { rewardId: item.rewardId, name: item.name, costPoints: item.costPoints, active: item.active, revision: item.revision } : null;
 }
+export interface RewardNomination {
+  nominationId: string;
+  name: string;
+  note?: string;
+  displayName: string;
+  status: 'OPEN' | 'APPROVED' | 'DECLINED';
+  voteCount: number;
+  voted: boolean;
+  mine: boolean;
+  revision: number;
+}
+
+/**
+ * Built from named keys, like every other parser here.
+ *
+ * It also REJECTS a payload carrying a member id: the board shows who suggested something by name,
+ * and a member id arriving would mean the server had started handing out a handle into every other
+ * endpoint. Better to fail loudly here than to render it.
+ */
+function parseNomination(value: unknown): RewardNomination | null {
+  const item = object(value);
+  if (!item || item.createdBy !== undefined || item.memberId !== undefined) return null;
+  if (!string(item.nominationId) || !string(item.name) || !string(item.displayName) || !positiveInt(item.revision)) return null;
+  if (item.status !== 'OPEN' && item.status !== 'APPROVED' && item.status !== 'DECLINED') return null;
+  if (!nonNegativeInt(item.voteCount) || typeof item.voted !== 'boolean' || typeof item.mine !== 'boolean') return null;
+  return {
+    nominationId: item.nominationId,
+    name: item.name,
+    ...(string(item.note) ? { note: item.note } : {}),
+    displayName: item.displayName,
+    status: item.status,
+    voteCount: item.voteCount,
+    voted: item.voted,
+    mine: item.mine,
+    revision: item.revision,
+  };
+}
+
 function parseRedemption(value: unknown): Redemption | null {
   const item = object(value);
   return item && string(item.redemptionId) && string(item.memberId) && string(item.rewardId) && string(item.rewardName)
@@ -246,6 +284,23 @@ export function createGamificationApiClient(options: GamificationApiClientOption
     async removeFriend(memberId: string): Promise<void> { await request(`/api/friends/${encodeURIComponent(memberId)}`, { method: 'DELETE' }); },
     async createReward(input: { name: string; costPoints: number; operationId?: string }): Promise<Reward> { const body = object(await request('/api/admin/rewards', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: input.operationId ?? operationId(), name: input.name, costPoints: input.costPoints }) })); const reward = parseReward(body); if (!reward) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return reward; },
     async updateReward(rewardId: string, patch: { name?: string; costPoints?: number; active?: boolean }, expectedRevision = 1, operationIdValue = operationId()): Promise<Reward> { const body = object(await request(`/api/admin/rewards/${encodeURIComponent(rewardId)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...patch, expectedRevision, operationId: operationIdValue }) })); const reward = parseReward(body); if (!reward) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return reward; },
+    async getNominations(): Promise<RewardNomination[]> {
+      const body = object(await request('/api/rewards/nominations'));
+      const values = body?.nominations;
+      if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
+      const parsed = values.map(parseNomination);
+      if (parsed.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
+      return parsed as RewardNomination[];
+    },
+    async nominateReward(input: { name: string; note?: string }): Promise<void> {
+      await request('/api/rewards/nominations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), name: input.name, ...(input.note ? { note: input.note } : {}) }) });
+    },
+    async setNominationVote(nominationId: string, voting: boolean): Promise<void> {
+      await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}/vote`, { method: voting ? 'PUT' : 'DELETE' });
+    },
+    async decideNomination(nominationId: string, decision: 'approve' | 'decline' | 'remove', input: { expectedRevision: number; costPoints?: number }): Promise<void> {
+      await request(`/api/admin/rewards/nominations/${encodeURIComponent(nominationId)}/${decision}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), expectedRevision: input.expectedRevision, ...(input.costPoints ? { costPoints: input.costPoints } : {}) }) });
+    },
     async getPendingOperations(): Promise<PendingGamificationOperations> { await reloadPending(); return pendingSnapshot(); },
     async redeem(input: { memberId: string; rewardId: string; expectedRewardRevision: number; operationId?: string }): Promise<unknown> { return runRedemption(input); },
     async retryPendingRedemption(operationIdValue: string): Promise<unknown> {

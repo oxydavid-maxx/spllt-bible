@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
 import { isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
-import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
+import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type RewardNomination, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
 import type { PendingGamificationOperations } from '../../src/services/gamificationPendingStore';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../src/services/adminUnlockGuard';
 import { ActionSheet } from '../../src/ui/gamification/ActionSheet';
@@ -11,6 +11,7 @@ import { FriendQrPanel } from '../../src/ui/gamification/FriendQrPanel';
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
 import { RewardControls } from '../../src/ui/gamification/RewardControls';
 import { RedemptionList } from '../../src/ui/gamification/RedemptionList';
+import { NominationBoard } from '../../src/ui/gamification/NominationBoard';
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { theme } from '../../src/ui/Theme';
 
@@ -131,6 +132,19 @@ export default function ProgressScreen() {
     return () => { active = false; };
   }, [client, session, scope, profile?.private, shelfRewards]);
   useEffect(() => { setShelfRewards(null); }, [session?.memberId]);
+  const [nominations, setNominations] = useState<RewardNomination[] | null>(null);
+  useEffect(() => {
+    if (!client || !session || scope !== 'me' || nominations !== null || typeof client.getNominations !== 'function') return;
+    let active = true;
+    void client.getNominations()
+      .then((value) => { if (active && isCurrentAuthSession(session)) setNominations(value); })
+      .catch(() => { if (active) setNominations([]); });
+    return () => { active = false; };
+  }, [client, session, scope, nominations]);
+  useEffect(() => { setNominations(null); }, [session?.memberId]);
+  // Every mutation just drops the cache; the effect above refetches, so the board always reflects
+  // the server rather than a locally guessed vote count.
+  const refreshNominations = () => setNominations(null);
   const redeemSelected = async (rewardId: string) => { if (!client || !selected) return; const reward = rewards.find((item) => item.rewardId === rewardId); if (!reward) return; const generation = requestGeneration.current; const memberId = selected.memberId; try { await client.redeem({ memberId, rewardId, expectedRewardRevision: reward.revision }); if (!isLive(generation, 'all', memberId, true)) return; setRetryAction(null); setSheet(null); await loadProfile(memberId, 'all'); } catch (reason) { if (isLive(generation, 'all', memberId, true) && reason instanceof GamificationApiError && reason.retryable) { setRetryAction(() => () => { void redeemSelected(rewardId); }); setError('尚未確認，點此重試。'); } else if (isLive(generation, 'all', memberId, true)) setError(messageFor(reason)); } };
   const openRedeem = async () => { if (!client || !session || !selected) return; const generation = requestGeneration.current; const memberId = selected.memberId; try { const value = await client.getRewards(); if (isLive(generation, 'all', memberId, true)) { setRewards(value); setSheet('redeem'); } } catch (reason) { if (isLive(generation, 'all', memberId, true)) setError(messageFor(reason)); } };
   const reverseSelected = async (redemptionId: string, reason: string) => { if (!client || !session) return; const generation = requestGeneration.current; const expectedScope = scope; const memberId = selected?.memberId; try { await client.reverseRedemption(redemptionId, reason); if (!isLive(generation, expectedScope, memberId, expectedScope === 'all')) return; setRetryAction(null); await loadRedemptions(expectedScope === 'all', memberId); if (expectedScope === 'all' && memberId) await loadProfile(memberId, 'all'); else await loadProfile(session.memberId, 'me'); } catch (errorValue) { if (isLive(generation, expectedScope, memberId, expectedScope === 'all') && errorValue instanceof GamificationApiError && errorValue.retryable) { setRetryAction(() => () => { void reverseSelected(redemptionId, reason); }); setError('尚未確認，點此重試。'); } else if (isLive(generation, expectedScope, memberId, expectedScope === 'all')) setError(messageFor(errorValue)); } };
@@ -146,7 +160,13 @@ export default function ProgressScreen() {
     {scope === 'me' && !profile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
     {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
     {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}
-    {scope === 'me' && profile ? <ScoreProfile profile={profile} rewards={shelfRewards ?? undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId).then(() => setShelfRewards(null)); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
+    {scope === 'me' && profile ? <ScoreProfile profile={profile} rewards={shelfRewards ?? undefined} nominations={nominations ? <NominationBoard
+      nominations={nominations}
+      canManage={Boolean(capabilities?.canManageRewards)}
+      onNominate={(name, note) => { void client?.nominateReward({ name, ...(note ? { note } : {}) }).then(refreshNominations).catch((reason) => setError(messageFor(reason))); }}
+      onVote={(nominationId, voting) => { void client?.setNominationVote(nominationId, voting).then(refreshNominations).catch((reason) => setError(messageFor(reason))); }}
+      onDecide={(nominationId, decision, revision, costPoints) => { void client?.decideNomination(nominationId, decision, { expectedRevision: revision, ...(costPoints ? { costPoints } : {}) }).then(() => { refreshNominations(); setShelfRewards(null); }).catch((reason) => setError(messageFor(reason))); }}
+    /> : undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId).then(() => setShelfRewards(null)); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
     <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: () => setSheet('qr') }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards().then(() => setSheet('admin-rewards')); } }] : [])]} />
     <ActionSheet visible={sheet === 'qr'} title="我的好友 QR" dismissOnOutsideTap onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="show" /></ActionSheet>
     <ActionSheet visible={sheet === 'scan'} title="掃描好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="scan" onClaimed={scanClaimed} /></ActionSheet>

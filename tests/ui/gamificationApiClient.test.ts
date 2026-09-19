@@ -263,3 +263,23 @@ describe('gamification api client', () => {
     expect(retryBody).toEqual(firstBody);
   });
 });
+
+describe('the nomination board never carries a handle to a person', () => {
+  it('refuses a payload that includes a member id, instead of rendering it', async () => {
+    const fetchImpl = vi.fn(async () => response({
+      nominations: [{ nominationId: 'n1', name: '電影票', displayName: '小明', status: 'OPEN', voteCount: 1, voted: false, mine: false, revision: 1, createdBy: 'member-self' }],
+    }));
+    const client = createGamificationApiClient({ baseUrl: 'https://api.test', token: 'token', memberId: 'member-self', fetchImpl: fetchImpl as never });
+    await expect(client.getNominations()).rejects.toThrow();
+  });
+
+  it('accepts the shape the server actually sends', async () => {
+    const fetchImpl = vi.fn(async () => response({
+      nominations: [{ nominationId: 'n1', name: '電影票', displayName: '小明', status: 'OPEN', voteCount: 1, voted: true, mine: true, revision: 1 }],
+    }));
+    const client = createGamificationApiClient({ baseUrl: 'https://api.test', token: 'token', memberId: 'member-self', fetchImpl: fetchImpl as never });
+    await expect(client.getNominations()).resolves.toEqual([
+      { nominationId: 'n1', name: '電影票', displayName: '小明', status: 'OPEN', voteCount: 1, voted: true, mine: true, revision: 1 },
+    ]);
+  });
+});
