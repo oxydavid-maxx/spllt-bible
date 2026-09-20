@@ -9,8 +9,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$toolRoot = if ($env:QINGMU_ANDROID_TOOL_ROOT) { $env:QINGMU_ANDROID_TOOL_ROOT } else { Join-Path $env:LOCALAPPDATA 'Android' }
-$defaultGradleHome = Join-Path $env:USERPROFILE '.gradle'
+# The toolchain lives under the governed dev root, not in AppData. The old default outlived the
+# move and turned a relocated toolchain into "JDK not found", which reads like a missing install
+# rather than a stale path. The gradle home travels with it so the warm cache is found too.
+$toolRoot = if ($env:QINGMU_ANDROID_TOOL_ROOT) { $env:QINGMU_ANDROID_TOOL_ROOT } else { 'C:\dev\tools\qingmu-android' }
+$defaultGradleHome = Join-Path $toolRoot 'gradle-home'
 $maxWorkers = if ($env:QINGMU_GRADLE_MAX_WORKERS) { [int]$env:QINGMU_GRADLE_MAX_WORKERS } else { 1 }
 $maxMetaspaceMiB = if ($env:QINGMU_GRADLE_MAX_METASPACE_MIB) { [int]$env:QINGMU_GRADLE_MAX_METASPACE_MIB } else { 768 }
 # Heap was hardcoded at 1536m. A four-ABI release packageRelease died with
