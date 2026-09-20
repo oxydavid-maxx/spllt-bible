@@ -129,6 +129,18 @@ if ($Variant -eq 'release') {
   if (-not $apiBaseUrl) { throw 'EXPO_PUBLIC_QINGMU_API_BASE_URL is required for release builds; without it the bundle points at 127.0.0.1' }
   if ($apiBaseUrl -match '127\.0\.0\.1|localhost') { throw "A release cannot point at the build machine: $apiBaseUrl" }
 
+  # assembleRelease never reads app.json. Expo writes the version into android/app/build.gradle at
+  # prebuild time, and android/ is untracked, so the two drift silently: a build announced as 0.4.0
+  # installs and reports itself as whatever the native project still says. Same class of defect as
+  # the base url — it looks finished and is wrong only where somebody has to notice it.
+  $appConfig = Get-Content -LiteralPath (Join-Path $root 'app.json') -Raw -Encoding utf8 | ConvertFrom-Json
+  $gradleText = Get-Content -LiteralPath (Join-Path $root 'android/app/build.gradle') -Raw
+  $gradleName = [regex]::Match($gradleText, 'versionName\s+"([^"]+)"').Groups[1].Value
+  $gradleCode = [regex]::Match($gradleText, 'versionCode\s+(\d+)').Groups[1].Value
+  if ($gradleName -ne $appConfig.expo.version -or [int]$gradleCode -ne [int]$appConfig.expo.android.versionCode) {
+    throw "Version drift: app.json says $($appConfig.expo.version)/$($appConfig.expo.android.versionCode), android/app/build.gradle says $gradleName/$gradleCode. Update the native project or re-run prebuild."
+  }
+
   $argumentsReleaseSigning = '-PqingmuRelease=true'
 }
 $arguments = @(
