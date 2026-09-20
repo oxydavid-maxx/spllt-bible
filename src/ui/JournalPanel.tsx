@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useAndroidKeyboardVisible } from './useAndroidKeyboardVisible';
 import { useJournalEntry } from './useJournalEntry';
 import { theme } from './Theme';
 
@@ -31,6 +32,7 @@ export interface JournalPanelProps {
 
 export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, newOperationId, onClose, pendingQuote, onQuoteConsumed, mirror }: JournalPanelProps) {
   const entry = useJournalEntry({ memberId, planId, taskDate, newOperationId, mirror });
+  const keyboardUp = useAndroidKeyboardVisible();
 
   // A verse copied in the reader is OFFERED here, not inserted.
   //
@@ -43,6 +45,7 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
   const close = () => { entry.flushNow(); onClose(); };
 
   return <Modal transparent animationType="slide" visible={visible} onRequestClose={close}>
+    <KeyboardAvoidingView style={styles.keyboardRoot} behavior="padding" enabled={Platform.OS !== 'android' || keyboardUp}>
     <Pressable accessibilityRole="button" accessibilityLabel="關閉靈修日記" onPress={close} style={styles.scrim}>
       <Pressable onPress={() => undefined} style={styles.sheet} accessibilityViewIsModal>
         <View style={styles.header}>
@@ -80,12 +83,14 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
         </ScrollView>
       </Pressable>
     </Pressable>
+    </KeyboardAvoidingView>
   </Modal>;
 }
 
 const styles = StyleSheet.create({
+  keyboardRoot: { flex: 1 },
   scrim: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
-  sheet: { height: '55%', backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, paddingBottom: theme.spacing.md },
+  sheet: { minHeight: '52%', maxHeight: '92%', backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, paddingBottom: theme.spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md },
   title: { flex: 1, color: theme.colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
   done: { minHeight: theme.control.tap, minWidth: theme.control.tap, alignItems: 'flex-end', justifyContent: 'center' },

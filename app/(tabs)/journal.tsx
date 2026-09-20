@@ -7,6 +7,7 @@ import { runtimeConfig } from '../../src/config/runtime';
 import { createJournalApiClient } from '../../src/services/journalApiClient';
 import { openQingmuJournalStore } from '../../src/storage/mobileDatabase';
 import { buildJournalExport, countExportableDays } from '../../src/domain/journalExport';
+import { describeFolderUri } from '../../src/domain/folderPath';
 import { shareJournalExport } from '../../src/ui/journalShare';
 import * as SecureStore from 'expo-secure-store';
 import { createJournalFolderMirror } from '../../src/services/journalFolderMirror';
@@ -135,6 +136,7 @@ export default function JournalScreen() {
       <Pressable accessibilityRole="button" accessibilityLabel={mirrorFolder ? '更換同步資料夾' : '同時存到我選的資料夾'} onPress={() => { void chooseFolder(); }} style={styles.exportButton}>
         <Text style={styles.exportText}>{mirrorFolder ? '更換同步資料夾' : '同時存到我選的資料夾'}</Text>
       </Pressable>
+      {mirrorFolder ? <Text accessibilityLabel="同步資料夾" numberOfLines={1} style={styles.folderPath}>{describeFolderUri(mirrorFolder) ?? ''}</Text> : null}
       {mirrorFolder ? <Pressable accessibilityRole="button" accessibilityLabel="停止同步到資料夾" onPress={() => { void mirror.forget(memberId).then(() => { setMirrorFolder(null); setResult('已停止同步；已經寫出去的檔案留在原地'); }); }} style={styles.stopButton}>
         <Text style={styles.stopText}>停止同步</Text>
       </Pressable> : null}
@@ -165,6 +167,7 @@ const styles = StyleSheet.create({
   footer: { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.md, gap: theme.spacing.xs },
   exportButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.primary },
   exportText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  folderPath: { color: theme.colors.muted, fontSize: theme.type.caption.size, textAlign: 'center' },
   stopButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' },
   stopText: { color: theme.colors.muted, fontSize: theme.type.caption.size },
   result: { color: theme.colors.muted, fontSize: theme.type.caption.size, textAlign: 'center' },
