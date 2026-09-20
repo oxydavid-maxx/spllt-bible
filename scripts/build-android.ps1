@@ -11,9 +11,14 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 # The toolchain lives under the governed dev root, not in AppData. The old default outlived the
 # move and turned a relocated toolchain into "JDK not found", which reads like a missing install
-# rather than a stale path. The gradle home travels with it so the warm cache is found too.
+# rather than a stale path.
 $toolRoot = if ($env:QINGMU_ANDROID_TOOL_ROOT) { $env:QINGMU_ANDROID_TOOL_ROOT } else { 'C:\dev\tools\qingmu-android' }
-$defaultGradleHome = Join-Path $toolRoot 'gradle-home'
+# The gradle cache does NOT travel with it, and the short ugly name is the reason rather than an
+# oversight. LongPathsEnabled is 0 on this machine, and the C++ build resolves prefab headers like
+# react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.h through this
+# cache; rooted at the toolchain directory that path is 262 characters and ninja stops with
+# "Filename longer than 260 characters". Four characters of root is what buys the margin.
+$defaultGradleHome = 'C:\g'
 $maxWorkers = if ($env:QINGMU_GRADLE_MAX_WORKERS) { [int]$env:QINGMU_GRADLE_MAX_WORKERS } else { 1 }
 $maxMetaspaceMiB = if ($env:QINGMU_GRADLE_MAX_METASPACE_MIB) { [int]$env:QINGMU_GRADLE_MAX_METASPACE_MIB } else { 768 }
 # Heap was hardcoded at 1536m. A four-ABI release packageRelease died with
