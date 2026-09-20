@@ -120,6 +120,15 @@ if ($Variant -eq 'release') {
   $releaseSigningProperties = $env:QINGMU_RELEASE_SIGNING_PROPERTIES
   if (-not $releaseSigningProperties) { throw 'QINGMU_RELEASE_SIGNING_PROPERTIES is required for release builds' }
   if (-not (Test-Path -LiteralPath $releaseSigningProperties)) { throw "Release signing properties are missing: $releaseSigningProperties" }
+
+  # The API base url is inlined into the JS bundle at bundle time. Unset, it falls back to
+  # http://127.0.0.1:8787, which on a phone is the phone itself: the app builds, installs, signs and
+  # launches, and every request fails. A release that points at localhost is indistinguishable from a
+  # good one until somebody opens it, so it is refused here instead.
+  $apiBaseUrl = $env:EXPO_PUBLIC_QINGMU_API_BASE_URL
+  if (-not $apiBaseUrl) { throw 'EXPO_PUBLIC_QINGMU_API_BASE_URL is required for release builds; without it the bundle points at 127.0.0.1' }
+  if ($apiBaseUrl -match '127\.0\.0\.1|localhost') { throw "A release cannot point at the build machine: $apiBaseUrl" }
+
   $argumentsReleaseSigning = '-PqingmuRelease=true'
 }
 $arguments = @(
