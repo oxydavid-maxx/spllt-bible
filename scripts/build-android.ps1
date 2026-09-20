@@ -13,12 +13,14 @@ $root = Split-Path -Parent $PSScriptRoot
 # move and turned a relocated toolchain into "JDK not found", which reads like a missing install
 # rather than a stale path.
 $toolRoot = if ($env:QINGMU_ANDROID_TOOL_ROOT) { $env:QINGMU_ANDROID_TOOL_ROOT } else { 'C:\dev\tools\qingmu-android' }
-# The gradle cache does NOT travel with it, and the short ugly name is the reason rather than an
-# oversight. LongPathsEnabled is 0 on this machine, and the C++ build resolves prefab headers like
-# react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.h through this
-# cache; rooted at the toolchain directory that path is 262 characters and ninja stops with
-# "Filename longer than 260 characters". Four characters of root is what buys the margin.
-$defaultGradleHome = 'C:\g'
+# The cache is kept apart from the toolchain and its depth is capped on purpose. Long paths are
+# disabled on this machine, and ninja stats prefab headers through this cache while re-checking
+# globbed directories; the deepest one it reaches is 223 characters below the cache root
+# (react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.h), so a root of
+# 39 characters put it at 262 and the C++ build stopped. This root is 26, which leaves 11 to spare.
+# Not every path here fits in 260 — some are 281 and are never stat-ed — so the budget is about
+# the headers ninja actually touches rather than about the cache as a whole.
+$defaultGradleHome = 'C:\dev\machine\gradle-home'
 $maxWorkers = if ($env:QINGMU_GRADLE_MAX_WORKERS) { [int]$env:QINGMU_GRADLE_MAX_WORKERS } else { 1 }
 $maxMetaspaceMiB = if ($env:QINGMU_GRADLE_MAX_METASPACE_MIB) { [int]$env:QINGMU_GRADLE_MAX_METASPACE_MIB } else { 768 }
 # Heap was hardcoded at 1536m. A four-ABI release packageRelease died with
