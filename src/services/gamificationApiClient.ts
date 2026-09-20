@@ -79,6 +79,40 @@ function parseReward(value: unknown): Reward | null {
   return item && string(item.rewardId) && string(item.name) && positiveInt(item.costPoints) && typeof item.active === 'boolean' && positiveInt(item.revision)
     ? { rewardId: item.rewardId, name: item.name, costPoints: item.costPoints, active: item.active, revision: item.revision } : null;
 }
+export interface CommunityChapterView { chapter: number; readers: number | null }
+export interface CommunityBookGoal {
+  book: string;
+  chapters: CommunityChapterView[];
+  complete: boolean;
+}
+export interface CommunityProgressView {
+  books: string[];
+  personDays: number | null;
+  currentBook: CommunityBookGoal | null;
+}
+
+/**
+ * The shared book goal, or nothing at all.
+ *
+ * Nothing at all is a real answer and not a failure: a server that predates this feature simply has
+ * no such field, and a phone that has not been updated yet should keep showing what the rest of the
+ * page says rather than refuse to draw it. Anything malformed lands in the same place, because the
+ * only thing this display can honestly do without it is not appear.
+ */
+function parseBookGoal(value: unknown): CommunityBookGoal | null {
+  const item = object(value);
+  if (!item || !string(item.book) || !Array.isArray(item.chapters) || typeof item.complete !== 'boolean') return null;
+  const chapters: CommunityChapterView[] = [];
+  for (const entry of item.chapters) {
+    const chapter = object(entry);
+    if (!chapter || !positiveInt(chapter.chapter)) return null;
+    // Nobody yet is null here too. A zero would be a different claim, and one this never makes.
+    if (chapter.readers !== null && !positiveInt(chapter.readers)) return null;
+    chapters.push({ chapter: chapter.chapter, readers: chapter.readers as number | null });
+  }
+  return { book: item.book, chapters, complete: item.complete };
+}
+
 export interface RewardNomination {
   nominationId: string;
   name: string;
@@ -284,12 +318,12 @@ export function createGamificationApiClient(options: GamificationApiClientOption
     async removeFriend(memberId: string): Promise<void> { await request(`/api/friends/${encodeURIComponent(memberId)}`, { method: 'DELETE' }); },
     async createReward(input: { name: string; costPoints: number; operationId?: string }): Promise<Reward> { const body = object(await request('/api/admin/rewards', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: input.operationId ?? operationId(), name: input.name, costPoints: input.costPoints }) })); const reward = parseReward(body); if (!reward) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return reward; },
     async updateReward(rewardId: string, patch: { name?: string; costPoints?: number; active?: boolean }, expectedRevision = 1, operationIdValue = operationId()): Promise<Reward> { const body = object(await request(`/api/admin/rewards/${encodeURIComponent(rewardId)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...patch, expectedRevision, operationId: operationIdValue }) })); const reward = parseReward(body); if (!reward) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return reward; },
-    async getCommunityProgress(): Promise<{ books: string[]; personDays: number | null }> {
+    async getCommunityProgress(): Promise<CommunityProgressView> {
       const body = object(await request('/api/points/community'));
       if (!body || !Array.isArray(body.books) || !body.books.every((value) => string(value))) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       const personDays = body.personDays;
       if (personDays !== null && !nonNegativeInt(personDays)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
-      return { books: body.books as string[], personDays: personDays as number | null };
+      return { books: body.books as string[], personDays: personDays as number | null, currentBook: parseBookGoal(body.currentBook) };
     },
     async getNominations(): Promise<RewardNomination[]> {
       const body = object(await request('/api/rewards/nominations'));
