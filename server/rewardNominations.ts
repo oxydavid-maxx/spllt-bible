@@ -164,16 +164,16 @@ export function getCurrentRound(db: DatabaseSync, nowMs: number): RoundView | nu
  *
  * Open and approved ideas are everyone's business; a decline is only the author's. Telling the whole
  * group that someone's suggestion was turned down is a small public embarrassment for no gain, so a
- * declined row goes back to its author alone. A removed one goes to nobody, including its author,
- * because removal is what a 輔導 reaches for when something should not be on the board at all — but
- * an idea its own author took back is theirs to see.
+ * declined row goes back to its author alone. A removed one goes to nobody, including its author:
+ * removal is what a 輔導 reaches for when something should not be on the board at all, and an idea
+ * its author took back is not on the board either — it is in the history, where they put it.
  */
 export function listNominations(db: DatabaseSync, viewerId: string, nowMs: number): Record<string, unknown> {
   ensureNominationSchema(db);
   const round = currentRoundRow(db);
   if (!round) return { round: null, nominations: [] };
   const rows = db.prepare(`${SELECT} WHERE n.round_id = ? AND (n.status IN ('OPEN','APPROVED')
-      OR (n.status IN ('DECLINED','REMOVED') AND n.created_by = ? AND (n.status = 'DECLINED' OR n.withdrawn = 1)))
+      OR (n.status = 'DECLINED' AND n.created_by = ?))
     ORDER BY vote_count DESC, n.created_at`).all(viewerId, round.round_id, viewerId) as unknown as NominationRow[];
   const toPoints = (twd: number) => pointsFromTwd(db, twd);
   return {

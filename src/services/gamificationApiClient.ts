@@ -123,6 +123,28 @@ export interface RewardNomination {
   voted: boolean;
   mine: boolean;
   revision: number;
+  /** Roughly what it would cost, in points, or absent when nothing usable came back. */
+  estimatedPoints?: number;
+  /** A clearer way to say it, offered to the author and sent to nobody else. */
+  noteSuggestion?: string;
+}
+
+export type NominationRoundPhase = 'VOTING' | 'DECIDING';
+export interface NominationRound {
+  roundId: string;
+  title: string | null;
+  closesAt: number;
+  phase: NominationRoundPhase;
+}
+export interface NominationBoardView {
+  round: NominationRound | null;
+  nominations: RewardNomination[];
+}
+export interface NominationRoundResult {
+  roundId: string;
+  title: string | null;
+  closedAt: number;
+  places: Array<{ name: string; displayName: string; voteCount: number; approved: boolean }>;
 }
 
 /**
@@ -132,6 +154,26 @@ export interface RewardNomination {
  * and a member id arriving would mean the server had started handing out a handle into every other
  * endpoint. Better to fail loudly here than to render it.
  */
+/** The round, or none at all: no round running is an ordinary state and not a malformed reply. */
+function parseRound(value: unknown): NominationRound | null {
+  const item = object(value);
+  if (!item || !string(item.roundId) || !nonNegativeInt(item.closesAt)) return null;
+  if (item.phase !== 'VOTING' && item.phase !== 'DECIDING') return null;
+  return { roundId: item.roundId, title: string(item.title) ? item.title : null, closesAt: item.closesAt, phase: item.phase };
+}
+
+function parseRoundResult(value: unknown): NominationRoundResult | null {
+  const item = object(value);
+  if (!item || !string(item.roundId) || !nonNegativeInt(item.closedAt) || !Array.isArray(item.places)) return null;
+  const places: NominationRoundResult['places'] = [];
+  for (const entry of item.places) {
+    const place = object(entry);
+    if (!place || !string(place.name) || !string(place.displayName) || !nonNegativeInt(place.voteCount) || typeof place.approved !== 'boolean') return null;
+    places.push({ name: place.name, displayName: place.displayName, voteCount: place.voteCount, approved: place.approved });
+  }
+  return { roundId: item.roundId, title: string(item.title) ? item.title : null, closedAt: item.closedAt, places };
+}
+
 function parseNomination(value: unknown): RewardNomination | null {
   const item = object(value);
   if (!item || item.createdBy !== undefined || item.memberId !== undefined) return null;
@@ -148,6 +190,8 @@ function parseNomination(value: unknown): RewardNomination | null {
     voted: item.voted,
     mine: item.mine,
     revision: item.revision,
+    ...(positiveInt(item.estimatedPoints) ? { estimatedPoints: item.estimatedPoints } : {}),
+    ...(string(item.noteSuggestion) ? { noteSuggestion: item.noteSuggestion } : {}),
   };
 }
 
@@ -325,13 +369,33 @@ export function createGamificationApiClient(options: GamificationApiClientOption
       if (personDays !== null && !nonNegativeInt(personDays)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       return { books: body.books as string[], personDays: personDays as number | null, currentBook: parseBookGoal(body.currentBook) };
     },
-    async getNominations(): Promise<RewardNomination[]> {
+    async getNominations(): Promise<NominationBoardView> {
       const body = object(await request('/api/rewards/nominations'));
       const values = body?.nominations;
       if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       const parsed = values.map(parseNomination);
       if (parsed.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
-      return parsed as RewardNomination[];
+      return { round: parseRound(body?.round), nominations: parsed as RewardNomination[] };
+    },
+    async getNominationHistory(): Promise<NominationRoundResult[]> {
+      const body = object(await request('/api/rewards/nominations/history'));
+      const values = body?.rounds;
+      if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
+      const parsed = values.map(parseRoundResult);
+      if (parsed.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
+      return parsed as NominationRoundResult[];
+    },
+    async withdrawNomination(nominationId: string): Promise<void> {
+      await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}`, { method: 'DELETE' });
+    },
+    async resolveNoteSuggestion(nominationId: string, accept: boolean): Promise<void> {
+      await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}/suggestion`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accept }) });
+    },
+    async openNominationRound(input: { title?: string; closesAt: number }): Promise<void> {
+      await request('/api/admin/rewards/nomination-rounds', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), ...(input.title ? { title: input.title } : {}), closesAt: input.closesAt }) });
+    },
+    async closeNominationRound(roundId: string): Promise<void> {
+      await request(`/api/admin/rewards/nomination-rounds/${encodeURIComponent(roundId)}/close`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId() }) });
     },
     async nominateReward(input: { name: string; note?: string }): Promise<void> {
       await request('/api/rewards/nominations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), name: input.name, ...(input.note ? { note: input.note } : {}) }) });

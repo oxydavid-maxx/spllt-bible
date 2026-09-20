@@ -275,11 +275,20 @@ describe('the nomination board never carries a handle to a person', () => {
 
   it('accepts the shape the server actually sends', async () => {
     const fetchImpl = vi.fn(async () => response({
-      nominations: [{ nominationId: 'n1', name: '電影票', displayName: '小明', status: 'OPEN', voteCount: 1, voted: true, mine: true, revision: 1 }],
+      round: { roundId: 'r1', title: '十月獎品', closesAt: 1790000000000, phase: 'VOTING' },
+      nominations: [{ nominationId: 'n1', name: '電影票', displayName: '小明', status: 'OPEN', voteCount: 1, voted: true, mine: true, revision: 1, estimatedPoints: 75, noteSuggestion: '跟朋友一起去看一場電影。' }],
     }));
     const client = createGamificationApiClient({ baseUrl: 'https://api.test', token: 'token', memberId: 'member-self', fetchImpl: fetchImpl as never });
-    await expect(client.getNominations()).resolves.toEqual([
-      { nominationId: 'n1', name: '電影票', displayName: '小明', status: 'OPEN', voteCount: 1, voted: true, mine: true, revision: 1 },
-    ]);
+    await expect(client.getNominations()).resolves.toEqual({
+      round: { roundId: 'r1', title: '十月獎品', closesAt: 1790000000000, phase: 'VOTING' },
+      nominations: [{ nominationId: 'n1', name: '電影票', displayName: '小明', status: 'OPEN', voteCount: 1, voted: true, mine: true, revision: 1, estimatedPoints: 75, noteSuggestion: '跟朋友一起去看一場電影。' }],
+    });
+  });
+
+  // No round running is an ordinary answer, not a malformed one: the board simply is not on.
+  it('reads no round as no round, rather than as a broken reply', async () => {
+    const fetchImpl = vi.fn(async () => response({ round: null, nominations: [] }));
+    const client = createGamificationApiClient({ baseUrl: 'https://api.test', token: 'token', memberId: 'member-self', fetchImpl: fetchImpl as never });
+    await expect(client.getNominations()).resolves.toEqual({ round: null, nominations: [] });
   });
 });

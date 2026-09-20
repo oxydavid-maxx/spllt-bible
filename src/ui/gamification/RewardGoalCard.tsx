@@ -4,7 +4,7 @@ import { theme } from '../Theme';
 
 // The reward a member is saving for sits at the top of their own points page (Octalysis CD4
 // Ownership + CD2 progress bar; the "last mile" is shown as an honest fraction, never as a nag).
-// Copy rules from the product owner: the fraction reads `72 / 120 分`; no "還差 N 分", no slogans.
+// Copy rules from the product owner: the fraction reads `72/120 分`; no "還差 N 分", no slogans.
 //
 // It reads across the card rather than around a ring. A 72dp circle can hold a two-digit number and
 // a label at 11pt, which left the name and the fraction competing for the strip beside it while the
@@ -15,7 +15,7 @@ export function GoalBar({ value, max }: { value: number; max: number }) {
   const shown = Math.max(0, Math.min(value, max));
   const ratio = max > 0 ? shown / max : 0;
   return <View style={styles.bar} accessible accessibilityRole="progressbar" accessibilityLabel="兌換進度"
-    accessibilityValue={{ min: 0, max, now: shown, text: `${shown} / ${max} 分` }}>
+    accessibilityValue={{ min: 0, max, now: shown, text: `${shown}/${max} 分` }}>
     <View style={[styles.barFill, { width: `${Math.round(ratio * 100)}%` }]} />
   </View>;
 }
@@ -42,7 +42,7 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
       <Text style={styles.eyebrow}>目標獎品</Text>
       <View style={styles.goalLine}>
         <Text style={styles.goalName} numberOfLines={1}>{target.name}</Text>
-        <Text style={styles.goalCost}>{`${Math.min(redeemableBalance, target.costPoints)} / ${target.costPoints} 分`}</Text>
+        <Text style={styles.goalCost}>{`${Math.min(redeemableBalance, target.costPoints)}/${target.costPoints} 分`}</Text>
       </View>
       <GoalBar value={redeemableBalance} max={target.costPoints} />
       {reachable ? <Text style={styles.ready}>可以兌換了 · 主日找輔導領取</Text> : null}

@@ -109,6 +109,8 @@ describe('one each, and you may take yours back', () => {
     const mine = (await nominate(api, headers, 'member-self', '桌遊')).body as { nominationId: string };
     await api({ method: 'DELETE', url: `/api/rewards/nominations/${mine.nominationId}`, headers: headers('member-self') });
     expect((await board(api, headers, 'member-friend')).nominations).toHaveLength(0);
+    // And off its author's board too: they took it back, so it belongs in the history, not here.
+    expect((await board(api, headers, 'member-self')).nominations).toHaveLength(0);
   });
 });
 

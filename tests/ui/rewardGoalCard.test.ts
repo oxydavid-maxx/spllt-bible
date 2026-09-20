@@ -38,7 +38,7 @@ describe('the goal reads across the card instead of hiding in a ring', () => {
     const card = render();
     const bar = card.byLabel('兌換進度');
     expect(bar).toBeDefined();
-    expect(card.text()).toContain('6 / 75 分');
+    expect(card.text()).toContain('6/75 分');
   });
 
   it('keeps no ring, so the right half is no longer empty', () => {

@@ -78,6 +78,8 @@ describe('an overlay closes when you tap away from it, unless something would be
       redeem: false,       // debits points in front of a student
       redemptions: false,  // a reversal reason being typed
       pending: false,      // finishing an unconfirmed transaction
+      nominations: false,  // an idea and a price being typed into it
+      'open-round': true,  // a list of closing dates
     });
   });
 });
