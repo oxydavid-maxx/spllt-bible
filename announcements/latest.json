@@ -1,0 +1,50 @@
+{
+  "week": "2026-09-20",
+  "generatedAt": "2026-09-21T22:57:23.567Z",
+  "sermon": {
+    "title": "先",
+    "speaker": "光佑",
+    "passage": "創3",
+    "audio": "https://drive.google.com/file/d/1CX5pHpYDmNPN-2_9E082QikMMWPhlHtg/view",
+    "slides": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview",
+    "transcript": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view",
+    "youtube": null
+  },
+  "next": {
+    "date": "9/27",
+    "topic": "爸媽不在家，我要活下去系列: 豚汁定食/如何殺柚子",
+    "owner": "淑君校長/大廚",
+    "signup": "https://forms.gle/Z7EvQyzCVEmnQYHNA"
+  },
+  "standing": null,
+  "past": [
+    {
+      "week": "2026-09-13",
+      "title": null,
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview",
+      "transcript": null
+    },
+    {
+      "week": "2026-09-06",
+      "title": null,
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ/preview",
+      "transcript": null
+    },
+    {
+      "week": "2025-12-13",
+      "title": null,
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1dgO-5bAgk_MPJ1XoGG1jiQZue1bqcWg5/view",
+      "transcript": null
+    },
+    {
+      "week": "2025-06-14",
+      "title": null,
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1c3-qEtjRJFjFHwY7AvW-mLcqQ8Ta3ZJe/view",
+      "transcript": null
+    }
+  ]
+}
