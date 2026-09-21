@@ -4,7 +4,11 @@ param(
   [string]$Variant = 'debug',
   [string]$ReactNativeArchitectures,
   [string]$LogPath,
-  [switch]$LegacyPackaging
+  [switch]$LegacyPackaging,
+  # An App Bundle for Play, which is the same build with a different packaging step. Play then
+  # delivers one ABI per device instead of both, which is where most of the download goes: the two
+  # native library sets are 50 MB of a 93 MB APK.
+  [switch]$Bundle
 )
 
 $ErrorActionPreference = 'Stop'
@@ -110,7 +114,8 @@ if ($gradlePropertiesAfter -cne $gradlePropertiesBefore) {
   Set-Content -LiteralPath $gradleProperties -Value $gradlePropertiesAfter -Encoding utf8
 }
 
-$gradleTask = if ($Variant -eq 'release') { 'assembleRelease' } else { 'assembleDebug' }
+if ($Bundle -and $Variant -ne 'release') { throw 'An App Bundle is only produced for a release build.' }
+$gradleTask = if ($Bundle) { 'bundleRelease' } elseif ($Variant -eq 'release') { 'assembleRelease' } else { 'assembleDebug' }
 $fixtureEnabled = $env:EXPO_PUBLIC_QINGMU_FIXTURE -eq 'true'
 $buildProfile = if ($fixtureEnabled) { 'QA_CORE_FIXTURE_ONLY' } else { 'PILOT_GOOGLE_HTTPS' }
 $logPath = if ($LogPath) {
@@ -200,8 +205,9 @@ $env:GRADLE_USER_HOME | Set-Content -LiteralPath $markerPath -Encoding utf8
 
 $apkDirectory = if ($Variant -eq 'release') { 'release' } else { 'debug' }
 $apkName = if ($Variant -eq 'release') { 'app-release.apk' } else { 'app-debug.apk' }
-$apk = Join-Path $root "android\app\build\outputs\apk\$apkDirectory\$apkName"
-if (-not (Test-Path $apk)) { throw "Gradle completed but APK was not found: $apk" }
+$apk = if ($Bundle) { Join-Path $root 'android\app\build\outputs\bundle\release\app-release.aab' }
+  else { Join-Path $root "android\app\build\outputs\apk\$apkDirectory\$apkName" }
+if (-not (Test-Path $apk)) { throw "Gradle completed but the artifact was not found: $apk" }
 $hash = (Get-FileHash $apk -Algorithm SHA256).Hash.ToLowerInvariant()
 $receipt = [ordered]@{
   kind = "android-$Variant-candidate"

@@ -12,6 +12,7 @@
       "./plugins/withQingmuReleaseSigning",
       "./plugins/withQingmuNetworkSecurity",
       "./plugins/withQingmuReleaseSlimming",
+      "./plugins/withQingmuPermissionFloor",
       [
         "expo-camera",
         {
