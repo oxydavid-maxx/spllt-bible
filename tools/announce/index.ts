@@ -1,7 +1,7 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { buildAnnouncement } from './build';
+import { buildAnnouncement, type Announcement } from './build';
 import { reviewAnnouncement } from './review';
 
 /**
@@ -25,6 +25,21 @@ function taipeiToday(): string {
 
 function git(repo: string, args: string[]): string {
   return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', timeout: 120_000 }).trim();
+}
+
+/** Everything except when the job happened to run. */
+function contentOf(announcement: Announcement): string {
+  const { generatedAt, ...rest } = announcement;
+  void generatedAt;
+  return JSON.stringify(rest);
+}
+
+function changedSince(path: string, announcement: Announcement): boolean {
+  try {
+    return contentOf(JSON.parse(readFileSync(path, 'utf8')) as Announcement) !== contentOf(announcement);
+  } catch {
+    return true;
+  }
 }
 
 async function main(): Promise<number> {
@@ -55,7 +70,14 @@ async function main(): Promise<number> {
     }
   }
 
+  // generatedAt changes on every run, so comparing whole files would commit an identical
+  // announcement twice a week for the rest of the term. What matters is whether the content moved.
   const week = announcement.week.replace(/-/g, '');
+  const latestPath = join(REPO, OUT_DIR, 'latest.json');
+  if (!changedSince(latestPath, announcement)) {
+    process.stdout.write(`NO CHANGE for ${announcement.week}\n`);
+    return 0;
+  }
   for (const name of ['latest.json', `${week}.json`]) {
     const path = join(REPO, OUT_DIR, name);
     mkdirSync(dirname(path), { recursive: true });

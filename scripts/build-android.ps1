@@ -49,7 +49,11 @@ $env:QINGMU_BUILD_STARTED_UTC = [DateTime]::UtcNow.ToString('o')
 
 # Load a private YouVersion App Key only into this build process. The file is
 # never copied, logged, hashed, or written into a receipt/source artifact.
-$yvEnvFile = $env:QINGMU_YOUVERSION_ENV_FILE
+# Defaulted for the same reason the toolchain root is: an environment variable nobody remembers to
+# set is a reader that silently never opens. The path is not the secret; the file it points at is,
+# and that file is still never copied, logged, hashed or written into a receipt.
+$yvEnvFile = if ($env:QINGMU_YOUVERSION_ENV_FILE) { $env:QINGMU_YOUVERSION_ENV_FILE }
+  else { 'C:\Users\User\Documents\Codex\2026-09-05\qingmu-research\content-implementation\poc\.yv-app-key.env' }
 if ($yvEnvFile -and (Test-Path -LiteralPath $yvEnvFile)) {
   foreach ($line in Get-Content -LiteralPath $yvEnvFile) {
     if ($line -match '^EXPO_PUBLIC_YOUVERSION_APP_KEY=(.+)$' -and -not $env:EXPO_PUBLIC_YOUVERSION_APP_KEY) {
@@ -146,6 +150,13 @@ if ($Variant -eq 'release') {
   $gradleCode = [regex]::Match($gradleText, 'versionCode\s+(\d+)').Groups[1].Value
   if ($gradleName -ne $appConfig.expo.version -or [int]$gradleCode -ne [int]$appConfig.expo.android.versionCode) {
     throw "Version drift: app.json says $($appConfig.expo.version)/$($appConfig.expo.android.versionCode), android/app/build.gradle says $gradleName/$gradleCode. Update the native project or re-run prebuild."
+  }
+
+  # Without this key the YouVersion reader never initialises and the app sits on
+  # 「官方閱讀器還在準備中」 forever. Three releases shipped that way while the receipt dutifully
+  # recorded youVersionAppKeyPresent = false, because a receipt nobody reads is not a check.
+  if (-not $env:EXPO_PUBLIC_YOUVERSION_APP_KEY) {
+    throw 'EXPO_PUBLIC_YOUVERSION_APP_KEY is required for release builds; without it the reader never opens. Set QINGMU_YOUVERSION_ENV_FILE or the variable itself.'
   }
 
   $argumentsReleaseSigning = '-PqingmuRelease=true'
