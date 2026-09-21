@@ -115,6 +115,18 @@ export function excelSerialToDate(serial: number): string | null {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * A headline out of a topic cell.
+ *
+ * The 青年啟發 tab keeps the session title and its discussion questions in one cell, separated by
+ * newlines, so using the cell whole turns a four-line block into a sermon title. The first line is
+ * the title as the deck announces it — 生命：這就是人生嗎？ — and the rest is material for the
+ * small groups, not for a notice board.
+ */
+export function headline(topic: string): string {
+  return String(topic ?? '').split(/\r?\n/)[0].trim();
+}
+
 export interface PlanRow { date: string; topic: string; owner: string; note: string }
 
 /**

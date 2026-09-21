@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  classifyFile, excelSerialToDate, findSignupUrl, isGoogleNative, listWeekFolders,
+  classifyFile, excelSerialToDate, findSignupUrl, headline, isGoogleNative, listWeekFolders,
   nextAfter, parseFolderListing, pickWeekFolder, readPlanRows, rowFor, sermonTitleFromName,
   shortDate, viewUrl,
 } from '../../tools/announce/parse';
@@ -157,5 +157,23 @@ describe('the sign-up link', () => {
   it('gives nothing when there is no form, rather than a half-matched url', () => {
     expect(findSignupUrl('這週沒有需要報名的活動')).toBeNull();
     expect(findSignupUrl('https://maps.app.goo.gl/k9NFs6UmogC2sGqj9')).toBeNull();
+  });
+});
+
+describe('a headline out of a topic cell', () => {
+  // 青年啟發 keeps the session title and its discussion questions in one cell. Used whole, a sermon
+  // title became four lines of questions on the notice board.
+  it('takes the title and leaves the small-group questions behind', () => {
+    const cell = '生命：這就是人生嗎？\n如果只剩下24小時可以活，你想做些什麼？\n你覺得為什麼一般人會覺得討論宗教信仰很奇怪？';
+    expect(headline(cell)).toBe('生命：這就是人生嗎？');
+  });
+
+  it('leaves an ordinary one-line topic alone', () => {
+    expect(headline('爸媽不在家，我要活下去系列: 豚汁定食/如何殺柚子')).toBe('爸媽不在家，我要活下去系列: 豚汁定食/如何殺柚子');
+  });
+
+  it('copes with windows line endings and an empty cell', () => {
+    expect(headline('耶穌：耶穌是誰？\r\n你是否親眼見過名人？')).toBe('耶穌：耶穌是誰？');
+    expect(headline('')).toBe('');
   });
 });

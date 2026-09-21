@@ -2,7 +2,7 @@ import { fetchDocText, fetchDriveFile, fetchFolderHtml, fetchSlidesText, fetchWo
 import { pptxSlideText, xlsxSheetRows } from './office';
 import {
   classifyFile, findSignupUrl, isGoogleNative, listWeekFolders, nextAfter, parseFolderListing,
-  pickWeekFolder, readPlanRows, rowFor, sermonTitleFromName, shortDate, viewUrl,
+  headline, pickWeekFolder, readPlanRows, rowFor, sermonTitleFromName, shortDate, viewUrl,
   type DriveEntry, type PlanRow,
 } from './parse';
 
@@ -121,7 +121,7 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
   // A block with nothing in it is omitted rather than rendered empty: the phone shows what exists.
   const sermon: SermonBlock | null = files.title || files.audio || files.slides || thisWeekSermon
     ? {
-        title: files.title ?? thisWeekSermon?.topic ?? null,
+        title: files.title ?? (thisWeekSermon ? headline(thisWeekSermon.topic) : null),
         speaker: thisWeekSermon?.owner || null,
         passage: thisWeekSermon?.note || null,
         audio: files.audio, slides: files.slides, transcript: files.transcript,
@@ -143,7 +143,7 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
       week,
       generatedAt: new Date().toISOString(),
       sermon,
-      next: upcoming ? { date: shortDate(upcoming.date), topic: upcoming.topic, owner: upcoming.owner || null, signup } : null,
+      next: upcoming ? { date: shortDate(upcoming.date), topic: headline(upcoming.topic), owner: upcoming.owner || null, signup } : null,
       standing: standingFrom(sunday),
       past,
     },
