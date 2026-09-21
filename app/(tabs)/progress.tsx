@@ -6,6 +6,8 @@ import { isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } 
 import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type NominationBoardView, type ScoreChartQuery, type ScoreChartRange, type CommunityProgressView, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
 import type { PendingGamificationOperations } from '../../src/services/gamificationPendingStore';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../src/services/adminUnlockGuard';
+import { createProfileCache } from '../../src/services/profileCache';
+import * as SecureStore from 'expo-secure-store';
 import { ActionSheet } from '../../src/ui/gamification/ActionSheet';
 import { FriendQrPanel } from '../../src/ui/gamification/FriendQrPanel';
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
@@ -37,6 +39,13 @@ export default function ProgressScreen() {
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const [foregroundRevision, setForegroundRevision] = useState(0);
   const guard = useRef(createAdminUnlockGuard({ authenticate: createNativeAdminAuthenticator() }));
+  // The member's own points, kept on the device so a backend that is off does not blank this page.
+  // Only their own: see profileCache for why a friend's totals must not land here.
+  const [profileCache] = useState(() => createProfileCache({
+    getItem: (key) => SecureStore.getItemAsync(key),
+    setItem: (key, value) => SecureStore.setItemAsync(key, value),
+  }));
+  const [profileStale, setProfileStale] = useState(false);
   const requestGeneration = useRef(0);
   const appActive = useRef(true);
   const activeScope = useRef<ScoreScope>('me');
@@ -75,10 +84,16 @@ export default function ProgressScreen() {
   const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope, chartQuery?: ScoreChartQuery) => {
     if (!client || !session) return; setBusy(true); setError(null);
     const generation = requestGeneration.current;
-    try { const value = chartQuery ? await client.getProfile(memberId, nextScope, monthNow(), chartQuery) : await client.getProfile(memberId, nextScope, monthNow()); rememberChart(memberId, nextScope, chartQuery, value.chart); if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session) && (nextScope !== 'all' || guard.current.state === 'unlocked')) { setProfile(value); if (!chartQuery) void prefetchCharts(memberId, nextScope, value.chart?.range ?? 'month'); } }
-    catch (reason) { if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session)) { setProfile(null); setError(messageFor(reason)); } }
+    try { const value = chartQuery ? await client.getProfile(memberId, nextScope, monthNow(), chartQuery) : await client.getProfile(memberId, nextScope, monthNow()); rememberChart(memberId, nextScope, chartQuery, value.chart); if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session) && (nextScope !== 'all' || guard.current.state === 'unlocked')) { setProfile(value); setProfileStale(false); if (nextScope === 'me' && memberId === session.memberId) void profileCache.save(memberId, value as never); if (!chartQuery) void prefetchCharts(memberId, nextScope, value.chart?.range ?? 'month'); } }
+    catch (reason) { if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session)) {
+      // Blanking the page loses the one number the member came to see. Their own last-known total is
+      // still true as of when it was fetched, so it is shown and marked rather than thrown away.
+      const remembered = nextScope === 'me' && memberId === session.memberId ? await profileCache.load(memberId) : null;
+      if (remembered && isCurrentAuthSession(session)) { setProfile(remembered as never); setProfileStale(true); setError(null); }
+      else { setProfile(null); setError(messageFor(reason)); }
+    } }
     finally { setBusy(false); }
-  }, [client, session]);
+  }, [client, session, profileCache]);
   const prefetchCharts = useCallback(async (memberId: string, nextScope: ScoreScope, currentRange: ScoreChartRange) => {
     if (!client || !session) return;
     const missing = (['week', 'month', 'year', 'all'] as ScoreChartRange[]).filter((range) => range !== currentRange && !chartCache.current.has(chartKey(memberId, nextScope, { range })));
@@ -195,6 +210,8 @@ export default function ProgressScreen() {
   return <View style={styles.screen}>
     <View style={styles.scopeHeader}><View style={styles.scopes}>{(['me', 'friends', ...(capabilities?.canViewAllScores ? ['all'] : [])] as ScoreScope[]).map((item) => <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: scope === item }} accessibilityLabel={item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體（管理）'} onPress={() => void chooseScope(item)} style={[styles.scope, scope === item && styles.scopeActive]}><Text style={[styles.scopeText, scope === item && styles.scopeTextActive]}>{item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體（管理）'}</Text></Pressable>)}</View><Pressable accessibilityRole="button" accessibilityLabel="開啟積分操作" onPress={() => setSheet('menu')} style={styles.menu}><Text style={styles.menuText}>⋯</Text></Pressable></View>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}{busy ? <Text style={styles.note}>載入中…</Text> : null}
+    {/* A number with no note beside it claims to be current. This one is not. */}
+    {profileStale && scope === 'me' ? <Text style={styles.stale}>目前顯示上次的積分，還沒連上更新</Text> : null}
     {scope === 'me' && !profile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
     {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
     {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}
@@ -238,4 +255,4 @@ export default function ProgressScreen() {
 
 function monthNow(): string { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).formatToParts(new Date()); const year = parts.find((part) => part.type === 'year')?.value ?? '1970'; const month = parts.find((part) => part.type === 'month')?.value ?? '01'; return `${year}-${month}`; }
 function messageFor(reason: unknown): string { return reason instanceof GamificationApiError ? reason.userMessage : '目前無法載入積分，請稍後再試。'; }
-const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' } });
+const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' } });
