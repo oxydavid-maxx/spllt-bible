@@ -158,6 +158,23 @@ export default function ProgressScreen() {
   // the server rather than a locally guessed vote count.
   const refreshNominations = () => setNominations(null);
   const nominationError = (reason: unknown) => setError(messageFor(reason));
+  // The estimate lands 20-60 seconds after the idea is submitted, on a worker tick. Without this the
+  // number only appears if the app is restarted, which nobody would think to do. Refetch in place
+  // rather than through refreshNominations: nulling the state would blank the board on every poll,
+  // and a failed poll should leave what is on screen alone.
+  const reloadNominations = useCallback(async () => {
+    if (!client || !session || typeof client.getNominations !== 'function') return;
+    try {
+      const value = await client.getNominations();
+      if (isCurrentAuthSession(session)) setNominations(value);
+    } catch { /* keep the board that is already drawn */ }
+  }, [client, session]);
+  useEffect(() => {
+    if (sheet !== 'nominations') return undefined;
+    void reloadNominations();
+    const timer = setInterval(() => { void reloadNominations(); }, 20000);
+    return () => clearInterval(timer);
+  }, [sheet, reloadNominations]);
   const openNominationRound = async (days: number) => {
     if (!client) return;
     try {

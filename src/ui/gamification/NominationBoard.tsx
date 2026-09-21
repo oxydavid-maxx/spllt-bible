@@ -100,29 +100,8 @@ export function NominationBoard({
       </Pressable> : null}
     </View>)}
 
-    {canManage && onDecide ? nominations.filter((nomination) => nomination.status === 'OPEN').map((nomination) => <View key={`manage-${nomination.nominationId}`} style={styles.manageRow}>
-      <Text style={styles.manageName} numberOfLines={1}>{nomination.name}</Text>
-      <TextInput
-        accessibilityLabel={`${nomination.name} 的積分`}
-        keyboardType="number-pad"
-        placeholder={nomination.estimatedPoints === undefined ? '積分' : String(nomination.estimatedPoints)}
-        placeholderTextColor={theme.colors.muted}
-        value={price[nomination.nominationId] ?? ''}
-        onChangeText={(value) => setPrice((current) => ({ ...current, [nomination.nominationId]: value }))}
-        style={styles.priceInput}
-      />
-      <Pressable accessibilityRole="button" accessibilityLabel={`核准 ${nomination.name}`} onPress={() => {
-        const costPoints = Number(price[nomination.nominationId]);
-        if (Number.isSafeInteger(costPoints) && costPoints > 0) onDecide(nomination.nominationId, 'approve', nomination.revision, costPoints);
-      }} style={styles.manageAction}><Text style={styles.manageActionText}>核准</Text></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={`婉拒 ${nomination.name}`} onPress={() => onDecide(nomination.nominationId, 'decline', nomination.revision)} style={styles.manageAction}><Text style={styles.manageActionText}>婉拒</Text></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={`移除 ${nomination.name}`} onPress={() => onDecide(nomination.nominationId, 'remove', nomination.revision)} style={styles.manageAction}><Text style={styles.removeText}>移除</Text></Pressable>
-    </View>) : null}
-
-    {canManage && round && onCloseRound ? <Pressable
-      accessibilityRole="button" accessibilityLabel="結束這一輪" onPress={() => onCloseRound(round.roundId)} style={styles.closeRound}
-    ><Text style={styles.closeRoundText}>結束這一輪</Text></Pressable> : null}
-
+    {/* The composer comes before the 輔導 controls: a member's own action should not sit below
+        a block of administrative chrome, where the sheet cuts it off. */}
     {/* One idea each, so the composer is gone once yours is in. Taking it back brings it back. */}
     {round && voting && !alreadyMine ? <View style={styles.composer}>
       <TextInput
@@ -147,6 +126,29 @@ export function NominationBoard({
         <Text style={styles.submitText}>提名</Text>
       </Pressable>
     </View> : null}
+    {canManage && onDecide ? nominations.filter((nomination) => nomination.status === 'OPEN').map((nomination) => <View key={`manage-${nomination.nominationId}`} style={styles.manageRow}>
+      <Text style={styles.manageName} numberOfLines={1}>{nomination.name}</Text>
+      <TextInput
+        accessibilityLabel={`${nomination.name} 的積分`}
+        keyboardType="number-pad"
+        placeholder={nomination.estimatedPoints === undefined ? '積分' : String(nomination.estimatedPoints)}
+        placeholderTextColor={theme.colors.muted}
+        value={price[nomination.nominationId] ?? ''}
+        onChangeText={(value) => setPrice((current) => ({ ...current, [nomination.nominationId]: value }))}
+        style={styles.priceInput}
+      />
+      <Pressable accessibilityRole="button" accessibilityLabel={`核准 ${nomination.name}`} onPress={() => {
+        const costPoints = Number(price[nomination.nominationId]);
+        if (Number.isSafeInteger(costPoints) && costPoints > 0) onDecide(nomination.nominationId, 'approve', nomination.revision, costPoints);
+      }} style={styles.manageAction}><Text style={styles.manageActionText}>核准</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`婉拒 ${nomination.name}`} onPress={() => onDecide(nomination.nominationId, 'decline', nomination.revision)} style={styles.manageAction}><Text style={styles.manageActionText}>婉拒</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`移除 ${nomination.name}`} onPress={() => onDecide(nomination.nominationId, 'remove', nomination.revision)} style={styles.manageAction}><Text style={styles.removeText}>移除</Text></Pressable>
+    </View>) : null}
+
+    {canManage && round && onCloseRound ? <Pressable
+      accessibilityRole="button" accessibilityLabel="結束這一輪" onPress={() => onCloseRound(round.roundId)} style={styles.closeRound}
+    ><Text style={styles.closeRoundText}>結束這一輪</Text></Pressable> : null}
+
   </View>;
 }
 

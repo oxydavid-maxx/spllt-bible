@@ -59,7 +59,7 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
         return <Pressable key={reward.rewardId} accessibilityRole="button" accessibilityLabel={`${selected ? '目前目標：' : '設為目標：'}${reward.name} ${reward.costPoints} 分`} accessibilityState={{ selected }} onPress={() => { if (!selected) onChooseTarget?.(reward.rewardId); }} style={[styles.shelfCard, selected && styles.shelfCardSelected]}>
           <Text style={[styles.shelfName, selected && styles.shelfNameSelected]} numberOfLines={2}>{reward.name}</Text>
           <Text style={[styles.shelfCost, selected && styles.shelfNameSelected]}>{`${reward.costPoints} 分`}</Text>
-          <View style={styles.shelfBar}><View style={[styles.shelfBarFill, { width: `${Math.round(ratio * 100)}%` }, selected && styles.barFillSelected]} /></View>
+          <View style={[styles.shelfBar, selected && styles.shelfBarSelected]}><View style={[styles.shelfBarFill, { width: `${Math.round(ratio * 100)}%` }, selected && styles.barFillSelected]} /></View>
           <Text style={[styles.shelfState, selected && styles.shelfNameSelected]}>{selected ? '目標' : redeemableBalance >= reward.costPoints ? '可兌換' : `${Math.min(redeemableBalance, reward.costPoints)}/${reward.costPoints}`}</Text>
         </Pressable>;
       })}
@@ -94,6 +94,10 @@ const styles = StyleSheet.create({
   bar: { height: 10, borderRadius: 5, backgroundColor: theme.colors.primarySoft, overflow: 'hidden' },
   barFill: { height: 10, borderRadius: 5, backgroundColor: theme.colors.primary },
   shelfBar: { height: 6, borderRadius: 3, backgroundColor: theme.colors.primarySoft, overflow: 'hidden' },
+  // On the selected card the background IS primary, so a primarySoft track sits a shade away from
+  // white and a 9% white fill disappears into it — the bar reads as full. The track has to be
+  // darker than the fill, not lighter than the card.
+  shelfBarSelected: { backgroundColor: 'rgba(0,0,0,0.28)' },
   shelfBarFill: { height: 6, borderRadius: 3, backgroundColor: theme.colors.primary },
   barFillSelected: { backgroundColor: theme.colors.white },
   button: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, backgroundColor: theme.colors.primary },
