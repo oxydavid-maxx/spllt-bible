@@ -13,7 +13,11 @@ import { reviewAnnouncement } from './review';
  * is not published rather than published wrong.
  */
 
-const REPO = process.env.QINGMU_ANNOUNCE_REPO ?? 'C:/dev/qingmu-youth-public';
+// A checkout of the public repo on `main`, kept apart from this working tree so publishing a notice
+// never depends on what branch development happens to be on. It lives under the machine-state
+// worktrees capsule because C:\dev only admits the roots the dev-layout registry lists, and a second
+// checkout of an application repo is not one of them.
+const REPO = process.env.QINGMU_ANNOUNCE_REPO ?? 'C:/dev/machine/worktrees/qingmu-publish';
 const OUT_DIR = 'announcements';
 
 function taipeiToday(): string {
