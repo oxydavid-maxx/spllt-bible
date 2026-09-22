@@ -155,7 +155,7 @@ export default function ProgressScreen() {
     let active = true;
     void client.getNominations()
       .then((value) => { if (active && isCurrentAuthSession(session)) setNominations(value); })
-      .catch(() => { if (active) setNominations({ round: null, nominations: [] }); });
+      .catch(() => { if (active) setNominations({ round: null, nominations: [], votesLeft: 0, votesPerMember: 3 }); });
     return () => { active = false; };
   }, [client, session, scope, nominations]);
   useEffect(() => { setNominations(null); }, [session?.memberId]);
@@ -229,6 +229,8 @@ export default function ProgressScreen() {
         nominations={nominations?.nominations ?? []}
         canManage={Boolean(capabilities?.canManageRewards)}
         nowMs={Date.now()}
+        votesLeft={nominations?.votesLeft}
+        votesPerMember={nominations?.votesPerMember}
         onNominate={(name, note) => { void client?.nominateReward({ name, ...(note ? { note } : {}) }).then(refreshNominations).catch(nominationError); }}
         onVote={(nominationId, voting) => { void client?.setNominationVote(nominationId, voting).then(refreshNominations).catch(nominationError); }}
         onWithdraw={(nominationId) => { void client?.withdrawNomination(nominationId).then(refreshNominations).catch(nominationError); }}

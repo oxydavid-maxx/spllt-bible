@@ -220,3 +220,37 @@ describe('an idea, and the words for it, belong to whoever put them there', () =
     expect(view.byLabel('撤回 電影票')).toBeUndefined();
   });
 });
+
+describe('three votes, said out loud rather than discovered', () => {
+  it('says how many are left before anybody spends one', () => {
+    // A board of tick boxes reads as "tick what you like". This one is "choose three", and somebody
+    // who thinks it is unlimited ticks everything — which is the same as not voting at all.
+    expect(render({ votesLeft: 3, votesPerMember: 3 }).text()).toContain('選 3 個,還有 3 票');
+  });
+
+  it('counts down as they are spent', () => {
+    expect(render({ votesLeft: 1 }).text()).toContain('還有 1 票');
+  });
+
+  it('says what to do instead of just going quiet when they run out', () => {
+    expect(render({ votesLeft: 0 }).text()).toContain('先取消一票');
+  });
+
+  it('stops offering a vote there is none left for', () => {
+    const board = render({ votesLeft: 0, nominations: [nomination({ name: '雞排' })] });
+    expect(board.tree.root.findAll((node) => node.props?.disabled === true).length).toBeGreaterThan(0);
+  });
+
+  it('still lets a member take back one they already cast', () => {
+    // Disabling the ticked ones too would strand somebody on a choice they have already regretted,
+    // which is the opposite of what a limit is for.
+    const board = render({ votesLeft: 0, nominations: [nomination({ name: '雞排', voted: true })] });
+    const take = board.byLabel('取消想要：雞排，目前 0 人');
+    expect(take).toBeDefined();
+    expect(take.props.disabled).toBe(false);
+  });
+
+  it('says nothing about votes once the round stops taking them', () => {
+    expect(render({ round: round({ phase: 'DECIDING' }), votesLeft: 2 }).text()).not.toContain('還有 2 票');
+  });
+});

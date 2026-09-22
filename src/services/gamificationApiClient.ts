@@ -139,6 +139,9 @@ export interface NominationRound {
 export interface NominationBoardView {
   round: NominationRound | null;
   nominations: RewardNomination[];
+  /** Votes this member has left in the round. Three are given because three prizes are chosen. */
+  votesLeft: number;
+  votesPerMember: number;
 }
 export interface NominationRoundResult {
   roundId: string;
@@ -375,7 +378,11 @@ export function createGamificationApiClient(options: GamificationApiClientOption
       if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       const parsed = values.map(parseNomination);
       if (parsed.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
-      return { round: parseRound(body?.round), nominations: parsed as RewardNomination[] };
+      // An older server that does not send these leaves the member with their three, which reads as
+      // the behaviour that existed before the limit rather than as a board with nothing to spend.
+      const perMember = Number.isInteger(body?.votesPerMember) ? Number(body?.votesPerMember) : 3;
+      const left = Number.isInteger(body?.votesLeft) ? Number(body?.votesLeft) : perMember;
+      return { round: parseRound(body?.round), nominations: parsed as RewardNomination[], votesLeft: left, votesPerMember: perMember };
     },
     async getNominationHistory(): Promise<NominationRoundResult[]> {
       const body = object(await request('/api/rewards/nominations/history'));

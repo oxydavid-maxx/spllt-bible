@@ -17,13 +17,15 @@ afterEach(() => databases.splice(0).forEach((database) => database.close()));
 
 const DEADLINE = Date.parse('2026-09-30T16:00:00.000Z');
 
-function setup(nowIso = '2026-09-20T04:00:00.000Z') {
+function setup(nowIso = '2026-09-20T04:00:00.000Z', extraMembers: Array<{ id: string; displayName: string; groupId: string }> = []) {
   let clock = new Date(nowIso);
   const database = createDatabase({
     members: [
       { id: 'member-self', displayName: '小明', groupId: 'g' },
       { id: 'member-friend', displayName: '小華', groupId: 'g' },
       { id: 'member-admin', displayName: '光佑', groupId: 'g' },
+      // One idea each is the rule, so a test that needs four ideas needs four people.
+      ...extraMembers,
     ],
   });
   databases.push(database);
@@ -190,5 +192,69 @@ describe('what stays behind when a round is over', () => {
     expect((await openRound(api, headers, Date.parse('2026-10-31T16:00:00.000Z'))).status).toBe(201);
     // A new round is a clean slate: the person who used their one idea last time has one again.
     expect((await nominate(api, headers, 'member-self', '雞排')).status).toBe(201);
+  });
+});
+
+describe('three votes each, because three prizes are chosen', () => {
+  const crowd = [
+    { id: 'member-c', displayName: '小美', groupId: 'g' },
+    { id: 'member-d', displayName: '小強', groupId: 'g' },
+  ];
+
+  async function boardWithFourIdeas() {
+    const { api, headers } = setup('2026-09-20T04:00:00.000Z', crowd);
+    await openRound(api, headers);
+    const ideas = [];
+    for (const [member, name] of [['member-self', '桌遊'], ['member-friend', '手搖杯'], ['member-c', '電影票'], ['member-d', '雞排']] as const) {
+      ideas.push(((await nominate(api, headers, member, name)).body as { nominationId: string }).nominationId);
+    }
+    return { api, headers, ideas };
+  }
+
+  it('lets a member spend three and refuses the fourth', async () => {
+    const { api, headers, ideas } = await boardWithFourIdeas();
+    for (const id of ideas.slice(0, 3)) {
+      expect((await vote(api, headers, 'member-admin', id)).status).toBe(200);
+    }
+    const fourth = await vote(api, headers, 'member-admin', ideas[3]);
+    expect(fourth.status).toBe(409);
+    expect(JSON.stringify(fourth.body)).toContain('NO_VOTES_LEFT');
+  });
+
+  it('counts down where a member can see it, before they spend any', async () => {
+    // A limit somebody only discovers by hitting it is a trap, so the count rides along with the
+    // board rather than only appearing in the reply to a vote.
+    const { api, headers, ideas } = await boardWithFourIdeas();
+    const before = await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-admin') });
+    expect(before.body).toMatchObject({ votesLeft: 3, votesPerMember: 3 });
+    await vote(api, headers, 'member-admin', ideas[0]);
+    const after = await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-admin') });
+    expect(after.body).toMatchObject({ votesLeft: 2 });
+  });
+
+  it('gives a vote back when a member changes their mind', async () => {
+    // The limit asks for a decision; it does not punish revising one.
+    const { api, headers, ideas } = await boardWithFourIdeas();
+    for (const id of ideas.slice(0, 3)) await vote(api, headers, 'member-admin', id);
+    expect((await vote(api, headers, 'member-admin', ideas[3])).status).toBe(409);
+
+    const freed = await api({ method: 'DELETE', url: `/api/rewards/nominations/${ideas[0]}/vote`, headers: headers('member-admin') });
+    expect(freed.status).toBe(200);
+    expect((await vote(api, headers, 'member-admin', ideas[3])).status).toBe(200);
+  });
+
+  it('counts three per member, not three for the board', async () => {
+    const { api, headers, ideas } = await boardWithFourIdeas();
+    for (const id of ideas.slice(0, 3)) await vote(api, headers, 'member-admin', id);
+    // 小明 has spent nothing, so the board's fourth idea is still open to them.
+    expect((await vote(api, headers, 'member-self', ideas[3])).status).toBe(200);
+  });
+
+  it('does not let a repeat of the same vote burn a second one', async () => {
+    const { api, headers, ideas } = await boardWithFourIdeas();
+    await vote(api, headers, 'member-admin', ideas[0]);
+    await vote(api, headers, 'member-admin', ideas[0]);
+    const board = await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-admin') });
+    expect(board.body).toMatchObject({ votesLeft: 2 });
   });
 });

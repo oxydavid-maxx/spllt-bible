@@ -32,6 +32,17 @@ const MAX_TITLE_LENGTH = 40;
 
 /** What the group is shown of a finished round. The rest stays with the people it belongs to. */
 const HISTORY_PLACES = 3;
+// One vote per place. The two numbers are the same thing said twice, so they are written once here
+// and read from here, rather than drifting apart the first time either is changed.
+const VOTES_PER_MEMBER = HISTORY_PLACES;
+
+/** How many of a member's votes are still unspent in a round. */
+function votesLeft(db: DatabaseSync, memberId: string, roundId: string | null): number {
+  const spent = db.prepare(`SELECT COUNT(*) AS count FROM reward_nomination_votes v
+    JOIN reward_nominations n ON n.nomination_id = v.nomination_id
+    WHERE v.member_id = ? AND n.round_id IS ?`).get(memberId, roundId) as { count: number };
+  return Math.max(0, VOTES_PER_MEMBER - Number(spent.count));
+}
 
 type NominationStatus = 'OPEN' | 'APPROVED' | 'DECLINED' | 'REMOVED';
 
@@ -179,6 +190,10 @@ export function listNominations(db: DatabaseSync, viewerId: string, nowMs: numbe
   return {
     round: viewRound(round, nowMs),
     nominations: rows.map((row) => project(row, viewerId, toPoints)),
+    // Sent with the list, not only in a vote's reply, so the board can say how many votes are left
+    // before anybody spends one. A limit a member only discovers by hitting it is a trap.
+    votesLeft: votesLeft(db, viewerId, round.round_id),
+    votesPerMember: VOTES_PER_MEMBER,
   };
 }
 
@@ -365,13 +380,28 @@ export function setVote(db: DatabaseSync, memberId: string, nominationId: string
     : undefined;
   if (round && (round.state === 'CLOSED' || nowMs >= Number(round.closes_at))) return { status: 409, code: 'VOTING_CLOSED' };
 
+  // Three votes each, because three prizes are chosen. Unlimited approval would have every member
+  // ticking everything they do not actively dislike, and a list where nothing is ranked is the same
+  // as no vote at all. Making the votes as scarce as the places is what turns ticking into choosing.
+  //
+  // It is still approval voting, not a ranking: three equal votes spread across three ideas, so the
+  // prizes that win are the ones the most people can live with rather than one group's favourite.
+  // Spending them is reversible — a member can untick and spend the vote elsewhere — so the limit
+  // asks for a decision without punishing a change of mind.
   if (voting) {
+    const spent = db.prepare(`SELECT COUNT(*) AS count FROM reward_nomination_votes v
+      JOIN reward_nominations n ON n.nomination_id = v.nomination_id
+      WHERE v.member_id = ? AND n.round_id IS ? AND v.nomination_id <> ?`)
+      .get(memberId, nomination.round_id, nominationId) as { count: number };
+    if (Number(spent.count) >= VOTES_PER_MEMBER) {
+      return { status: 409, code: 'NO_VOTES_LEFT' };
+    }
     db.prepare('INSERT INTO reward_nomination_votes(nomination_id, member_id, created_at) VALUES(?,?,?) ON CONFLICT DO NOTHING').run(nominationId, memberId, nowMs);
   } else {
     db.prepare('DELETE FROM reward_nomination_votes WHERE nomination_id = ? AND member_id = ?').run(nominationId, memberId);
   }
   const counted = db.prepare('SELECT COUNT(*) AS count FROM reward_nomination_votes WHERE nomination_id = ?').get(nominationId) as { count: number };
-  return { nominationId, voteCount: Number(counted.count), voted: voting };
+  return { nominationId, voteCount: Number(counted.count), voted: voting, votesLeft: votesLeft(db, memberId, nomination.round_id) };
 }
 
 export type NominationDecision = 'approve' | 'decline' | 'remove';

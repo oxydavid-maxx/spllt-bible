@@ -22,6 +22,9 @@ export interface NominationBoardProps {
   canManage: boolean;
   /** Now, for the countdown. Passed in so the page is a function of its inputs. */
   nowMs: number;
+  /** Votes this member has left, and how many they started with. Three, because three prizes win. */
+  votesLeft?: number;
+  votesPerMember?: number;
   onNominate: (name: string, note: string) => void;
   onVote: (nominationId: string, voting: boolean) => void;
   onWithdraw?: (nominationId: string) => void;
@@ -37,13 +40,19 @@ const STATUS_LABEL: Record<RewardNomination['status'], string> = {
 };
 
 export function NominationBoard({
-  round, nominations, canManage, nowMs, onNominate, onVote, onWithdraw, onResolveSuggestion, onDecide, onCloseRound,
+  round, nominations, canManage, nowMs, votesLeft, votesPerMember = 3, onNominate, onVote, onWithdraw, onResolveSuggestion, onDecide, onCloseRound,
 }: NominationBoardProps) {
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const [price, setPrice] = useState<Record<string, string>>({});
 
   const voting = round?.phase === 'VOTING';
+  // Said out loud, because a board of tick boxes reads as "tick what you like" and this one is
+  // "choose three". Somebody who thinks it is unlimited ticks everything, and a list where nothing
+  // is ranked is the same as not voting. The number also has to be visible before the first tick:
+  // a limit discovered by hitting it is a trap, not a rule.
+  const remaining = typeof votesLeft === 'number' ? votesLeft : votesPerMember;
+  const spent = remaining <= 0;
   const alreadyMine = nominations.some((nomination) => nomination.mine && nomination.status === 'OPEN');
 
   const submit = () => {
@@ -57,6 +66,9 @@ export function NominationBoard({
     {round ? <View style={styles.roundHead}>
       <Text accessibilityRole="header" style={styles.heading}>{round.title ?? '想要什麼獎品'}</Text>
       <Text style={styles.deadline}>{voting ? describeDeadline(round.closesAt, nowMs) : '投票結束,等輔導決定'}</Text>
+      {voting ? <Text style={[styles.votesLeft, spent && styles.votesSpent]}>
+        {spent ? `${votesPerMember} 票投完了,想改就先取消一票` : `選 ${votesPerMember} 個,還有 ${remaining} 票`}
+      </Text> : null}
     </View> : <Text accessibilityRole="header" style={styles.heading}>想要什麼獎品</Text>}
 
     {nominations.map((nomination) => <View key={nomination.nominationId} style={styles.row}>
@@ -87,13 +99,16 @@ export function NominationBoard({
         ><Text style={styles.withdrawText}>撤回</Text></Pressable> : null}
       </View>
 
+      {/* Out of votes disables the ones not yet picked and leaves the picked ones alive, because
+          taking a vote back is how somebody changes their mind — disabling those too would strand
+          them on a choice they have already regretted. */}
       {nomination.status === 'OPEN' ? <Pressable
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: nomination.voted, disabled: !voting }}
-        accessibilityLabel={`${nomination.voted ? '取消想要' : '我也想要'}：${nomination.name}，目前 ${nomination.voteCount} 人`}
-        disabled={!voting}
+        accessibilityState={{ checked: nomination.voted, disabled: !voting || (spent && !nomination.voted) }}
+        accessibilityLabel={`${nomination.voted ? '取消想要' : spent ? `票投完了，先取消一票才能選：${nomination.name}` : '我也想要'}${nomination.voted || !spent ? `：${nomination.name}，目前 ${nomination.voteCount} 人` : ''}`}
+        disabled={!voting || (spent && !nomination.voted)}
         onPress={() => onVote(nomination.nominationId, !nomination.voted)}
-        style={[styles.vote, nomination.voted && styles.voted, !voting && styles.voteClosed]}
+        style={[styles.vote, nomination.voted && styles.voted, (!voting || (spent && !nomination.voted)) && styles.voteClosed]}
       >
         <Text style={[styles.voteCount, nomination.voted && styles.votedText]}>{nomination.voteCount}</Text>
         <Text style={[styles.voteLabel, nomination.voted && styles.votedText]}>想要</Text>
@@ -156,6 +171,8 @@ const styles = StyleSheet.create({
   card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.sm },
   roundHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm },
   heading: { color: theme.colors.ink, fontSize: theme.type.label.size, fontWeight: '800', flexShrink: 1 },
+  votesLeft: { color: theme.colors.primaryDeep, fontSize: theme.type.caption.size, fontWeight: '800' },
+  votesSpent: { color: theme.colors.muted },
   deadline: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   rowText: { flex: 1, minWidth: 0, gap: theme.spacing.xxs },
