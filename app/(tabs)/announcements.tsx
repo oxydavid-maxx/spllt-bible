@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -35,16 +35,21 @@ export default function AnnouncementsScreen() {
 
   const load = useCallback(() => {
     let active = true;
+    let remoteSettled = false;
+    void client.readCached().then((cached) => {
+      if (!active || remoteSettled || !cached) return;
+      setAnnouncement(cached); setStale(true); setLoaded(true);
+    });
     void client.load().then((result) => {
+      remoteSettled = true;
       if (!active) return;
       setAnnouncement(result.announcement);
       setStale(result.stale);
       setLoaded(true);
     });
-    return () => { active = false; };
+    return () => { active = false; client.cancel(); };
   }, [client]);
 
-  useEffect(load, [load]);
   // Coming back to the tab re-checks. Nothing polls: this changes twice a week.
   useFocusEffect(load);
 

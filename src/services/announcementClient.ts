@@ -14,7 +14,7 @@ export const ANNOUNCEMENT_URL =
   'https://raw.githubusercontent.com/oxydavid-maxx/spllt-bible/main/announcements/latest.json';
 
 const CACHE_KEY = 'qingmu.announcement.latest';
-const TIMEOUT_MS = 12_000;
+const TIMEOUT_MS = 8_000;
 
 export interface SermonBlock {
   title: string | null;
@@ -115,6 +115,7 @@ export function createAnnouncementClient(options: {
 }) {
   const url = options.url ?? ANNOUNCEMENT_URL;
   const request = options.fetchImpl ?? fetch;
+  let inFlight: { controller: AbortController; promise: Promise<AnnouncementResult> } | null = null;
 
   const cached = async (): Promise<Announcement | null> => {
     try {
@@ -126,23 +127,32 @@ export function createAnnouncementClient(options: {
   };
 
   return {
-    async load(): Promise<AnnouncementResult> {
+    readCached: cached,
+    cancel(): void { inFlight?.controller.abort(); inFlight = null; },
+    load(): Promise<AnnouncementResult> {
+      if (inFlight) return inFlight.promise;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-      try {
+      const cancelled = new Promise<never>((_, reject) => {
+        controller.signal.addEventListener('abort', () => reject(new Error('ANNOUNCEMENT_READ_CANCELLED')), { once: true });
+      });
+      const read = (async (): Promise<AnnouncementResult> => {
         const response = await request(url, { signal: controller.signal });
         if (!response.ok) return { announcement: await cached(), stale: true };
         const body = await response.text();
         const announcement = parseAnnouncement(JSON.parse(body));
         if (!announcement) return { announcement: await cached(), stale: true };
+        if (controller.signal.aborted) throw new Error('ANNOUNCEMENT_READ_CANCELLED');
         // Only a payload that parsed is kept, so a bad publish cannot poison the device copy.
         await options.storage.setItem(CACHE_KEY, body).catch(() => undefined);
         return { announcement, stale: false };
-      } catch {
-        return { announcement: await cached(), stale: true };
-      } finally {
+      })();
+      const promise = Promise.race([read, cancelled]).catch(async () => ({ announcement: await cached(), stale: true })).finally(() => {
         clearTimeout(timer);
-      }
+        if (inFlight?.controller === controller) inFlight = null;
+      });
+      inFlight = { controller, promise };
+      return promise;
     },
   };
 }

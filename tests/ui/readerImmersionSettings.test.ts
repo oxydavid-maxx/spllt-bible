@@ -17,6 +17,8 @@ vi.mock('expo-audio', () => ({ useAudioPlayer: () => {
 vi.mock('react-native', () => ({
   Alert: { alert: vi.fn() },
   ActivityIndicator: primitive('ActivityIndicator'), TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'),
+  KeyboardAvoidingView: primitive('KeyboardAvoidingView'),
+  Keyboard: { isVisible: () => false, addListener: () => ({ remove() {} }) },
   Modal: (p: { visible: boolean; children?: React.ReactNode }) => p.visible ? React.createElement('Modal', p, p.children) : null,
   StyleSheet: { create: (x: unknown) => x, absoluteFillObject: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } },
   Linking: { openURL: vi.fn(async () => {}) }, Platform: { OS: 'android' },
@@ -29,8 +31,12 @@ vi.mock('expo-navigation-bar', () => ({ NavigationBar: Object.assign(primitive('
 vi.mock('expo-router', () => ({ router: { replace: vi.fn() }, useFocusEffect: (cb: () => void | (() => void)) => React.useEffect(cb, [cb]) }));
 vi.mock('expo-crypto', () => ({ randomUUID: () => 'test-operation' }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {} }));
+// Keep the real preload host mounted, but do not import the SDK's MMKV/native registry in Node.
+vi.mock('@youversion/platform-react-native-expo-core', () => {
+  const fetchBibleContent = vi.fn(async () => ({ content: '' }));
+  return { useYouVersion: () => ({ fetchBibleContent }) };
+});
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: primitive('AccountEntryButton') }));
-vi.mock('../../src/ui/ReadingDateNavigator', () => ({ ReadingDateNavigator: primitive('ReadingDateNavigator') }));
 vi.mock('../../src/ui/completionFeedback', () => ({ CompletionFeedback: primitive('CompletionFeedback') }));
 vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ session: null }) }));
 vi.mock('../../src/services/reminderScheduler', () => ({ createReminderScheduler: () => ({}) }));

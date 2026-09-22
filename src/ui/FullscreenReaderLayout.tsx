@@ -100,10 +100,10 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
       <View style={[styles.reader, { paddingTop: 0, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]} onTouchEnd={controls.ready ? undefined : chrome.toggleTools}>{reader}</View>
       {journal}
       <Modal transparent animationType="fade" visible={chrome.moreOpen} onRequestClose={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore}>
-        {chrome.moreOpen && <Pressable accessibilityRole="button" accessibilityLabel="關閉更多閱讀工具" onPress={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore} style={styles.scrim}><Pressable onPress={() => undefined}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
+        {chrome.moreOpen && <Pressable accessibilityRole="button" accessibilityLabel="關閉更多閱讀工具" onPress={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore} style={styles.scrim}><Pressable onPress={() => undefined} style={styles.sheetHost}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
           {versionPageOpen && curatedVersions ? <CuratedVersionChoices options={versionOptions} versionId={versionId} onSelect={onSelectVersion} onBack={() => setVersionPageOpen(false)} onClose={closeVersionPage} /> : <>
           <View style={styles.sheetHeader}><Text accessibilityRole="header" style={styles.heading}>更多閱讀工具</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={chrome.closeMore} style={styles.iconButton}><Text style={styles.close}>關閉</Text></Pressable></View>
-          <ScrollView contentContainerStyle={styles.menuContent}>
+          <ScrollView style={styles.menuScroller} contentContainerStyle={styles.menuContent}>
             <MenuButton label="選擇譯本" disabled={!curatedVersions && !controls.ready} onPress={() => curatedVersions ? setVersionPageOpen(true) : openOfficial(controls.openVersionPicker)} />
             <MenuButton label="調整字體" disabled={!controls.ready} onPress={() => openOfficial(controls.openSettings)} />
             <MenuButton label="選擇其他章節" disabled={!controls.ready} onPress={() => openOfficial(controls.openChapterPicker)} />
@@ -127,9 +127,9 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
         </SafeAreaView></Pressable></Pressable>}
       </Modal>
       <Modal transparent animationType="fade" visible={chrome.infoOpen} onRequestClose={chrome.closeInfo}>
-        {chrome.infoOpen && <Pressable accessibilityRole="button" accessibilityLabel="關閉版本資訊" onPress={chrome.closeInfo} style={styles.scrim}><Pressable onPress={() => undefined}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
+        {chrome.infoOpen && <Pressable accessibilityRole="button" accessibilityLabel="關閉版本資訊" onPress={chrome.closeInfo} style={styles.scrim}><Pressable onPress={() => undefined} style={styles.sheetHost}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
           <View style={styles.sheetHeader}><Text accessibilityRole="header" style={styles.heading}>版本資訊</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={chrome.closeInfo} style={styles.iconButton}><Text style={styles.close}>關閉</Text></Pressable></View>
-          <ScrollView contentContainerStyle={styles.menuContent}>
+          <ScrollView style={styles.menuScroller} contentContainerStyle={styles.menuContent}>
             {metadata ? <><Text style={styles.heading}>{metadata.translationName}</Text><Text selectable style={styles.body}>{metadata.publisher}</Text><Text selectable style={styles.body}>{metadata.copyrightNotice}</Text>{metadata.audioAttribution && <Text selectable style={styles.body}>{metadata.audioAttribution}</Text>}{metadata.officialUrl && <MenuButton label="開啟官方版本資訊" onPress={() => { void Linking.openURL(metadata.officialUrl).catch(() => {}); }} />}</> : <Text style={styles.body}>版本資訊尚未載入。</Text>}
           </ScrollView>
         </SafeAreaView></Pressable></Pressable>}
@@ -177,7 +177,7 @@ function CuratedVersionChoices({ options, versionId, onSelect, onBack, onClose }
       <Text accessibilityRole="header" style={styles.heading}>選擇譯本</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="關閉譯本選擇" onPress={onClose} style={styles.iconButton}><Text style={styles.close}>關閉</Text></Pressable>
     </View>
-    <ScrollView contentContainerStyle={styles.menuContent}>
+    <ScrollView style={styles.menuScroller} contentContainerStyle={styles.menuContent}>
       {groups.map(group => <View key={group.label} accessibilityRole="radiogroup" accessibilityLabel={group.label}>
         <Text accessibilityRole="header" style={styles.versionGroupHeading}>{group.label}</Text>
         {group.options.map(option => {
@@ -228,10 +228,14 @@ const styles = StyleSheet.create({
   speedLabel: { color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '700' },
   speedLabelSelected: { color: theme.colors.white },
   scrim: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
-  sheet: { maxHeight: '85%', backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card },
-  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg },
+  // The percentage must resolve against the full-screen scrim, not an intrinsic-height wrapper.
+  // Each inner container can shrink so overflowing controls become ScrollView content, not clips.
+  sheetHost: { maxHeight: '85%', flexShrink: 1 },
+  sheet: { flexShrink: 1, minHeight: 0, backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card },
+  sheetHeader: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg },
   heading: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '700', flexShrink: 1 },
   close: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
+  menuScroller: { flexShrink: 1, minHeight: 0 },
   menuContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg, gap: theme.spacing.sm },
   menuButton: { minHeight: 48, justifyContent: 'center', borderBottomWidth: theme.control.hairline, borderBottomColor: theme.colors.border },
   menuLabel: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },

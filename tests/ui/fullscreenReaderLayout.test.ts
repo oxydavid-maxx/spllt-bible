@@ -55,6 +55,7 @@ let chosenVersion = 139;
 let versionOptions: Array<{ versionId: number; translationName: string; languageTag: string }> | undefined;
 let onSelectVersion: ((versionId: number) => void | Promise<void>) | undefined;
 let audioAttribution: string | undefined;
+let onSelectNarrationSpeed: ((speed: number) => void) | undefined;
 const onExit = vi.fn();
 const onSelectReference = vi.fn();
 function Harness() {
@@ -63,7 +64,7 @@ function Harness() {
     reader: React.createElement('BibleReader'), controls, chrome,
     chapterUsfm: currentChapter, versionId: chosenVersion, references: assignedReferences,
     onExit, onSelectReference,
-    versionOptions, onSelectVersion,
+    versionOptions, onSelectVersion, onSelectNarrationSpeed,
     metadata: { translationName: '測試譯本', publisher: '測試出版社', copyrightNotice: '測試版權文字', officialUrl: 'https://example.test/version', audioAttribution },
   });
 }
@@ -98,6 +99,7 @@ describe('fullscreen reader layout and chrome', () => {
     versionOptions = undefined;
     onSelectVersion = undefined;
     audioAttribution = undefined;
+    onSelectNarrationSpeed = undefined;
     controls = { ready: true, openChapterPicker: vi.fn(), openVersionPicker: vi.fn(), openSettings: vi.fn() };
     vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       const message = String(args[0]);
@@ -293,6 +295,36 @@ describe('fullscreen reader layout and chrome', () => {
     expect(chrome.infoOpen).toBe(true);
     act(() => { button('關閉版本資訊').props.onPress(); });
     expect(chrome.infoOpen).toBe(false);
+  });
+
+  it.each(['more', 'versions', 'info'] as const)('bounds the %s sheet against the screen and lets only its body shrink and scroll', async (page) => {
+    if (page === 'versions') enableCuratedVersions();
+    onSelectNarrationSpeed = vi.fn();
+    await mount();
+    act(() => { page === 'info' ? chrome.openInfo() : chrome.openMore(); });
+    if (page === 'versions') act(() => { button('選擇譯本').props.onPress(); });
+    const sheet = all('SafeAreaView').find(node => node.props.accessibilityViewIsModal)!;
+    const host = sheet.parent!;
+    // A percentage on the inner sheet resolves against an intrinsically sized wrapper. On the
+    // device that clipped the speed row while scrolling could not reveal the final Info action.
+    // Put the limit on the direct child of the full-screen backdrop, then propagate shrinkability.
+    expect(styleOf(host.parent!)).toMatchObject({ flex: 1, justifyContent: 'flex-end' });
+    expect(styleOf(host)).toMatchObject({ maxHeight: '85%', flexShrink: 1 });
+    expect(styleOf(sheet).maxHeight).toBeUndefined();
+    expect(styleOf(sheet)).toMatchObject({ flexShrink: 1, minHeight: 0 });
+    expect(sheet.props.edges).toContain('bottom');
+    const scroll = all('ScrollView')[0];
+    expect(styleOf(scroll)).toMatchObject({ flexShrink: 1, minHeight: 0 });
+    expect(scroll.props.scrollEnabled).not.toBe(false);
+    const header = sheet.findAll(node => String(node.type) === 'View' && styleOf(node).flexDirection === 'row')[0];
+    expect(styleOf(header).flexShrink).toBe(0);
+    if (page === 'more') {
+      expect(scroll.findAll(node => node.props.accessibilityLabel === '版本資訊')).toHaveLength(1);
+      expect(scroll.findAll(node => String(node.type) === 'Pressable' && String(node.props.accessibilityLabel).startsWith('朗讀速度 '))).toHaveLength(4);
+      act(() => { button('朗讀速度 1.5 倍').props.onPress(); });
+      expect(onSelectNarrationSpeed).toHaveBeenCalledExactlyOnceWith(1.5);
+      expect(text()).toContain('遇到沒有朗讀的章節會停下並提示');
+    }
   });
 
   it('keeps only version, font settings, other chapters and information in More', async () => {

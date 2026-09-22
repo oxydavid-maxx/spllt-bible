@@ -222,6 +222,15 @@ describe('an idea, and the words for it, belong to whoever put them there', () =
 });
 
 describe('three votes, said out loud rather than discovered', () => {
+  it('disables each action while a board mutation is pending', () => {
+    const view = render({ busy: true, canManage: true, onDecide: () => undefined, onCloseRound: () => undefined, onWithdraw: () => undefined, onResolveSuggestion: () => undefined, nominations: [nomination({ mine: true, noteSuggestion: '建議' })] });
+    for (const label of ['採用這個說法', '維持我寫的', '撤回 電影票', '核准 電影票', '婉拒 電影票', '移除 電影票', '結束這一輪']) expect(view.byLabel(label).props.disabled).toBe(true);
+  });
+  it('offers no note rewrite decision after voting closes', () => {
+    const view = render({ round: round({ phase: 'DECIDING' }), nominations: [nomination({ mine: true, noteSuggestion: '建議' })], onResolveSuggestion: () => undefined });
+    expect(view.byLabel('採用這個說法')).toBeUndefined();
+    expect(view.byLabel('維持我寫的')).toBeUndefined();
+  });
   it('says how many are left before anybody spends one', () => {
     // A board of tick boxes reads as "tick what you like". This one is "choose three", and somebody
     // who thinks it is unlimited ticks everything — which is the same as not voting at all.
