@@ -40,7 +40,7 @@ const VOTES_PER_MEMBER = HISTORY_PLACES;
 function votesLeft(db: DatabaseSync, memberId: string, roundId: string | null): number {
   const spent = db.prepare(`SELECT COUNT(*) AS count FROM reward_nomination_votes v
     JOIN reward_nominations n ON n.nomination_id = v.nomination_id
-    WHERE v.member_id = ? AND n.round_id IS ?`).get(memberId, roundId) as { count: number };
+    WHERE v.member_id = ? AND n.round_id IS ? AND n.status = 'OPEN'`).get(memberId, roundId) as { count: number };
   return Math.max(0, VOTES_PER_MEMBER - Number(spent.count));
 }
 
@@ -321,16 +321,22 @@ export function withdrawNomination(
   db: DatabaseSync, memberId: string, nominationId: string, nowMs: number,
 ): Record<string, unknown> | GamificationError {
   ensureNominationSchema(db);
-  const current = db.prepare('SELECT created_by, status, revision FROM reward_nominations WHERE nomination_id = ?')
-    .get(nominationId) as { created_by: string; status: NominationStatus; revision: number } | undefined;
-  // Someone else's idea is not found rather than forbidden: whether it exists is not the caller's.
-  if (!current || current.created_by !== memberId) return { status: 404, code: 'NOMINATION_NOT_FOUND' };
-  if (current.status !== 'OPEN') return { status: 409, code: 'NOMINATION_CLOSED' };
+  return transaction(db, () => {
+    const current = db.prepare('SELECT created_by, status, revision, round_id FROM reward_nominations WHERE nomination_id = ?')
+      .get(nominationId) as { created_by: string; status: NominationStatus; revision: number; round_id: string | null } | undefined;
+    // Someone else's idea is not found rather than forbidden: whether it exists is not the caller's.
+    if (!current || current.created_by !== memberId) return { status: 404, code: 'NOMINATION_NOT_FOUND' } satisfies GamificationError;
+    if (current.status !== 'OPEN') return { status: 409, code: 'NOMINATION_CLOSED' } satisfies GamificationError;
+    const round = currentRoundRow(db);
+    if (!round || round.round_id !== current.round_id || nowMs >= Number(round.closes_at)) {
+      return { status: 409, code: 'VOTING_CLOSED' } satisfies GamificationError;
+    }
 
-  const revision = current.revision + 1;
-  db.prepare("UPDATE reward_nominations SET status = 'REMOVED', withdrawn = 1, revision = ?, updated_at = ? WHERE nomination_id = ?")
-    .run(revision, nowMs, nominationId);
-  return { nominationId, status: 'REMOVED', withdrawn: true, revision };
+    const revision = current.revision + 1;
+    db.prepare("UPDATE reward_nominations SET status = 'REMOVED', withdrawn = 1, revision = ?, updated_at = ? WHERE nomination_id = ?")
+      .run(revision, nowMs, nominationId);
+    return { nominationId, status: 'REMOVED', withdrawn: true, revision };
+  });
 }
 
 /**
@@ -343,13 +349,16 @@ export function resolveSuggestion(
   db: DatabaseSync, memberId: string, nominationId: string, accept: boolean, nowMs: number,
 ): Record<string, unknown> | GamificationError {
   ensureNominationSchema(db);
-  const row = db.prepare(`SELECT n.created_by, n.status, n.revision, a.note_suggestion
-    FROM reward_nominations n LEFT JOIN reward_nomination_assists a ON a.nomination_id = n.nomination_id
-    WHERE n.nomination_id = ?`).get(nominationId) as { created_by: string; status: NominationStatus; revision: number; note_suggestion: string | null } | undefined;
-  if (!row || row.created_by !== memberId) return { status: 404, code: 'NOMINATION_NOT_FOUND' };
-  if (row.status !== 'OPEN') return { status: 409, code: 'NOMINATION_CLOSED' };
-
   return transaction(db, () => {
+    const row = db.prepare(`SELECT n.created_by, n.status, n.revision, n.round_id, a.note_suggestion
+      FROM reward_nominations n LEFT JOIN reward_nomination_assists a ON a.nomination_id = n.nomination_id
+      WHERE n.nomination_id = ?`).get(nominationId) as { created_by: string; status: NominationStatus; revision: number; round_id: string | null; note_suggestion: string | null } | undefined;
+    if (!row || row.created_by !== memberId) return { status: 404, code: 'NOMINATION_NOT_FOUND' } satisfies GamificationError;
+    if (row.status !== 'OPEN') return { status: 409, code: 'NOMINATION_CLOSED' } satisfies GamificationError;
+    const round = currentRoundRow(db);
+    if (!round || round.round_id !== row.round_id || nowMs >= Number(round.closes_at)) {
+      return { status: 409, code: 'VOTING_CLOSED' } satisfies GamificationError;
+    }
     let revision = row.revision;
     if (accept && row.note_suggestion) {
       revision += 1;
@@ -391,7 +400,7 @@ export function setVote(db: DatabaseSync, memberId: string, nominationId: string
   if (voting) {
     const spent = db.prepare(`SELECT COUNT(*) AS count FROM reward_nomination_votes v
       JOIN reward_nominations n ON n.nomination_id = v.nomination_id
-      WHERE v.member_id = ? AND n.round_id IS ? AND v.nomination_id <> ?`)
+       WHERE v.member_id = ? AND n.round_id IS ? AND n.status = 'OPEN' AND v.nomination_id <> ?`)
       .get(memberId, nomination.round_id, nominationId) as { count: number };
     if (Number(spent.count) >= VOTES_PER_MEMBER) {
       return { status: 409, code: 'NO_VOTES_LEFT' };
@@ -427,13 +436,16 @@ export function decideNomination(
   }
 
   return transaction(db, () => {
-    const current = db.prepare('SELECT name, status, revision FROM reward_nominations WHERE nomination_id = ?').get(nominationId) as { name: string; status: NominationStatus; revision: number } | undefined;
+    const current = db.prepare('SELECT name, status, revision, round_id FROM reward_nominations WHERE nomination_id = ?').get(nominationId) as { name: string; status: NominationStatus; revision: number; round_id: string | null } | undefined;
     if (!current) return { status: 404, code: 'NOMINATION_NOT_FOUND' } satisfies GamificationError;
     if (current.revision !== input.expectedRevision) {
       return { status: 409, code: 'NOMINATION_CHANGED', details: { revision: current.revision } } satisfies GamificationError;
     }
     if (current.status !== 'OPEN') {
       return { status: 409, code: 'NOMINATION_CHANGED', details: { revision: current.revision } } satisfies GamificationError;
+    }
+    if (current.round_id && db.prepare('SELECT state FROM reward_nomination_rounds WHERE round_id = ?').get(current.round_id)?.state !== 'OPEN') {
+      return { status: 409, code: 'ROUND_CLOSED' } satisfies GamificationError;
     }
 
     const revision = current.revision + 1;

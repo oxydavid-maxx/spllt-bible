@@ -168,7 +168,7 @@ interface PendingRow { nomination_id: string; name: string; note: string | null;
 export interface NominationAssistWorker {
   tick(): Promise<void>;
   start(): void;
-  stop(): void;
+  stop(): Promise<void>;
 }
 
 export function createNominationAssistWorker(options: {
@@ -181,7 +181,8 @@ export function createNominationAssistWorker(options: {
   const now = options.now ?? (() => new Date());
   const intervalMs = options.intervalMs ?? 20_000;
   let handle: ReturnType<typeof setInterval> | null = null;
-  let ticking = false;
+  let pendingTick: Promise<void> | null = null;
+  let stopped = false;
 
   const adopt = (at: number) => {
     ensureAssistSchema(db);
@@ -192,59 +193,64 @@ export function createNominationAssistWorker(options: {
       WHERE a.nomination_id IS NULL AND n.status = 'OPEN'`).run(at);
   };
 
-  const tick = async () => {
-    if (ticking) return;
-    ticking = true;
+  const runTick = async () => {
+    const at = now().getTime();
+    adopt(at);
+    // Nothing is started while the last one is still running: this machine is also the app.
+    if (cli.busy()) return;
+
+    const pending = db.prepare(`SELECT n.nomination_id, n.name, n.note, a.attempts
+      FROM reward_nomination_assists a JOIN reward_nominations n ON n.nomination_id = a.nomination_id
+      WHERE a.state = 'PENDING' AND n.status = 'OPEN'
+      ORDER BY a.requested_at LIMIT 1`).get() as PendingRow | undefined;
+    if (!pending) return;
+
+    const attempts = Number(pending.attempts) + 1;
+    let estimate: number | null = null;
+    let suggestion: string | null = null;
     try {
-      const at = now().getTime();
-      adopt(at);
-      // Nothing is started while the last one is still running: this machine is also the app.
-      if (cli.busy()) return;
-
-      const pending = db.prepare(`SELECT n.nomination_id, n.name, n.note, a.attempts
-        FROM reward_nomination_assists a JOIN reward_nominations n ON n.nomination_id = a.nomination_id
-        WHERE a.state = 'PENDING' AND n.status = 'OPEN'
-        ORDER BY a.requested_at LIMIT 1`).get() as PendingRow | undefined;
-      if (!pending) return;
-
-      const attempts = Number(pending.attempts) + 1;
-      let estimate: number | null = null;
-      let suggestion: string | null = null;
-      try {
-        estimate = parseEstimate(await cli.invoke(buildEstimatePrompt(pending.name, pending.note)));
-        if (pending.note) suggestion = parseSuggestion(await cli.invoke(buildSuggestionPrompt(pending.note)), pending.note);
-      } catch (error) {
-        // Only the classification is kept. The prompt carried a student's words and the message may
-        // quote them back, so nothing from either is written down.
-        const reason = String((error as { reason?: string }).reason ?? 'SPAWN_FAILED');
-        const exhausted = attempts >= MAX_ATTEMPTS;
-        db.prepare(`UPDATE reward_nomination_assists SET state = ?, failure = ?, attempts = ?, completed_at = ?
-          WHERE nomination_id = ?`)
-          .run(exhausted ? 'FAILED' : 'PENDING', reason, attempts, exhausted ? at : null, pending.nomination_id);
-        return;
-      }
-
-      // A poor answer is final. The same prompt produces the same kind of answer, so asking again
-      // only spends the machine; the nomination simply carries no estimate, as they all used to.
-      const usable = estimate !== null;
-      db.prepare(`UPDATE reward_nomination_assists SET estimated_twd = ?, note_suggestion = ?, state = ?, failure = ?, attempts = ?, completed_at = ?
+      estimate = parseEstimate(await cli.invoke(buildEstimatePrompt(pending.name, pending.note)));
+      if (pending.note) suggestion = parseSuggestion(await cli.invoke(buildSuggestionPrompt(pending.note)), pending.note);
+    } catch (error) {
+      // Only the classification is kept. The prompt carried a student's words and the message may
+      // quote them back, so nothing from either is written down.
+      const reason = String((error as { reason?: string }).reason ?? 'SPAWN_FAILED');
+      const exhausted = attempts >= MAX_ATTEMPTS;
+      db.prepare(`UPDATE reward_nomination_assists SET state = ?, failure = ?, attempts = ?, completed_at = ?
         WHERE nomination_id = ?`)
-        .run(estimate, suggestion, usable ? 'DONE' : 'FAILED', usable ? null : 'UNUSABLE_ANSWER', attempts, at, pending.nomination_id);
-    } finally {
-      ticking = false;
+        .run(exhausted ? 'FAILED' : 'PENDING', reason, attempts, exhausted ? at : null, pending.nomination_id);
+      return;
     }
+
+    // A poor answer is final. The same prompt produces the same kind of answer, so asking again
+    // only spends the machine; the nomination simply carries no estimate, as they all used to.
+    const usable = estimate !== null;
+    db.prepare(`UPDATE reward_nomination_assists SET estimated_twd = ?, note_suggestion = ?, state = ?, failure = ?, attempts = ?, completed_at = ?
+      WHERE nomination_id = ?`)
+      .run(estimate, suggestion, usable ? 'DONE' : 'FAILED', usable ? null : 'UNUSABLE_ANSWER', attempts, at, pending.nomination_id);
+  };
+
+  const tick = (): Promise<void> => {
+    if (stopped) return Promise.resolve();
+    if (!pendingTick) pendingTick = runTick().finally(() => { pendingTick = null; });
+    return pendingTick;
   };
 
   return {
     tick,
     start() {
       if (handle) return;
-      handle = setInterval(() => { void tick(); }, intervalMs);
+      stopped = false;
+      // A transient database failure must not become an unhandled process rejection. The next
+      // interval retries discovery; never log an exception which might include a student's note.
+      handle = setInterval(() => { void tick().catch(() => undefined); }, intervalMs);
       if (typeof handle === 'object' && handle && 'unref' in handle) (handle as { unref: () => void }).unref();
     },
-    stop() {
+    async stop() {
+      stopped = true;
       if (handle) clearInterval(handle);
       handle = null;
+      await pendingTick?.catch(() => undefined);
     },
   };
 }

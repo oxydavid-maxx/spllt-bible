@@ -124,6 +124,41 @@ describe('the worker that does the waiting', () => {
     };
   };
 
+  it('drains an in-flight estimate before stop resolves, and starts no new ticks after stop', async () => {
+    const { database, nominate } = setup();
+    nominate('n-drain', '桌遊', null);
+    let answer!: (value: string) => void;
+    const invoke = vi.fn(() => new Promise<string>((resolve) => { answer = resolve; }));
+    const worker = createNominationAssistWorker({ db: database.db, cli: { busy: () => false, invoke } });
+    const pending = worker.tick();
+    let drained = false;
+    const stopped = Promise.resolve(worker.stop()).then(() => { drained = true; });
+    try {
+      await Promise.resolve();
+      expect(drained).toBe(false);
+    } finally { answer('300'); await pending; await stopped; }
+    expect(readAssist(database.db, 'n-drain')?.estimatedTwd).toBe(300);
+    nominate('n-after-stop', '電影票', null);
+    await worker.tick();
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('contains a scheduled database error and keeps the next tick usable', async () => {
+    const { database, nominate } = setup();
+    nominate('n-retry', '桌遊', null);
+    const cli = cliDouble(['300']);
+    const worker = createNominationAssistWorker({ db: database.db, cli, intervalMs: 20 });
+    const failure = vi.spyOn(database.db, 'prepare').mockImplementationOnce(() => { throw new Error('synthetic database contention'); });
+    vi.useFakeTimers();
+    try {
+      worker.start();
+      await vi.advanceTimersByTimeAsync(20);
+      expect(cli.invoke).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(20);
+      expect(readAssist(database.db, 'n-retry')?.state).toBe('DONE');
+    } finally { await worker.stop(); failure.mockRestore(); vi.useRealTimers(); }
+  });
+
   it('picks up a nomination that was created before any of this existed', async () => {
     const { database, reward, nominate } = setup();
     reward('電影票', 75);

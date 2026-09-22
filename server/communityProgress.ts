@@ -122,9 +122,10 @@ function buildBookGoal(db: DatabaseSync, days: PlannedDay[], today: string): Com
   if (chapterDays.size === 0) return null;
 
   const readersByDay = new Map<string, Set<string>>();
+  const dates = [...new Set([...chapterDays.values()].flat())];
   const rows = db
-    .prepare('SELECT DISTINCT member_id, task_date FROM daily_point_entitlements WHERE active = 1')
-    .all() as Array<{ member_id: string; task_date: string }>;
+    .prepare(`SELECT DISTINCT member_id, task_date FROM daily_point_entitlements WHERE active = 1 AND task_date IN (${dates.map(() => '?').join(',')})`)
+    .all(...dates) as Array<{ member_id: string; task_date: string }>;
   for (const row of rows) {
     const known = readersByDay.get(row.task_date);
     if (known) known.add(row.member_id);
@@ -176,6 +177,6 @@ export function getCommunityProgress(db: DatabaseSync, today: string): Community
   return {
     books: seen,
     personDays: crowdEnough ? Math.max(0, Number(scoring.total)) : null,
-    currentBook: buildBookGoal(db, plan, today),
+    currentBook: crowdEnough ? buildBookGoal(db, plan, today) : null,
   };
 }

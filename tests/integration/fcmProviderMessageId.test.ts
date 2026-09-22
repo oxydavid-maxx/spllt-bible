@@ -64,6 +64,7 @@ describe('FCM provider message id survives the configured delivery adapter', () 
     try {
       expect(backend.worker).not.toBeNull();
       seedMemberGroupProfile(backend.database.db, { memberId: 'fixture:self', groupId: 'G01', groupName: '合成小組', rpgId: 'RPG1', rpgName: '合成RPG', linkStatus: 'READY', meetingId: 'm1', meetingTitle: '合成聚會', startsAt: now.toISOString(), scheduleRevision: 1, scheduleStatus: 'SCHEDULED', timeZone: 'Asia/Taipei' });
+      backend.database.db.prepare('UPDATE member_group_profiles SET schedule_source_ref = ? WHERE member_id = ?').run('test:configured-fcm-worker', 'fixture:self');
       backend.database.db.prepare('INSERT INTO reminder_preferences (member_id, reading_enabled, meeting_enabled, meeting_advance_minutes, updated_at) VALUES (?, 0, 1, 0, ?)').run('fixture:self', now.toISOString());
       backend.database.db.prepare('INSERT INTO device_delivery_tokens (installation_id, member_id, platform, token, revoked_at, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?)').run('install', 'fixture:self', 'ANDROID', 'device-token', now.toISOString(), now.toISOString());
 
@@ -81,7 +82,7 @@ describe('FCM provider message id survives the configured delivery adapter', () 
       expect(row?.status).toBe('SENT');
       expect(row?.provider_message_id).toBe(EXPECTED_MESSAGE_NAME);
     } finally {
-      backend.server.close();
+      await backend.stop();
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
       rmSync(dir, { recursive: true, force: true });

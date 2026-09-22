@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDatabase } from '../../server/db';
 import { createApiHandler } from '../../server/routes';
 
@@ -81,19 +81,62 @@ const goal = async (api: ReturnType<typeof setup>['api'], headers: ReturnType<ty
   ((await get(api, headers)).body as { currentBook: BookGoal | null }).currentBook;
 
 describe('一起讀完一卷書', () => {
+  function qualifiedGroup() {
+    const context = setup(12);
+    // Qualify the same privacy threshold as the total, using an earlier book's reading day.
+    for (let index = 0; index < 12; index += 1) award(context.database, `member-${index}`, '2026-09-08');
+    return context;
+  }
+
+  it.each([2, 3, 12])('withholds all chapter activity when only one of %i members has read', async (members) => {
+    const { database, api, headers } = setup(members);
+    award(database, 'member-1', '2026-09-14');
+    const response = (await get(api, headers)).body as { currentBook: unknown; personDays: number | null; books: string[] };
+    expect(response.currentBook).toBeNull();
+    expect(response.personDays).toBeNull();
+    expect(response.books).toContain('提前');
+  });
+
+  it('withholds chapter activity when too few members remain enabled', async () => {
+    const { database, api, headers } = qualifiedGroup();
+    database.db.prepare("UPDATE members SET disabled_at=1 WHERE id IN ('member-9','member-10','member-11')").run();
+    expect(await goal(api, headers)).toBeNull();
+  });
+
+  it('only materializes entitlement rows for dates belonging to the selected book', async () => {
+    const { database, api, headers } = qualifiedGroup();
+    award(database, 'member-7', '2026-09-14');
+    let loadedReaders = 0;
+    const prepare = database.db.prepare.bind(database.db);
+    const spy = vi.spyOn(database.db, 'prepare').mockImplementation((sql) => {
+      const statement = prepare(sql);
+      const all = statement.all.bind(statement);
+      vi.spyOn(statement, 'all').mockImplementation((...parameters) => {
+        const rows = all(...parameters);
+        loadedReaders += rows.filter((row) => 'member_id' in row && 'task_date' in row).length;
+        return rows;
+      });
+      return statement;
+    });
+    try {
+      expect((await goal(api, headers))?.chapters[0].readers).toBe(1);
+      expect(loadedReaders).toBe(1);
+    } finally { spy.mockRestore(); }
+  });
+
   it('aims at the book that finishes soonest, not the psalms that run all term', async () => {
-    const { api, headers } = setup(1);
+    const { api, headers } = qualifiedGroup();
     // 2026-09-14 reads 1TI.1, 1TI.2 and PSA.92. Both are current; only one has an end in sight.
     expect((await goal(api, headers))?.book).toBe('提摩太前書');
   });
 
   it('counts every chapter of it the plan schedules, in order', async () => {
-    const { api, headers } = setup(1);
+    const { api, headers } = qualifiedGroup();
     expect((await goal(api, headers))?.chapters.map((entry) => entry.chapter)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
   it('lights a chapter for everybody once one person has read it', async () => {
-    const { database, api, headers } = setup(12);
+    const { database, api, headers } = qualifiedGroup();
     award(database, 'member-7', '2026-09-14');
     const chapters = (await goal(api, headers))!.chapters;
     expect(chapters.find((entry) => entry.chapter === 1)!.readers).toBe(1);
@@ -101,19 +144,19 @@ describe('一起讀完一卷書', () => {
   });
 
   it('says nothing rather than zero for a chapter still ahead of everyone', async () => {
-    const { database, api, headers } = setup(12);
+    const { database, api, headers } = qualifiedGroup();
     award(database, 'member-7', '2026-09-14');
     expect((await goal(api, headers))!.chapters.find((entry) => entry.chapter === 6)!.readers).toBeNull();
   });
 
   it('adds up the people who read it, without naming one', async () => {
-    const { database, api, headers } = setup(12);
+    const { database, api, headers } = qualifiedGroup();
     for (const index of [1, 4, 9]) award(database, `member-${index}`, '2026-09-14');
     expect((await goal(api, headers))!.chapters.find((entry) => entry.chapter === 1)!.readers).toBe(3);
   });
 
   it('is finished when every chapter has been read by somebody, by anybody', async () => {
-    const { database, api, headers } = setup(12);
+    const { database, api, headers } = qualifiedGroup();
     // Nobody here read the whole book; between the three of them the book is read.
     award(database, 'member-0', '2026-09-14');
     award(database, 'member-1', '2026-09-16');
@@ -124,14 +167,14 @@ describe('一起讀完一卷書', () => {
   });
 
   it('is not finished while one chapter is still dark', async () => {
-    const { database, api, headers } = setup(12);
+    const { database, api, headers } = qualifiedGroup();
     award(database, 'member-0', '2026-09-14');
     award(database, 'member-1', '2026-09-16');
     expect((await goal(api, headers))!.complete).toBe(false);
   });
 
   it('never carries a member identifier', async () => {
-    const { database, api, headers } = setup(12);
+    const { database, api, headers } = qualifiedGroup();
     for (let index = 0; index < 12; index += 1) award(database, `member-${index}`, '2026-09-14');
     const body = JSON.stringify((await get(api, headers)).body);
     expect(body).not.toContain('member-');

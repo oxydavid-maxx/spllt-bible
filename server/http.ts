@@ -160,17 +160,35 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   });
   if (worker && autostart) worker.start();
   if (assistWorker) assistWorker.start();
+  let databaseClosing: Promise<void> | null = null;
+  const closeDatabase = () => {
+    databaseClosing ??= Promise.allSettled([assistWorker?.stop(), worker?.stop()]).then(() => { database.close(); });
+    return databaseClosing;
+  };
   server.on('close', () => {
-    assistWorker?.stop();
-    if (worker) void worker.stop().finally(() => database.close()); else database.close();
+    void closeDatabase().catch(() => { console.error('BACKEND_SHUTDOWN_FAILED'); });
   });
-  return { server, config, database, worker, assistWorker, remoteStatus, senderConfigured: Boolean(reminderDelivery?.enabled) };
+  let stopping: Promise<void> | null = null;
+  const stop = (): Promise<void> => {
+    stopping ??= new Promise<void>((resolveStop, reject) => {
+      server.close((error) => {
+        if (error && (error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING') { reject(error); return; }
+        void closeDatabase().then(resolveStop, reject);
+      });
+    });
+    return stopping;
+  };
+  return { server, config, database, worker, assistWorker, stop, remoteStatus, senderConfigured: Boolean(reminderDelivery?.enabled) };
 }
 
 const isDirectServerEntry = process.argv.some((argument) => /(?:^|[\\/])server[\\/]http\.ts$/.test(argument));
 if (isDirectServerEntry) {
-  const { server } = createHttpServer();
+  const { server, stop } = createHttpServer();
   const port = Number(process.env.QINGMU_SERVER_PORT ?? 8787);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('QINGMU_SERVER_PORT_INVALID');
   server.listen(port, '127.0.0.1', () => console.log(`qingmu-youth server listening on 127.0.0.1:${port}`));
+  const shutdown = () => { void stop().catch(() => { process.exitCode = 1; }); };
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
+  if (process.platform === 'win32') process.once('SIGBREAK', shutdown);
 }

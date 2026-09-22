@@ -202,14 +202,26 @@ describe('three votes each, because three prizes are chosen', () => {
   ];
 
   async function boardWithFourIdeas() {
-    const { api, headers } = setup('2026-09-20T04:00:00.000Z', crowd);
+    const { api, headers, database } = setup('2026-09-20T04:00:00.000Z', crowd);
     await openRound(api, headers);
     const ideas = [];
     for (const [member, name] of [['member-self', '桌遊'], ['member-friend', '手搖杯'], ['member-c', '電影票'], ['member-d', '雞排']] as const) {
       ideas.push(((await nominate(api, headers, member, name)).body as { nominationId: string }).nominationId);
     }
-    return { api, headers, ideas };
+    return { api, headers, ideas, database };
   }
+
+  it.each(['withdraw', 'remove', 'decline', 'approve'] as const)('returns capacity after %s while retaining historical votes', async (action) => {
+    const { api, headers, ideas, database } = await boardWithFourIdeas();
+    for (const id of ideas.slice(0, 3)) await vote(api, headers, 'member-admin', id);
+    const changed = action === 'withdraw'
+      ? await api({ method: 'DELETE', url: `/api/rewards/nominations/${ideas[0]}`, headers: headers('member-self') })
+      : await api({ method: 'POST', url: `/api/admin/rewards/nominations/${ideas[0]}/${action}`, headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID(), expectedRevision: 1, costPoints: 75 }) });
+    expect([200, 201]).toContain(changed.status);
+    expect((await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-admin') })).body).toMatchObject({ votesLeft: 1 });
+    expect((await vote(api, headers, 'member-admin', ideas[3])).status).toBe(200);
+    expect(database.db.prepare('SELECT COUNT(*) AS count FROM reward_nomination_votes WHERE nomination_id = ?').get(ideas[0])).toMatchObject({ count: 1 });
+  });
 
   it('lets a member spend three and refuses the fourth', async () => {
     const { api, headers, ideas } = await boardWithFourIdeas();
@@ -256,5 +268,36 @@ describe('three votes each, because three prizes are chosen', () => {
     await vote(api, headers, 'member-admin', ideas[0]);
     const board = await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-admin') });
     expect(board.body).toMatchObject({ votesLeft: 2 });
+  });
+});
+
+describe('finished voting and closed results cannot be rewritten by a stale phone', () => {
+  it.each(['deadline', 'past-deadline', 'closed'] as const)('rejects author changes at %s and leaves stored content intact', async (state) => {
+    const { api, headers, database, travelTo } = setup();
+    const opened = (await openRound(api, headers)).body as { roundId: string };
+    const idea = (await nominate(api, headers, 'member-self', '桌遊', '原文')).body as { nominationId: string };
+    database.db.prepare("INSERT INTO reward_nomination_assists(nomination_id,note_suggestion,state,requested_at) VALUES(?,?,'DONE',0)").run(idea.nominationId, '建議文字');
+    await vote(api, headers, 'member-friend', idea.nominationId);
+    if (state === 'closed') await api({ method: 'POST', url: `/api/admin/rewards/nomination-rounds/${opened.roundId}/close`, headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID() }) });
+    else travelTo(new Date(DEADLINE + (state === 'past-deadline' ? 1 : 0)).toISOString());
+    const historyBefore = await api({ method: 'GET', url: '/api/rewards/nominations/history', headers: headers('member-friend') });
+    for (const accept of [true, false]) {
+      expect((await api({ method: 'POST', url: `/api/rewards/nominations/${idea.nominationId}/suggestion`, headers: headers('member-self'), body: JSON.stringify({ accept }) })).status).toBe(409);
+    }
+    expect((await api({ method: 'DELETE', url: `/api/rewards/nominations/${idea.nominationId}`, headers: headers('member-self') })).status).toBe(409);
+    expect(database.db.prepare('SELECT status,note,revision FROM reward_nominations WHERE nomination_id=?').get(idea.nominationId)).toMatchObject({ status: 'OPEN', note: '原文', revision: 1 });
+    expect(database.db.prepare('SELECT note_suggestion FROM reward_nomination_assists WHERE nomination_id=?').get(idea.nominationId)).toMatchObject({ note_suggestion: '建議文字' });
+    expect((await api({ method: 'GET', url: '/api/rewards/nominations/history', headers: headers('member-friend') })).body).toEqual(historyBefore.body);
+  });
+
+  it.each(['approve', 'decline', 'remove'] as const)('does not allow a new admin %s after the round is explicitly closed', async (decision) => {
+    const { api, headers } = setup();
+    const opened = (await openRound(api, headers)).body as { roundId: string };
+    const idea = (await nominate(api, headers, 'member-self', '桌遊')).body as { nominationId: string };
+    await api({ method: 'POST', url: `/api/admin/rewards/nomination-rounds/${opened.roundId}/close`, headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID() }) });
+    const before = await api({ method: 'GET', url: '/api/rewards/nominations/history', headers: headers('member-self') });
+    const changed = await api({ method: 'POST', url: `/api/admin/rewards/nominations/${idea.nominationId}/${decision}`, headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID(), expectedRevision: 1, costPoints: 75 }) });
+    expect(changed.status).toBe(409);
+    expect((await api({ method: 'GET', url: '/api/rewards/nominations/history', headers: headers('member-self') })).body).toEqual(before.body);
   });
 });
