@@ -211,9 +211,12 @@ if ($Variant -eq 'release') {
   if ($env:EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE -ne 'true') {
     throw "EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE must be exactly 'true' — the app compares it as a string — but it is '$env:EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE'."
   }
+  # On, not merely set. The production binding sets EXPO_PUBLIC_QINGMU_FIXTURE to 'false' on purpose,
+  # and the app compares these with === 'true', so presence is not the hazard and rejecting it would
+  # reject the official build.
   foreach ($name in $envForbidden) {
-    if ([Environment]::GetEnvironmentVariable($name)) {
-      throw "$name is set, and it must not be in a release build. Clear it and rebuild."
+    if ([Environment]::GetEnvironmentVariable($name) -eq 'true') {
+      throw "$name is 'true', and a release must not carry it. Clear it and rebuild."
     }
   }
 
