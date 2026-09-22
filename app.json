@@ -2,7 +2,7 @@
   "expo": {
     "name": "青牧青年",
     "slug": "qingmu-youth",
-    "version": "0.5.3",
+    "version": "0.5.4",
     "orientation": "portrait",
     "scheme": "org.qingmu.youth",
     "userInterfaceStyle": "automatic",
@@ -25,11 +25,12 @@
       "expo-font",
       "expo-status-bar",
       "expo-notifications",
-      "react-native-nitro-google-signin"
+      "react-native-nitro-google-signin",
+      "./plugins/withQingmuProguardRules"
     ],
     "android": {
       "package": "org.qingmu.youth",
-      "versionCode": 24,
+      "versionCode": 25,
       "adaptiveIcon": {
         "backgroundColor": "#1E5C4B"
       }

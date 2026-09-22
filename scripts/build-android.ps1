@@ -8,7 +8,16 @@ param(
   # An App Bundle for Play, which is the same build with a different packaging step. Play then
   # delivers one ABI per device instead of both, which is where most of the download goes: the two
   # native library sets are 50 MB of a 93 MB APK.
-  [switch]$Bundle
+  [switch]$Bundle,
+  # R8 and resource shrinking, off by default in the generated project. Worth about 10 MB: dex is
+  # 19.9 MB of the 92.9 MB APK once compressed, and R8 typically halves it.
+  #
+  # Opt-in rather than always-on because this is the change most likely to produce a build that
+  # installs, launches, and then fails somewhere only a person would find — React Native reaches
+  # native modules by reflection, and a keep rule that is merely incomplete breaks release while
+  # debug stays perfect. A separate switch keeps "we shipped R8" a deliberate sentence rather than
+  # something that rode along with an unrelated build.
+  [switch]$Minify
 )
 
 $ErrorActionPreference = 'Stop'
@@ -237,6 +246,11 @@ if ($ReactNativeArchitectures) {
 }
 if ($LegacyPackaging) {
   $arguments += '-Pexpo.useLegacyPackaging=true'
+}
+if ($Minify) {
+  # Both, not one: shrinking resources without shrinking code is unsupported by AGP, and shrinking
+  # code alone leaves the resources that only the removed code referenced.
+  $arguments += @('-Pandroid.enableMinifyInReleaseBuilds=true', '-Pandroid.enableShrinkResourcesInReleaseBuilds=true')
 }
 $architectureArgument = if ($ReactNativeArchitectures) { " -PreactNativeArchitectures=$ReactNativeArchitectures" } else { '' }
 $packagingArgument = if ($LegacyPackaging) { ' -Pexpo.useLegacyPackaging=true' } else { '' }
