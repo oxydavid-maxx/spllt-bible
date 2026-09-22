@@ -5,6 +5,9 @@ const { primitive } = vi.hoisted(() => ({
 }));
 vi.mock('react-native', () => ({
   Modal: (props: Record<string, unknown>) => (props.visible ? require('react').createElement('Modal', props, props.children as never) : null),
+  KeyboardAvoidingView: primitive('KeyboardAvoidingView'),
+  Keyboard: { isVisible: () => false, addListener: () => ({ remove: () => undefined }) },
+  Platform: { OS: 'android' },
   Pressable: primitive('Pressable'),
   ScrollView: primitive('ScrollView'),
   Text: primitive('Text'),

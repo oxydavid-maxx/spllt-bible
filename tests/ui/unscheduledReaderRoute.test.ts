@@ -22,6 +22,8 @@ vi.mock('react-native', () => ({
   Modal: (props: { visible: boolean; children?: React.ReactNode }) => props.visible ? React.createElement('Modal', props, props.children) : null,
   StyleSheet: { create: (x: unknown) => x, absoluteFill: {} }, Alert: { alert: vi.fn() }, Linking: { openURL: vi.fn() },
   BackHandler: { addEventListener: () => ({ remove() {} }) },
+  KeyboardAvoidingView: primitive('KeyboardAvoidingView'), Platform: { OS: 'android' },
+  Keyboard: { isVisible: () => false, addListener: () => ({ remove() {} }) },
   AccessibilityInfo: { addEventListener: () => ({ remove() {} }), isScreenReaderEnabled: async () => false },
 }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 24, left: 0, right: 0 }) }));

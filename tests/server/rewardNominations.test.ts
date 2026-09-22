@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { createDatabase } from '../../server/db';
 import { createApiHandler } from '../../server/routes';
+import { ensureNominationSchema } from '../../server/rewardNominations';
 
 // Students suggest what the prizes should be and vote on each other's ideas; a 輔導 turns one into a
 // real reward. The point is ownership — wanting a prize you chose — so the nominator's name is
@@ -21,6 +22,11 @@ function setup() {
   databases.push(database);
   const api = createApiHandler({ db: database, fixtureToken: 'test-token', adminMemberIds: ['member-admin'], now: () => new Date('2026-09-14T04:00:00.000Z') });
   const headers = (memberId: string) => ({ authorization: 'Bearer test-token', 'x-qingmu-member-id': memberId });
+  // Nominating happens inside a round now. These tests are about what happens inside one, so it is
+  // opened directly; opening and closing rounds is covered in nominationRounds.test.ts.
+  ensureNominationSchema(database.db);
+  database.db.prepare(`INSERT INTO reward_nomination_rounds(round_id, title, opened_by, opened_at, closes_at, state)
+    VALUES('round-1', '十月獎品', 'member-admin', 0, ?, 'OPEN')`).run(Date.parse('2026-09-30T16:00:00.000Z'));
   return { database, api, headers };
 }
 
@@ -115,14 +121,14 @@ describe('students propose the prizes and vote on them', () => {
     }
   });
 
-  // The valve that stops the board becoming a wish list dump, which is the failure mode that would
-  // make a 輔導 stop reading it.
-  it('caps how many ideas one member can have waiting', async () => {
+  // One idea each. Three made the board a wish list dump; one makes a vote worth casting, and makes
+  // the person choose what they actually want.
+  it('allows one idea per person per round', async () => {
     const { api, headers } = setup();
-    for (const name of ['一', '二', '三']) expect((await nominate(api, headers, 'member-self', name)).status).toBe(201);
-    const fourth = await nominate(api, headers, 'member-self', '四');
-    expect(fourth.status).toBe(409);
-    expect(JSON.stringify(fourth.body)).toContain('NOMINATION_LIMIT_REACHED');
+    expect((await nominate(api, headers, 'member-self', '一')).status).toBe(201);
+    const second = await nominate(api, headers, 'member-self', '二');
+    expect(second.status).toBe(409);
+    expect(JSON.stringify(second.body)).toContain('NOMINATION_LIMIT_REACHED');
   });
 
   it('hides a removed nomination from everyone, including its author', async () => {

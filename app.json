@@ -2,7 +2,7 @@
   "expo": {
     "name": "青牧青年",
     "slug": "qingmu-youth",
-    "version": "0.3.0",
+    "version": "0.5.7",
     "orientation": "portrait",
     "scheme": "org.qingmu.youth",
     "userInterfaceStyle": "automatic",
@@ -12,6 +12,7 @@
       "./plugins/withQingmuReleaseSigning",
       "./plugins/withQingmuNetworkSecurity",
       "./plugins/withQingmuReleaseSlimming",
+      "./plugins/withQingmuPermissionFloor",
       [
         "expo-camera",
         {
@@ -24,11 +25,12 @@
       "expo-font",
       "expo-status-bar",
       "expo-notifications",
-      "react-native-nitro-google-signin"
+      "react-native-nitro-google-signin",
+      "./plugins/withQingmuProguardRules"
     ],
     "android": {
       "package": "org.qingmu.youth",
-      "versionCode": 15,
+      "versionCode": 28,
       "adaptiveIcon": {
         "backgroundColor": "#1E5C4B"
       }

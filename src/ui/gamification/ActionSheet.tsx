@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { useAndroidKeyboardVisible } from '../useAndroidKeyboardVisible';
 import { theme } from '../Theme';
 
 export interface ActionSheetAction { label: string; onPress: () => void; destructive?: boolean; disabled?: boolean; }
@@ -15,21 +15,21 @@ export interface ActionSheetAction { label: string; onPress: () => void; destruc
 export function ActionSheet({ visible, title, actions, onClose, children, dismissOnOutsideTap = false }: { visible: boolean; title: string; actions?: ActionSheetAction[]; onClose: () => void; children?: React.ReactNode; dismissOnOutsideTap?: boolean }) {
   const androidKeyboardVisible = useAndroidKeyboardVisible();
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} accessibilityViewIsModal>
-    <SafeAreaProvider><KeyboardAvoidingView style={styles.keyboardRoot} behavior="padding" enabled={Platform.OS !== 'android' || androidKeyboardVisible}><Pressable accessibilityRole={dismissOnOutsideTap ? 'button' : 'none'} accessibilityLabel={dismissOnOutsideTap ? `關閉${title}` : undefined} onPress={dismissOnOutsideTap ? onClose : undefined} style={styles.scrim}><Pressable onPress={() => undefined}><SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']}><View style={styles.heading}><Text style={styles.title}>{title}</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉操作" onPress={onClose} style={styles.close}><Text style={styles.closeText}>×</Text></Pressable></View><ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">{children}{actions?.map((action) => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} disabled={action.disabled} onPress={action.onPress} style={[styles.action, action.destructive && styles.destructive, action.disabled && styles.disabled]}><Text style={[styles.actionText, action.destructive && styles.destructiveText]}>{action.label}</Text></Pressable>)}</ScrollView></SafeAreaView></Pressable></Pressable></KeyboardAvoidingView></SafeAreaProvider>
+    <SafeAreaProvider><KeyboardAvoidingView style={styles.keyboardRoot} behavior="padding" enabled={Platform.OS !== 'android' || androidKeyboardVisible}><Pressable accessibilityRole={dismissOnOutsideTap ? 'button' : 'none'} accessibilityLabel={dismissOnOutsideTap ? `關閉${title}` : undefined} onPress={dismissOnOutsideTap ? onClose : undefined} style={styles.scrim}><Pressable onPress={() => undefined} style={styles.sheetWrap}><SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']}><View style={styles.heading}><Text style={styles.title}>{title}</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉操作" onPress={onClose} style={styles.close}><Text style={styles.closeText}>×</Text></Pressable></View><ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">{children}{actions?.map((action) => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} disabled={action.disabled} onPress={action.onPress} style={[styles.action, action.destructive && styles.destructive, action.disabled && styles.disabled]}><Text style={[styles.actionText, action.destructive && styles.destructiveText]}>{action.label}</Text></Pressable>)}</ScrollView></SafeAreaView></Pressable></Pressable></KeyboardAvoidingView></SafeAreaProvider>
   </Modal>;
-}
-function useAndroidKeyboardVisible(): boolean {
-  const [visible, setVisible] = useState(() => Keyboard.isVisible());
-  useEffect(() => {
-    const shown = Keyboard.addListener('keyboardDidShow', () => setVisible(true));
-    const hidden = Keyboard.addListener('keyboardDidHide', () => setVisible(false));
-    return () => { shown.remove(); hidden.remove(); };
-  }, []);
-  return visible;
 }
 const styles = StyleSheet.create({
   scrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(21,48,42,0.28)' },
-  sheet: { width: '100%', maxHeight: '85%', backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card },
+  // The 85% cap belongs here, on the scrim's direct child, not on the sheet inside it.
+  //
+  // A percentage height resolves against the parent's height, and the parent was this wrapper with
+  // no style at all — its height came from the sheet, whose height came from the percentage. The cap
+  // therefore never resolved, and on the device the mentor menu ended up 718px tall on a 2400px
+  // screen with its fifth action, 獎品提案, clipped to seventeen visible pixels. It still scrolled,
+  // so the action was reachable, but nothing on screen said so: a mentor who does not think to swipe
+  // concludes the feature is not there.
+  sheetWrap: { width: '100%', maxHeight: '85%' },
+  sheet: { width: '100%', flexShrink: 1, backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card },
   keyboardRoot: { flex: 1 },
   heading: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg },
   title: { color: theme.colors.ink, fontSize: theme.type.heading.size, fontWeight: '800', flexShrink: 1 },

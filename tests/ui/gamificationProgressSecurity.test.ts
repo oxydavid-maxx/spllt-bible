@@ -8,6 +8,7 @@ const { primitive, api, auth, appListeners, focusCallbacks } = vi.hoisted(() => 
   auth: { status: 'signed-in', session: { memberId: 'self', sessionToken: 'token' }, profile: null, profileStatus: 'ready', epoch: 1 },
   appListeners: [] as Array<(state: string) => void>, focusCallbacks: [] as Array<() => (() => void) | void>,
 }));
+vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined, deleteItemAsync: async () => undefined }));
 vi.mock('react-native', () => ({ AppState: { addEventListener: vi.fn((_event: string, listener: (state: string) => void) => { appListeners.push(listener); return { remove: vi.fn() }; }) }, Pressable: primitive('Pressable'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle') }; });
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | void) => { focusCallbacks.push(callback); require('react').useEffect(callback, []); } }));

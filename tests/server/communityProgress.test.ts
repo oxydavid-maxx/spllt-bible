@@ -60,7 +60,7 @@ describe('what the group has read together', () => {
     const { database, api, headers } = setup(12);
     for (let index = 0; index < 12; index += 1) award(database, `member-${index}`, '2026-09-08');
     const response = await get(api, headers);
-    expect(Object.keys(response.body as Record<string, unknown>).sort()).toEqual(['books', 'personDays']);
+    expect(Object.keys(response.body as Record<string, unknown>).sort()).toEqual(['books', 'currentBook', 'personDays']);
     expect(JSON.stringify(response.body)).not.toContain('member-');
     expect(JSON.stringify(response.body)).not.toContain('學生');
   });
@@ -69,5 +69,72 @@ describe('what the group has read together', () => {
     const { api } = setup(1);
     const response = await api({ method: 'GET', url: '/api/points/community', headers: {} });
     expect(response.status).toBe(401);
+  });
+});
+
+// The one shared goal the product allows itself. It cannot be failed and it has no deadline: a
+// chapter lights up the moment ANY one person has read it, so a week you missed is a week somebody
+// else carried, and the only direction the thing moves is forward.
+
+interface BookGoal { book: string; chapters: Array<{ chapter: number; readers: number | null }>; complete: boolean; }
+const goal = async (api: ReturnType<typeof setup>['api'], headers: ReturnType<typeof setup>['headers']) =>
+  ((await get(api, headers)).body as { currentBook: BookGoal | null }).currentBook;
+
+describe('一起讀完一卷書', () => {
+  it('aims at the book that finishes soonest, not the psalms that run all term', async () => {
+    const { api, headers } = setup(1);
+    // 2026-09-14 reads 1TI.1, 1TI.2 and PSA.92. Both are current; only one has an end in sight.
+    expect((await goal(api, headers))?.book).toBe('提摩太前書');
+  });
+
+  it('counts every chapter of it the plan schedules, in order', async () => {
+    const { api, headers } = setup(1);
+    expect((await goal(api, headers))?.chapters.map((entry) => entry.chapter)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it('lights a chapter for everybody once one person has read it', async () => {
+    const { database, api, headers } = setup(12);
+    award(database, 'member-7', '2026-09-14');
+    const chapters = (await goal(api, headers))!.chapters;
+    expect(chapters.find((entry) => entry.chapter === 1)!.readers).toBe(1);
+    expect(chapters.find((entry) => entry.chapter === 2)!.readers).toBe(1);
+  });
+
+  it('says nothing rather than zero for a chapter still ahead of everyone', async () => {
+    const { database, api, headers } = setup(12);
+    award(database, 'member-7', '2026-09-14');
+    expect((await goal(api, headers))!.chapters.find((entry) => entry.chapter === 6)!.readers).toBeNull();
+  });
+
+  it('adds up the people who read it, without naming one', async () => {
+    const { database, api, headers } = setup(12);
+    for (const index of [1, 4, 9]) award(database, `member-${index}`, '2026-09-14');
+    expect((await goal(api, headers))!.chapters.find((entry) => entry.chapter === 1)!.readers).toBe(3);
+  });
+
+  it('is finished when every chapter has been read by somebody, by anybody', async () => {
+    const { database, api, headers } = setup(12);
+    // Nobody here read the whole book; between the three of them the book is read.
+    award(database, 'member-0', '2026-09-14');
+    award(database, 'member-1', '2026-09-16');
+    award(database, 'member-2', '2026-09-18');
+    const finished = (await goal(api, headers))!;
+    expect(finished.chapters.every((entry) => entry.readers !== null)).toBe(true);
+    expect(finished.complete).toBe(true);
+  });
+
+  it('is not finished while one chapter is still dark', async () => {
+    const { database, api, headers } = setup(12);
+    award(database, 'member-0', '2026-09-14');
+    award(database, 'member-1', '2026-09-16');
+    expect((await goal(api, headers))!.complete).toBe(false);
+  });
+
+  it('never carries a member identifier', async () => {
+    const { database, api, headers } = setup(12);
+    for (let index = 0; index < 12; index += 1) award(database, `member-${index}`, '2026-09-14');
+    const body = JSON.stringify((await get(api, headers)).body);
+    expect(body).not.toContain('member-');
+    expect(body).not.toContain('學生');
   });
 });

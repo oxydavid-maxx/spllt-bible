@@ -3,9 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
 import { isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
-import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type RewardNomination, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
+import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type NominationBoardView, type ScoreChartQuery, type ScoreChartRange, type CommunityProgressView, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
 import type { PendingGamificationOperations } from '../../src/services/gamificationPendingStore';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../src/services/adminUnlockGuard';
+import { createProfileCache } from '../../src/services/profileCache';
+import * as SecureStore from 'expo-secure-store';
 import { ActionSheet } from '../../src/ui/gamification/ActionSheet';
 import { FriendQrPanel } from '../../src/ui/gamification/FriendQrPanel';
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
@@ -13,10 +15,11 @@ import { RewardControls } from '../../src/ui/gamification/RewardControls';
 import { RedemptionList } from '../../src/ui/gamification/RedemptionList';
 import { CommunityProgress } from '../../src/ui/gamification/CommunityProgress';
 import { NominationBoard } from '../../src/ui/gamification/NominationBoard';
+import { NominationBanner } from '../../src/ui/gamification/NominationBanner';
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { theme } from '../../src/ui/Theme';
 
-type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'admin-rewards' | 'redeem' | 'redemptions' | 'pending' | null;
+type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'admin-rewards' | 'redeem' | 'redemptions' | 'pending' | 'nominations' | 'open-round' | null;
 
 export default function ProgressScreen() {
   const auth = useAuthSnapshot();
@@ -36,6 +39,13 @@ export default function ProgressScreen() {
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const [foregroundRevision, setForegroundRevision] = useState(0);
   const guard = useRef(createAdminUnlockGuard({ authenticate: createNativeAdminAuthenticator() }));
+  // The member's own points, kept on the device so a backend that is off does not blank this page.
+  // Only their own: see profileCache for why a friend's totals must not land here.
+  const [profileCache] = useState(() => createProfileCache({
+    getItem: (key) => SecureStore.getItemAsync(key),
+    setItem: (key, value) => SecureStore.setItemAsync(key, value),
+  }));
+  const [profileStale, setProfileStale] = useState(false);
   const requestGeneration = useRef(0);
   const appActive = useRef(true);
   const activeScope = useRef<ScoreScope>('me');
@@ -74,10 +84,16 @@ export default function ProgressScreen() {
   const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope, chartQuery?: ScoreChartQuery) => {
     if (!client || !session) return; setBusy(true); setError(null);
     const generation = requestGeneration.current;
-    try { const value = chartQuery ? await client.getProfile(memberId, nextScope, monthNow(), chartQuery) : await client.getProfile(memberId, nextScope, monthNow()); rememberChart(memberId, nextScope, chartQuery, value.chart); if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session) && (nextScope !== 'all' || guard.current.state === 'unlocked')) { setProfile(value); if (!chartQuery) void prefetchCharts(memberId, nextScope, value.chart?.range ?? 'month'); } }
-    catch (reason) { if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session)) { setProfile(null); setError(messageFor(reason)); } }
+    try { const value = chartQuery ? await client.getProfile(memberId, nextScope, monthNow(), chartQuery) : await client.getProfile(memberId, nextScope, monthNow()); rememberChart(memberId, nextScope, chartQuery, value.chart); if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session) && (nextScope !== 'all' || guard.current.state === 'unlocked')) { setProfile(value); setProfileStale(false); if (nextScope === 'me' && memberId === session.memberId) void profileCache.save(memberId, value as never); if (!chartQuery) void prefetchCharts(memberId, nextScope, value.chart?.range ?? 'month'); } }
+    catch (reason) { if (appActive.current && requestGeneration.current === generation && activeScope.current === nextScope && activeMember.current === memberId && isCurrentAuthSession(session)) {
+      // Blanking the page loses the one number the member came to see. Their own last-known total is
+      // still true as of when it was fetched, so it is shown and marked rather than thrown away.
+      const remembered = nextScope === 'me' && memberId === session.memberId ? await profileCache.load(memberId) : null;
+      if (remembered && isCurrentAuthSession(session)) { setProfile(remembered as never); setProfileStale(true); setError(null); }
+      else { setProfile(null); setError(messageFor(reason)); }
+    } }
     finally { setBusy(false); }
-  }, [client, session]);
+  }, [client, session, profileCache]);
   const prefetchCharts = useCallback(async (memberId: string, nextScope: ScoreScope, currentRange: ScoreChartRange) => {
     if (!client || !session) return;
     const missing = (['week', 'month', 'year', 'all'] as ScoreChartRange[]).filter((range) => range !== currentRange && !chartCache.current.has(chartKey(memberId, nextScope, { range })));
@@ -133,29 +149,55 @@ export default function ProgressScreen() {
     return () => { active = false; };
   }, [client, session, scope, profile?.private, shelfRewards]);
   useEffect(() => { setShelfRewards(null); }, [session?.memberId]);
-  const [nominations, setNominations] = useState<RewardNomination[] | null>(null);
+  const [nominations, setNominations] = useState<NominationBoardView | null>(null);
   useEffect(() => {
     if (!client || !session || scope !== 'me' || nominations !== null || typeof client.getNominations !== 'function') return;
     let active = true;
     void client.getNominations()
       .then((value) => { if (active && isCurrentAuthSession(session)) setNominations(value); })
-      .catch(() => { if (active) setNominations([]); });
+      .catch(() => { if (active) setNominations({ round: null, nominations: [], votesLeft: 0, votesPerMember: 3 }); });
     return () => { active = false; };
   }, [client, session, scope, nominations]);
   useEffect(() => { setNominations(null); }, [session?.memberId]);
-  const [community, setCommunity] = useState<{ books: string[]; personDays: number | null } | null>(null);
+  const [community, setCommunity] = useState<CommunityProgressView | null>(null);
   useEffect(() => {
     if (!client || !session || scope !== 'me' || community !== null || typeof client.getCommunityProgress !== 'function') return;
     let active = true;
     void client.getCommunityProgress()
       .then((value) => { if (active && isCurrentAuthSession(session)) setCommunity(value); })
-      .catch(() => { if (active) setCommunity({ books: [], personDays: null }); });
+      .catch(() => { if (active) setCommunity({ books: [], personDays: null, currentBook: null }); });
     return () => { active = false; };
   }, [client, session, scope, community]);
   useEffect(() => { setCommunity(null); }, [session?.memberId]);
   // Every mutation just drops the cache; the effect above refetches, so the board always reflects
   // the server rather than a locally guessed vote count.
   const refreshNominations = () => setNominations(null);
+  const nominationError = (reason: unknown) => setError(messageFor(reason));
+  // The estimate lands 20-60 seconds after the idea is submitted, on a worker tick. Without this the
+  // number only appears if the app is restarted, which nobody would think to do. Refetch in place
+  // rather than through refreshNominations: nulling the state would blank the board on every poll,
+  // and a failed poll should leave what is on screen alone.
+  const reloadNominations = useCallback(async () => {
+    if (!client || !session || typeof client.getNominations !== 'function') return;
+    try {
+      const value = await client.getNominations();
+      if (isCurrentAuthSession(session)) setNominations(value);
+    } catch { /* keep the board that is already drawn */ }
+  }, [client, session]);
+  useEffect(() => {
+    if (sheet !== 'nominations') return undefined;
+    void reloadNominations();
+    const timer = setInterval(() => { void reloadNominations(); }, 20000);
+    return () => clearInterval(timer);
+  }, [sheet, reloadNominations]);
+  const openNominationRound = async (days: number) => {
+    if (!client) return;
+    try {
+      await client.openNominationRound({ title: `${Number(monthNow().slice(5))} 月獎品`, closesAt: Date.now() + days * 24 * 60 * 60 * 1000 });
+      refreshNominations();
+      setSheet(null);
+    } catch (reason) { nominationError(reason); }
+  };
   const redeemSelected = async (rewardId: string) => { if (!client || !selected) return; const reward = rewards.find((item) => item.rewardId === rewardId); if (!reward) return; const generation = requestGeneration.current; const memberId = selected.memberId; try { await client.redeem({ memberId, rewardId, expectedRewardRevision: reward.revision }); if (!isLive(generation, 'all', memberId, true)) return; setRetryAction(null); setSheet(null); await loadProfile(memberId, 'all'); } catch (reason) { if (isLive(generation, 'all', memberId, true) && reason instanceof GamificationApiError && reason.retryable) { setRetryAction(() => () => { void redeemSelected(rewardId); }); setError('尚未確認，點此重試。'); } else if (isLive(generation, 'all', memberId, true)) setError(messageFor(reason)); } };
   const openRedeem = async () => { if (!client || !session || !selected) return; const generation = requestGeneration.current; const memberId = selected.memberId; try { const value = await client.getRewards(); if (isLive(generation, 'all', memberId, true)) { setRewards(value); setSheet('redeem'); } } catch (reason) { if (isLive(generation, 'all', memberId, true)) setError(messageFor(reason)); } };
   const reverseSelected = async (redemptionId: string, reason: string) => { if (!client || !session) return; const generation = requestGeneration.current; const expectedScope = scope; const memberId = selected?.memberId; try { await client.reverseRedemption(redemptionId, reason); if (!isLive(generation, expectedScope, memberId, expectedScope === 'all')) return; setRetryAction(null); await loadRedemptions(expectedScope === 'all', memberId); if (expectedScope === 'all' && memberId) await loadProfile(memberId, 'all'); else await loadProfile(session.memberId, 'me'); } catch (errorValue) { if (isLive(generation, expectedScope, memberId, expectedScope === 'all') && errorValue instanceof GamificationApiError && errorValue.retryable) { setRetryAction(() => () => { void reverseSelected(redemptionId, reason); }); setError('尚未確認，點此重試。'); } else if (isLive(generation, expectedScope, memberId, expectedScope === 'all')) setError(messageFor(errorValue)); } };
@@ -168,17 +210,37 @@ export default function ProgressScreen() {
   return <View style={styles.screen}>
     <View style={styles.scopeHeader}><View style={styles.scopes}>{(['me', 'friends', ...(capabilities?.canViewAllScores ? ['all'] : [])] as ScoreScope[]).map((item) => <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: scope === item }} accessibilityLabel={item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體（管理）'} onPress={() => void chooseScope(item)} style={[styles.scope, scope === item && styles.scopeActive]}><Text style={[styles.scopeText, scope === item && styles.scopeTextActive]}>{item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體（管理）'}</Text></Pressable>)}</View><Pressable accessibilityRole="button" accessibilityLabel="開啟積分操作" onPress={() => setSheet('menu')} style={styles.menu}><Text style={styles.menuText}>⋯</Text></Pressable></View>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}{busy ? <Text style={styles.note}>載入中…</Text> : null}
+    {/* A number with no note beside it claims to be current. This one is not. */}
+    {profileStale && scope === 'me' ? <Text style={styles.stale}>目前顯示上次的積分，還沒連上更新</Text> : null}
     {scope === 'me' && !profile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
     {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
     {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}
-    {scope === 'me' && profile ? <ScoreProfile profile={profile} rewards={shelfRewards ?? undefined} nominations={nominations ? <NominationBoard
-      nominations={nominations}
-      canManage={Boolean(capabilities?.canManageRewards)}
-      onNominate={(name, note) => { void client?.nominateReward({ name, ...(note ? { note } : {}) }).then(refreshNominations).catch((reason) => setError(messageFor(reason))); }}
-      onVote={(nominationId, voting) => { void client?.setNominationVote(nominationId, voting).then(refreshNominations).catch((reason) => setError(messageFor(reason))); }}
-      onDecide={(nominationId, decision, revision, costPoints) => { void client?.decideNomination(nominationId, decision, { expectedRevision: revision, ...(costPoints ? { costPoints } : {}) }).then(() => { refreshNominations(); setShelfRewards(null); }).catch((reason) => setError(messageFor(reason))); }}
-    /> : undefined} community={community ? <CommunityProgress books={community.books} personDays={community.personDays} /> : undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId).then(() => setShelfRewards(null)); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
-    <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: () => setSheet('qr') }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards().then(() => setSheet('admin-rewards')); } }] : [])]} />
+    {scope === 'me' && nominations?.round ? <NominationBanner
+      round={nominations.round}
+      nowMs={Date.now()}
+      mine={nominations.nominations.some((item) => item.mine && item.status === 'OPEN')}
+      onOpen={() => setSheet('nominations')}
+    /> : null}
+    {scope === 'me' && profile ? <ScoreProfile profile={profile} rewards={shelfRewards ?? undefined} community={community ? <CommunityProgress books={community.books} personDays={community.personDays} currentBook={community.currentBook} /> : undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId).then(() => setShelfRewards(null)); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
+    <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: () => setSheet('qr') }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards().then(() => setSheet('admin-rewards')); } }] : []), ...(capabilities?.canManageRewards && !nominations?.round ? [{ label: '開一輪獎品提案', onPress: () => setSheet('open-round') }] : []), ...(nominations?.round ? [{ label: '獎品提案', onPress: () => setSheet('nominations') }] : [])]} />
+    <ActionSheet visible={sheet === 'nominations'} title={nominations?.round?.title ?? '獎品提案'} onClose={() => setSheet(null)}>
+      <NominationBoard
+        round={nominations?.round ?? null}
+        nominations={nominations?.nominations ?? []}
+        canManage={Boolean(capabilities?.canManageRewards)}
+        nowMs={Date.now()}
+        votesLeft={nominations?.votesLeft}
+        votesPerMember={nominations?.votesPerMember}
+        onNominate={(name, note) => { void client?.nominateReward({ name, ...(note ? { note } : {}) }).then(refreshNominations).catch(nominationError); }}
+        onVote={(nominationId, voting) => { void client?.setNominationVote(nominationId, voting).then(refreshNominations).catch(nominationError); }}
+        onWithdraw={(nominationId) => { void client?.withdrawNomination(nominationId).then(refreshNominations).catch(nominationError); }}
+        onResolveSuggestion={(nominationId, accept) => { void client?.resolveNoteSuggestion(nominationId, accept).then(refreshNominations).catch(nominationError); }}
+        onDecide={(nominationId, decision, revision, costPoints) => { void client?.decideNomination(nominationId, decision, { expectedRevision: revision, ...(costPoints ? { costPoints } : {}) }).then(() => { refreshNominations(); setShelfRewards(null); }).catch(nominationError); }}
+        onCloseRound={(roundId) => { void client?.closeNominationRound(roundId).then(() => { refreshNominations(); setSheet(null); }).catch(nominationError); }}
+      />
+    </ActionSheet>
+    <ActionSheet visible={sheet === 'open-round'} title="開一輪獎品提案" dismissOnOutsideTap onClose={() => setSheet(null)}
+      actions={[7, 14, 30].map((days) => ({ label: `${days} 天後截止`, onPress: () => { void openNominationRound(days); } }))} />
     <ActionSheet visible={sheet === 'qr'} title="我的好友 QR" dismissOnOutsideTap onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="show" /></ActionSheet>
     <ActionSheet visible={sheet === 'scan'} title="掃描好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="scan" onClaimed={scanClaimed} /></ActionSheet>
     <ActionSheet visible={sheet === 'rewards'} title="選擇目標獎品" dismissOnOutsideTap onClose={() => setSheet(null)}><RewardControls rewards={rewards} selectedRewardId={selectedRewardId} canEdit onSelect={(rewardId) => void setTarget(rewardId)} /></ActionSheet>
@@ -195,4 +257,4 @@ export default function ProgressScreen() {
 
 function monthNow(): string { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).formatToParts(new Date()); const year = parts.find((part) => part.type === 'year')?.value ?? '1970'; const month = parts.find((part) => part.type === 'month')?.value ?? '01'; return `${year}-${month}`; }
 function messageFor(reason: unknown): string { return reason instanceof GamificationApiError ? reason.userMessage : '目前無法載入積分，請稍後再試。'; }
-const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' } });
+const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' } });

@@ -78,6 +78,32 @@ describe('an overlay closes when you tap away from it, unless something would be
       redeem: false,       // debits points in front of a student
       redemptions: false,  // a reversal reason being typed
       pending: false,      // finishing an unconfirmed transaction
+      nominations: false,  // an idea and a price being typed into it
+      'open-round': true,  // a list of closing dates
     });
+  });
+});
+
+describe('the sheet is capped against something that has a height', () => {
+  const source = readFileSync(join(__dirname, '..', '..', 'src', 'ui', 'gamification', 'ActionSheet.tsx'), 'utf8');
+
+  it('caps the wrapper the scrim measures, not the sheet inside it', () => {
+    // A percentage height resolves against the parent's height. When the cap sat on the sheet, its
+    // parent was an unstyled Pressable whose height came from the sheet, whose height came from the
+    // cap — so the cap never resolved. On the device the mentor menu came out 718px tall on a 2400px
+    // screen with its fifth action clipped to seventeen visible pixels.
+    const wrap = /sheetWrap:\s*\{([^}]*)\}/.exec(source)?.[1] ?? '';
+    const sheet = /\n\s*sheet:\s*\{([^}]*)\}/.exec(source)?.[1] ?? '';
+    expect(wrap).toMatch(/maxHeight/);
+    expect(sheet).not.toMatch(/maxHeight/);
+  });
+
+  it('gives the wrapper to the element the scrim lays out', () => {
+    // The cap is worthless on a node the layout never sizes, so the wrapper has to carry the style.
+    expect(source).toMatch(/onPress=\{\(\) => undefined\}\s+style=\{styles\.sheetWrap\}/);
+  });
+
+  it('lets the sheet shrink inside that cap instead of demanding its natural height', () => {
+    expect(/\n\s*sheet:\s*\{([^}]*)\}/.exec(source)?.[1] ?? '').toMatch(/flexShrink:\s*1/);
   });
 });

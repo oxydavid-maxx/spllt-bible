@@ -79,6 +79,40 @@ function parseReward(value: unknown): Reward | null {
   return item && string(item.rewardId) && string(item.name) && positiveInt(item.costPoints) && typeof item.active === 'boolean' && positiveInt(item.revision)
     ? { rewardId: item.rewardId, name: item.name, costPoints: item.costPoints, active: item.active, revision: item.revision } : null;
 }
+export interface CommunityChapterView { chapter: number; readers: number | null }
+export interface CommunityBookGoal {
+  book: string;
+  chapters: CommunityChapterView[];
+  complete: boolean;
+}
+export interface CommunityProgressView {
+  books: string[];
+  personDays: number | null;
+  currentBook: CommunityBookGoal | null;
+}
+
+/**
+ * The shared book goal, or nothing at all.
+ *
+ * Nothing at all is a real answer and not a failure: a server that predates this feature simply has
+ * no such field, and a phone that has not been updated yet should keep showing what the rest of the
+ * page says rather than refuse to draw it. Anything malformed lands in the same place, because the
+ * only thing this display can honestly do without it is not appear.
+ */
+function parseBookGoal(value: unknown): CommunityBookGoal | null {
+  const item = object(value);
+  if (!item || !string(item.book) || !Array.isArray(item.chapters) || typeof item.complete !== 'boolean') return null;
+  const chapters: CommunityChapterView[] = [];
+  for (const entry of item.chapters) {
+    const chapter = object(entry);
+    if (!chapter || !positiveInt(chapter.chapter)) return null;
+    // Nobody yet is null here too. A zero would be a different claim, and one this never makes.
+    if (chapter.readers !== null && !positiveInt(chapter.readers)) return null;
+    chapters.push({ chapter: chapter.chapter, readers: chapter.readers as number | null });
+  }
+  return { book: item.book, chapters, complete: item.complete };
+}
+
 export interface RewardNomination {
   nominationId: string;
   name: string;
@@ -89,6 +123,31 @@ export interface RewardNomination {
   voted: boolean;
   mine: boolean;
   revision: number;
+  /** Roughly what it would cost, in points, or absent when nothing usable came back. */
+  estimatedPoints?: number;
+  /** A clearer way to say it, offered to the author and sent to nobody else. */
+  noteSuggestion?: string;
+}
+
+export type NominationRoundPhase = 'VOTING' | 'DECIDING';
+export interface NominationRound {
+  roundId: string;
+  title: string | null;
+  closesAt: number;
+  phase: NominationRoundPhase;
+}
+export interface NominationBoardView {
+  round: NominationRound | null;
+  nominations: RewardNomination[];
+  /** Votes this member has left in the round. Three are given because three prizes are chosen. */
+  votesLeft: number;
+  votesPerMember: number;
+}
+export interface NominationRoundResult {
+  roundId: string;
+  title: string | null;
+  closedAt: number;
+  places: Array<{ name: string; displayName: string; voteCount: number; approved: boolean }>;
 }
 
 /**
@@ -98,6 +157,26 @@ export interface RewardNomination {
  * and a member id arriving would mean the server had started handing out a handle into every other
  * endpoint. Better to fail loudly here than to render it.
  */
+/** The round, or none at all: no round running is an ordinary state and not a malformed reply. */
+function parseRound(value: unknown): NominationRound | null {
+  const item = object(value);
+  if (!item || !string(item.roundId) || !nonNegativeInt(item.closesAt)) return null;
+  if (item.phase !== 'VOTING' && item.phase !== 'DECIDING') return null;
+  return { roundId: item.roundId, title: string(item.title) ? item.title : null, closesAt: item.closesAt, phase: item.phase };
+}
+
+function parseRoundResult(value: unknown): NominationRoundResult | null {
+  const item = object(value);
+  if (!item || !string(item.roundId) || !nonNegativeInt(item.closedAt) || !Array.isArray(item.places)) return null;
+  const places: NominationRoundResult['places'] = [];
+  for (const entry of item.places) {
+    const place = object(entry);
+    if (!place || !string(place.name) || !string(place.displayName) || !nonNegativeInt(place.voteCount) || typeof place.approved !== 'boolean') return null;
+    places.push({ name: place.name, displayName: place.displayName, voteCount: place.voteCount, approved: place.approved });
+  }
+  return { roundId: item.roundId, title: string(item.title) ? item.title : null, closedAt: item.closedAt, places };
+}
+
 function parseNomination(value: unknown): RewardNomination | null {
   const item = object(value);
   if (!item || item.createdBy !== undefined || item.memberId !== undefined) return null;
@@ -114,6 +193,8 @@ function parseNomination(value: unknown): RewardNomination | null {
     voted: item.voted,
     mine: item.mine,
     revision: item.revision,
+    ...(positiveInt(item.estimatedPoints) ? { estimatedPoints: item.estimatedPoints } : {}),
+    ...(string(item.noteSuggestion) ? { noteSuggestion: item.noteSuggestion } : {}),
   };
 }
 
@@ -284,20 +365,44 @@ export function createGamificationApiClient(options: GamificationApiClientOption
     async removeFriend(memberId: string): Promise<void> { await request(`/api/friends/${encodeURIComponent(memberId)}`, { method: 'DELETE' }); },
     async createReward(input: { name: string; costPoints: number; operationId?: string }): Promise<Reward> { const body = object(await request('/api/admin/rewards', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: input.operationId ?? operationId(), name: input.name, costPoints: input.costPoints }) })); const reward = parseReward(body); if (!reward) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return reward; },
     async updateReward(rewardId: string, patch: { name?: string; costPoints?: number; active?: boolean }, expectedRevision = 1, operationIdValue = operationId()): Promise<Reward> { const body = object(await request(`/api/admin/rewards/${encodeURIComponent(rewardId)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...patch, expectedRevision, operationId: operationIdValue }) })); const reward = parseReward(body); if (!reward) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return reward; },
-    async getCommunityProgress(): Promise<{ books: string[]; personDays: number | null }> {
+    async getCommunityProgress(): Promise<CommunityProgressView> {
       const body = object(await request('/api/points/community'));
       if (!body || !Array.isArray(body.books) || !body.books.every((value) => string(value))) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       const personDays = body.personDays;
       if (personDays !== null && !nonNegativeInt(personDays)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
-      return { books: body.books as string[], personDays: personDays as number | null };
+      return { books: body.books as string[], personDays: personDays as number | null, currentBook: parseBookGoal(body.currentBook) };
     },
-    async getNominations(): Promise<RewardNomination[]> {
+    async getNominations(): Promise<NominationBoardView> {
       const body = object(await request('/api/rewards/nominations'));
       const values = body?.nominations;
       if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       const parsed = values.map(parseNomination);
       if (parsed.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
-      return parsed as RewardNomination[];
+      // An older server that does not send these leaves the member with their three, which reads as
+      // the behaviour that existed before the limit rather than as a board with nothing to spend.
+      const perMember = Number.isInteger(body?.votesPerMember) ? Number(body?.votesPerMember) : 3;
+      const left = Number.isInteger(body?.votesLeft) ? Number(body?.votesLeft) : perMember;
+      return { round: parseRound(body?.round), nominations: parsed as RewardNomination[], votesLeft: left, votesPerMember: perMember };
+    },
+    async getNominationHistory(): Promise<NominationRoundResult[]> {
+      const body = object(await request('/api/rewards/nominations/history'));
+      const values = body?.rounds;
+      if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
+      const parsed = values.map(parseRoundResult);
+      if (parsed.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
+      return parsed as NominationRoundResult[];
+    },
+    async withdrawNomination(nominationId: string): Promise<void> {
+      await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}`, { method: 'DELETE' });
+    },
+    async resolveNoteSuggestion(nominationId: string, accept: boolean): Promise<void> {
+      await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}/suggestion`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accept }) });
+    },
+    async openNominationRound(input: { title?: string; closesAt: number }): Promise<void> {
+      await request('/api/admin/rewards/nomination-rounds', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), ...(input.title ? { title: input.title } : {}), closesAt: input.closesAt }) });
+    },
+    async closeNominationRound(roundId: string): Promise<void> {
+      await request(`/api/admin/rewards/nomination-rounds/${encodeURIComponent(roundId)}/close`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId() }) });
     },
     async nominateReward(input: { name: string; note?: string }): Promise<void> {
       await request('/api/rewards/nominations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), name: input.name, ...(input.note ? { note: input.note } : {}) }) });
