@@ -1,4 +1,4 @@
-import { fetchDocText, fetchDriveFile, fetchFolderHtml, fetchSlidesText, fetchWorkbook } from './fetch';
+import { fetchDriveFile, fetchFolderHtml, fetchSlidesText, fetchWorkbook } from './fetch';
 import { pptxSlideText, xlsxSheetRows } from './office';
 import {
   classifyFile, findSignupUrl, isGoogleNative, listWeekFolders, nextAfter, parseFolderListing,
@@ -66,23 +66,21 @@ export function readWeekFiles(entries: DriveEntry[]): Omit<SermonBlock, 'speaker
   return { title, audio, slides, transcript, deck };
 }
 
-async function readTabs(workbook: Buffer | null, tabs: string[]): Promise<PlanRow[]> {
-  if (!workbook) return [];
+function readTabs(workbook: Buffer, tabs: string[]): PlanRow[] {
   const rows: PlanRow[] = [];
   for (const tab of tabs) rows.push(...readPlanRows(xlsxSheetRows(workbook, tab)));
   return rows;
 }
 
 /** The deck, only ever for the sign-up link. Slides or an uploaded .pptx; both cost nothing to read. */
-async function deckText(deck: DriveEntry | null): Promise<string> {
+async function deckText(deck: DriveEntry | null): Promise<string | null> {
   if (!deck) return '';
-  if (isGoogleNative(deck.id)) return (await fetchSlidesText(deck.id)) ?? '';
+  if (isGoogleNative(deck.id)) return await fetchSlidesText(deck.id);
   const binary = await fetchDriveFile(deck.id);
-  return binary ? pptxSlideText(binary).join('\n') : '';
+  return binary === null ? null : pptxSlideText(binary).join('\n');
 }
 
-function standingFrom(workbook: Buffer | null): Record<string, string> | null {
-  if (!workbook) return null;
+function standingFrom(workbook: Buffer): Record<string, string> | null {
   const rows = xlsxSheetRows(workbook, STANDING_TAB);
   if (rows.length === 0) return null;
   const standing: Record<string, string> = {};
@@ -94,12 +92,17 @@ function standingFrom(workbook: Buffer | null): Record<string, string> | null {
   return Object.keys(standing).length > 0 ? standing : null;
 }
 
-export interface BuildOptions { today: string; parentFolder?: string }
+export interface BuildOptions {
+  today: string;
+  parentFolder?: string;
+  /** Read-only fallback from an existing announcement/archive, only used after a source failure. */
+  previousWeek?: (week: string) => Announcement['past'][number] | null;
+}
 
-export async function buildAnnouncement(options: BuildOptions): Promise<{ announcement: Announcement | null; reason?: string }> {
+export async function buildAnnouncement(options: BuildOptions): Promise<{ announcement: Announcement | null; reason?: string; warnings?: string[] }> {
   const parent = options.parentFolder ?? PARENT_FOLDER;
   const html = await fetchFolderHtml(parent);
-  if (!html) return { announcement: null, reason: 'FOLDER_UNREACHABLE' };
+  if (html === null) return { announcement: null, reason: 'FOLDER_UNREACHABLE' };
 
   const folders = parseFolderListing(html);
   const chosen = pickWeekFolder(folders, options.today);
@@ -107,16 +110,25 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
   const week = isoWeek(chosen.name);
 
   const weekHtml = await fetchFolderHtml(chosen.id);
-  if (!weekHtml) return { announcement: null, reason: 'WEEK_FOLDER_UNREACHABLE' };
+  if (weekHtml === null) return { announcement: null, reason: 'WEEK_FOLDER_UNREACHABLE' };
   const files = readWeekFiles(parseFolderListing(weekHtml));
 
   const [program, sunday] = await Promise.all([fetchWorkbook(PROGRAM_WORKBOOK), fetchWorkbook(SUNDAY_WORKBOOK)]);
-  const sermonRows = await readTabs(program, SERMON_TABS);
-  const gatheringRows = await readTabs(program, GATHERING_TABS);
+  if (program === null || sunday === null) return { announcement: null, reason: 'REQUIRED_WORKBOOK_UNREACHABLE' };
+  let sermonRows: PlanRow[], gatheringRows: PlanRow[], standing: Record<string, string> | null;
+  try {
+    sermonRows = readTabs(program, SERMON_TABS);
+    gatheringRows = readTabs(program, GATHERING_TABS);
+    standing = standingFrom(sunday);
+  } catch {
+    return { announcement: null, reason: 'REQUIRED_WORKBOOK_UNREADABLE' };
+  }
 
   const thisWeekSermon = rowFor(sermonRows, week);
   const upcoming = nextAfter([...gatheringRows, ...sermonRows], week);
-  const signup = findSignupUrl(await deckText(files.deck));
+  const deck = await deckText(files.deck);
+  if (deck === null) return { announcement: null, reason: 'DECK_UNREACHABLE' };
+  const signup = findSignupUrl(deck);
 
   // A block with nothing in it is omitted rather than rendered empty: the phone shows what exists.
   const sermon: SermonBlock | null = files.title || files.audio || files.slides || thisWeekSermon
@@ -130,9 +142,19 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
     : null;
 
   const past: Announcement['past'] = [];
+  const warnings: string[] = [];
   for (const folder of listWeekFolders(folders, options.today).slice(1, PAST_WEEKS + 1)) {
     const listing = await fetchFolderHtml(folder.id);
-    if (!listing) continue;
+    if (listing === null) {
+      const priorWeek = isoWeek(folder.name);
+      const remembered = options.previousWeek?.(priorWeek);
+      if (!remembered || remembered.week !== priorWeek || (!remembered.audio && !remembered.slides && !remembered.transcript)) {
+        return { announcement: null, reason: `HISTORY_UNREACHABLE_WITHOUT_FALLBACK:${priorWeek}` };
+      }
+      past.push({ ...remembered });
+      warnings.push(`HISTORY_LAST_GOOD:${priorWeek}`);
+      continue;
+    }
     const older = readWeekFiles(parseFolderListing(listing));
     if (!older.audio && !older.slides && !older.transcript) continue;
     past.push({ week: isoWeek(folder.name), title: older.title, audio: older.audio, slides: older.slides, transcript: older.transcript });
@@ -144,8 +166,9 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
       generatedAt: new Date().toISOString(),
       sermon,
       next: upcoming ? { date: shortDate(upcoming.date), topic: headline(upcoming.topic), owner: upcoming.owner || null, signup } : null,
-      standing: standingFrom(sunday),
+      standing,
       past,
     },
+    ...(warnings.length ? { warnings } : {}),
   };
 }

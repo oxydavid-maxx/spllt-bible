@@ -132,4 +132,50 @@ describe('a worksheet addressed by the tab name a person sees', () => {
   it('returns nothing for a tab that does not exist', () => {
     expect(xlsxSheetRows(book, '不存在的分頁')).toEqual([]);
   });
+
+  function withCells(cells: string): Buffer {
+    return buildZip([
+      { name: 'xl/workbook.xml', data: workbook },
+      { name: 'xl/_rels/workbook.xml.rels', data: rels },
+      { name: 'xl/sharedStrings.xml', data: sharedStrings },
+      { name: 'xl/worksheets/sheet2.xml', data: text(`<worksheet><sheetData><row r="2">${cells}</row></sheetData></worksheet>`) },
+    ]);
+  }
+
+  it('keeps omitted owner cells empty instead of moving scripture into the owner column', () => {
+    const sparse = withCells('<c r="A2"><v>46285</v></c><c r="B2" t="s"><v>0</v></c><c r="D2" t="s"><v>2</v></c>');
+    expect(xlsxSheetRows(sparse, '中亮第一三周信息排班')).toEqual([['46285', '人違背神', '', '創3']]);
+  });
+
+  it('preserves a leading omitted cell, self-closing blanks and columns past Z', () => {
+    const sparse = withCells('<c r="B2" t="s"><v>0</v></c><c r="C2"/><c r="D2" t="s"><v>2</v></c><c r="AA2" t="inlineStr"><is><t>最後一欄</t></is></c>');
+    const [row] = xlsxSheetRows(sparse, '中亮第一三周信息排班');
+    expect(row.slice(0, 4)).toEqual(['', '人違背神', '', '創3']);
+    expect(row.slice(4, 26)).toEqual(Array(22).fill(''));
+    expect(row[26]).toBe('最後一欄');
+    expect(row).toHaveLength(27);
+  });
+
+  it('does not consume a later cell value for a self-closing empty cell', () => {
+    const sparse = withCells('<c r="A2"/><c r="C2"><v>42</v></c>');
+    expect(xlsxSheetRows(sparse, '中亮第一三周信息排班')).toEqual([['', '', '42']]);
+  });
+
+  it('distinguishes an unreadable workbook from a valid empty worksheet', () => {
+    expect(() => xlsxSheetRows(Buffer.from('<html>temporary error</html>'), '常設')).toThrow('XLSX');
+    expect(xlsxSheetRows(withCells(''), '中亮第一三周信息排班')).toEqual([]);
+  });
+
+  it('rejects a declared worksheet whose contents cannot be read', () => {
+    const broken = buildZip([{ name: 'xl/workbook.xml', data: workbook }, { name: 'xl/_rels/workbook.xml.rels', data: rels }]);
+    expect(() => xlsxSheetRows(broken, '中亮第一三周信息排班')).toThrow('XLSX');
+  });
+
+  it('rejects a truncated worksheet instead of publishing it as empty', () => {
+    const broken = buildZip([
+      { name: 'xl/workbook.xml', data: workbook }, { name: 'xl/_rels/workbook.xml.rels', data: rels },
+      { name: 'xl/worksheets/sheet2.xml', data: text('<worksheet><sheetData><row r="2">') },
+    ]);
+    expect(() => xlsxSheetRows(broken, '中亮第一三周信息排班')).toThrow('XLSX');
+  });
 });

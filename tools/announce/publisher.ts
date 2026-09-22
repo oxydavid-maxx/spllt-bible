@@ -65,7 +65,10 @@ function fetchMain(repo: string): void {
  * Publish from the existing dedicated main checkout. Failed pushes leave a clean, recoverable
  * announcement commit. A later run checks origin even when the generated content has not changed.
  */
-export function publishAnnouncement(repo: string, announcement: Announcement): 'published' | 'unchanged' {
+export function publishAnnouncement(repo: string, announcement: Announcement, options: {
+  /** Exact local fallback files used by the builder before this function reconciles origin/main. */
+  fallbackFiles?: ReadonlyMap<string, string | null>;
+} = {}): 'published' | 'unchanged' {
   const paths = outputPaths(announcement.week);
   const canonical = (path: string) => {
     const value = realpathSync(resolve(path));
@@ -95,6 +98,17 @@ export function publishAnnouncement(repo: string, announcement: Announcement): '
     }
   }
   cleanCheckout(repo);
+
+  for (const [path, expected] of options.fallbackFiles ?? []) {
+    if (!/^announcements\/(?:latest|\d{8})\.json$/.test(path)) throw new Error('UNSAFE_ANNOUNCEMENT_FALLBACK_PATH');
+    let current: string | null = null;
+    try { current = readFileSync(join(repo, path), 'utf8'); } catch { /* Missing is also part of the snapshot. */ }
+    if (current !== expected) {
+      // Keep the reconciled checkout, but do not publish a draft based on superseded fallback data.
+      // The next run rebuilds from these current files; no forced overwrite or hidden retry is needed.
+      throw new Error('ANNOUNCEMENT_FALLBACK_CHANGED: checkout updated; rebuild before publishing');
+    }
+  }
 
   const directory = join(repo, 'announcements');
   if (existsSync(directory) && (!lstatSync(directory).isDirectory() || lstatSync(directory).isSymbolicLink())) {

@@ -6,6 +6,7 @@
 
 const TIMEOUT_MS = 60_000;
 
+/** null means transport/HTTP failure. A successfully fetched empty body remains ''/an empty Buffer. */
 async function get(url: string, kind: 'text' | 'binary'): Promise<string | Buffer | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

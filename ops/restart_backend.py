@@ -17,8 +17,9 @@ from backend_owner import validate_owner
 
 def powershell(command):
     result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+                             "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); "
                              "$ErrorActionPreference='Stop'; " + command],
-                            capture_output=True, text=True, check=True, timeout=15,
+                            capture_output=True, text=True, encoding='utf-8', check=True, timeout=15,
                             creationflags=subprocess.CREATE_NO_WINDOW)
     return json.loads(result.stdout) if result.stdout.strip() else None
 

@@ -1,4 +1,6 @@
-import { buildAnnouncement } from './build';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { buildAnnouncement, type Announcement } from './build';
 import { reviewAnnouncement } from './review';
 import { publishAnnouncement } from './publisher';
 
@@ -24,6 +26,29 @@ function taipeiToday(): string {
   return `${pick('year')}-${pick('month')}-${pick('day')}`;
 }
 
+/** Archived weeks survive a temporary source failure; unreadable/empty copies are not evidence. */
+function previousWeek(week: string, fallbackFiles: Map<string, string | null>): Announcement['past'][number] | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) return null;
+  // Preserve the history currently shown to members before consulting an older weekly archive.
+  for (const name of ['latest.json', `${week.replace(/-/g, '')}.json`]) {
+    const path = `announcements/${name}`;
+    let raw: string | null = null;
+    try { raw = readFileSync(join(REPO, path), 'utf8'); } catch { /* A missing copy may have another fallback. */ }
+    // Bind the first read, including a missing/empty primary copy that led to the archive.
+    if (!fallbackFiles.has(path)) fallbackFiles.set(path, raw);
+    if (raw === null) continue;
+    try {
+      const prior = JSON.parse(raw) as Announcement;
+      const item = prior.week === week ? prior.sermon : prior.past?.find((entry) => entry.week === week);
+      if (!item) continue;
+      const text = (value: unknown) => typeof value === 'string' && value.trim() ? value : null;
+      const result = { week, title: text(item.title), audio: text(item.audio), slides: text(item.slides), transcript: text(item.transcript) };
+      if (result.audio || result.slides || result.transcript) return result;
+    } catch { /* Try the other last-good copy; a broken cache must never invent a week. */ }
+  }
+  return null;
+}
+
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   const dryRun = argv.includes('--dry-run');
@@ -31,7 +56,8 @@ async function main(): Promise<number> {
   const dateFlag = argv.indexOf('--date');
   const today = dateFlag >= 0 ? argv[dateFlag + 1] : taipeiToday();
 
-  const { announcement, reason } = await buildAnnouncement({ today });
+  const fallbackFiles = new Map<string, string | null>();
+  const { announcement, reason, warnings } = await buildAnnouncement({ today, previousWeek: (week) => previousWeek(week, fallbackFiles) });
   if (!announcement) {
     process.stdout.write(`NOT PUBLISHED: ${reason}\n`);
     return 1;
@@ -43,6 +69,8 @@ async function main(): Promise<number> {
     return 0;
   }
 
+  for (const warning of warnings ?? []) process.stdout.write(`USING LAST GOOD: ${warning}\n`);
+
   if (!skipReview) {
     const verdict = await reviewAnnouncement(announcement);
     if (!verdict.sensible) {
@@ -52,7 +80,7 @@ async function main(): Promise<number> {
     }
   }
 
-  const result = publishAnnouncement(REPO, announcement);
+  const result = publishAnnouncement(REPO, announcement, { fallbackFiles });
   process.stdout.write(`${result === 'published' ? 'PUBLISHED' : 'NO CHANGE for'} ${announcement.week}\n`);
   return 0;
 }
