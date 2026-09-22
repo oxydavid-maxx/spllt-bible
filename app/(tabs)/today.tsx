@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { UpdateBanner } from '../../src/ui/UpdateBanner';
 import { useEffect } from 'react';
 import { randomUUID } from 'expo-crypto';
 import { runtimeConfig } from '../../src/config/runtime';
@@ -195,6 +196,10 @@ export default function TodayScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
     <ScrollView contentContainerStyle={styles.content}>
+      {/* Above the date navigator, because a member who opens the app and starts reading should not
+          have to scroll past today's task to learn there is a newer build. It renders nothing at all
+          until the check answers, and nothing if it fails. */}
+      <UpdateBanner />
       <View style={styles.toolbar}>
         <View style={styles.dateNavigator}>
           <ReadingDateNavigator date={selectedDate} previousDate={previousDate} nextDate={nextDate} onSelect={setSelectedReadingDate} />
