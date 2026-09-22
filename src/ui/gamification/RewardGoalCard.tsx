@@ -37,6 +37,11 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
   const redeemed = Math.max(0, earnedTotal - redeemableBalance);
   const shelf = (rewards ?? []).filter((reward) => reward.active);
   const reachable = target !== null && redeemableBalance >= target.costPoints;
+  // The shelf exists to offer a choice. With one reward in the catalogue and that reward already
+  // chosen, it offers none: it restates the name, the cost and the progress that the goal block
+  // three lines above already shows, in a 116dp card with the rest of the row empty beside it. It
+  // comes back on its own the day a second reward is added.
+  const shelfOffersAChoice = shelf.some((reward) => reward.rewardId !== target?.rewardId);
   return <View style={styles.card} accessibilityLabel="目標獎品">
     {target ? <View style={styles.goal}>
       <Text style={styles.eyebrow}>目標獎品</Text>
@@ -52,7 +57,7 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
       <Text style={styles.muted}>每天讀經得到的積分，會往你選的獎品前進。</Text>
       {redeemed > 0 ? <Text style={styles.muted}>{`可兌換 ${redeemableBalance} 分 · 已兌換 ${redeemed} 分`}</Text> : null}
     </View>}
-    {shelf.length > 0 && canEditTarget ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shelf} accessibilityLabel="獎品架">
+    {shelfOffersAChoice && canEditTarget ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shelf} accessibilityLabel="獎品架">
       {shelf.map((reward) => {
         const selected = target?.rewardId === reward.rewardId;
         const ratio = reward.costPoints > 0 ? Math.min(1, redeemableBalance / reward.costPoints) : 0;
