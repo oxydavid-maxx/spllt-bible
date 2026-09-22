@@ -258,3 +258,39 @@ describe('three votes each, because three prizes are chosen', () => {
     expect(board.body).toMatchObject({ votesLeft: 2 });
   });
 });
+
+describe('a vote spent on an idea that is gone comes back', () => {
+  it('returns the vote when its author withdraws the idea', async () => {
+    // Without this a member is charged for a choice that no longer exists: they spent a vote, the
+    // idea left the board, and the vote stayed spent for the rest of the round.
+    const { api, headers } = setup('2026-09-20T04:00:00.000Z', [{ id: 'member-c', displayName: '小美', groupId: 'g' }]);
+    await openRound(api, headers);
+    const mine = ((await nominate(api, headers, 'member-self', '桌遊')).body as { nominationId: string }).nominationId;
+    const other = ((await nominate(api, headers, 'member-c', '手搖杯')).body as { nominationId: string }).nominationId;
+
+    await vote(api, headers, 'member-admin', mine);
+    await vote(api, headers, 'member-admin', other);
+    const spent = await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-admin') });
+    expect(spent.body).toMatchObject({ votesLeft: 1 });
+
+    await api({ method: 'DELETE', url: `/api/rewards/nominations/${mine}`, headers: headers('member-self') });
+    const after = await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-admin') });
+    expect(after.body).toMatchObject({ votesLeft: 2 });
+  });
+});
+
+describe('withdrawing is part of the round, not something outside it', () => {
+  it('refuses a withdrawal once voting has closed', async () => {
+    // Otherwise an idea can be pulled out from under the votes already cast for it, after the point
+    // where anybody could spend those votes on something else.
+    const { api, headers, travelTo } = setup();
+    await openRound(api, headers);
+    const mine = ((await nominate(api, headers, 'member-self', '桌遊')).body as { nominationId: string }).nominationId;
+    await vote(api, headers, 'member-friend', mine);
+
+    travelTo('2026-10-01T04:00:00.000Z');
+    const late = await api({ method: 'DELETE', url: `/api/rewards/nominations/${mine}`, headers: headers('member-self') });
+    expect(late.status).toBe(409);
+    expect(JSON.stringify(late.body)).toContain('VOTING_CLOSED');
+  });
+});
