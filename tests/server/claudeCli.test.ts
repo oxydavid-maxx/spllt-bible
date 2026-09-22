@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { existsSync, readdirSync } from 'node:fs';
 import { buildClaudeArgs, createClaudeCli, scrubEnvironment, type SpawnLike } from '../../server/claudeCli';
 
 /**
@@ -23,9 +24,19 @@ function fakeSpawn(behaviour: (deliver: (error: Error | null, stdout: string) =>
 
 describe('what reaches the command line', () => {
   it('takes a model and nothing else, so no student text can become an argument', () => {
-    expect(buildClaudeArgs('claude-sonnet-4-5')).toEqual(['-p', '--model', 'claude-sonnet-4-5']);
-    // One argument in the signature is the whole proof: there is no parameter to smuggle text through.
+    const args = buildClaudeArgs('claude-sonnet-4-5');
+    expect(args.slice(0, 3)).toEqual(['-p', '--model', 'claude-sonnet-4-5']);
     expect(buildClaudeArgs.length).toBe(1);
+  });
+
+  it('removes tools, MCP servers, user customizations and session persistence explicitly', () => {
+    const args = buildClaudeArgs('claude-sonnet-4-5');
+    for (const flag of ['--safe-mode', '--strict-mcp-config', '--no-session-persistence', '--disable-slash-commands', '--no-chrome']) {
+      expect(args).toContain(flag);
+    }
+    expect(args[args.indexOf('--tools') + 1]).toBe('');
+    expect(args[args.indexOf('--setting-sources') + 1]).toBe('');
+    expect(JSON.parse(args[args.indexOf('--mcp-config') + 1])).toEqual({ mcpServers: {} });
   });
 
   it('sends the prompt on stdin, never as an argument', async () => {
@@ -40,6 +51,48 @@ describe('what reaches the command line', () => {
 });
 
 describe('what the child process is allowed to see', () => {
+  it('runs in a fresh empty directory and removes it after the child finishes', async () => {
+    let cwd!: string;
+    let contents: string[] | null = null;
+    let finish!: () => void;
+    const spawn: SpawnLike = (_executable, _args, options, done) => {
+      cwd = (options as typeof options & { cwd: string }).cwd;
+      contents = typeof cwd === 'string' && existsSync(cwd) ? readdirSync(cwd) : null;
+      finish = () => done(null, '300', '');
+      return { stdin: { end() {} }, kill() {} };
+    };
+    const cli = createClaudeCli({ executable: 'claude.exe', spawn });
+    const pending = cli.invoke('synthetic estimate');
+    finish();
+    await expect(pending).resolves.toBe('300');
+    expect(cwd).toBeTruthy();
+    expect(cwd).not.toBe(process.cwd());
+    expect(contents).toEqual([]);
+    expect(existsSync(cwd)).toBe(false);
+  });
+
+  it('does not reuse a working directory between requests, including a failed launch', async () => {
+    const directories: string[] = [];
+    const spawn: SpawnLike = (_executable, _args, options) => {
+      directories.push((options as typeof options & { cwd: string }).cwd);
+      throw new Error('launch failed');
+    };
+    const cli = createClaudeCli({ executable: 'claude.exe', spawn });
+    await expect(cli.invoke('one')).rejects.toMatchObject({ reason: 'SPAWN_FAILED' });
+    await expect(cli.invoke('two')).rejects.toMatchObject({ reason: 'SPAWN_FAILED' });
+    expect(directories[0]).toBeTruthy();
+    expect(directories[0]).not.toBe(directories[1]);
+    expect(directories.every((directory) => !existsSync(directory))).toBe(true);
+  });
+
+  it('fails closed when the installed CLI rejects an isolation option', async () => {
+    const { spawn, calls } = fakeSpawn((deliver) => deliver(Object.assign(new Error('unknown option --safe-mode'), { code: 1 }), ''));
+    const cli = createClaudeCli({ executable: 'claude.exe', spawn });
+    await expect(cli.invoke('synthetic estimate')).rejects.toMatchObject({ reason: 'SPAWN_FAILED' });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args).toContain('--safe-mode');
+    expect(cli.busy()).toBe(false);
+  });
   it('does not hand the session secret to another program', () => {
     const scrubbed = scrubEnvironment({
       PATH: '/usr/bin', USERPROFILE: 'C:/Users/User',
@@ -86,10 +139,14 @@ describe('one at a time, and never forever', () => {
   });
 
   it('asks the child to be killed if it outlasts the deadline', async () => {
-    const { spawn, calls } = fakeSpawn(() => undefined);
+    let deliver!: (error: Error | null, stdout: string) => void;
+    const { spawn, calls } = fakeSpawn((send) => { deliver = send; });
     const cli = createClaudeCli({ executable: 'claude.exe', spawn, timeoutMs: 45_000 });
-    void cli.invoke('one').catch(() => undefined);
+    const pending = cli.invoke('one');
     expect(calls[0].options.timeout).toBe(45_000);
+    deliver(Object.assign(new Error('timeout'), { killed: true }), '');
+    await expect(pending).rejects.toMatchObject({ reason: 'TIMEOUT' });
+    expect(existsSync(calls[0].options.cwd as string)).toBe(false);
   });
 
   it('reports a killed child as a timeout and not as an answer', async () => {
