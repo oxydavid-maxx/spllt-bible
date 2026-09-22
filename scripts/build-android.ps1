@@ -157,11 +157,64 @@ if ($Variant -eq 'release') {
     throw "Version drift: app.json says $($appConfig.expo.version)/$($appConfig.expo.android.versionCode), android/app/build.gradle says $gradleName/$gradleCode. Update the native project or re-run prebuild."
   }
 
-  # Without this key the YouVersion reader never initialises and the app sits on
-  # 「官方閱讀器還在準備中」 forever. Three releases shipped that way while the receipt dutifully
-  # recorded youVersionAppKeyPresent = false, because a receipt nobody reads is not a check.
-  if (-not $env:EXPO_PUBLIC_YOUVERSION_APP_KEY) {
-    throw 'EXPO_PUBLIC_YOUVERSION_APP_KEY is required for release builds; without it the reader never opens. Set QINGMU_YOUVERSION_ENV_FILE or the variable itself.'
+  # Every EXPO_PUBLIC_ variable the app reads has to be classified here, and the classification is
+  # checked against the source rather than maintained by hand.
+  #
+  # The hand-maintained version of this check listed two variables and shipped anyway, because the
+  # one that actually gates the reader is a third: allowTechnicalProbe comes from
+  # EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE, and when it is absent the reader returns
+  # 「官方閱讀器還在準備中」 before it makes a single call — no request, no error, nothing in logcat.
+  # Four releases were silently broken that way while a guard for a different variable passed and the
+  # receipt recorded success. A guard that checks the wrong name is worse than no guard: it converts
+  # an open question into a false answer.
+  #
+  # So the failure mode this replaces is not "we forgot a variable", it is "a guard can be complete
+  # today and wrong tomorrow". Reading the set out of the source removes the tomorrow: a new
+  # process.env.EXPO_PUBLIC_* that nobody classified fails the build, and the person adding it has to
+  # say which kind it is.
+  $envRequired = @{
+    'EXPO_PUBLIC_YOUVERSION_APP_KEY'   = 'the reader cannot initialise without it'
+    'EXPO_PUBLIC_QINGMU_API_BASE_URL'  = 'the app has no backend without it'
+    'EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE' = 'gates the reader itself; must be exactly true'
+  }
+  # Set during development and dangerous in a release: a shipped fixture or a shipped dev token means
+  # members see fabricated data or somebody else's session.
+  $envForbidden = @(
+    'EXPO_PUBLIC_QINGMU_FIXTURE', 'EXPO_PUBLIC_QINGMU_DEV_TOKEN', 'EXPO_PUBLIC_QINGMU_TEST_DATE',
+    'EXPO_PUBLIC_QINGMU_QA_AUDIO_URI', 'EXPO_PUBLIC_QINGMU_QA_TEST_AUDIO', 'EXPO_PUBLIC_QINGMU_AUDIO_URI'
+  )
+  # Read by the app but legitimately absent: iOS-only inputs on an Android build, and Google sign-in
+  # values that the google-services.json already carries.
+  $envOptional = @(
+    'EXPO_PUBLIC_GOOGLE_ANDROID_SERVICES_FILE', 'EXPO_PUBLIC_GOOGLE_IOS_SERVICES_FILE',
+    'EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME', 'EXPO_PUBLIC_GOOGLE_CLIENT_ID',
+    'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID', 'EXPO_PUBLIC_QINGMU_AUDIO_AUTHORIZED'
+  )
+
+  $sourceRoots = @('app', 'src', 'plugins', 'app.config.js') |
+    ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
+  $readByApp = Get-ChildItem -Path $sourceRoots -Recurse -File -Include '*.ts', '*.tsx', '*.js' -ErrorAction SilentlyContinue |
+    Select-String -Pattern 'EXPO_PUBLIC_[A-Z0-9_]+' -AllMatches |
+    ForEach-Object { $_.Matches.Value } | Sort-Object -Unique
+
+  $classified = @($envRequired.Keys) + $envForbidden + $envOptional
+  $unclassified = $readByApp | Where-Object { $classified -notcontains $_ }
+  if ($unclassified) {
+    throw "These EXPO_PUBLIC_ variables are read by the app but not classified in scripts/build-android.ps1: $($unclassified -join ', '). Add each to `$envRequired, `$envForbidden or `$envOptional so a release states what it needs."
+  }
+
+  foreach ($name in $envRequired.Keys) {
+    if (-not [Environment]::GetEnvironmentVariable($name)) {
+      throw "$name is required for release builds — $($envRequired[$name]). Set QINGMU_YOUVERSION_ENV_FILE or the variable itself."
+    }
+  }
+  if ($env:EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE -ne 'true') {
+    throw "EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE must be exactly 'true' — the app compares it as a string — but it is '$env:EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE'."
+  }
+  foreach ($name in $envForbidden) {
+    if ([Environment]::GetEnvironmentVariable($name)) {
+      throw "$name is set, and it must not be in a release build. Clear it and rebuild."
+    }
   }
 
   $argumentsReleaseSigning = '-PqingmuRelease=true'
