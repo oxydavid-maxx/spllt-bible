@@ -1,4 +1,7 @@
 import { execFile } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 /**
  * Running the Claude CLI that is already installed on this machine.
@@ -44,11 +47,20 @@ export function scrubEnvironment(source: Record<string, string | undefined>): Re
 /**
  * The arguments, which take a model and nothing else.
  *
- * The signature is the guarantee. There is no parameter here that a student's text could be passed
- * through, so the question "can a note become an argument" is answered by reading one line.
+ * Stdin prevents shell argument injection; it does not constrain the coding agent's tools.
+ * Keep authentication, but explicitly remove tools, MCP, custom instructions/hooks/plugins and
+ * persisted sessions. Unsupported flags fail the child call; never retry with weaker arguments.
  */
 export function buildClaudeArgs(model: string): string[] {
-  return ['-p', '--model', model];
+  return [
+    '-p', '--model', model,
+    '--safe-mode',
+    '--tools', '',
+    '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+    '--setting-sources', '',
+    '--disable-slash-commands', '--no-chrome',
+    '--no-session-persistence',
+  ];
 }
 
 export interface ChildLike {
@@ -59,7 +71,7 @@ export interface ChildLike {
 export type SpawnLike = (
   executable: string,
   args: string[],
-  options: { env: Record<string, string>; timeout: number; maxBuffer: number; windowsHide: boolean },
+  options: { cwd: string; env: Record<string, string>; timeout: number; maxBuffer: number; windowsHide: boolean },
   done: (error: (Error & { code?: string | number; killed?: boolean }) | null, stdout: string, stderr: string) => void,
 ) => ChildLike;
 
@@ -109,10 +121,21 @@ export function createClaudeCli(options: {
       running = true;
       return new Promise<string>((resolve, reject) => {
         let settled = false;
-        const finish = (outcome: () => void) => { if (settled) return; settled = true; running = false; outcome(); };
+        let cwd: string | undefined;
+        const finish = (outcome: () => void) => {
+          if (settled) return;
+          settled = true;
+          running = false;
+          // Only remove the unique directory created for this invocation, never a caller's path.
+          try { if (cwd) rmSync(cwd, { recursive: true, force: true }); }
+          catch { reject(new ClaudeCliError('SPAWN_FAILED')); return; }
+          outcome();
+        };
         let child: ChildLike;
         try {
+          cwd = mkdtempSync(join(tmpdir(), 'qingmu-estimate-'));
           child = spawn(options.executable, buildClaudeArgs(model), {
+            cwd,
             env: scrubEnvironment(options.environment ?? process.env),
             timeout,
             maxBuffer: MAX_OUTPUT_BYTES,
