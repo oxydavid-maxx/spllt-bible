@@ -19,6 +19,13 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+
+# Windows PowerShell 5.1 redraws the progress bar on every chunk Invoke-WebRequest receives, and that
+# redraw dominates the transfer: measured on this machine, the same 8 MB file took 18.7s with the bar
+# and 0.2s without it. The 97 MB build is twelve times larger, so with the bar left on the script
+# looks hung rather than slow — which is exactly how it read on the machine it was first run on.
+$ProgressPreference = 'SilentlyContinue'
+
 $pkg = 'org.qingmu.youth'
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $report = Join-Path $Out 'verify-report.txt'
