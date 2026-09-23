@@ -23,6 +23,15 @@ import { ZH_TW_BOOK_ABBREVIATIONS, ZH_TW_BOOK_NAMES } from '../src/domain/script
  */
 const MIN_MEMBERS_FOR_SHARED_COUNT = 10;
 
+/**
+ * The 一起走過 book list names no one and adds no numbers, so it carries none of the
+ * re-identification risk `MIN_MEMBERS_FOR_SHARED_COUNT` guards against. The floor here is a product
+ * choice, not a privacy one: with five or fewer members "books the group has read" reads as "books
+ * the two or three of us happened to read", which is not the collective the section claims to show.
+ * Six is the smallest group where that claim is true (光佑, 2026-09-23).
+ */
+const MIN_MEMBERS_FOR_BOOK_LIST = 6;
+
 export interface CommunityChapter {
   chapter: number;
   /**
@@ -44,7 +53,7 @@ export interface CommunityBookGoal {
 }
 
 export interface CommunityProgress {
-  /** Books the plan has walked through up to today, newest last. Null count aside, always present. */
+  /** Books the plan has walked through up to today, or empty while the group is five or fewer. */
   books: string[];
   /** Total days read across everyone, or null while that number would give away a person. */
   personDays: number | null;
@@ -173,9 +182,10 @@ export function getCommunityProgress(db: DatabaseSync, today: string): Community
 
   const crowdEnough = Number(enabled.count) >= MIN_MEMBERS_FOR_SHARED_COUNT
     && Number(scoring.members) >= MIN_MEMBERS_FOR_SHARED_COUNT;
+  const bookListEnough = Number(enabled.count) >= MIN_MEMBERS_FOR_BOOK_LIST;
 
   return {
-    books: seen,
+    books: bookListEnough ? seen : [],
     personDays: crowdEnough ? Math.max(0, Number(scoring.total)) : null,
     currentBook: crowdEnough ? buildBookGoal(db, plan, today) : null,
   };

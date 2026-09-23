@@ -29,24 +29,40 @@ const get = (api: ReturnType<typeof setup>['api'], headers: ReturnType<typeof se
   api({ method: 'GET', url: '/api/points/community', headers: headers('member-0') });
 
 describe('what the group has read together', () => {
-  it('names the books the plan has walked through, however few people are using it', async () => {
+  it('hides the collective book list while the group is five or fewer', async () => {
     const { api, headers } = setup(1);
     const response = await get(api, headers);
     expect(response.status).toBe(200);
     const body = response.body as { books: string[]; personDays: number | null };
+    expect(body.books).toEqual([]);
+  });
+
+  // 光佑, 2026-09-23: "books the group has read" is only a collective claim once the group is more
+  // than five. At exactly five it still reads as a handful of individuals, so it stays hidden.
+  it('still hides the book list at exactly five members', async () => {
+    const { api, headers } = setup(5);
+    const body = (await get(api, headers)).body as { books: string[] };
+    expect(body.books).toEqual([]);
+  });
+
+  it('shows the book list once the group passes five members', async () => {
+    const { api, headers } = setup(6);
+    const body = (await get(api, headers)).body as { books: string[] };
     // Derived from the reading plan, not from anybody's record, so it is true on day one.
     expect(body.books.length).toBeGreaterThan(0);
   });
 
   // With three members, subtracting your own total from the group's tells you the other two. The
   // count is therefore withheld until the group is large enough for that arithmetic to be useless —
-  // the same ten-member threshold the tier calculation already uses.
+  // the same ten-member threshold the tier calculation already uses. This is a different, stricter
+  // threshold than the six-member floor on the book list above: personDays could name a person,
+  // the book list never does.
   it('withholds the shared count while it would give away an individual', async () => {
     const { database, api, headers } = setup(3);
     for (const index of [0, 1, 2]) award(database, `member-${index}`, '2026-09-1' + index);
     const body = (await get(api, headers)).body as { personDays: number | null; books: string[] };
     expect(body.personDays).toBeNull();
-    expect(body.books.length).toBeGreaterThan(0);
+    expect(body.books).toEqual([]);
   });
 
   it('shows the shared count once the group is big enough to hide in', async () => {
@@ -94,7 +110,10 @@ describe('一起讀完一卷書', () => {
     const response = (await get(api, headers)).body as { currentBook: unknown; personDays: number | null; books: string[] };
     expect(response.currentBook).toBeNull();
     expect(response.personDays).toBeNull();
-    expect(response.books).toContain('提前');
+    // The book list has its own, lower floor (more than five) and is independent of the
+    // ten-member privacy gate above: it still shows for a group of 12 with only one active reader.
+    if (members > 5) expect(response.books).toContain('提前');
+    else expect(response.books).toEqual([]);
   });
 
   it('withholds chapter activity when too few members remain enabled', async () => {
