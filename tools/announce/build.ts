@@ -113,7 +113,7 @@ function speakersByWeek(workbook: Buffer): Map<string, string> {
 export interface BuildOptions {
   today: string;
   parentFolder?: string;
-  /** Read-only fallback from an existing announcement/archive, only used after a source failure. */
+  /** Read-only last-good item; it supplies missing speaker metadata and preserves links after a folder failure. */
   previousWeek?: (week: string) => Announcement['past'][number] | null;
 }
 
@@ -165,20 +165,30 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
   const warnings: string[] = [];
   for (const folder of listWeekFolders(folders, options.today).slice(1, PAST_WEEKS + 1)) {
     const priorWeek = isoWeek(folder.name);
+    let remembered: Announcement['past'][number] | null = null;
+    let cacheRead = false;
+    const sameWeekCache = (): Announcement['past'][number] | null => {
+      if (!cacheRead) {
+        remembered = options.previousWeek?.(priorWeek) ?? null;
+        cacheRead = true;
+      }
+      return remembered?.week === priorWeek ? remembered : null;
+    };
+    const speaker = speakers.get(priorWeek) ?? sameWeekCache()?.speaker ?? null;
     const listing = await fetchFolderHtml(folder.id);
     if (listing === null) {
-      const remembered = options.previousWeek?.(priorWeek);
-      if (!remembered || remembered.week !== priorWeek || (!remembered.audio && !remembered.slides && !remembered.transcript)) {
+      const lastGood = sameWeekCache();
+      if (!lastGood || (!lastGood.audio && !lastGood.slides && !lastGood.transcript)) {
         return { announcement: null, reason: `HISTORY_UNREACHABLE_WITHOUT_FALLBACK:${priorWeek}` };
       }
-      past.push({ ...remembered, speaker: remembered.speaker ?? speakers.get(priorWeek) ?? null });
+      past.push({ ...lastGood, speaker });
       warnings.push(`HISTORY_LAST_GOOD:${priorWeek}`);
       continue;
     }
     const older = readWeekFiles(parseFolderListing(listing));
     if (!older.audio && !older.slides && !older.transcript) continue;
     past.push({
-      week: priorWeek, title: older.title, speaker: speakers.get(priorWeek) ?? null,
+      week: priorWeek, title: older.title, speaker,
       audio: older.audio, slides: older.slides, transcript: older.transcript,
     });
   }

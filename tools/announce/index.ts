@@ -26,7 +26,7 @@ function taipeiToday(): string {
   return `${pick('year')}-${pick('month')}-${pick('day')}`;
 }
 
-/** Archived weeks survive a temporary source failure; unreadable/empty copies are not evidence. */
+/** Archived speakers fill missing schedule rows; unreadable/empty copies are not evidence. */
 function previousWeek(week: string, fallbackFiles: Map<string, string | null>): Announcement['past'][number] | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) return null;
   // Preserve the history currently shown to members before consulting an older weekly archive.

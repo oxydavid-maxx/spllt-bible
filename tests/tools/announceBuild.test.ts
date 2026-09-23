@@ -14,7 +14,7 @@ vi.mock('../../tools/announce/office', () => ({
   xlsxSheetRows: announceIo.xlsxSheetRows,
 }));
 
-import { buildAnnouncement, readWeekFiles } from '../../tools/announce/build';
+import { buildAnnouncement, readWeekFiles, type Announcement } from '../../tools/announce/build';
 import { buildReviewPrompt, parseVerdict } from '../../tools/announce/review';
 
 const WEEK = [
@@ -35,43 +35,121 @@ function excelSerial(week: string): number {
   return (Date.UTC(year, month - 1, day) - Date.UTC(1899, 11, 30)) / 86400000;
 }
 
+type PreviousWeek = (week: string) => Announcement['past'][number] | null;
+interface HistoryBuildFixture {
+  weeks: string[];
+  speakers?: Record<string, string>;
+  unreadable?: string[];
+}
+
+function prepareHistoryBuild(fixture: HistoryBuildFixture): void {
+  announceIo.fetchFolderHtml.mockReset();
+  announceIo.fetchWorkbook.mockReset();
+  announceIo.xlsxSheetRows.mockReset();
+  announceIo.fetchSlidesText.mockReset();
+
+  const weeks = [...fixture.weeks].sort((a, b) => b.localeCompare(a));
+  const folders = [
+    { id: 'current', name: '20260920' },
+    ...weeks.map((week, index) => ({ id: 'past-' + index, name: week.replace(/-/g, '') })),
+  ];
+  announceIo.fetchFolderHtml
+    .mockResolvedValueOnce(folderHtml(folders))
+    .mockResolvedValueOnce(folderHtml([]));
+  for (const week of weeks) {
+    announceIo.fetchFolderHtml.mockResolvedValueOnce(fixture.unreadable?.includes(week)
+      ? null
+      : folderHtml([{ id: 'e'.repeat(44), name: week.replace(/-/g, '') + '青崇(全)PPT' }]));
+  }
+  announceIo.fetchWorkbook.mockResolvedValue(Buffer.from('workbook'));
+  const speakerRows = Object.entries(fixture.speakers ?? {})
+    .map(([week, speaker]) => [String(excelSerial(week)), speaker, '']);
+  announceIo.xlsxSheetRows.mockImplementation((_workbook: Buffer, tab: string) => tab === '2026服事表'
+    ? [
+        ['2026竹科靈糧堂 青年崇拜/服事表'],
+        ['日期', '講員', '敬拜團+詩歌'],
+        ...speakerRows,
+      ]
+    : []);
+}
+
+async function buildHistory(
+  fixture: HistoryBuildFixture,
+  previousWeek?: PreviousWeek,
+) {
+  prepareHistoryBuild(fixture);
+  return await buildAnnouncement({ today: '2026-09-20', previousWeek });
+}
+
 describe('speakers attached to history', () => {
   it('uses the dated speaker field and leaves unmatched archive weeks unknown', async () => {
-    announceIo.fetchFolderHtml.mockReset();
-    announceIo.fetchWorkbook.mockReset();
-    announceIo.xlsxSheetRows.mockReset();
-    announceIo.fetchSlidesText.mockReset();
-
-    announceIo.fetchFolderHtml
-      .mockResolvedValueOnce(folderHtml([
-        { id: 'current', name: '20260920' },
-        { id: 'sep13', name: '20260913' },
-        { id: 'sep06', name: '20260906' },
-        { id: 'dec13', name: '20251213' },
-        { id: 'jun14', name: '20250614' },
-      ]))
-      .mockResolvedValueOnce(folderHtml([]))
-      .mockResolvedValueOnce(folderHtml([{ id: 'a'.repeat(44), name: '20260913青崇(全)PPT' }]))
-      .mockResolvedValueOnce(folderHtml([{ id: 'b'.repeat(44), name: '20260906青崇(全)PPT' }]))
-      .mockResolvedValueOnce(folderHtml([{ id: 'c'.repeat(44), name: '20251213青崇(全)PPT' }]))
-      .mockResolvedValueOnce(folderHtml([{ id: 'd'.repeat(44), name: '20250614青崇(全)PPT' }]));
-    announceIo.fetchWorkbook.mockResolvedValue(Buffer.from('workbook'));
-    announceIo.xlsxSheetRows.mockImplementation((_workbook: Buffer, tab: string) => tab === '2026服事表'
-      ? [
-          ['2026竹科靈糧堂 青年崇拜/服事表'],
-          ['日期', '講員', '敬拜團+詩歌'],
-          [String(excelSerial('2026-09-06')), '為潔', '大專團'],
-          [String(excelSerial('2026-09-13')), '中亮', '青少團'],
-        ]
-      : []);
-
-    const result = await buildAnnouncement({ today: '2026-09-20' });
+    const result = await buildHistory({
+      weeks: ['2026-09-13', '2026-09-06', '2025-12-13', '2025-06-14'],
+      speakers: { '2026-09-06': '為潔', '2026-09-13': '中亮' },
+    });
 
     expect(result.announcement?.past).toMatchObject([
       { week: '2026-09-13', speaker: '中亮' },
       { week: '2026-09-06', speaker: '為潔' },
       { week: '2025-12-13', speaker: null },
       { week: '2025-06-14', speaker: null },
+    ]);
+  });
+
+  it('keeps a same-week last-good speaker when the history folder is readable but the schedule has no row', async () => {
+    const previous = vi.fn((week: string) => ({
+      week, title: null, speaker: '已核實講員', audio: null,
+      slides: 'https://example.invalid/last-good-slides', transcript: null,
+    }));
+    const result = await buildHistory({ weeks: ['2026-09-13'] }, previous);
+
+    expect(previous).toHaveBeenCalledWith('2026-09-13');
+    expect(result.announcement?.past).toMatchObject([
+      { week: '2026-09-13', speaker: '已核實講員' },
+    ]);
+    expect(result.announcement?.past[0].slides).toContain('/presentation/d/');
+    expect(result.announcement?.past[0].slides).not.toContain('example.invalid');
+  });
+
+  it('prefers the current speaker source to cache when the history folder is readable', async () => {
+    const previous = vi.fn((week: string) => ({
+      week, title: null, speaker: '較舊快取講員', audio: null,
+      slides: 'https://example.invalid/last-good-slides', transcript: null,
+    }));
+    const result = await buildHistory({
+      weeks: ['2026-09-13'],
+      speakers: { '2026-09-13': '目前表定講員' },
+    }, previous);
+
+    expect(result.announcement?.past).toMatchObject([
+      { week: '2026-09-13', speaker: '目前表定講員' },
+    ]);
+    expect(previous).not.toHaveBeenCalled();
+  });
+
+  it('does not use a last-good speaker from a different week', async () => {
+    const result = await buildHistory({ weeks: ['2026-09-13'] }, () => ({
+      week: '2025-12-13', title: null, speaker: '錯週講員', audio: null,
+      slides: 'https://example.invalid/other-week', transcript: null,
+    }));
+
+    expect(result.announcement?.past).toMatchObject([
+      { week: '2026-09-13', speaker: null },
+    ]);
+  });
+
+  it('prefers the dated speaker source over the last-good cache after a folder read failure', async () => {
+    const result = await buildHistory({
+      weeks: ['2026-09-13'],
+      speakers: { '2026-09-13': '目前表定講員' },
+      unreadable: ['2026-09-13'],
+    }, (week) => ({
+      week, title: null, speaker: '較舊快取講員', audio: 'https://example.invalid/last-good-audio',
+      slides: null, transcript: null,
+    }));
+
+    expect(result.announcement?.past).toMatchObject([
+      { week: '2026-09-13', speaker: '目前表定講員', audio: 'https://example.invalid/last-good-audio' },
     ]);
   });
 });
