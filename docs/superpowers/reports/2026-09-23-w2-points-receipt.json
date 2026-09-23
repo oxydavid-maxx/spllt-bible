@@ -108,6 +108,13 @@
       "pack": "affected UI FOCUS: 44/44 PASS",
       "candidateCommit": "a39ecca408439b118f1e9c27d3e288037c1c843a",
       "candidateTree": "98b23df827c75fec0ea6d2389d34f3ba00f40e54"
+    },
+    {
+      "atUtc": "2026-09-23T16:13:33Z",
+      "change": "chair-review-04 native scanner lifecycle",
+      "pack": "p2ScreenLifecycle + gamificationProgressSecurity: 45/45 PASS; typecheck PASS",
+      "candidateCommit": "2cdab06930557c984060658dc77a5989abf17993",
+      "candidateTree": "25258af729e455534bd4374d16adde41ad821daa"
     }
   ],
   "behavior": {
@@ -126,8 +133,8 @@
   },
   "report": {
     "receiptPath": "C:\\dev\\machine\\worktrees\\qm-c23-w2\\.handoff\\compact-20260923\\w2-points-receipt.json",
-    "recordedAtUtc": "2026-09-23T15:45:22Z",
-    "developmentStartAtUtc": "2026-09-23T15:30:00Z"
+    "recordedAtUtc": "2026-09-23T16:13:49Z",
+    "developmentStartAtUtc": "2026-09-23T16:02:38Z"
   },
   "followUp": {
     "chairReview": "C:/dev/apps/qingmu-bible/.handoff/compact-20260923/chair-review-01.md",
@@ -215,5 +222,36 @@
       "notes": "Affected UI packs only. Server chart and gamification proofs were not rerun. Standard react-test-renderer act warnings were emitted."
     },
     "redEvidence": "The deferred focus-refresh regression test first failed because getRewards had one call after refocus instead of two. After adding app-foreground coverage, the same test confirmed a second boundary performs all three reads while old values remain."
+  },
+  "scannerFollowUp": {
+    "chairReview": "C:/dev/apps/qingmu-bible/.handoff/compact-20260923/chair-review-04-scanner.md",
+    "chairReviewSha256": "71E488F21024DA752C6C12A9BA41274DBAA8CBB411DC7D2DF0A506CFFFF952A3",
+    "baseCommit": "a39ecca408439b118f1e9c27d3e288037c1c843a",
+    "commit": "2cdab06930557c984060658dc77a5989abf17993",
+    "tree": "25258af729e455534bd4374d16adde41ad821daa",
+    "commitTime": "2026-09-23T16:13:22Z",
+    "diffStat": "4 files changed, 24 insertions(+), 13 deletions(-)",
+    "changedFiles": [
+      "app/(tabs)/progress.tsx",
+      "tests/ui/gamificationProgressRoute.test.ts",
+      "tests/ui/gamificationProgressSecurity.test.ts",
+      "tests/ui/p2ScreenLifecycle.test.ts"
+    ],
+    "fix": "Keep the actual scan ActionSheet/FriendQrPanel/FriendScanner React tree mounted while app is inactive, covered by an opaque non-interactive surface hidden from accessibility. For a live same-session scanner activity, preserve sheet and scannerActivityRequest ownership across background/active; auth invalidation, tab blur, and explicit close still clear. FriendQrPanel mounted/run/session guards and ProgressScreen generation/sheet checks remain in place.",
+    "tests": {
+      "red": "Before the fix, tests/ui/p2ScreenLifecycle.test.ts failed both real-system-scanner scan and cancel flows: the native event listener was removed on background and the ActionSheet was absent on active return.",
+      "focusCommand": "npm exec -- vitest run tests/ui/p2ScreenLifecycle.test.ts tests/ui/gamificationProgressSecurity.test.ts",
+      "focusResult": "PASS: 2 test files, 45/45 tests",
+      "focusStartedAtUtc": "2026-09-23T16:13:33Z",
+      "typecheckCommand": "npm run typecheck",
+      "typecheckResult": "PASS: tsc --noEmit"
+    },
+    "coverage": {
+      "nativeLogic": "p2ScreenLifecycle uses the real FriendQrPanel/FriendScanner; expo-camera is mocked only at the native event boundary.",
+      "scan": "Open scanner, launch Android system QR activity, app backgrounds, deliver duplicate valid scan, resume; listener survives, claim occurs once, then old listener is removed.",
+      "cancel": "Open scanner, launch native activity, app backgrounds, reject as Barcode scanning cancelled, resume; panel returns to one Open button and no claim occurs.",
+      "staleOwners": "Explicit dismiss, tab blur, logout, and account switch ignore late native events.",
+      "security": "The same-account data tree is covered while app is inactive; non-self scopes and auth changes still clear. No FriendQrPanel mounted/run/session guard was weakened."
+    }
   }
 }
