@@ -72,6 +72,15 @@ describe('reader highlight does not paint blank verse whitespace (real Psalm 98 
     expect(blank.map((el) => ({ verse: el.getAttribute('v'), text: el.textContent }))).toEqual([]);
   });
 
+  it('does not paint a cloned padding fragment before the next poetry verse', () => {
+    // Real Pixel and Chromium screenshots show a grey bar at Psalm 98:2 while verse 1 plays:
+    // the verse wrappers have real text, but clone + 2px inline padding paints an extra fragment.
+    const css = readFileSync('node_modules/@youversion/platform-core/src/styles/bible-reader.css', 'utf8');
+    const verseRule = css.match(/& \.yv-v\s*\{([^}]+)\}/)?.[1] ?? '';
+    expect(verseRule).toMatch(/box-decoration-break:\s*clone/);
+    expect(verseRule).toMatch(/padding-inline:\s*0(?:px)?;/);
+  });
+
   it('is carried by tracked patches so a clean install reproduces it', () => {
     const uiPatch = readFileSync('patches/@youversion+platform-react-ui+2.12.0.patch', 'utf8');
     expect(uiPatch).toContain('+function trimVerseWrapEdges(nodes)');

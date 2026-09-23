@@ -61,3 +61,32 @@ index a2b67d1..a4e6c0c 100644
      handleParagraphWrapping(doc2, currentParagraph, nextParagraph, verseNum);
    }
    function wrapNodesInVerse(marker, verseNum, nodes) {
+diff --git a/node_modules/@youversion/platform-core/src/styles/bible-reader.css b/node_modules/@youversion/platform-core/src/styles/bible-reader.css
+index 4b3f88f..55297fc 100644
+--- a/node_modules/@youversion/platform-core/src/styles/bible-reader.css
++++ b/node_modules/@youversion/platform-core/src/styles/bible-reader.css
+@@ -134,17 +134,15 @@
+      that property animates apply/remove without touching the selection
+      underline (text-decoration) and without any layout shift.
+ 
+-     The rounded-corner + padding + box-decoration-break styles are deliberately
+-     STATIC (applied to every `.yv-v`, highlighted or not). Keeping them off the
+-     highlight state means applying/removing a fill only changes
+-     `background-color` — the 2px inline padding never appears or disappears, so
+-     text never reflows and the 250ms fade stays smooth. `box-decoration-break:
+-     clone` gives each wrapped line fragment its own rounded ends and padding
+-     instead of a single hard cut at the wrap. This is a web-native divergence
+-     from the Swift SDK's square fills (user-approved 2026-07-22). */
++     The rounded-corner and box-decoration-break styles are STATIC (applied to
++     every `.yv-v`, highlighted or not). Keeping them off the highlight state
++     means applying/removing a fill only changes `background-color`, without
++     reflow. Inline padding must stay zero: cloned 2px padding paints a blank
++     fragment before the next verse on Psalm 98 poetry lines. The 250ms fade
++     and rounded line ends remain. */
+   & .yv-v {
+     border-radius: 4px;
+-    padding-inline: 2px;
++    padding-inline: 0;
+     box-decoration-break: clone;
+     -webkit-box-decoration-break: clone;
+     transition: background-color 250ms ease;
