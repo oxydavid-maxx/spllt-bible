@@ -16,12 +16,42 @@ After validating the real CLI boundary, the private configuration may contain:
 {
   "enabled": true,
   "executable": "C:/path/to/claude.exe",
-  "boundarySha256": "<SHA256 of the exact verified server/claudeCli.ts bytes>"
+  "boundarySha256": "<SHA256 of the committed git blob for server/claudeCli.ts>"
 }
 ```
 
-The boundary hash must match the deployed file. Rolling back server code without
-changing the hardened launcher disables AI automatically. Never restore the old
+**`boundarySha256` pins the committed git blob, not the working-tree file.**
+`read_ai_environment()` hashes `git cat-file blob HEAD:server/claudeCli.ts` inside the
+pinned worktree (see `ai_runtime.read_committed_boundary_bytes()`) -- never the file's
+on-disk bytes. This is deliberate: a worktree checked out with `core.autocrlf=true` has
+CRLF line endings on disk while one checked out elsewhere (or the original untracked
+qingmu-youth copy, which had mixed CRLF/LF) does not, even for the exact same commit
+with byte-identical *content*. Hashing the working-tree file made the pin depend on the
+checkout machine's own git configuration instead of on the commit -- exactly what broke
+the 2026-09-23 cutover (`ai_status: BOUNDARY_MISMATCH` on first start, for a file nobody
+had actually edited). Hashing the git blob is invariant to that.
+
+To derive the pin value for a specific commit, from any clone of this repo (worktree not
+required to be checked out at that commit -- `git cat-file` reads any reachable commit):
+
+```text
+git cat-file blob <commit>:server/claudeCli.ts | sha256sum
+```
+
+On Windows PowerShell, equivalently:
+
+```powershell
+git cat-file blob <commit>:server/claudeCli.ts | Out-File -Encoding utf8 -NoNewline $tmp; (Get-FileHash $tmp -Algorithm SHA256).Hash.ToLower()
+```
+
+The deployed launcher also reports this exact value on every start, in its receipt's
+`ai_boundary_sha256` field (`deployment_support.py` computes it the same way, via
+`read_committed_boundary_bytes`) -- use that field to update the private config at the
+next redeploy instead of recomputing it by hand, unless verifying an *upcoming* commit
+that hasn't been deployed yet.
+
+The boundary hash must match the deployed commit's blob. Rolling back server code
+without changing the hardened launcher disables AI automatically. Never restore the old
 unrestricted launcher as part of a server rollback. CLI invocation itself disables
 tools, MCP, customizations and persisted sessions while preserving authentication.
 

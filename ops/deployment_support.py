@@ -19,7 +19,7 @@ import sqlite3
 import subprocess
 import time
 from reminder_config import read_reminder_environment
-from ai_runtime import read_ai_environment
+from ai_runtime import read_ai_environment, read_committed_boundary_bytes
 from pinned_worktree import preflight
 
 PILOT = Path(os.environ.get('QINGMU_PILOT_DIR_OVERRIDE')
@@ -106,7 +106,12 @@ def launch(label):
             'commit': commit, 'node_sha256': digest(node), 'cwd': str(LIVE), 'env_names': sorted(env),
             'bootstrap_seeds_absent': True, 'fixture_off': True, 'stdout': str(stdout_path), 'stderr': str(stderr_path),
             'secrets_printed': False, 'reminder_config_status': reminder_status, 'ai_status': ai_status,
-            'ai_boundary_sha256': digest(LIVE / 'server/claudeCli.ts')}
+            # The committed blob hash, not the working-tree file's raw bytes: this is
+            # exactly the value read_ai_environment() checked the pin against, and the
+            # value a private-config update should ever be pinned to. Reporting the
+            # working-tree hash here is what made the 2026-09-23 incident's stale
+            # CRLF-vs-blob pin look like the "current" value in the first place.
+            'ai_boundary_sha256': hashlib.sha256(read_committed_boundary_bytes(LIVE)).hexdigest()}
 
 parser = argparse.ArgumentParser()
 parser.add_argument('mode', choices=['inspect-db', 'launch'])
