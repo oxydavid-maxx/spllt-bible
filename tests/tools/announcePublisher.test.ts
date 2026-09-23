@@ -36,16 +36,22 @@ function fixture() {
   put(publisher, 'announcements/latest.json', JSON.stringify({ ...announcement, week: '2026-09-13' }) + '\n');
   put(publisher, 'announcements/20260913.json', 'previous week archive\n');
   git(publisher, 'add', '.'); git(publisher, 'commit', '-m', 'Initial published state'); git(publisher, 'push', 'origin', 'main');
-  execFileSync('git', ['clone', remote, editor], { stdio: 'pipe' }); configure(editor);
+  execFileSync('git', ['-c', 'core.autocrlf=false', 'clone', remote, editor], { stdio: 'pipe' }); configure(editor);
   return { root, remote, publisher, editor };
 }
 function rejectPush(remote: string) { const hook = join(remote, 'hooks/pre-receive'); writeFileSync(hook, '#!/bin/sh\nexit 1\n', { mode: 0o755 }); return hook; }
-async function run(repo: string, value: Announcement = announcement, dryRun = false) {
+async function run(repo: string, value: Announcement = announcement, dryRun = false, historyUnavailable = false) {
   const previousEnv = process.env.QINGMU_ANNOUNCE_REPO, previousArgv = process.argv, previousExit = process.exitCode;
   const output: string[] = [];
   const writer = vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: unknown) => { output.push(String(chunk)); return true; }) as typeof process.stdout.write);
   try {
-    vi.resetModules(); build.mockResolvedValue({ announcement: value });
+    vi.resetModules(); build.mockImplementation(async (options: { previousWeek: (week: string) => Announcement['past'][number] | null }) => {
+      if (!historyUnavailable) return { announcement: value };
+      // The source-failure builder branch is covered by announceIngest; exercise its real fallback
+      // callback here with an actual stale checkout and Git reconciliation, not a publisher double.
+      const remembered = options.previousWeek('2026-09-13');
+      return remembered ? { announcement: { ...value, past: [remembered] }, warnings: ['HISTORY_LAST_GOOD:2026-09-13'] } : { announcement: null, reason: 'HISTORY_UNAVAILABLE' };
+    });
     process.env.QINGMU_ANNOUNCE_REPO = repo;
     process.argv = [process.execPath, 'tools/announce/index.ts', '--skip-review', ...(dryRun ? ['--dry-run'] : [])];
     process.exitCode = undefined;
@@ -65,6 +71,59 @@ afterEach(() => {
 });
 
 describe('announcement publisher with a real temporary bare Git remote', () => {
+  it.each(['archive', 'latest'])('refuses stale %s fallback after remote correction, then rebuilds safely on the next run', async (source) => {
+    const f = fixture();
+    const historical = { ...announcement, week: '2026-09-13', sermon: { ...announcement.sermon!, title: 'Old history', audio: 'https://example.invalid/old.mp3' } };
+    const sourcePath = source === 'archive' ? 'announcements/20260913.json' : 'announcements/latest.json';
+    put(f.publisher, sourcePath, JSON.stringify(historical) + '\n');
+    git(f.publisher, 'add', sourcePath); git(f.publisher, 'commit', '-m', 'Seed historical fallback'); git(f.publisher, 'push', 'origin', 'main');
+    git(f.editor, 'pull', '--ff-only');
+    const corrected = { ...historical, sermon: { ...historical.sermon, title: 'Corrected history', audio: 'https://example.invalid/correct.mp3' } };
+    put(f.editor, sourcePath, JSON.stringify(corrected) + '\n');
+    git(f.editor, 'add', sourcePath); git(f.editor, 'commit', '-m', 'Correct historical link and title'); git(f.editor, 'push', 'origin', 'main');
+    const remoteHead = git(f.remote, 'rev-parse', 'main'), remoteContent = blob(f.remote, 'main', sourcePath);
+
+    const stale = await run(f.publisher, announcement, false, true);
+    expect(stale.code).toBe(1); expect(stale.output).toContain('FALLBACK_CHANGED');
+    expect(git(f.remote, 'rev-parse', 'main')).toBe(remoteHead);
+    expect(blob(f.remote, 'main', sourcePath)).toBe(remoteContent);
+    expect(git(f.publisher, 'rev-parse', 'HEAD')).toBe(remoteHead);
+    expect(git(f.publisher, 'status', '--porcelain')).toBe('');
+
+    expect((await run(f.publisher, announcement, false, true)).code).toBe(0);
+    expect(JSON.parse(blob(f.remote, 'main', paths[1])).past[0]).toMatchObject({ week: '2026-09-13', title: 'Corrected history', audio: 'https://example.invalid/correct.mp3' });
+    expect(blob(f.remote, 'main', 'app-version.json')).toBe(release);
+  }, 30_000);
+
+  it('keeps dry-run with stale fallback read-only without reconciling the checkout', async () => {
+    const f = fixture(), historical = { ...announcement, week: '2026-09-13', sermon: { ...announcement.sermon!, audio: 'https://example.invalid/old.mp3' } };
+    put(f.publisher, paths[1], JSON.stringify(historical) + '\n'); git(f.publisher, 'add', paths[1]); git(f.publisher, 'commit', '-m', 'Seed fallback'); git(f.publisher, 'push', 'origin', 'main');
+    const localHead = git(f.publisher, 'rev-parse', 'HEAD');
+    git(f.editor, 'pull', '--ff-only'); put(f.editor, 'README.md', 'remote advanced\n'); git(f.editor, 'add', 'README.md'); git(f.editor, 'commit', '-m', 'Remote advance'); git(f.editor, 'push', 'origin', 'main');
+    const remoteHead = git(f.remote, 'rev-parse', 'main');
+    const result = await run(f.publisher, announcement, true, true);
+    expect(result.code).toBe(0); expect(JSON.parse(result.output).past[0].audio).toBe('https://example.invalid/old.mp3');
+    expect(git(f.publisher, 'rev-parse', 'HEAD')).toBe(localHead); expect(git(f.publisher, 'status', '--porcelain')).toBe('');
+    expect(git(f.remote, 'rev-parse', 'main')).toBe(remoteHead);
+  }, 30_000);
+
+  it('preserves a corrected visible history row even when an older usable archive also exists', async () => {
+    const f = fixture();
+    const old = { week: '2026-09-13', title: 'Old history', audio: 'https://example.invalid/old.mp3', slides: null, transcript: null };
+    put(f.publisher, 'announcements/20260913.json', JSON.stringify({ ...announcement, week: old.week, sermon: { ...announcement.sermon, ...old } }) + '\n');
+    put(f.publisher, paths[1], JSON.stringify({ ...announcement, past: [old] }) + '\n');
+    git(f.publisher, 'add', 'announcements/20260913.json', paths[1]); git(f.publisher, 'commit', '-m', 'Seed old archive and displayed history'); git(f.publisher, 'push', 'origin', 'main');
+    git(f.editor, 'pull', '--ff-only');
+    const corrected = { ...old, title: 'Corrected history', audio: 'https://example.invalid/correct.mp3' };
+    put(f.editor, paths[1], JSON.stringify({ ...announcement, past: [corrected] }) + '\n');
+    git(f.editor, 'add', paths[1]); git(f.editor, 'commit', '-m', 'Correct displayed historical link'); git(f.editor, 'push', 'origin', 'main');
+    const remoteHead = git(f.remote, 'rev-parse', 'main');
+    const result = await run(f.publisher, announcement, false, true);
+    expect(result.code).toBe(1); expect(result.output).toContain('FALLBACK_CHANGED'); expect(git(f.remote, 'rev-parse', 'main')).toBe(remoteHead);
+    expect((await run(f.publisher, announcement, false, true)).code).toBe(0);
+    expect(JSON.parse(blob(f.remote, 'main', paths[1])).past).toEqual([corrected]);
+  }, 30_000);
+
   it('publishes only the two exact announcement paths and verifies a true no-change rerun', async () => {
     const f = fixture(), initial = git(f.remote, 'rev-parse', 'main');
     expect((await run(f.publisher)).code).toBe(0);

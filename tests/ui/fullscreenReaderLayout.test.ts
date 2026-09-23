@@ -36,8 +36,9 @@ vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => void | (() => v
     return () => { native.blur?.(); native.focus = null; native.blur = null; };
   }, [callback]);
 } }));
-// Audio implementation belongs to a separate lane; assert only its mounting/lifecycle contract.
-vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice: () => null, ChapterAudioAutoplayToggle: () => null, ChapterAudioControls: (props: any) => {
+// Audio implementation belongs to a separate lane; assert only its mounting/lifecycle contract
+// (and, for the 2026-09-23 layout change, where in the chrome it is placed).
+vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice: () => null, ChapterAudioAutoplayToggle: (props: any) => React.createElement('Pressable', { accessibilityRole: 'switch', accessibilityLabel: '連讀', ...props }), ChapterAudioControls: (props: any) => {
   React.useEffect(() => { native.audioMounts++; return () => { native.audioUnmounts++; }; }, []);
   return React.createElement('ChapterAudioControls', props);
 } }));
@@ -55,6 +56,8 @@ let chosenVersion = 139;
 let versionOptions: Array<{ versionId: number; translationName: string; languageTag: string }> | undefined;
 let onSelectVersion: ((versionId: number) => void | Promise<void>) | undefined;
 let audioAttribution: string | undefined;
+let onSelectNarrationSpeed: ((speed: number) => void) | undefined;
+let journalNode: React.ReactNode | undefined;
 const onExit = vi.fn();
 const onSelectReference = vi.fn();
 function Harness() {
@@ -63,8 +66,9 @@ function Harness() {
     reader: React.createElement('BibleReader'), controls, chrome,
     chapterUsfm: currentChapter, versionId: chosenVersion, references: assignedReferences,
     onExit, onSelectReference,
-    versionOptions, onSelectVersion,
+    versionOptions, onSelectVersion, onSelectNarrationSpeed,
     metadata: { translationName: '測試譯本', publisher: '測試出版社', copyrightNotice: '測試版權文字', officialUrl: 'https://example.test/version', audioAttribution },
+    journal: journalNode,
   });
 }
 const all = (type: string) => renderer!.root.findAll(node => String(node.type) === type || (type === 'NavigationBar' && node.type === NavigationBar));
@@ -98,6 +102,8 @@ describe('fullscreen reader layout and chrome', () => {
     versionOptions = undefined;
     onSelectVersion = undefined;
     audioAttribution = undefined;
+    onSelectNarrationSpeed = undefined;
+    journalNode = undefined;
     controls = { ready: true, openChapterPicker: vi.fn(), openVersionPicker: vi.fn(), openSettings: vi.fn() };
     vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       const message = String(args[0]);
@@ -128,15 +134,82 @@ describe('fullscreen reader layout and chrome', () => {
     expect(toolbar.props.accessibilityElementsHidden).not.toBe(true);
     const siblings = root.children.filter(child => typeof child !== 'string');
     expect(siblings.indexOf(toolbar)).toBeLessThan(siblings.indexOf(reader.parent!));
-    let row = all('ChapterAudioControls')[0].parent!;
-    while (String(row.type) !== 'View') row = row.parent!;
-    expect(styleOf(row)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap' });
+    // The daily passage chips have their own row below the title row, and only that row wraps.
+    let dailyRow = button('前往詩90').parent!;
+    while (String(dailyRow.type) !== 'View') dailyRow = dailyRow.parent!;
+    expect(styleOf(dailyRow)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap' });
     expect(button('前往詩90').props.accessibilityState).toMatchObject({ selected: true });
     expect(styleOf(button('前往詩91'))).toMatchObject({ minWidth: 48, minHeight: 48 });
     expect(all('Pressable').some(node => ['選擇譯本', '調整字體', '選擇章節'].includes(node.props.accessibilityLabel))).toBe(false);
     expect(text()).not.toContain('測試版權文字');
     expect(text()).not.toContain('我已完成讀經');
     expect(text()).not.toContain('ProgressCard');
+  });
+
+  it('keeps the top row to exactly back, one title, journal and more — one row, never wrapping', async () => {
+    journalNode = React.createElement('JournalPanelStub');
+    await mount();
+    const topRow = button('返回今日').parent!;
+    expect(styleOf(topRow).flexWrap).not.toBe('wrap');
+    const items = topRow.children.filter((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string');
+    expect(items.map(node => node.props.accessibilityLabel ?? null)).toEqual(['返回今日', null, '靈修日記', '更多閱讀工具']);
+    const title = items[1];
+    expect(title.type).toBe('Text');
+    expect(title.props.accessibilityRole).toBe('header');
+    expect(title.props.numberOfLines).toBe(1);
+    expect(title.props.children).toBe('詩篇 90');
+    // Play/pause and 連讀 must not be in this row at all — they moved to the bottom player bar.
+    expect(topRow.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(0);
+    expect(items.some(node => node.props.accessibilityLabel === '連讀')).toBe(false);
+  });
+
+  it('omits the journal icon from the top row when no journal is supplied, without adding a wrap', async () => {
+    journalNode = undefined;
+    await mount();
+    const topRow = button('返回今日').parent!;
+    const items = topRow.children.filter((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string');
+    expect(items.map(node => node.props.accessibilityLabel ?? null)).toEqual(['返回今日', null, '更多閱讀工具']);
+    expect(styleOf(topRow).flexWrap).not.toBe('wrap');
+  });
+
+  it.each([['PSA.90'], ['1TI.1']] as const)('shows the full book/chapter title once for %s', async (chapter) => {
+    currentChapter = chapter;
+    await mount();
+    const title = button('返回今日').parent!.children.find((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string' && child.props.accessibilityRole === 'header')!;
+    expect(title).toBeDefined();
+    // Exactly one visible title node for the chapter — not duplicated anywhere else in the chrome.
+    expect(all('Text').filter(node => node.props.accessibilityRole === 'header' && node.props.children === title.props.children)).toHaveLength(1);
+  });
+
+  it.each([1, 2, 3])('keeps the top row unchanged whether today has %i passage chip(s)', async (chipCount) => {
+    journalNode = React.createElement('JournalPanelStub');
+    assignedReferences = ['PSA.90', 'PSA.91', 'PSA.92'].slice(0, chipCount);
+    await mount();
+    const topRow = button('返回今日').parent!;
+    const items = topRow.children.filter((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string');
+    expect(items.map(node => node.props.accessibilityLabel ?? null)).toEqual(['返回今日', null, '靈修日記', '更多閱讀工具']);
+    expect(styleOf(topRow).flexWrap).not.toBe('wrap');
+    // The chips render in their own row, sized by chipCount, and never bleed into the top row.
+    expect(topRow.findAll(node => node.props.accessibilityLabel?.toString().startsWith('前往'))).toHaveLength(0);
+    expect(all('Pressable').filter(node => node.props.accessibilityLabel?.toString().startsWith('前往'))).toHaveLength(chipCount);
+  });
+
+  it('renders play/pause and 連讀 only in the fixed bottom player bar, after the reader', async () => {
+    await mount();
+    const root = all('View')[0];
+    const reader = all('BibleReader')[0];
+    const toolbar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')!;
+    const playerBar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '播放列')!;
+    expect(playerBar).toBeDefined();
+    expect(styleOf(playerBar).position).not.toBe('absolute');
+    const siblings = root.children.filter(child => typeof child !== 'string');
+    expect(siblings.indexOf(toolbar)).toBeLessThan(siblings.indexOf(reader.parent!));
+    expect(siblings.indexOf(reader.parent!)).toBeLessThan(siblings.indexOf(playerBar));
+    expect(playerBar.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(1);
+    expect(playerBar.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(1);
+    // and they are absent from the top toolbar entirely
+    expect(toolbar.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(0);
+    expect(toolbar.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(0);
   });
 
   it('keeps daily tools visible through canvas taps, scroll, and idle time without unmounting audio', async () => {
@@ -293,6 +366,36 @@ describe('fullscreen reader layout and chrome', () => {
     expect(chrome.infoOpen).toBe(true);
     act(() => { button('關閉版本資訊').props.onPress(); });
     expect(chrome.infoOpen).toBe(false);
+  });
+
+  it.each(['more', 'versions', 'info'] as const)('bounds the %s sheet against the screen and lets only its body shrink and scroll', async (page) => {
+    if (page === 'versions') enableCuratedVersions();
+    onSelectNarrationSpeed = vi.fn();
+    await mount();
+    act(() => { page === 'info' ? chrome.openInfo() : chrome.openMore(); });
+    if (page === 'versions') act(() => { button('選擇譯本').props.onPress(); });
+    const sheet = all('SafeAreaView').find(node => node.props.accessibilityViewIsModal)!;
+    const host = sheet.parent!;
+    // A percentage on the inner sheet resolves against an intrinsically sized wrapper. On the
+    // device that clipped the speed row while scrolling could not reveal the final Info action.
+    // Put the limit on the direct child of the full-screen backdrop, then propagate shrinkability.
+    expect(styleOf(host.parent!)).toMatchObject({ flex: 1, justifyContent: 'flex-end' });
+    expect(styleOf(host)).toMatchObject({ maxHeight: '85%', flexShrink: 1 });
+    expect(styleOf(sheet).maxHeight).toBeUndefined();
+    expect(styleOf(sheet)).toMatchObject({ flexShrink: 1, minHeight: 0 });
+    expect(sheet.props.edges).toContain('bottom');
+    const scroll = all('ScrollView')[0];
+    expect(styleOf(scroll)).toMatchObject({ flexShrink: 1, minHeight: 0 });
+    expect(scroll.props.scrollEnabled).not.toBe(false);
+    const header = sheet.findAll(node => String(node.type) === 'View' && styleOf(node).flexDirection === 'row')[0];
+    expect(styleOf(header).flexShrink).toBe(0);
+    if (page === 'more') {
+      expect(scroll.findAll(node => node.props.accessibilityLabel === '版本資訊')).toHaveLength(1);
+      expect(scroll.findAll(node => String(node.type) === 'Pressable' && String(node.props.accessibilityLabel).startsWith('朗讀速度 '))).toHaveLength(4);
+      act(() => { button('朗讀速度 1.5 倍').props.onPress(); });
+      expect(onSelectNarrationSpeed).toHaveBeenCalledExactlyOnceWith(1.5);
+      expect(text()).toContain('遇到沒有朗讀的章節會停下並提示');
+    }
   });
 
   it('keeps only version, font settings, other chapters and information in More', async () => {

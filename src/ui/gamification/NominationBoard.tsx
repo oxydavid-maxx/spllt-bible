@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NominationRound, RewardNomination } from '../../services/gamificationApiClient';
 import { describeDeadline } from '../../domain/nominationRound';
@@ -25,7 +25,8 @@ export interface NominationBoardProps {
   /** Votes this member has left, and how many they started with. Three, because three prizes win. */
   votesLeft?: number;
   votesPerMember?: number;
-  onNominate: (name: string, note: string) => void;
+  busy?: boolean;
+  onNominate: (name: string, note: string) => void | boolean | Promise<void | boolean>;
   onVote: (nominationId: string, voting: boolean) => void;
   onWithdraw?: (nominationId: string) => void;
   onResolveSuggestion?: (nominationId: string, accept: boolean) => void;
@@ -40,11 +41,13 @@ const STATUS_LABEL: Record<RewardNomination['status'], string> = {
 };
 
 export function NominationBoard({
-  round, nominations, canManage, nowMs, votesLeft, votesPerMember = 3, onNominate, onVote, onWithdraw, onResolveSuggestion, onDecide, onCloseRound,
+  round, nominations, canManage, nowMs, votesLeft, votesPerMember = 3, busy = false, onNominate, onVote, onWithdraw, onResolveSuggestion, onDecide, onCloseRound,
 }: NominationBoardProps) {
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const [price, setPrice] = useState<Record<string, string>>({});
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const voting = round?.phase === 'VOTING';
   // Said out loud, because a board of tick boxes reads as "tick what you like" and this one is
@@ -56,10 +59,17 @@ export function NominationBoard({
   const alreadyMine = nominations.some((nomination) => nomination.mine && nomination.status === 'OPEN');
 
   const submit = () => {
-    if (!name.trim()) return;
-    onNominate(name.trim(), note.trim());
-    setName('');
-    setNote('');
+    if (!name.trim() || busy || submittingRef.current) return;
+    submittingRef.current = true; setSubmitting(true);
+    const finish = (success: void | boolean) => {
+      if (success !== false) { setName(''); setNote(''); }
+      submittingRef.current = false; setSubmitting(false);
+    };
+    try {
+      const result = onNominate(name.trim(), note.trim());
+      if (result instanceof Promise) void result.then(finish).catch(() => finish(false));
+      else finish(result);
+    } catch { finish(false); }
   };
 
   return <View style={styles.card} accessibilityLabel="想要什麼獎品">
@@ -82,19 +92,19 @@ export function NominationBoard({
         </Text>
 
         {/* The author's own controls. Offered to them because it is their idea and their words. */}
-        {nomination.mine && nomination.noteSuggestion && onResolveSuggestion ? <View style={styles.suggestion}>
+        {voting && nomination.mine && nomination.status === 'OPEN' && nomination.noteSuggestion && onResolveSuggestion ? <View style={styles.suggestion}>
           <Text style={styles.suggestionText}>{nomination.noteSuggestion}</Text>
           <View style={styles.suggestionActions}>
-            <Pressable accessibilityRole="button" accessibilityLabel="採用這個說法" onPress={() => onResolveSuggestion(nomination.nominationId, true)} style={styles.suggestionAction}>
+            <Pressable accessibilityRole="button" accessibilityLabel="採用這個說法" disabled={busy} onPress={() => onResolveSuggestion(nomination.nominationId, true)} style={styles.suggestionAction}>
               <Text style={styles.suggestionAccept}>採用</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="維持我寫的" onPress={() => onResolveSuggestion(nomination.nominationId, false)} style={styles.suggestionAction}>
+            <Pressable accessibilityRole="button" accessibilityLabel="維持我寫的" disabled={busy} onPress={() => onResolveSuggestion(nomination.nominationId, false)} style={styles.suggestionAction}>
               <Text style={styles.suggestionKeep}>維持我寫的</Text>
             </Pressable>
           </View>
         </View> : null}
         {nomination.mine && nomination.status === 'OPEN' && voting && onWithdraw ? <Pressable
-          accessibilityRole="button" accessibilityLabel={`撤回 ${nomination.name}`}
+          accessibilityRole="button" accessibilityLabel={`撤回 ${nomination.name}`} disabled={busy}
           onPress={() => onWithdraw(nomination.nominationId)} style={styles.withdraw}
         ><Text style={styles.withdrawText}>撤回</Text></Pressable> : null}
       </View>
@@ -104,9 +114,9 @@ export function NominationBoard({
           them on a choice they have already regretted. */}
       {nomination.status === 'OPEN' ? <Pressable
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: nomination.voted, disabled: !voting || (spent && !nomination.voted) }}
+        accessibilityState={{ checked: nomination.voted, disabled: busy || !voting || (spent && !nomination.voted) }}
         accessibilityLabel={`${nomination.voted ? '取消想要' : spent ? `票投完了，先取消一票才能選：${nomination.name}` : '我也想要'}${nomination.voted || !spent ? `：${nomination.name}，目前 ${nomination.voteCount} 人` : ''}`}
-        disabled={!voting || (spent && !nomination.voted)}
+        disabled={busy || !voting || (spent && !nomination.voted)}
         onPress={() => onVote(nomination.nominationId, !nomination.voted)}
         style={[styles.vote, nomination.voted && styles.voted, (!voting || (spent && !nomination.voted)) && styles.voteClosed]}
       >
@@ -125,6 +135,7 @@ export function NominationBoard({
         placeholderTextColor={theme.colors.muted}
         maxLength={40}
         value={name}
+        editable={!busy && !submitting}
         onChangeText={setName}
         style={styles.input}
       />
@@ -134,10 +145,11 @@ export function NominationBoard({
         placeholderTextColor={theme.colors.muted}
         maxLength={200}
         value={note}
+        editable={!busy && !submitting}
         onChangeText={setNote}
         style={styles.input}
       />
-      <Pressable accessibilityRole="button" accessibilityLabel="提名獎品" onPress={submit} style={styles.submit}>
+      <Pressable accessibilityRole="button" accessibilityLabel="提名獎品" disabled={busy || submitting} onPress={submit} style={styles.submit}>
         <Text style={styles.submitText}>提名</Text>
       </Pressable>
     </View> : null}
@@ -149,19 +161,20 @@ export function NominationBoard({
         placeholder={nomination.estimatedPoints === undefined ? '積分' : String(nomination.estimatedPoints)}
         placeholderTextColor={theme.colors.muted}
         value={price[nomination.nominationId] ?? ''}
+        editable={!busy}
         onChangeText={(value) => setPrice((current) => ({ ...current, [nomination.nominationId]: value }))}
         style={styles.priceInput}
       />
-      <Pressable accessibilityRole="button" accessibilityLabel={`核准 ${nomination.name}`} onPress={() => {
+      <Pressable accessibilityRole="button" accessibilityLabel={`核准 ${nomination.name}`} disabled={busy} onPress={() => {
         const costPoints = Number(price[nomination.nominationId]);
         if (Number.isSafeInteger(costPoints) && costPoints > 0) onDecide(nomination.nominationId, 'approve', nomination.revision, costPoints);
       }} style={styles.manageAction}><Text style={styles.manageActionText}>核准</Text></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={`婉拒 ${nomination.name}`} onPress={() => onDecide(nomination.nominationId, 'decline', nomination.revision)} style={styles.manageAction}><Text style={styles.manageActionText}>婉拒</Text></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={`移除 ${nomination.name}`} onPress={() => onDecide(nomination.nominationId, 'remove', nomination.revision)} style={styles.manageAction}><Text style={styles.removeText}>移除</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`婉拒 ${nomination.name}`} disabled={busy} onPress={() => onDecide(nomination.nominationId, 'decline', nomination.revision)} style={styles.manageAction}><Text style={styles.manageActionText}>婉拒</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={`移除 ${nomination.name}`} disabled={busy} onPress={() => onDecide(nomination.nominationId, 'remove', nomination.revision)} style={styles.manageAction}><Text style={styles.removeText}>移除</Text></Pressable>
     </View>) : null}
 
     {canManage && round && onCloseRound ? <Pressable
-      accessibilityRole="button" accessibilityLabel="結束這一輪" onPress={() => onCloseRound(round.roundId)} style={styles.closeRound}
+      accessibilityRole="button" accessibilityLabel="結束這一輪" disabled={busy} onPress={() => onCloseRound(round.roundId)} style={styles.closeRound}
     ><Text style={styles.closeRoundText}>結束這一輪</Text></Pressable> : null}
 
   </View>;

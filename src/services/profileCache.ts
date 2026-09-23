@@ -18,7 +18,8 @@ export interface ProfileCacheStorage {
 }
 
 export function createProfileCache(storage: ProfileCacheStorage) {
-  const key = (memberId: string) => `${KEY_PREFIX}${memberId}`;
+  // SecureStore accepts only alphanumerics, '.', '-' and '_'; member IDs include ':'.
+  const key = (memberId: string) => `${KEY_PREFIX}v2.${Array.from(memberId, (character) => character.codePointAt(0)!.toString(16)).join('_')}`;
 
   return {
     async save(memberId: string, profile: ScoreProfile): Promise<void> {
@@ -29,7 +30,10 @@ export function createProfileCache(storage: ProfileCacheStorage) {
     async load(memberId: string): Promise<ScoreProfile | null> {
       if (!memberId) return null;
       try {
-        const raw = await storage.getItem(key(memberId));
+        let raw = await storage.getItem(key(memberId));
+        // Preserve caches written for older IDs whose legacy keys were valid on device.
+        const legacyKey = `${KEY_PREFIX}${memberId}`;
+        if (!raw && /^[\w.-]+$/.test(legacyKey)) raw = await storage.getItem(legacyKey);
         if (!raw) return null;
         const profile = JSON.parse(raw) as ScoreProfile;
         // Switching accounts must not surface the previous one, even if a key were reused.

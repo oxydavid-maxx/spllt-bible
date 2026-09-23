@@ -95,3 +95,21 @@ export function formatReferenceListZhTw(references: readonly string[]): string {
   if (!references || references.length === 0) return '';
   return references.map(formatReferenceZhTw).join('、');
 }
+
+/**
+ * 閱讀器頂部單一書卷/章節標題,如「提摩太後書 2」。
+ *
+ * 2026-09-23 全螢幕閱讀器改版:頂部只顯示一次書卷/章節,不再和當日段落 chip、播放器擠
+ * 在同一排造成換行。這裡刻意用全名 (ZH_TW_BOOK_NAMES) 而非簡寫——標題只出現一次、
+ * 沒有寬度壓力,「提摩太後書」比簡寫「提後」更適合當一句可唸出的標題。
+ * 不認識的書卷原樣回傳 chapterUsfm,理由與 formatReferenceZhTw 相同:不要編一個看起來
+ * 合理但錯誤的書卷名。
+ */
+export function formatChapterTitleZhTw(chapterUsfm: string): string {
+  if (!chapterUsfm || !chapterUsfm.trim()) return chapterUsfm;
+  const parts = chapterUsfm.trim().split('.');
+  const bookName = ZH_TW_BOOK_NAMES[parts[0]?.toUpperCase() ?? ''];
+  if (!bookName) return chapterUsfm;
+  if (parts.length === 1) return bookName;
+  return `${bookName} ${parts[1]}`;
+}

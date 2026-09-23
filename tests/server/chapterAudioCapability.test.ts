@@ -55,7 +55,7 @@ describe('registry lookup never substitutes another chapter (R7)', () => {
 
 describe('the shipped registry is a general mechanism, not a whitelist (R7)', () => {
   it('holds the 20 observed September chapters plus GEN.1', () => {
-    expect(OBSERVED_ROWS.length).toBe(21);
+    expect(OBSERVED_ROWS.length).toBe(22);
   });
 
   it('serves GEN.1, which is NOT one of the September 42 — so there is no 42-chapter whitelist', () => {
@@ -65,8 +65,8 @@ describe('the shipped registry is a general mechanism, not a whitelist (R7)', ()
   });
 
   it('leaves the uncollected chapters ABSENT, which means "address not obtained"', () => {
-    // these 22 were never collected; absent must never be read as "this chapter has no recording"
-    for (const usfm of ['TIT.1', '1TI.1', '2TI.4', 'PSA.106']) {
+    // these chapters were never collected; absent must never be read as "this chapter has no recording"
+    for (const usfm of ['TIT.1', 'PHM.1', '2TI.4', 'PSA.106']) {
       expect(lookupChapterAudio(1392, usfm)).toBeNull();
       expect(evaluateContentCapability(1392, usfm, { nowMs: NOW }).status).toBe('pending_observation');
     }

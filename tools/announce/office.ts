@@ -44,7 +44,9 @@ function slideNumber(name: string): number {
 export function xlsxSheetRows(buffer: Buffer, tabName: string): string[][] {
   const workbook = readZipFile(buffer, 'xl/workbook.xml')?.toString('utf8');
   const rels = readZipFile(buffer, 'xl/_rels/workbook.xml.rels')?.toString('utf8');
-  if (!workbook || !rels) return [];
+  if (!workbook || !rels || !/<workbook\b/.test(workbook) || !/<Relationships\b/.test(rels)) {
+    throw new Error('XLSX_WORKBOOK_UNREADABLE');
+  }
 
   const target: Record<string, string> = {};
   for (const match of rels.matchAll(/Id="([^"]+)"[^>]*Target="([^"]+)"/g)) {
@@ -53,17 +55,27 @@ export function xlsxSheetRows(buffer: Buffer, tabName: string): string[][] {
   const sheet = [...workbook.matchAll(/<sheet[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g)]
     .map((match) => ({ name: decode(match[1]), file: target[match[2]] }))
     .find((candidate) => candidate.name === tabName);
-  if (!sheet?.file) return [];
+  if (!sheet) return [];
+  if (!sheet.file) throw new Error('XLSX_WORKSHEET_UNREADABLE');
 
   const shared = sharedStrings(buffer);
   const xml = readZipFile(buffer, `xl/${sheet.file}`)?.toString('utf8');
-  if (!xml) return [];
+  if (!xml || !/<worksheet\b/.test(xml) || !/(?:<\/worksheet\s*>|<worksheet\b[^>]*\/>)/.test(xml)) {
+    throw new Error('XLSX_WORKSHEET_UNREADABLE');
+  }
 
   const rows: string[][] = [];
-  for (const rowXml of xml.split('<row').slice(1)) {
+  for (const row of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
     const cells: string[] = [];
-    for (const cellXml of rowXml.split('<c ').slice(1)) {
-      cells.push(cellValue(cellXml, shared));
+    for (const cell of row[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const reference = /\br="([A-Z]+)\d+"/.exec(cell[1]);
+      // XLSX omits empty cells. Their reference, not their position in the XML, owns the column.
+      const column = reference
+        ? [...reference[1]].reduce((value, letter) => value * 26 + letter.charCodeAt(0) - 64, 0) - 1
+        : cells.length;
+      if (column >= 16_384) throw new Error('XLSX_CELL_OUT_OF_RANGE');
+      while (cells.length <= column) cells.push('');
+      cells[column] = cellValue(`${cell[1]}>${cell[2] ?? ''}`, shared);
     }
     while (cells.length && cells[cells.length - 1] === '') cells.pop();
     if (cells.length) rows.push(cells);

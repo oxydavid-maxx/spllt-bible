@@ -235,6 +235,7 @@ const pendingRuntimeInFlight = new Map<string, Promise<unknown>>();
 
 export function createGamificationApiClient(options: GamificationApiClientOptions) {
   const fetchImpl = options.fetchImpl ?? fetch;
+  const reads = new Map<string, { controller: AbortController; promise: Promise<unknown> }>();
   const pendingStore = options.pendingStore ?? createDefaultGamificationPendingStore();
   const pendingClaimOperations = new Map<string, string>();
   const pendingRedemptionOperations = new Map<string, PendingRedemptionOperation>();
@@ -331,16 +332,37 @@ export function createGamificationApiClient(options: GamificationApiClientOption
       }
     });
   }
-  async function request(path: string, init: RequestInit = {}): Promise<unknown> {
+  async function performRequest(path: string, init: RequestInit = {}): Promise<unknown> {
     let response: Response;
     try { response = await fetchImpl(`${options.baseUrl}${path}`, { ...init, headers: { authorization: `Bearer ${options.token}`, ...(init.headers ?? {}) } }); }
     catch { throw new GamificationApiError('NETWORK_ERROR', true, 0); }
+    if (init.signal?.aborted) throw new GamificationApiError('REQUEST_CANCELLED', true, 0);
     if (response.status === 401) notifyAuthExpired({ memberId: options.memberId, sessionToken: options.token });
     const body = await response.json().catch(() => null);
+    if (init.signal?.aborted) throw new GamificationApiError('REQUEST_CANCELLED', true, 0);
     if (!response.ok) { const error = object(body)?.error; const detail = object(error); const code = string(detail?.code) ? detail.code : string(error) ? error : 'API_ERROR'; throw new GamificationApiError(code, detail?.retryable === true || response.status >= 500, response.status); }
     return body;
   }
+  function request(path: string, init: RequestInit = {}): Promise<unknown> {
+    // Mutation identity/recovery stays with its existing operation store. Only reads are shared.
+    if (init.method && init.method !== 'GET') return performRequest(path, init);
+    const prior = reads.get(path);
+    if (prior) return prior.promise;
+    const controller = new AbortController();
+    let timedOut = false;
+    const cancelled = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () => reject(new GamificationApiError(timedOut ? 'READ_TIMEOUT' : 'REQUEST_CANCELLED', true, 0)), { once: true });
+    });
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 8000);
+    const promise = Promise.race([performRequest(path, { ...init, signal: controller.signal }), cancelled]).finally(() => {
+      clearTimeout(timer);
+      if (reads.get(path)?.controller === controller) reads.delete(path);
+    });
+    reads.set(path, { controller, promise });
+    return promise;
+  }
   return {
+    cancelReads(path?: string): void { for (const [key, read] of reads) { if (path === undefined || key === path) { read.controller.abort(); reads.delete(key); } } },
     async getCapabilities(): Promise<ViewerCapabilities> {
       const item = object(await request('/api/me/profile')); const capabilities = item && object(item.capabilities);
       if (!capabilities || typeof capabilities.canViewAllScores !== 'boolean' || typeof capabilities.canManageRewards !== 'boolean' || typeof capabilities.canRedeemRewards !== 'boolean') throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
