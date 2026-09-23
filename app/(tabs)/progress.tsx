@@ -59,8 +59,8 @@ export default function ProgressScreen() {
   const activeMember = useRef<string | null>(session?.memberId ?? null);
   const prefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshOnForeground = useRef<(preserveScanner?: boolean) => void>(() => undefined);
-  const cameraPermissionRequest = useRef<object | null>(null);
-  const resumeScannerAfterPermission = useRef(false);
+  const scannerActivityRequest = useRef<object | null>(null);
+  const resumeScannerAfterActivity = useRef(false);
   const nominationRead = useRef(0);
   const nominationPending = useRef<object | null>(null);
   const [nominationBusy, setNominationBusy] = useState(false);
@@ -83,7 +83,7 @@ export default function ProgressScreen() {
     activeScope.current = 'me'; activeMember.current = null; guard.current.clear(); chartCache.current.clear();
     setScope('me'); setPeople([]); setSelected(null); setProfile(null); setProfileStale(false); setBusy(false); setError(null); setRewards([]);
     setRedemptions([]); setPendingOperations(null); setRetryAction(null); setSheet(preserveScanner ? 'scan' : null); setPrimaryReady(false);
-    if (!preserveScanner) { cameraPermissionRequest.current = null; resumeScannerAfterPermission.current = false; }
+    if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
     setNominationBusy(false); setNominationError(null); setShelfRewards(null); setNominations(null); setCommunity(null);
   }, [client, stopPrefetch]);
   useEffect(() => registerAuthLifecycleListener((change) => { if (!change.current || change.current.memberId !== session?.memberId || change.current.sessionToken !== session?.sessionToken) clearProtectedState(); }), [accountKey, clearProtectedState]);
@@ -92,14 +92,14 @@ export default function ProgressScreen() {
       const wasActive = appActive.current;
       appActive.current = next === 'active';
       if (next !== 'active') {
-        // Android's permission activity pauses the app even when permission is already granted.
-        // Keep only its pending scanner pane; private data and admin unlock still clear normally.
-        const preserveScanner = wasActive && focusedRef.current && activeSheet.current === 'scan' && cameraPermissionRequest.current !== null;
-        resumeScannerAfterPermission.current = preserveScanner;
+        // Native permission/scanner activities can pause Android while the scan pane is in use.
+        // Preserve only the pending scanner pane; protected data still clears.
+        const preserveScanner = wasActive && focusedRef.current && activeSheet.current === 'scan' && scannerActivityRequest.current !== null;
+        resumeScannerAfterActivity.current = preserveScanner;
         clearProtectedState(preserveScanner);
       } else if (focusedRef.current) {
-        const preserveScanner = resumeScannerAfterPermission.current && activeSheet.current === 'scan';
-        resumeScannerAfterPermission.current = false;
+        const preserveScanner = resumeScannerAfterActivity.current && activeSheet.current === 'scan';
+        resumeScannerAfterActivity.current = false;
         refreshOnForeground.current(preserveScanner);
       }
     });
@@ -257,15 +257,15 @@ export default function ProgressScreen() {
     requestGeneration.current += 1; stopPrefetch(); activeScope.current = 'friends'; activeMember.current = memberId;
     setSheet(null); setScope('friends'); setSelected({ memberId, displayName: '好友', earnedTotal: 0 }); setProfile(null); void loadProfile(memberId, 'friends');
   };
-  const beginCameraPermission = () => {
+  const beginScannerActivity = () => {
     const request = {}; const requestSession = session;
-    cameraPermissionRequest.current = request;
+    scannerActivityRequest.current = request;
     return () => {
-      if (cameraPermissionRequest.current !== request) return false;
-      cameraPermissionRequest.current = null;
+      if (scannerActivityRequest.current !== request) return false;
+      scannerActivityRequest.current = null;
       const current = Boolean(requestSession && isCurrentAuthSession(requestSession) && focusedRef.current && appActive.current && activeSheet.current === 'scan');
       if (!current) {
-        resumeScannerAfterPermission.current = false;
+        resumeScannerAfterActivity.current = false;
         if (activeSheet.current === 'scan') setSheet(null);
       }
       return current;
@@ -406,7 +406,7 @@ export default function ProgressScreen() {
       actions={[7, 14, 30].map((days) => ({ label: `${days} 天後截止`, disabled: nominationBusy, onPress: () => { void openNominationRound(days); } }))}>{nominationBusy ? <Text accessibilityLiveRegion="polite" style={styles.note}>處理中…</Text> : null}
       {nominationError ? <><Text accessibilityRole="alert" style={styles.error}>{nominationError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重新載入獎品提案" disabled={nominationBusy} onPress={() => { void reloadNominations(true); }} style={styles.retry}><Text style={styles.retryText}>重新載入</Text></Pressable></> : null}</ActionSheet>
     <ActionSheet visible={sheet === 'qr'} title="我的好友 QR" dismissOnOutsideTap onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="show" /></ActionSheet>
-    <ActionSheet visible={sheet === 'scan'} title="掃描好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="scan" onClaimed={scanClaimed} onPermissionRequest={beginCameraPermission} /></ActionSheet>
+    <ActionSheet visible={sheet === 'scan'} title="掃描好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="scan" onClaimed={scanClaimed} onActivityStart={beginScannerActivity} /></ActionSheet>
     <ActionSheet visible={sheet === 'rewards'} title="選擇目標獎品" dismissOnOutsideTap onClose={() => setSheet(null)}><RewardControls rewards={rewards} selectedRewardId={selectedRewardId} canEdit onSelect={(rewardId) => void setTarget(rewardId)} /></ActionSheet>
     <ActionSheet visible={sheet === 'admin-rewards'} title="管理獎品" onClose={() => setSheet(null)}><RewardControls rewards={rewards} selectedRewardId={null} canEdit admin
       onCreate={(name, costPoints) => mutateRewards(() => client!.createReward({ name, costPoints }))}

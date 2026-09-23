@@ -1,13 +1,14 @@
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const { api, auth, nav, store, appListeners, storageGet, cameraPermission, requestCameraPermission } = vi.hoisted(() => ({
+const { api, auth, nav, store, appListeners, storageGet, cameraPermission, requestCameraPermission, platform, launchScanner, scannerListeners, cameraScanner } = vi.hoisted(() => ({
   api: Object.fromEntries(['getCapabilities', 'getProfile', 'getPeople', 'getRewards', 'getNominations', 'getCommunityProgress', 'getPendingOperations', 'setNominationVote', 'nominateReward', 'setRewardTarget', 'claimFriendQr', 'cancelReads'].map((name) => [name, vi.fn()])),
   auth: { status: 'signed-in', session: { memberId: 'pilot:qa', sessionToken: 'qa' } },
   nav: { focused: true }, store: new Map<string, string>(), appListeners: [] as Array<(state: string) => void>, storageGet: vi.fn(),
   cameraPermission: { granted: false, status: 'undetermined' }, requestCameraPermission: vi.fn(),
+  platform: { OS: 'ios' }, launchScanner: vi.fn(), scannerListeners: [] as Array<(event: { data: string }) => void>, cameraScanner: { available: true },
 }));
-vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: (_: string, callback: (state: string) => void) => { appListeners.push(callback); return { remove: () => { appListeners.splice(appListeners.indexOf(callback), 1); } }; } }, Pressable: (p: any) => React.createElement('Pressable', p, p.children), View: (p: any) => React.createElement('View', p, p.children), Text: (p: any) => React.createElement('Text', p, p.children), TextInput: (p: any) => React.createElement('TextInput', p), StyleSheet: { create: (x: any) => x } }));
+vi.mock('react-native', () => ({ Platform: platform, AppState: { currentState: 'active', addEventListener: (_: string, callback: (state: string) => void) => { appListeners.push(callback); return { remove: () => { appListeners.splice(appListeners.indexOf(callback), 1); } }; } }, ActivityIndicator: (p: any) => React.createElement('ActivityIndicator', p), Pressable: (p: any) => React.createElement('Pressable', p, p.children), View: (p: any) => React.createElement('View', p, p.children), Text: (p: any) => React.createElement('Text', p, p.children), TextInput: (p: any) => React.createElement('TextInput', p), StyleSheet: { create: (x: any) => x } }));
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => any) => { React.useEffect(() => nav.focused ? callback() : undefined, [callback, nav.focused]); } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: (key: string) => storageGet(key), setItemAsync: async (key: string, value: string) => { if (!/^[\w.-]+$/.test(key)) throw Error('invalid key'); store.set(key, value); } }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn() }));
@@ -19,7 +20,7 @@ vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => nu
 vi.mock('../../src/ui/AnnouncementBoard', () => ({ AnnouncementBoard: (p: any) => React.createElement('AnnouncementBoard', p) }));
 vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (p: any) => React.createElement('ScoreProfile', p) }));
 vi.mock('../../src/ui/gamification/PeopleList', () => ({ PeopleList: (p: any) => React.createElement('PeopleList', p) }));
-vi.mock('expo-camera', () => ({ CameraView: (props: any) => React.createElement('CameraView', props), useCameraPermissions: () => [cameraPermission, requestCameraPermission] }));
+vi.mock('expo-camera', () => { const CameraView = Object.assign((props: any) => React.createElement('CameraView', props), { launchScanner, onModernBarcodeScanned: (listener: (event: { data: string }) => void) => { scannerListeners.push(listener); return { remove: () => { scannerListeners.splice(scannerListeners.indexOf(listener), 1); } }; } }); Object.defineProperty(CameraView, 'isModernBarcodeScannerAvailable', { get: () => cameraScanner.available }); return { CameraView, useCameraPermissions: () => [cameraPermission, requestCameraPermission] }; });
 vi.mock('react-native-qrcode-svg', () => ({ default: () => null }));
 vi.mock('../../src/ui/gamification/RewardControls', () => ({ RewardControls: () => null }));
 vi.mock('../../src/ui/gamification/ActionSheet', () => ({ ActionSheet: (p: any) => p.visible ? React.createElement('ActionSheet', p, p.children) : null }));
@@ -34,11 +35,12 @@ const board = () => ({ round: { roundId: 'r1', title: 'QA輪', phase: 'VOTING', 
 const trees: ReactTestRenderer[] = [];
 async function render(Component: React.ComponentType) { let tree!: ReactTestRenderer; await act(async () => { tree = create(React.createElement(Component)); }); trees.push(tree); return tree; }
 const press = async (tree: ReactTestRenderer, label: string) => { await act(async () => { tree.root.findAll((n) => String(n.type) === 'Pressable' && n.props.accessibilityLabel === label)[0].props.onPress(); }); };
+const changeAppState = (state: string) => { for (const listener of [...appListeners]) listener(state); };
 beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks(); nav.focused = true; store.clear(); storageGet.mockImplementation(async (key) => store.get(key) ?? null);
   api.cancelReads.mockReset();
-  cameraPermission.granted = false; requestCameraPermission.mockReset();
+  cameraPermission.granted = false; requestCameraPermission.mockReset(); platform.OS = 'ios'; launchScanner.mockReset(); scannerListeners.length = 0; cameraScanner.available = true; api.claimFriendQr.mockReset();
   api.getCapabilities.mockResolvedValue({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true }); api.getProfile.mockImplementation(async (id: string) => profile(id)); api.getPeople.mockResolvedValue([{ memberId: 'friend', displayName: 'Friend', earnedTotal: 2 }]); api.getRewards.mockResolvedValue([]); api.getNominations.mockImplementation(async () => board()); api.getCommunityProgress.mockResolvedValue({ books: [], personDays: null, currentBook: null }); api.getPendingOperations.mockResolvedValue({ redemptions: [], reversals: [] }); api.setNominationVote.mockResolvedValue(undefined); api.nominateReward.mockResolvedValue(undefined);
 });
 afterEach(async () => { await act(async () => { for (const tree of trees.splice(0)) tree.unmount(); }); vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -59,7 +61,7 @@ describe('focused progress loading', () => {
     const tree = await render(ProgressScreen); const before = api.getProfile.mock.calls.length;
     nav.focused = false; await act(async () => tree.update(React.createElement(ProgressScreen)));
     expect(api.getProfile).toHaveBeenCalledTimes(before);
-    await act(async () => { appListeners.at(-1)?.('background'); remote.reject(Error('offline')); cached.resolve(JSON.stringify(profile())); });
+    await act(async () => { changeAppState('background'); remote.reject(Error('offline')); cached.resolve(JSON.stringify(profile())); });
     expect(tree.root.findAllByType('ScoreProfile' as any)).toHaveLength(0);
     expect(api.cancelReads).toHaveBeenCalled();
   });
@@ -72,7 +74,7 @@ describe('focused progress loading', () => {
   it('does not reload a previously visible profile while the tab is blurred or the app resumes elsewhere', async () => {
     const tree = await render(ProgressScreen); const before = api.getProfile.mock.calls.length;
     nav.focused = false; await act(async () => tree.update(React.createElement(ProgressScreen)));
-    await act(async () => { appListeners.at(-1)?.('background'); appListeners.at(-1)?.('active'); });
+    await act(async () => { changeAppState('background'); changeAppState('active'); });
     expect(api.getProfile).toHaveBeenCalledTimes(before);
   });
   it('does not reopen the admin rewards sheet from a request completed after blur', async () => {
@@ -227,7 +229,7 @@ describe('scanner permission lifecycle', () => {
   }
   it('starts an already-authorized camera without another native permission round trip', async () => {
     cameraPermission.granted = true;
-    requestCameraPermission.mockImplementation(async () => { appListeners.at(-1)?.('background'); appListeners.at(-1)?.('active'); return { granted: true }; });
+    requestCameraPermission.mockImplementation(async () => { changeAppState('background'); changeAppState('active'); return { granted: true }; });
     const tree = await openScanner(); await press(tree, '開啟相機掃描好友碼');
     expect(requestCameraPermission).not.toHaveBeenCalled();
     expect(tree.root.findByType('ActionSheet' as any).props.title).toBe('掃描好友 QR');
@@ -235,18 +237,18 @@ describe('scanner permission lifecycle', () => {
   });
   it('keeps only the scanner pane through the first permission prompt and starts after grant', async () => {
     const permission = deferred<any>();
-    requestCameraPermission.mockImplementation(() => { appListeners.at(-1)?.('background'); return permission.promise; });
+    requestCameraPermission.mockImplementation(() => { changeAppState('background'); return permission.promise; });
     const tree = await openScanner(true); await press(tree, '開啟相機掃描好友碼');
     expect(tree.root.findAllByType('ScoreProfile' as any)).toHaveLength(0); // Protected admin/member data still clears.
     expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '全體（管理）' && node.props.accessibilityState?.selected)).toHaveLength(0);
     expect(tree.root.findByType('ActionSheet' as any).props.title).toBe('掃描好友 QR');
-    await act(async () => { appListeners.at(-1)?.('active'); permission.resolve({ granted: true }); });
+    await act(async () => { changeAppState('active'); permission.resolve({ granted: true }); });
     expect(tree.root.findAllByType('CameraView' as any)).toHaveLength(1);
   });
   it('still closes an active scanner when the app backgrounds outside a permission request', async () => {
     cameraPermission.granted = true; requestCameraPermission.mockResolvedValue({ granted: true });
     const tree = await openScanner(); await press(tree, '開啟相機掃描好友碼');
-    await act(async () => appListeners.at(-1)?.('background'));
+    await act(async () => changeAppState('background'));
     expect(tree.root.findAllByType('ActionSheet' as any)).toHaveLength(0);
     expect(tree.root.findAllByType('CameraView' as any)).toHaveLength(0);
   });
@@ -254,24 +256,24 @@ describe('scanner permission lifecycle', () => {
     const permission = deferred<any>(); requestCameraPermission.mockReturnValue(permission.promise);
     const tree = await openScanner(); await press(tree, '開啟相機掃描好友碼');
     nav.focused = false; await act(async () => tree.update(React.createElement(ProgressScreen)));
-    await act(async () => { permission.resolve({ granted: true }); appListeners.at(-1)?.('active'); });
+    await act(async () => { permission.resolve({ granted: true }); changeAppState('active'); });
     expect(tree.root.findAllByType('ActionSheet' as any)).toHaveLength(0);
   });
   it('does not activate a late grant while the user remains in the background', async () => {
     const permission = deferred<any>();
-    requestCameraPermission.mockImplementation(() => { appListeners.at(-1)?.('background'); return permission.promise; });
+    requestCameraPermission.mockImplementation(() => { changeAppState('background'); return permission.promise; });
     const tree = await openScanner(); await press(tree, '開啟相機掃描好友碼');
     await act(async () => permission.resolve({ granted: true }));
     expect(tree.root.findAllByType('CameraView' as any)).toHaveLength(0);
-    await act(async () => appListeners.at(-1)?.('active'));
+    await act(async () => changeAppState('active'));
     expect(tree.root.findAllByType('ActionSheet' as any)).toHaveLength(0);
   });
   it('cancels preservation when another background event interrupts the permission request', async () => {
     const permission = deferred<any>();
-    requestCameraPermission.mockImplementation(() => { appListeners.at(-1)?.('background'); return permission.promise; });
+    requestCameraPermission.mockImplementation(() => { changeAppState('background'); return permission.promise; });
     const tree = await openScanner(); await press(tree, '開啟相機掃描好友碼');
-    await act(async () => appListeners.at(-1)?.('background'));
-    await act(async () => { appListeners.at(-1)?.('active'); permission.resolve({ granted: true }); });
+    await act(async () => changeAppState('background'));
+    await act(async () => { changeAppState('active'); permission.resolve({ granted: true }); });
     expect(tree.root.findAllByType('ActionSheet' as any)).toHaveLength(0);
     expect(tree.root.findAllByType('CameraView' as any)).toHaveLength(0);
   });
@@ -308,7 +310,7 @@ describe('scanner permission lifecycle', () => {
         await press(tree, '開啟積分操作');
         await act(async () => tree.root.findByType('ActionSheet' as any).props.actions.find((action: any) => action.label === '掃描好友 QR').onPress());
       } else if (change === 'background-active') {
-        await act(async () => { appListeners.at(-1)?.('background'); appListeners.at(-1)?.('active'); });
+        await act(async () => { changeAppState('background'); changeAppState('active'); });
       } else if (change === 'blur-refocus') {
         nav.focused = false; await act(async () => tree.update(React.createElement(ProgressScreen)));
         nav.focused = true; await act(async () => tree.update(React.createElement(ProgressScreen)));
@@ -320,6 +322,92 @@ describe('scanner permission lifecycle', () => {
       expect(api.claimFriendQr).toHaveBeenCalledTimes(1); // Server success is retained, never rolled back/replayed.
       expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '好友' && node.props.accessibilityState?.selected)).toHaveLength(0);
       if (change === 'dismiss-reopen') expect(tree.root.findByType('ActionSheet' as any).props.title).toBe('掃描好友 QR');
+    } finally { auth.session = originalSession; }
+  });
+});
+
+describe('Android system friend scanner', () => {
+  beforeEach(() => api.claimFriendQr.mockResolvedValue({ memberId: 'friend' }));
+  async function openScanner() {
+    platform.OS = 'android';
+    const tree = await render(ProgressScreen);
+    await press(tree, '開啟積分操作');
+    await act(async () => tree.root.findByType('ActionSheet' as any).props.actions.find((action: any) => action.label === '掃描好友 QR').onPress());
+    await press(tree, '開啟相機掃描好友碼');
+    return tree;
+  }
+  it('launches QR-only system UI and claims once after a background scan resumes', async () => {
+    const pending = deferred<void>(); launchScanner.mockReturnValue(pending.promise);
+    const tree = await openScanner();
+    expect(launchScanner).toHaveBeenCalledWith({ barcodeTypes: ['qr'] });
+    expect(requestCameraPermission).not.toHaveBeenCalled();
+    expect(tree.root.findAllByType('CameraView' as any)).toHaveLength(0);
+    await act(async () => { changeAppState('background'); scannerListeners.at(-1)?.({ data: 'qingmu://friend/add?token=system' }); scannerListeners.at(-1)?.({ data: 'qingmu://friend/add?token=system' }); pending.resolve(); });
+    expect(api.claimFriendQr).not.toHaveBeenCalled();
+    expect(tree.root.findByType('ActionSheet' as any).props.title).toBe('掃描好友 QR');
+    await act(async () => changeAppState('active'));
+    expect(api.claimFriendQr).toHaveBeenCalledTimes(1);
+    expect(tree.root.findByType('ScoreProfile' as any).props.profile.memberId).toBe('friend');
+  });
+  it('accepts an event delivered after the scanner activity has already resumed', async () => {
+    const pending = deferred<void>(); launchScanner.mockReturnValue(pending.promise);
+    const tree = await openScanner();
+    await act(async () => changeAppState('background'));
+    await act(async () => changeAppState('active'));
+    await act(async () => { scannerListeners.at(-1)?.({ data: 'qingmu://friend/add?token=after' }); pending.resolve(); });
+    expect(api.claimFriendQr).toHaveBeenCalledOnce();
+    expect(tree.root.findByType('ScoreProfile' as any).props.profile.memberId).toBe('friend');
+  });
+  it('shows the retry pane if the installed system scanner is unavailable', async () => {
+    cameraScanner.available = false;
+    try {
+      const tree = await openScanner();
+      expect(launchScanner).not.toHaveBeenCalled();
+      expect(tree.root.findAll((node) => node.props.accessibilityRole === 'alert').map((node) => node.props.children).join(' ')).toContain('相機無法開啟');
+      expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '開啟相機掃描好友碼')).toHaveLength(1);
+    } finally { cameraScanner.available = true; }
+  });
+  it('shows a retry message after the native scanner fails', async () => {
+    launchScanner.mockRejectedValueOnce(Error('Barcode scanning failed'));
+    const tree = await openScanner();
+    expect(tree.root.findAll((node) => node.props.accessibilityRole === 'alert').map((node) => node.props.children).join(' ')).toContain('相機無法開啟');
+    expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '開啟相機掃描好友碼')).toHaveLength(1);
+  });
+  it('returns to the Open button after a cancelled system scan', async () => {
+    const pending = deferred<void>(); launchScanner.mockReturnValue(pending.promise);
+    const tree = await openScanner();
+    const staleListener = scannerListeners.at(-1)!;
+    await act(async () => { changeAppState('background'); pending.reject(Error('Barcode scanning was cancelled')); });
+    await act(async () => changeAppState('active'));
+    expect(tree.root.findByType('ActionSheet' as any).props.title).toBe('掃描好友 QR');
+    expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '開啟相機掃描好友碼')).toHaveLength(1);
+    await act(async () => staleListener({ data: 'qingmu://friend/add?token=stale' }));
+    expect(api.claimFriendQr).not.toHaveBeenCalled();
+  });
+  it('shows an invalid code and server failure in the same retry pane', async () => {
+    const tree = await openScanner();
+    await act(async () => scannerListeners.at(-1)?.({ data: 'https://elsewhere.invalid' }));
+    expect(api.claimFriendQr).not.toHaveBeenCalled();
+    expect(tree.root.findAll((node) => node.props.accessibilityRole === 'alert').map((node) => node.props.children).join(' ')).toContain('這不是青牧好友碼');
+    api.claimFriendQr.mockRejectedValueOnce(Error('private network detail'));
+    await press(tree, '開啟相機掃描好友碼');
+    await act(async () => scannerListeners.at(-1)?.({ data: 'qingmu://friend/add?token=network' }));
+    expect(api.claimFriendQr).toHaveBeenCalledTimes(1);
+    const alert = tree.root.findAll((node) => node.props.accessibilityRole === 'alert').map((node) => node.props.children).join(' ');
+    expect(alert).toContain('請稍後再試');
+    expect(alert).not.toContain('private network detail');
+  });
+  it.each(['dismiss', 'account', 'blur'])('ignores a late native event after %s', async (change) => {
+    const pending = deferred<void>(); launchScanner.mockReturnValue(pending.promise);
+    const tree = await openScanner();
+    const listener = scannerListeners.at(-1)!;
+    const originalSession = auth.session;
+    try {
+      if (change === 'dismiss') await act(async () => tree.root.findByType('ActionSheet' as any).props.onClose());
+      else if (change === 'account') { auth.session = { memberId: 'other', sessionToken: 'other' }; await act(async () => tree.update(React.createElement(ProgressScreen))); }
+      else { nav.focused = false; await act(async () => tree.update(React.createElement(ProgressScreen))); }
+      await act(async () => { listener({ data: 'qingmu://friend/add?token=late' }); pending.resolve(); });
+      expect(api.claimFriendQr).not.toHaveBeenCalled();
     } finally { auth.session = originalSession; }
   });
 });

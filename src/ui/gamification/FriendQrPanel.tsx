@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import QRCode from 'react-native-qrcode-svg';
 import { buildFriendQrPayload, parseFriendQrPayload } from '../../services/gamificationQr';
@@ -12,7 +12,7 @@ function QrCode({ value }: { value: string }) {
   return <QRCode value={value} size={220} backgroundColor={theme.colors.surface} color={theme.colors.ink} />;
 }
 
-export function FriendQrPanel({ client, mode, onClaimed, onPermissionRequest }: { client: Client; mode: 'show' | 'scan'; onClaimed?: (memberId: string) => void; onPermissionRequest?: () => (() => boolean) }) {
+export function FriendQrPanel({ client, mode, onClaimed, onActivityStart }: { client: Client; mode: 'show' | 'scan'; onClaimed?: (memberId: string) => void; onActivityStart?: () => (() => boolean) }) {
   const [qr, setQr] = useState<FriendQr | null>(null); const [error, setError] = useState<string | null>(null); const [scanning, setScanning] = useState(false); const claimed = useRef(new Set<string>());
   const mounted = useRef(true);
   const owner = useRef({ client, mode });
@@ -38,20 +38,60 @@ export function FriendQrPanel({ client, mode, onClaimed, onPermissionRequest }: 
     if (current()) onClaimed?.(result.memberId);
   };
   if (mode === 'show') return <View style={styles.card}><Text style={styles.title}>我的好友 QR</Text>{qr ? <><QrCode value={buildFriendQrPayload(qr.token)} /><Text style={styles.expiry}>有效至 {new Date(qr.expiresAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}</Text></> : <ActivityIndicator color={theme.colors.primary} />}{error ? <Text style={styles.error}>{error}</Text> : null}<Pressable accessibilityRole="button" accessibilityLabel="重新產生好友 QR" onPress={() => void refresh()} style={styles.button}><Text style={styles.buttonText}>重新產生</Text></Pressable></View>;
-  return <FriendScanner onScan={claim} scanning={scanning} setScanning={setScanning} error={error} onError={setError} onPermissionRequest={onPermissionRequest} />;
+  return <FriendScanner onScan={claim} scanning={scanning} setScanning={setScanning} error={error} onError={setError} onActivityStart={onActivityStart} />;
 }
 
-function FriendScanner({ onScan, scanning, setScanning, error, onError, onPermissionRequest }: { onScan: (value: string) => void; scanning: boolean; setScanning: (value: boolean) => void; error: string | null; onError: (error: string | null) => void; onPermissionRequest?: () => (() => boolean) }) {
+function FriendScanner({ onScan, scanning, setScanning, error, onError, onActivityStart }: { onScan: (value: string) => void; scanning: boolean; setScanning: (value: boolean) => void; error: string | null; onError: (error: string | null) => void; onActivityStart?: () => (() => boolean) }) {
   const [permission, requestPermission] = useCameraPermissions();
   const mounted = useRef(true);
   const requesting = useRef(false);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const activity = useRef({ current: AppState.currentState === 'active', pending: null as null | { kind: 'scan'; data: string } | { kind: 'cancel' | 'error' } });
+  const run = useRef(0);
+  const scannerCleanup = useRef<(() => boolean) | null>(null);
+  const [wake, setWake] = useState(0);
+  useEffect(() => {
+    mounted.current = true;
+    const subscription = AppState.addEventListener('change', (next) => { activity.current.current = next === 'active'; setWake((value) => value + 1); });
+    return () => { mounted.current = false; run.current += 1; scannerCleanup.current?.(); scannerCleanup.current = null; subscription.remove(); };
+  }, []);
+  useEffect(() => {
+    if (!activity.current.current || !activity.current.pending || !mounted.current) return;
+    const outcome = activity.current.pending;
+    activity.current.pending = null;
+    const finish = scannerCleanup.current;
+    scannerCleanup.current = null;
+    const current = finish?.() ?? true;
+    setScanning(false);
+    if (!current || !mounted.current) return;
+    if (outcome.kind === 'scan') onScan(outcome.data);
+    else if (outcome.kind === 'error') onError('相機無法開啟，請再試一次。');
+  }, [wake, onScan, onError, setScanning]);
   const open = async () => {
     if (requesting.current) return;
     onError(null);
+    if (Platform.OS === 'android') {
+      if (!CameraView.isModernBarcodeScannerAvailable) { onError('相機無法開啟，請再試一次。'); return; }
+      requesting.current = true;
+      setScanning(true);
+      const id = ++run.current;
+      const finishActivity = onActivityStart?.();
+      const subscription = CameraView.onModernBarcodeScanned((event) => {
+        if (!mounted.current || run.current !== id || activity.current.pending || !event.data) return;
+        activity.current.pending = { kind: 'scan', data: event.data };
+        setWake((value) => value + 1);
+      });
+      scannerCleanup.current = () => { run.current += 1; subscription.remove(); requesting.current = false; return finishActivity?.() ?? true; };
+      try { await CameraView.launchScanner({ barcodeTypes: ['qr'] }); }
+      catch (reason) {
+        if (!mounted.current || run.current !== id || activity.current.pending) return;
+        activity.current.pending = { kind: reason instanceof Error && /cancel/i.test(reason.message) ? 'cancel' : 'error' };
+        setWake((value) => value + 1);
+      }
+      return;
+    }
     if (permission?.granted) { setScanning(true); return; }
     requesting.current = true;
-    let finish = onPermissionRequest?.();
+    let finish = onActivityStart?.();
     try {
       const result = await requestPermission();
       const current = finish?.() ?? true; finish = undefined;
@@ -59,7 +99,8 @@ function FriendScanner({ onScan, scanning, setScanning, error, onError, onPermis
     } catch { /* permission remains denied/unknown */ }
     finally { finish?.(); requesting.current = false; }
   };
-  if (!scanning) return <View style={styles.card}><Text style={styles.title}>掃描好友 QR</Text>{error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}{permission?.granted === false ? <Text style={styles.error}>需要相機權限才能掃描好友碼。</Text> : null}<Pressable accessibilityRole="button" accessibilityLabel="開啟相機掃描好友碼" onPress={() => void open()} style={styles.button}><Text style={styles.buttonText}>開啟相機</Text></Pressable></View>;
+  if (!scanning) return <View style={styles.card}><Text style={styles.title}>掃描好友 QR</Text>{error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}{Platform.OS !== 'android' && permission?.granted === false ? <Text style={styles.error}>需要相機權限才能掃描好友碼。</Text> : null}<Pressable accessibilityRole="button" accessibilityLabel="開啟相機掃描好友碼" onPress={() => void open()} style={styles.button}><Text style={styles.buttonText}>開啟相機</Text></Pressable></View>;
+  if (Platform.OS === 'android') return <View style={styles.card}><ActivityIndicator color={theme.colors.primary} /></View>;
   return <View style={styles.camera}><CameraView style={{ flex: 1 }} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={(event) => { if (event.data) { setScanning(false); onScan(event.data); } }} onMountError={() => { onError('相機無法開啟，請再試一次。'); setScanning(false); }} /></View>;
 }
 
