@@ -44,8 +44,19 @@ def make_receipt(status, **fields):
 def build_env(base_environ, extra_env, node_dir=None):
     """Construct the child process environment: a small safe keep-list from the
     caller's own environment, PATH pointed at node, then explicit overrides. No value
-    already present in `extra_env` is ever read from or echoed via any other source."""
-    env = {key: base_environ[key] for key in DEFAULT_KEEP_ENV if key in base_environ}
+    already present in `extra_env` is ever read from or echoed via any other source.
+
+    The keep-list match is case-insensitive on purpose: Windows environment variable
+    names are case-insensitive, but a plain dict built from os.environ is not, and the
+    *actual* stored casing of e.g. SystemRoot varies by how the parent process was
+    launched (observed as literal 'SYSTEMROOT' in one real shell here). A naive
+    case-sensitive lookup silently drops it, and Node's own CSPRNG initialization on
+    Windows hard-crashes at startup (`Assertion failed: ncrypto::CSPRNG`) without
+    SystemRoot in its environment -- this was found by an actual failing dry run, not
+    hypothesized, so it is covered by a regression test below.
+    """
+    by_upper = {key.upper(): value for key, value in base_environ.items()}
+    env = {key: by_upper[key.upper()] for key in DEFAULT_KEEP_ENV if key.upper() in by_upper}
     env['PATH'] = str(node_dir or NODE.parent) + ';C:\\Windows\\System32;C:\\Windows'
     env.update(extra_env)
     return env

@@ -33,6 +33,16 @@ class BuildEnvTests(unittest.TestCase):
         self.assertEqual(env['QINGMU_INSTANCE_ID'], 'test')
         self.assertTrue(env['PATH'].startswith('C:/nodefake'.replace('/', '\\')) or 'nodefake' in env['PATH'])
 
+    def test_case_insensitive_keep_list_match(self):
+        # A real dry run on this machine failed here: the parent shell stored the
+        # variable as 'SYSTEMROOT' (all caps) while DEFAULT_KEEP_ENV says 'SystemRoot';
+        # a case-sensitive dict lookup silently dropped it, and node crashed at startup
+        # with 'Assertion failed: ncrypto::CSPRNG' for want of %SystemRoot%.
+        base = {'SYSTEMROOT': 'C:\\WINDOWS', 'windir': 'C:\\WINDOWS'}
+        env = spb.build_env(base, {}, node_dir=Path('C:/nodefake'))
+        self.assertEqual(env.get('SystemRoot'), 'C:\\WINDOWS')
+        self.assertEqual(env.get('WINDIR'), 'C:\\WINDOWS')
+
 
 class ParseEnvArgsTests(unittest.TestCase):
     def test_parses_key_value_pairs(self):
