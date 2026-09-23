@@ -1,14 +1,15 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const boundary = vi.hoisted(() => ({ replace: vi.fn(), setDate: vi.fn() }));
+const boundary = vi.hoisted(() => ({ replace: vi.fn(), setDate: vi.fn(), pathname: '/today' }));
+vi.mock('react-native', () => ({ Pressable: 'Pressable', Text: 'Text' }));
 vi.mock('expo-router', () => {
   const runtime = require('react') as typeof React;
   const Screen = (props: Record<string, unknown>) => runtime.createElement('Screen', props);
   const Tabs = (props: Record<string, unknown>) => runtime.createElement('Tabs', props, props.children as React.ReactNode);
   Object.assign(Tabs, { Screen });
-  return { Tabs, router: { replace: boundary.replace }, useFocusEffect: (callback: React.EffectCallback) => runtime.useEffect(callback, [callback]) };
+  return { Tabs, router: { replace: boundary.replace }, useFocusEffect: (callback: React.EffectCallback) => runtime.useEffect(callback, [callback]), usePathname: () => boundary.pathname };
 });
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: () => React.createElement('Icon') }));
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => React.createElement('AccountEntryButton') }));
@@ -18,6 +19,15 @@ import TodayScreen from '../../app/(tabs)/today';
 import TabsLayout from '../../app/(tabs)/_layout';
 
 const all = (renderer: TestRenderer.ReactTestRenderer, type: string) => renderer.root.findAll(node => String(node.type) === type);
+const originalError = console.error;
+beforeAll(() => {
+  console.error = (...args: unknown[]) => {
+    const message = String(args[0] ?? '');
+    if (message.includes('react-test-renderer is deprecated') || message.includes('testing environment is not configured to support act')) return;
+    originalError(...args);
+  };
+});
+afterAll(() => { console.error = originalError; });
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-09-23T04:00:00.000Z'));
