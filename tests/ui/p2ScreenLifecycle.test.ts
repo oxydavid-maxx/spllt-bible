@@ -3,7 +3,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { api, auth, nav, store, appListeners, storageGet, cameraPermission, requestCameraPermission, platform, launchScanner, scannerListeners, cameraScanner } = vi.hoisted(() => ({
   api: Object.fromEntries(['getCapabilities', 'getProfile', 'getPeople', 'getRewards', 'getNominations', 'getCommunityProgress', 'getPendingOperations', 'setNominationVote', 'nominateReward', 'setRewardTarget', 'claimFriendQr', 'cancelReads'].map((name) => [name, vi.fn()])),
-  auth: { status: 'signed-in', session: { memberId: 'pilot:qa', sessionToken: 'qa' } },
+  auth: { status: 'signed-in' as 'signed-in' | 'signed-out', session: { memberId: 'pilot:qa', sessionToken: 'qa' } as { memberId: string; sessionToken: string } | null },
   nav: { focused: true }, store: new Map<string, string>(), appListeners: [] as Array<(state: string) => void>, storageGet: vi.fn(),
   cameraPermission: { granted: false, status: 'undetermined' }, requestCameraPermission: vi.fn(),
   platform: { OS: 'ios' }, launchScanner: vi.fn(), scannerListeners: [] as Array<(event: { data: string }) => void>, cameraScanner: { available: true },
@@ -339,14 +339,18 @@ describe('Android system friend scanner', () => {
   it('launches QR-only system UI and claims once after a background scan resumes', async () => {
     const pending = deferred<void>(); launchScanner.mockReturnValue(pending.promise);
     const tree = await openScanner();
+    const listener = scannerListeners.at(-1)!;
     expect(launchScanner).toHaveBeenCalledWith({ barcodeTypes: ['qr'] });
     expect(requestCameraPermission).not.toHaveBeenCalled();
     expect(tree.root.findAllByType('CameraView' as any)).toHaveLength(0);
-    await act(async () => { changeAppState('background'); scannerListeners.at(-1)?.({ data: 'qingmu://friend/add?token=system' }); scannerListeners.at(-1)?.({ data: 'qingmu://friend/add?token=system' }); pending.resolve(); });
+    await act(async () => changeAppState('background'));
+    expect(scannerListeners).toContain(listener);
+    await act(async () => { listener({ data: 'qingmu://friend/add?token=system' }); listener({ data: 'qingmu://friend/add?token=system' }); pending.resolve(); });
     expect(api.claimFriendQr).not.toHaveBeenCalled();
     expect(tree.root.findByType('ActionSheet' as any).props.title).toBe('掃描好友 QR');
     await act(async () => changeAppState('active'));
     expect(api.claimFriendQr).toHaveBeenCalledTimes(1);
+    expect(scannerListeners).not.toContain(listener);
     expect(tree.root.findByType('ScoreProfile' as any).props.profile.memberId).toBe('friend');
   });
   it('accepts an event delivered after the scanner activity has already resumed', async () => {
@@ -377,10 +381,14 @@ describe('Android system friend scanner', () => {
     const pending = deferred<void>(); launchScanner.mockReturnValue(pending.promise);
     const tree = await openScanner();
     const staleListener = scannerListeners.at(-1)!;
-    await act(async () => { changeAppState('background'); pending.reject(Error('Barcode scanning was cancelled')); });
+    await act(async () => changeAppState('background'));
+    expect(scannerListeners).toContain(staleListener);
+    await act(async () => { pending.reject(Error('Barcode scanning was cancelled')); await Promise.resolve(); });
     await act(async () => changeAppState('active'));
     expect(tree.root.findByType('ActionSheet' as any).props.title).toBe('掃描好友 QR');
     expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '開啟相機掃描好友碼')).toHaveLength(1);
+    expect(api.claimFriendQr).not.toHaveBeenCalled();
+    expect(scannerListeners).not.toContain(staleListener);
     await act(async () => staleListener({ data: 'qingmu://friend/add?token=stale' }));
     expect(api.claimFriendQr).not.toHaveBeenCalled();
   });
@@ -397,17 +405,18 @@ describe('Android system friend scanner', () => {
     expect(alert).toContain('請稍後再試');
     expect(alert).not.toContain('private network detail');
   });
-  it.each(['dismiss', 'account', 'blur'])('ignores a late native event after %s', async (change) => {
+  it.each(['dismiss', 'account', 'logout', 'blur'])('ignores a late native event after %s', async (change) => {
     const pending = deferred<void>(); launchScanner.mockReturnValue(pending.promise);
     const tree = await openScanner();
     const listener = scannerListeners.at(-1)!;
-    const originalSession = auth.session;
+    const originalSession = auth.session; const originalStatus = auth.status;
     try {
       if (change === 'dismiss') await act(async () => tree.root.findByType('ActionSheet' as any).props.onClose());
       else if (change === 'account') { auth.session = { memberId: 'other', sessionToken: 'other' }; await act(async () => tree.update(React.createElement(ProgressScreen))); }
+      else if (change === 'logout') { auth.status = 'signed-out'; auth.session = null; await act(async () => tree.update(React.createElement(ProgressScreen))); }
       else { nav.focused = false; await act(async () => tree.update(React.createElement(ProgressScreen))); }
       await act(async () => { listener({ data: 'qingmu://friend/add?token=late' }); pending.resolve(); });
       expect(api.claimFriendQr).not.toHaveBeenCalled();
-    } finally { auth.session = originalSession; }
+    } finally { auth.status = originalStatus; auth.session = originalSession; }
   });
 });

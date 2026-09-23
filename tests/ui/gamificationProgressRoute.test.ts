@@ -44,7 +44,7 @@ describe('progress gamification route', () => {
   it('opens the existing target picker from the profile callback and carries its selected reward through setTarget', async () => {
     const current = { rewardId: 'reward-1', name: '飲料', costPoints: 2, active: true, revision: 1 };
     const alternative = { rewardId: 'reward-2', name: '電影票', costPoints: 5, active: true, revision: 1 };
-    api.getProfile.mockResolvedValueOnce({ memberId: 'self', displayName: '自己', earnedTotal: 4, band: 2, months: [], private: { redeemableBalance: 3, targetReward: current }, permissions: { canEditTarget: true, canRedeem: false } });
+    api.getProfile.mockResolvedValueOnce({ memberId: 'self', displayName: '自己', earnedTotal: 4, band: 2, months: [], private: { redeemableBalance: 3, targetReward: current }, permissions: { canEditTarget: true, canRedeem: false } } as any);
     api.getRewards.mockResolvedValueOnce([current, alternative]).mockResolvedValueOnce([current, alternative]);
     api.setRewardTarget.mockClear(); api.redeem.mockClear();
     let renderer!: TestRenderer.ReactTestRenderer;

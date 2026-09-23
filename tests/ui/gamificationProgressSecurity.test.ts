@@ -116,7 +116,7 @@ describe('progress protected response lifecycle', () => {
   it('keeps the same-account profile and secondary blocks stable until refresh fails', async () => {
     const profile = { memberId: 'self', displayName: '自己', earnedTotal: 1, band: null, months: [], private: { redeemableBalance: 1, targetReward: { rewardId: 'goal', name: '電影票', costPoints: 10, active: true, revision: 1 } }, permissions: { canEditTarget: true, canRedeem: false } };
     let resolveRefresh!: (value: unknown) => void; let resolveForeground!: (value: unknown) => void; let rejectRefresh!: (reason: unknown) => void;
-    let resolveRewards!: (value: unknown[]) => void; let resolveNominations!: (value: unknown) => void; let resolveCommunity!: (value: unknown) => void;
+    let resolveRewards!: (value: any) => void; let resolveNominations!: (value: any) => void; let resolveCommunity!: (value: any) => void;
     let rejectRewards!: (reason: unknown) => void; let rejectNominations!: (reason: unknown) => void; let rejectCommunity!: (reason: unknown) => void;
     api.getProfile.mockReset().mockResolvedValueOnce(profile).mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; })).mockImplementationOnce(() => new Promise((resolve) => { resolveForeground = resolve; })).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRefresh = reject; }));
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -167,7 +167,9 @@ describe('progress protected response lifecycle', () => {
     api.getNominations.mockImplementationOnce(() => new Promise((resolve) => { resolveNominations = resolve; }));
     api.getCommunityProgress.mockImplementationOnce(() => new Promise((resolve) => { resolveCommunity = resolve; }));
     await act(async () => { appListeners.at(-1)?.('background'); await Promise.resolve(); });
-    expect(renderer.root.findAll((node) => String(node.type) === 'ScoreProfile')).toHaveLength(0);
+    expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(2);
+    expectSecondary('新獎品', '新提案', '羅馬書');
+    expect(renderer.root.findByProps({ testID: 'progress-inactive-cover' })).toBeDefined();
     await act(async () => { appListeners.at(-1)?.('active'); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledTimes(3);
     expect(api.getRewards).toHaveBeenCalledTimes(refreshedCalls.rewards + 1);
@@ -205,7 +207,7 @@ describe('progress protected response lifecycle', () => {
   it('clears member A on account change and never applies A response after member B signs in', async () => {
     auth.status = 'signed-in'; auth.session = { memberId: 'member-a', sessionToken: 'token-a' };
     let resolveRefreshA!: (value: unknown) => void;
-    let resolveRewardsA!: (value: unknown[]) => void; let resolveNominationsA!: (value: unknown) => void; let resolveCommunityA!: (value: unknown) => void;
+    let resolveRewardsA!: (value: any) => void; let resolveNominationsA!: (value: any) => void; let resolveCommunityA!: (value: any) => void;
     const profileA = { memberId: 'member-a', displayName: 'A私人資料', earnedTotal: 1, band: null, months: [], private: { redeemableBalance: 1, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } };
     const profileB = { memberId: 'member-b', displayName: 'B私人資料', earnedTotal: 2, band: null, months: [], private: { redeemableBalance: 2, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } };
     api.getProfile.mockReset().mockResolvedValueOnce(profileA).mockImplementationOnce(() => new Promise((resolve) => { resolveRefreshA = resolve; })).mockResolvedValueOnce(profileB);
