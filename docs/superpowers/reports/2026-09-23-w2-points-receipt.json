@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "owner": "/root/w2_points",
+  "userVisibleTaskId": "01a0ce94-61d3-7552-b87e-6d9813a7d9b5",
+  "scope": [
+    "R06",
+    "R07",
+    "R08"
+  ],
+  "repository": "C:/dev/apps/qingmu-bible",
+  "worktree": "C:/dev/machine/worktrees/qm-c23-w2",
+  "branch": "codex/qm-compact-points",
+  "base": {
+    "originMainVerifiedAtUtc": "2026-09-23T14:08:01Z",
+    "originMainSha": "f561b83d8719d12ee55d2a1c5466a9cbbcab3074",
+    "baseTree": "c33b3ac8252a1ed905cb8486b1ea567ec003b63f"
+  },
+  "candidate": {
+    "commit": "a4df134ac128dafa4f0fd256a6c6e0589eaf6f40",
+    "tree": "d7570fdfed85c811e32a9ea0da378bc2c1f03295",
+    "commitTime": "2026-09-23T14:43:04Z",
+    "diffStat": "12 files changed, 365 insertions(+), 55 deletions(-)"
+  },
+  "changedFiles": [
+    "app/(tabs)/progress.tsx",
+    "server/gamification.ts",
+    "src/domain/gamificationV1.ts",
+    "src/services/gamificationApiClient.ts",
+    "src/ui/gamification/RewardGoalCard.tsx",
+    "src/ui/gamification/ScoreProfileChart.tsx",
+    "tests/server/gamificationV1.test.ts",
+    "tests/server/scoreProfileChart.test.ts",
+    "tests/ui/gamificationApiClient.test.ts",
+    "tests/ui/gamificationProgressSecurity.test.ts",
+    "tests/ui/rewardGoalCard.test.ts",
+    "tests/ui/scoreProfileChart.test.ts"
+  ],
+  "constraints": {
+    "readerLayoutUntouched": true,
+    "newDependencies": false,
+    "phoneInputPerformed": false,
+    "releaseOrBuildPerformed": false,
+    "liveBackendCutoverPerformed": false,
+    "githubPublicationPerformed": false,
+    "originalCheckoutWrittenByW2": false
+  },
+  "focus": {
+    "command": "npm exec -- vitest run tests/server/scoreProfileChart.test.ts tests/ui/scoreProfileChart.test.ts tests/ui/gamificationApiClient.test.ts tests/ui/gamificationProgressRoute.test.ts tests/ui/gamificationProgressSecurity.test.ts tests/ui/rewardGoalCard.test.ts tests/server/gamificationV1.test.ts",
+    "result": "PASS",
+    "testFilesPassed": 7,
+    "testsPassed": 75,
+    "testsFailed": 0,
+    "candidateCommit": "a4df134ac128dafa4f0fd256a6c6e0589eaf6f40",
+    "candidateTree": "d7570fdfed85c811e32a9ea0da378bc2c1f03295",
+    "startedAtUtc": "2026-09-23T14:43:13Z",
+    "node": "v24.16.0",
+    "npm": "11.13.0",
+    "packageLockSha256": "82FBBDF6F0CBFC9A888C22FC7D2E86B9F89A27C8ECD62CA7784BB4FDDAD8C352",
+    "notes": "React test-renderer deprecation and act-environment warnings were emitted; no test failures."
+  },
+  "proofHistory": [
+    {
+      "atUtc": "2026-09-23T14:32:36Z",
+      "pack": "full W2 FOCUS",
+      "result": "74/74 PASS",
+      "candidateBinding": "uncommitted worktree diff based on f561b83; tree SHA was not captured then, so this proof is historical and not reusable against final commit"
+    },
+    {
+      "atUtc": "2026-09-23T14:34:17Z",
+      "change": "strengthened August lifetime=5 oracle and explicit sign-out/member-switch stale-response case",
+      "packs": [
+        "tests/server/scoreProfileChart.test.ts: 6/6 PASS",
+        "tests/ui/gamificationProgressSecurity.test.ts -t clears member A: 1/1 PASS"
+      ]
+    },
+    {
+      "atUtc": "2026-09-23T14:36:52Z",
+      "change": "large, adjustable accessible cumulative-curve interaction",
+      "pack": "tests/ui/scoreProfileChart.test.ts: 11/11 PASS"
+    },
+    {
+      "atUtc": "2026-09-23T14:37:28Z",
+      "change": "wallet-unchanged assertion around target selection",
+      "pack": "tests/server/gamificationV1.test.ts: 8/8 PASS"
+    },
+    {
+      "atUtc": "2026-09-23T14:40:26Z",
+      "change": "future-dated awards excluded from calendar completed-day display",
+      "pack": "tests/ui/scoreProfileChart.test.ts: 12/12 PASS"
+    },
+    {
+      "atUtc": "2026-09-23T14:43:13Z",
+      "change": "final exact-commit verification",
+      "pack": "full W2 FOCUS: 75/75 PASS",
+      "candidateCommit": "a4df134ac128dafa4f0fd256a6c6e0589eaf6f40",
+      "candidateTree": "d7570fdfed85c811e32a9ea0da378bc2c1f03295"
+    }
+  ],
+  "behavior": {
+    "R06": "A same-member profile snapshot survives normal Points blur/refocus while its background refresh runs; busy/loading stays hidden for that refresh. Sign-out/account change clears the profile and invalidates generation/session ownership; deferred member A data cannot replace member B.",
+    "R07": "Server projects active daily_point_entitlements by task_date; opening/cumulative fields are optional/additive, carry-in uses the same active predicate as lifetime earned, redemptions leave earned history unchanged, and backfill/revoke move cumulative values from the affected task date. Trend is default; calendar remains selectable, with week/month/year/all and period navigation preserved. Future-dated awards are not counted as happened calendar days or included as future curve points.",
+    "R08": "Goal CTA opens the existing rewards picker only when a different active option exists (or the initial unset goal can be loaded). Retired rewards remain excluded; target mutation does not change wallet balance."
+  },
+  "compatibility": {
+    "oldClientNewServer": "Additive unknown JSON fields: the base client parser validates known required fields and projects them without rejecting unrecognized keys. No old-client change is required.",
+    "newClientOldServer": "New chart fields are optional. The client accepts old payloads; UI does not infer cumulative values and displays a clear unavailable state while preserving the calendar.",
+    "backendDependency": "server/gamification.ts now emits the chart fields. The pinned live backend has not changed; release/integration must carry this server commit through a separate pinned release worktree and approved cutover before the cumulative curve is available from the live API."
+  },
+  "nativeEvidence": {
+    "status": "NOT RUN / BLOCKED BY SINGLE OPERATOR LEASE",
+    "detail": "No phone input or Reader↔Points video captured by W2. CEO retains the device lease; final RC needs operator-owned D09 video."
+  },
+  "report": {
+    "receiptPath": "C:\\dev\\machine\\worktrees\\qm-c23-w2\\.handoff\\compact-20260923\\w2-points-receipt.json",
+    "recordedAtUtc": "2026-09-23T14:43:50Z",
+    "developmentStartAtUtc": "2026-09-23T14:08:01Z"
+  }
+}

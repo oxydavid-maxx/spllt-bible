@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-09-23T14:18:05Z",
+  "lane": "W0 distribution-readiness",
+  "ownerAgent": "/root/w0_distribution",
+  "ceoSessionId": "01a0ce94-61d3-7552-b87e-6d9813a7d9b5",
+  "chairSessionId": "01a0c7f4-a741-75c0-8c59-e94a9e632137",
+  "requestedModel": "gpt-6-luna/max",
+  "effectiveModel": "NOT_VERIFIABLE_FROM_CURRENT_HOST",
+  "opaqueChildThreadId": "NOT_EXPOSED",
+  "worktree": {
+    "path": "C:/dev/machine/worktrees/qm-c23-w0",
+    "branch": "codex/qm-c23-w0",
+    "head": "f561b83d8719d12ee55d2a1c5466a9cbbcab3074",
+    "freshOriginMain": "f561b83d8719d12ee55d2a1c5466a9cbbcab3074"
+  },
+  "app": {
+    "packageName": "org.qingmu.youth",
+    "versionName": "0.5.9",
+    "versionCode": 30,
+    "configPath": "app.json"
+  },
+  "lastGithubRelease": {
+    "status": "OWNER_BETA_PUBLISHED_AND_READBACK_VERIFIED",
+    "tag": "android-beta-2026-09-23-0.5.9",
+    "url": "https://github.com/oxydavid-maxx/spllt-bible/releases/tag/android-beta-2026-09-23-0.5.9",
+    "sourceCommit": "ff125ca35ab67aa5a9cb572455409a79a9cf2349",
+    "apkSha256": "3c50cbfb7e6cd9cb82c90612d1e6a3b777abc074ff3d5d0b6355fcc19358fba7",
+    "apkBytes": 163664657,
+    "localArtifactHashMatched": true,
+    "signingConfig": "owner-controlled-release-keystore",
+    "localApkCertificateSha256": "NOT_VERIFIED_APKSIGNER_REQUIRES_JAVA",
+    "playUploadCertificate": "NOT_VERIFIED_CONSOLE_UNAVAILABLE"
+  },
+  "play": {
+    "officialConsoleUrl": "https://play.google.com/console/signup",
+    "observedState": "current signed-in browser identity is prompted to create a Play developer account",
+    "currentAccountDeveloperConsoleAccess": false,
+    "publicStoreLookupUrl": "https://play.google.com/store/apps/details?id=org.qingmu.youth",
+    "publicStoreLookup": "NOT_FOUND",
+    "packageRecordAcrossOtherAccounts": "UNVERIFIED",
+    "accessibleTracks": [],
+    "testerAccess": "NOT_VERIFIABLE",
+    "internalTestingOptInUrl": "NOT_GENERATED",
+    "internalAppSharingUrl": "NOT_GENERATED",
+    "publisherApiAutomationFoundInInspectedRepo": false,
+    "publisherApiEnvironmentVariableNamesFound": [],
+    "aabBuildSupported": true,
+    "aabTask": "bundleRelease",
+    "aabOutput": "android/app/build/outputs/bundle/release/app-release.aab",
+    "internalAppSharingAcceptsAabOrApk": true,
+    "newPlayAppUsesAabAndPlayAppSigning": true
+  },
+  "phone": {
+    "command": "adb devices -l",
+    "usbSerial": "67060DLKX001K0",
+    "model": "Pixel_11_Pro",
+    "state": "device",
+    "uiInteraction": "none",
+    "oldTcpSerialUsed": false
+  },
+  "baseline": {
+    "originalCheckoutHead": "7fba578",
+    "dirtyBaselineManifest": "C:/dev/apps/qingmu-bible/.handoff/compact-20260923/preexisting-dirty-files.json",
+    "dirtyFileChecks": [
+      {
+        "path": "package-lock.json",
+        "expectedSha256": "c5c906fc8e232798bc49cc6fafad35acc409f4d247ca6876f63078404b186a67",
+        "observedSha256": "82fbbdf6f0cbfc9a888c22fc7d2e86b9f89a27c8ecd62ca7784bb4fddad8c352",
+        "matches": false
+      },
+      {
+        "path": "server/contentRegistry.ts",
+        "expectedSha256": "d5de9827223072dc9648b5f5e42e79ac620b776888b925e0069da475775595a8",
+        "observedSha256": "e464a071bb6eca562121569a384a6d8727c5d8ff7f52711500589b4f615f3cdb",
+        "matches": false
+      },
+      {
+        "path": "tests/server/chapterAudioCapability.test.ts",
+        "expectedSha256": "2d6797d23450def08227e10fafd7cf7694b6aa56df7109255e2c6a2ac0a16b74",
+        "observedSha256": "2d6797d23450def08227e10fafd7cf7694b6aa56df7109255e2c6a2ac0a16b74",
+        "matches": true
+      },
+      {
+        "path": "tests/server/reminderWorker.test.ts",
+        "expectedSha256": "bd8477ba4f6a38868a079ad8eeaeaf249db6d4b930537ba5bd1c758bf5d00938",
+        "observedSha256": "bd8477ba4f6a38868a079ad8eeaeaf249db6d4b930537ba5bd1c758bf5d00938",
+        "matches": true
+      }
+    ],
+    "allDirtyFileHashesMatch": false,
+    "priorBackendReceipt": {
+      "recordedAtUtc": "2026-09-23T08:14:59Z",
+      "pinCommit": "79ecbe89e8b5be8e856342e0b5fad8f65896e844",
+      "healthStatus": "ok",
+      "freshRecheck": false
+    }
+  },
+  "safety": {
+    "secretsIncluded": false,
+    "accountCreated": false,
+    "releaseOrUploadPerformed": false,
+    "deviceScreenOrInputUsed": false
+  }
+}
