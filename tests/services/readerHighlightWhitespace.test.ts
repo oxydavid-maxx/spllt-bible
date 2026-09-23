@@ -4,57 +4,72 @@ import { describe, expect, it } from 'vitest';
 import { transformBibleHtml } from '@youversion/platform-core';
 
 /**
- * Owner-reported bug (Psalm 98, 和合本, real Pixel): the playing-verse / user-highlight grey
- * background painted the blank indent before a poetry line's text, and left a small empty grey
- * sliver with no text on another poetry line. The SDK paints one CSS background-color directly on
- * each `.yv-v[v]` wrapper element (see BibleTextHtml's highlight effect); this suite proves the DOM
- * that `transformBibleHtml` builds for a Psalm 98:4-5-shaped poetry passage no longer produces a
- * `.yv-v[v]` wrapper that is empty/whitespace-only, and no wrapper that begins or ends with
- * whitespace instead of the verse's actual glyphs - on both a prose line and indented q1/q2 lines.
+ * Owner-reported bug (Psalm 98, 和合本, real Pixel, APK 0.5.9 @ 3307415 / ec3b875): while verse 1
+ * played, verse 1's three lines highlighted correctly, but a thin grey sliver still painted the
+ * left edge of the line that starts verse 2 - a highlighted empty/whitespace piece of the playing
+ * verse at the start of the next verse's line.
+ *
+ * The first fix attempt used a hand-written synthetic fixture that did not reproduce the real
+ * passage structure and missed this exact case. This suite instead uses the REAL Psalm 98 (和合本,
+ * versionId 46, the app's default translation) and 2 Timothy 3 (prose control) HTML exactly as the
+ * app's own backend (`server/officialBibleAdapter.ts`) serves it to the SDK's WebView reader over
+ * the `apiHost` override - fetched once through that same adapter/upstream path and saved as
+ * `tests/services/fixtures/real-psa98.json` / `real-2ti3.json` (plain public-domain scripture text,
+ * no secrets). The real markup's actual shape: every poetry (q1) line that continues or starts a
+ * verse re-declares its own bare `<span class="yv-v" v="N"></span>` marker, and a verse boundary
+ * that falls mid-line looks like:
+ *   <span class="yv-v" v="1"></span><span class="content">  </span><span class="yv-v" v="2">...
+ * i.e. a whitespace-only `content` SPAN (not a bare text node) sitting between the two markers -
+ * the "empty piece" that must never end up inside a painted `.yv-v[v]` wrapper.
+ *
+ * `transformBibleHtml` (`@youversion/platform-core`, same SDK function whose bundled copy in
+ * `@youversion/platform-react-ui` the WebView actually runs) builds the `.yv-v[v]` wrappers that
+ * the SDK's highlight effect (`BibleTextHtml`) paints with `background-color`. For every verse of
+ * both real passages, no painted wrapper may hold only whitespace.
  */
 const adapters = {
   parseHtml: (html: string) => parseHTML(`<html><body>${html}</body></html>`).document as unknown as Document,
   serializeHtml: (doc: Document) => (doc as unknown as { body: { innerHTML: string } }).body.innerHTML,
 };
 
-// Shaped like the app's own official-bible-adapter output (server/officialBibleAdapter.ts):
-// bare `<span class="yv-v" v="N"></span>` markers, `.p`/`.q1`/`.q2` USFM paragraph classes.
-// Verse 5's marker sits alone at the end of a q1 line (an "empty piece" between markers - no
-// sibling content at all), and its real text continues on a separate q2 line whose HTML begins
-// with literal indent whitespace (`&#160;&#160;`) before the first visible word.
-const psalm98Poetry = ''
-  + '<p class="p"><span class="yv-v" v="4"></span>Make a joyful noise to the LORD, all the earth;</p>'
-  + '<p class="q1">break forth into joyous song and sing praises!<span class="yv-v" v="5"></span></p>'
-  + '<p class="q2">&#160;&#160;with the lyre and the sound of melody!</p>';
-
-function renderedVerseWrappers(html: string, verse: string) {
-  const { html: transformed } = transformBibleHtml(html, adapters);
-  const doc = parseHTML(`<html><body>${transformed}</body></html>`).document;
-  return Array.from(doc.querySelectorAll(`.yv-v[v="${verse}"]`)) as unknown as Array<{ textContent: string | null }>;
+function transformFixture(path: string) {
+  const { content } = JSON.parse(readFileSync(path, 'utf8')) as { content: string };
+  const { html } = transformBibleHtml(content, adapters);
+  return parseHTML(`<html><body>${html}</body></html>`).document;
 }
 
-describe('reader highlight does not paint blank verse whitespace (Psalm 98 poetry shape)', () => {
-  it('never produces an empty or whitespace-only highlighted piece for the poetry verse', () => {
-    const wrappers = renderedVerseWrappers(psalm98Poetry, '5');
+function isBlank(text: string | null) {
+  return (text ?? '').replace(/[\s ]/g, '').length === 0;
+}
+
+describe('reader highlight does not paint blank verse whitespace (real Psalm 98 + 2 Timothy 3 HTML)', () => {
+  it('produces no empty/whitespace-only painted piece for any verse of the real Psalm 98 poetry passage', () => {
+    const doc = transformFixture('tests/services/fixtures/real-psa98.json');
+    const wrappers = Array.from(doc.querySelectorAll('.yv-v[v]')) as unknown as Array<{ textContent: string | null; getAttribute(name: string): string | null }>;
     expect(wrappers.length).toBeGreaterThan(0);
-    for (const wrapper of wrappers) {
-      expect((wrapper.textContent ?? '').trim().length).toBeGreaterThan(0);
-    }
+    const blank = wrappers.filter((el) => isBlank(el.textContent));
+    expect(blank.map((el) => ({ verse: el.getAttribute('v'), text: el.textContent }))).toEqual([]);
   });
 
-  it('never paints leading indent whitespace before the poetry verse\'s first glyph', () => {
-    const wrappers = renderedVerseWrappers(psalm98Poetry, '5');
-    for (const wrapper of wrappers) {
-      const text = wrapper.textContent ?? '';
-      expect(text).not.toMatch(/^[\s ]/);
-    }
-    expect(wrappers.map((w) => w.textContent).join('')).toContain('with the lyre and the sound of melody!');
+  it('reproduces the exact reported boundary: verse 1 highlights exactly its three real lines, never the line-4 whitespace before verse 2', () => {
+    const doc = transformFixture('tests/services/fixtures/real-psa98.json');
+    const verse1 = Array.from(doc.querySelectorAll('.yv-v[v="1"]')) as unknown as Array<{ textContent: string | null }>;
+    expect(verse1.map((el) => el.textContent)).toEqual([
+      '1 你們要向耶和華唱新歌！',
+      '因為他行過奇妙的事；',
+      '他的右手和聖臂施行救恩。',
+    ]);
+    const verse2First = (Array.from(doc.querySelectorAll('.yv-v[v="2"]'))[0] as unknown as { textContent: string | null }).textContent ?? '';
+    expect(verse2First).not.toMatch(/^[\s ]/);
+    expect(verse2First).toContain('耶和華發明了他的救恩，');
   });
 
-  it('still highlights the ordinary prose verse exactly as before (no regression on plain text)', () => {
-    const wrappers = renderedVerseWrappers(psalm98Poetry, '4');
-    expect(wrappers).toHaveLength(1);
-    expect(wrappers[0].textContent).toBe('Make a joyful noise to the LORD, all the earth;');
+  it('produces no empty/whitespace-only painted piece for any verse of the real 2 Timothy 3 prose passage', () => {
+    const doc = transformFixture('tests/services/fixtures/real-2ti3.json');
+    const wrappers = Array.from(doc.querySelectorAll('.yv-v[v]')) as unknown as Array<{ textContent: string | null; getAttribute(name: string): string | null }>;
+    expect(wrappers.length).toBeGreaterThan(0);
+    const blank = wrappers.filter((el) => isBlank(el.textContent));
+    expect(blank.map((el) => ({ verse: el.getAttribute('v'), text: el.textContent }))).toEqual([]);
   });
 
   it('is carried by tracked patches so a clean install reproduces it', () => {
