@@ -33,6 +33,7 @@ const READER_CANVAS_BRIDGE = `
   window.__qingmuReaderCanvasBridge = true;
   var gesture = null;
   var lastScroll = -Infinity;
+  var anchorScrollTop = null;
   var canvasSelector = '[data-slot="yv-bible-renderer"], [data-yv-sdk] > main';
   var interactiveSelector = 'button,a,input,textarea,select,option,label,[role="button"],[role="link"],[contenteditable="true"],[data-footnote],[data-slot*="footnote"],sup';
   function closest(target, selector) {
@@ -45,8 +46,8 @@ const READER_CANVAS_BRIDGE = `
   function isPlainCanvas(target) {
     return !!closest(target, canvasSelector) && !closest(target, interactiveSelector);
   }
-  function send(type) {
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, data: null }));
+  function send(type, data) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, data: data === undefined ? null : data }));
   }
   document.addEventListener('pointerdown', function (event) {
     gesture = event.isPrimary !== false && event.button === 0 && isPlainCanvas(event.target) && !hasSelection()
@@ -66,9 +67,18 @@ const READER_CANVAS_BRIDGE = `
   }, true);
   document.addEventListener('scroll', function (event) {
     gesture = null;
-    if (!closest(event.target, canvasSelector) || Date.now() - lastScroll < 150) return;
+    if (!closest(event.target, canvasSelector)) return;
+    var target = event.target;
+    var scrollTop = target && typeof target.scrollTop === 'number'
+      ? target.scrollTop
+      : document.scrollingElement && document.scrollingElement.scrollTop;
+    if (typeof scrollTop !== 'number') return;
+    if (anchorScrollTop === null) { anchorScrollTop = scrollTop; return; }
+    var deltaY = scrollTop - anchorScrollTop;
+    if (Math.abs(deltaY) < 12 || Date.now() - lastScroll < 100) return;
+    anchorScrollTop = scrollTop;
     lastScroll = Date.now();
-    send('qingmu.reader.canvas.scroll');
+    send('qingmu.reader.canvas.scroll', { direction: deltaY > 0 ? 'down' : 'up', deltaY: deltaY });
   }, true);
 })();
 true;
@@ -98,8 +108,24 @@ true;
 export function readReaderUiMessage(data: string): string | null {
   try {
     const message = JSON.parse(data);
-    return message?.data === null && [READER_SETTINGS_MESSAGE, READER_CANVAS_TAP_MESSAGE, READER_CANVAS_SCROLL_MESSAGE].includes(message.type)
-      ? message.type : null;
+    if (message?.type === READER_CANVAS_SCROLL_MESSAGE) {
+      const scroll = message.data;
+      return scroll && (scroll.direction === 'up' || scroll.direction === 'down') && Number.isFinite(scroll.deltaY) && Math.abs(scroll.deltaY) >= 12
+        && (scroll.direction === 'down' ? scroll.deltaY > 0 : scroll.deltaY < 0)
+        ? message.type : null;
+    }
+    return message?.data === null && [READER_SETTINGS_MESSAGE, READER_CANVAS_TAP_MESSAGE].includes(message.type) ? message.type : null;
+  } catch { return null; }
+}
+
+export function readReaderCanvasScrollEvent(data: string): { direction: 'up' | 'down'; deltaY: number } | null {
+  try {
+    const message = JSON.parse(data);
+    const scroll = message?.data;
+    if (message?.type !== READER_CANVAS_SCROLL_MESSAGE || (scroll?.direction !== 'up' && scroll?.direction !== 'down')
+      || !Number.isFinite(scroll.deltaY) || Math.abs(scroll.deltaY) < 12
+      || (scroll.direction === 'down' && scroll.deltaY <= 0) || (scroll.direction === 'up' && scroll.deltaY >= 0)) return null;
+    return { direction: scroll.direction, deltaY: scroll.deltaY };
   } catch { return null; }
 }
 

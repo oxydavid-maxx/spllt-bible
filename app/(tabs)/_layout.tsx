@@ -19,7 +19,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="progress" options={{ title: '積分', tabBarAccessibilityLabel: '積分', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="chart-line" color={color} size={size} /> }} />
       <Tabs.Screen name="announcements" options={{ title: '公告', headerShown: false, tabBarAccessibilityLabel: '公告', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="bullhorn-outline" color={color} size={size} /> }} />
       <Tabs.Screen name="journal" options={{ title: '日記', headerShown: false, tabBarAccessibilityLabel: '靈修日記', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="notebook-outline" color={color} size={size} /> }} />
-      <Tabs.Screen name="reader" options={{ href: null, title: '讀經閱讀器', headerShown: false, tabBarStyle: { display: 'none' }, tabBarAccessibilityLabel: '讀經閱讀器' }} />
+      <Tabs.Screen name="reader" options={{ href: null, title: '讀經閱讀器', headerShown: false, tabBarAccessibilityLabel: '讀經閱讀器' }} />
       <Tabs.Screen name="groups" options={{ href: null, title: '讀經', headerShown: false }} />
     </Tabs>
   );

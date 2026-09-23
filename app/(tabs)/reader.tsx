@@ -1,7 +1,7 @@
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Alert, Pressable, Text } from 'react-native';
+import { Alert, Linking, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { buildFixtureModels } from '../../src/ui/routes';
 import { YouVersionReader } from '../../src/ui/YouVersionReader';
@@ -15,16 +15,23 @@ import type { ReaderPosition } from '../../src/storage/readerPosition';
 import { fixtureProfile } from '../../src/ui/fixtureProfile';
 import type { CompletionRecord } from '../../src/domain/completion';
 import { getYouVersionContentMetadata, getYouVersionVersionOptions } from '../../src/config/youVersionContent';
+import { buildYouVersionChapterUrl } from '../../src/ui/youVersionReaderConfig';
 import { createNativeReaderPreferencesStore } from '../../src/services/nativeReaderPreferences';
 import { createReaderAutoplayPreferencesStore } from '../../src/services/readerAutoplayPreferences';
 import type { ReaderPreferencesPatch } from '../../src/services/readerPreferences';
 import { useReaderPreferences } from '../../src/ui/useReaderPreferences';
-import { useReadingSession } from '../../src/ui/readingSession';
+import { setSelectedReadingDate, useReadingSession } from '../../src/ui/readingSession';
 import { createApiClient } from '../../src/services/apiClient';
-import { useAuthSnapshot } from '../../src/services/authSession';
+import { isCurrentAuthSession, useAuthSnapshot } from '../../src/services/authSession';
 import * as SecureStore from 'expo-secure-store';
 import { createReminderScheduler } from '../../src/services/reminderScheduler';
 import { syncReadingReminderForCompletion } from '../../src/services/reminderCompletion';
+import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
+import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
+import { TodayAuthGate } from '../../src/ui/TodayAuthGate';
+import { UpdateBanner } from '../../src/ui/UpdateBanner';
+import { runtimeConfig } from '../../src/config/runtime';
+import { useOutboxRecovery } from '../../src/services/useOutboxRecovery';
 
 export default function ReaderScreen() {
   const chrome = useReaderChrome();
@@ -206,6 +213,7 @@ export default function ReaderScreen() {
       return { memberId: initialMemberId, planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
     }
   });
+  const completionBusy = useRef(false);
   useFocusEffect(useCallback(() => {
     let active = true;
     if (!memberId) {
@@ -236,13 +244,18 @@ export default function ReaderScreen() {
     const hasSavedFreePosition = saved?.mode === 'FREE_BROWSE'
       && typeof saved.book === 'string' && saved.book.trim().length > 0
       && typeof saved.chapter === 'string' && saved.chapter.trim().length > 0;
+    const savedAssignedIndex = saved?.mode === 'ASSIGNED'
+      ? references.findIndex(reference => reference === saved.reference)
+      : -1;
     freePositionRef.current = hasSavedFreePosition
       ? { book: saved.book, chapter: saved.chapter }
       : null;
-    setSelection(hasSavedFreePosition
-      ? { source: 'FREE', book: saved.book, chapter: saved.chapter }
-      : initialSelection());
-  }, [memberId, planId, selectedDate, owner]);
+    setSelection(savedAssignedIndex >= 0
+      ? { source: 'ASSIGNED', index: savedAssignedIndex }
+      : hasSavedFreePosition
+        ? { source: 'FREE', book: saved.book, chapter: saved.chapter }
+        : initialSelection());
+  }, [memberId, planId, selectedDate, owner, references.join('|')]);
   useEffect(() => {
     if (!memberId) {
       clientRef.current = null;
@@ -271,14 +284,57 @@ export default function ReaderScreen() {
     });
     return () => { active = false; };
   }, [authToken, memberId, planId, selectedDate]);
-  const toggleCompletion = async () => {
+  useOutboxRecovery({
+    memberId,
+    sessionToken: session?.sessionToken ?? null,
+    planId,
+    taskDate: selectedDate,
+    getRepository: () => repositoryRef.current,
+    getClient: () => clientRef.current,
+    getSession: () => session,
+    isCurrentAuthSession,
+    onRecovered: () => {
+      const repository = repositoryRef.current;
+      if (!repository || !memberId || !isCurrentAuthSession(session)) return;
+      const recovered = repository.get({ memberId, planId, taskDate: selectedDate });
+      if (!recovered) return;
+      setRecord(recovered);
+      if (recovered.syncStatus === 'CONFIRMED') setSyncError(false);
+      else if (recovered.syncStatus === 'SAVE_FAILED') setSyncError(true);
+    },
+  });
+  const saveCompletionStatus = async (desiredStatus: 'COMPLETED' | 'NOT_COMPLETED') => {
     const repository = repositoryRef.current;
-    if (!repository || !day || !memberId) return;
-    const current = repository.get({ memberId, planId, taskDate: selectedDate }) ?? record;
-    const desiredStatus = current.status === 'COMPLETED' ? 'NOT_COMPLETED' : 'COMPLETED';
+    if (!repository || !memberId || !ownsReader() || completionBusy.current) return;
+    const identity = { memberId, planId, taskDate: selectedDate };
+    const current = repository.get(identity) ?? record;
+    if (current.syncStatus === 'PENDING_SAVE') return;
+    if (current.syncStatus !== 'SAVE_FAILED' && desiredStatus === 'COMPLETED' && (!day || !isWithinCompletionWindow(selectedDate, taipeiDate()))) return;
+    if (current.syncStatus !== 'SAVE_FAILED' && desiredStatus === 'COMPLETED' && current.status === 'COMPLETED') return;
+    if (current.syncStatus !== 'SAVE_FAILED' && desiredStatus === 'NOT_COMPLETED' && current.status !== 'COMPLETED') return;
+    completionBusy.current = true;
+    setSyncError(false);
+    if (current.syncStatus === 'SAVE_FAILED') {
+      try {
+        const results = await repository.flush((command) => clientRef.current!.saveCompletion(command), memberId);
+        if (!ownsReader()) return;
+        const recovered = repository.get(identity);
+        if (recovered) {
+          setRecord(recovered);
+          setSyncError(recovered.syncStatus !== 'CONFIRMED');
+        } else if (results.at(-1)?.ok === false) setSyncError(true);
+      } catch {
+        if (ownsReader()) {
+          const failed = repository.get(identity);
+          if (failed) setRecord(failed);
+          setSyncError(true);
+        }
+      } finally { completionBusy.current = false; }
+      return;
+    }
     const next = repository.saveCompletion({
-      memberId: record.memberId,
-      planId: record.planId,
+      memberId,
+      planId,
       taskDate: selectedDate,
       desiredStatus,
       operationId: randomUUID(),
@@ -287,31 +343,70 @@ export default function ReaderScreen() {
     });
     void syncReadingReminderForCompletion({ memberId, planId, taskDate: selectedDate, status: desiredStatus, scheduler: reminderScheduler, store: SecureStore });
     setRecord(next);
-    setSyncError(false);
-    if (clientRef.current) {
-      try {
+    try {
+      if (clientRef.current) {
         const results = await repository.flush((command) => clientRef.current!.saveCompletion(command), memberId);
-        const confirmed = repository.get(next);
-        if (confirmed) {
-          setRecord(confirmed);
-          setSyncError(confirmed.syncStatus !== 'CONFIRMED');
-        } else {
-          const last = results.at(-1);
-          if (last && !last.ok) setSyncError(true);
+        if (ownsReader()) {
+          const confirmed = repository.get(next);
+          if (confirmed) {
+            setRecord(confirmed);
+            setSyncError(confirmed.syncStatus !== 'CONFIRMED');
+          } else if (results.at(-1)?.ok === false) setSyncError(true);
         }
-      } catch {
+      }
+    } catch {
+      if (ownsReader()) {
+        const failed = repository.get(identity);
+        if (failed) setRecord(failed);
         setSyncError(true);
       }
     }
+    finally { completionBusy.current = false; }
   };
+  const requestUndo = () => {
+    const dateLabel = selectedDate === taipeiDate() ? '今天' : formatReadingDateLabel(selectedDate);
+    Alert.alert(`確定撤銷${dateLabel}的完成？`, '這一天的積分會一併撤回。', [
+      { text: '取消', style: 'cancel' },
+      { text: '撤銷', style: 'destructive', onPress: () => { void saveCompletionStatus('NOT_COMPLETED'); } },
+    ]);
+  };
+  const onComplete = () => saveCompletionStatus('COMPLETED');
   const selectAssigned = (index: number) => {
     if (!ownsReader()) return;
     freePositionRef.current = null;
     setSelection({ source: 'ASSIGNED', index });
+    const reference = references[index];
+    const [book, chapter = ''] = reference?.split('.') ?? [];
+    if (memberId && reference && book && chapter) {
+      saveReaderPosition({ memberId, planId, taskDate: selectedDate, versionId: selectedVersionId, book, chapter, reference, mode: 'ASSIGNED', updatedAt: new Date().toISOString() });
+    }
+  };
+  const visibleRecord = record.memberId === (memberId ?? 'signed-out') && record.planId === planId && record.taskDate === selectedDate
+    ? record
+    : { memberId: memberId ?? 'signed-out', planId, taskDate: selectedDate, status: 'UNREPORTED' as const, revision: 0, syncStatus: 'CONFIRMED' as const };
+  const completed = visibleRecord.status === 'COMPLETED';
+  const completionPending = visibleRecord.syncStatus === 'PENDING_SAVE';
+  const completionFailed = visibleRecord.syncStatus === 'SAVE_FAILED';
+  const withinCompletionWindow = isWithinCompletionWindow(selectedDate, taipeiDate());
+  const completionLabel = !memberId ? '登入後完成' : !day ? '無排定讀經' : !withinCompletionWindow ? '超過補登期限' : '完成讀經';
+  const completionDisabled = completionPending || (!completed && !completionFailed && (!memberId || !day || !withinCompletionWindow));
+  const youVersionChapterUrl = buildYouVersionChapterUrl(selectedVersionId, currentUsfm);
+  const openYouVersionChapter = () => {
+    if (!youVersionChapterUrl || !ownsReader()) return;
+    const reference = selection.source === 'ASSIGNED' ? references[assignedIndex] ?? currentUsfm : currentUsfm;
+    if (memberId && currentBook && currentChapter) {
+      saveReaderPosition({
+        memberId, planId, taskDate: selectedDate, versionId: selectedVersionId,
+        book: currentBook, chapter: currentChapter, reference,
+        mode: selection.source === 'ASSIGNED' ? 'ASSIGNED' : 'FREE_BROWSE',
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    void Linking.openURL(youVersionChapterUrl).catch(() => Alert.alert('YouVersion', '目前無法開啟本章，請稍後再試。'));
   };
   if (!preferences.ready || !autoplaySnapshot.ready || selectionOwner.current !== owner) return (
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#fff', paddingHorizontal: 16 }}>
-      <Pressable accessibilityRole="button" accessibilityLabel="返回今日" onPress={() => router.replace('/today')} style={{ minWidth: 48, minHeight: 48, justifyContent: 'center' }}><Text>返回今日</Text></Pressable>
+      <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}><AccountEntryButton /></View>
       <Text accessibilityLiveRegion="polite">正在載入閱讀設定…</Text>
     </SafeAreaView>
   );
@@ -336,7 +431,7 @@ export default function ReaderScreen() {
       allowTechnicalProbe={process.env.EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE === 'true'}
       fullscreen
       onCanvasTap={chrome.toggleTools}
-      onCanvasScroll={chrome.hideTools}
+      onCanvasScroll={chrome.handleCanvasScroll}
       // Held whether or not the journal is open: the panel covers the reader, so a verse is always
       // copied with it closed. The panel offers it on the next open rather than inserting it.
       onVerseCopied={(quote) => setPendingQuote(quote)}
@@ -350,9 +445,26 @@ export default function ReaderScreen() {
           versionId={selectedVersionId}
           references={references}
           onSelectReference={selectAssigned}
+          selectedDate={selectedDate}
+          previousDate={previousDate}
+          nextDate={nextDate}
+          onSelectDate={setSelectedReadingDate}
+          completed={completed}
+          completionDisabled={completionDisabled}
+          completionPending={completionPending}
+          completionFailed={completionFailed}
+          completionLabel={completionLabel}
+          onComplete={onComplete}
+          onUndo={requestUndo}
+          noPlanMessage={!day ? `這一天沒有排定讀經。${formatReadingDateLabel(selectedDate)}仍可自由閱讀。` : undefined}
+          statusMessage={syncError ? '同步遇到問題，完成狀態已保留；連線後會重試。' : undefined}
+          canOpenYouVersion={youVersionChapterUrl !== null}
+          onOpenYouVersion={openYouVersionChapter}
           versionOptions={versionOptions}
           onSelectVersion={chooseVersion}
-          onExit={() => router.replace('/today')}
+          accountEntry={<AccountEntryButton />}
+          loginGate={auth.status === 'signed-in' ? undefined : <TodayAuthGate baseUrl={runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl} />}
+          updateBanner={<UpdateBanner />}
           narrationSpeed={narrationSpeed}
           onSelectNarrationSpeed={(speed) => { if (isReaderSpeed(speed)) { setNarrationSpeed(speed); void speedStore.update(memberId, speed); } }}
           journal={<JournalPanel

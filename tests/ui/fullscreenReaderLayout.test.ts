@@ -8,6 +8,7 @@ const native = vi.hoisted(() => ({
   audioMounts: 0, audioUnmounts: 0,
   setNavigationHidden: vi.fn(),
   setNavigationStyle: vi.fn(),
+  pauseAudio: vi.fn(async () => undefined),
   safeInsets: { top: 0, bottom: 0, left: 0, right: 0 },
 }));
 vi.mock('react-native', () => ({
@@ -24,6 +25,7 @@ vi.mock('react-native', () => ({
     },
   },
 }));
+vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: () => React.createElement('MaterialCommunityIcons') }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => native.safeInsets }));
 vi.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
 vi.mock('../../node_modules/expo-navigation-bar/build/ExpoNavigationBar.js', () => ({ default: { setHidden: native.setNavigationHidden, setStyle: native.setNavigationStyle } }));
@@ -38,10 +40,13 @@ vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => void | (() => v
 } }));
 // Audio implementation belongs to a separate lane; assert only its mounting/lifecycle contract
 // (and, for the 2026-09-23 layout change, where in the chrome it is placed).
-vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice: () => null, ChapterAudioAutoplayToggle: (props: any) => React.createElement('Pressable', { accessibilityRole: 'switch', accessibilityLabel: '連讀', ...props }), ChapterAudioControls: (props: any) => {
+vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice: () => null, ChapterAudioAutoplayToggle: (props: any) => React.createElement('Pressable', { accessibilityRole: 'switch', accessibilityLabel: '連讀', ...props }), ChapterAudioControls: React.forwardRef((props: any, ref: any) => {
   React.useEffect(() => { native.audioMounts++; return () => { native.audioUnmounts++; }; }, []);
-  return React.createElement('ChapterAudioControls', props);
-} }));
+  React.useImperativeHandle(ref, () => ({ pause: native.pauseAudio }));
+  return React.createElement('View', { style: { flex: props.bottomCell ? 1 : undefined, minHeight: props.bottomCell ? 48 : undefined } },
+    React.createElement('Pressable', { accessibilityRole: 'button', accessibilityLabel: '播放詩篇 90', style: { minHeight: 48 } },
+      React.createElement('ChapterAudioControls', props)));
+}) }));
 
 import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
 import { NavigationBar } from 'expo-navigation-bar';
@@ -58,6 +63,22 @@ let onSelectVersion: ((versionId: number) => void | Promise<void>) | undefined;
 let audioAttribution: string | undefined;
 let onSelectNarrationSpeed: ((speed: number) => void) | undefined;
 let journalNode: React.ReactNode | undefined;
+let selectedDate = '2026-09-23';
+let previousDate = '2026-09-22';
+let nextDate = '2026-09-24';
+let completed = false;
+let completionDisabled = false;
+let completionLabel: string | undefined;
+let onComplete: (() => void) | undefined;
+let onUndo: (() => void) | undefined;
+let onSelectDate: (date: string) => void;
+let noPlanMessage: string | undefined;
+let statusMessage: string | undefined;
+let canOpenYouVersion = false;
+let accountNode: React.ReactNode | undefined;
+let loginGateNode: React.ReactNode | undefined;
+let updateNode: React.ReactNode | undefined;
+let onOpenYouVersion: (() => void) | undefined;
 const onExit = vi.fn();
 const onSelectReference = vi.fn();
 function Harness() {
@@ -65,7 +86,10 @@ function Harness() {
   return React.createElement(FullscreenReaderLayout, {
     reader: React.createElement('BibleReader'), controls, chrome,
     chapterUsfm: currentChapter, versionId: chosenVersion, references: assignedReferences,
-    onExit, onSelectReference,
+    selectedDate, previousDate, nextDate, onSelectDate,
+    completed, completionDisabled, completionLabel, onComplete, onUndo, onSelectReference,
+    noPlanMessage, statusMessage, canOpenYouVersion, accountEntry: accountNode, loginGate: loginGateNode, updateBanner: updateNode,
+    onOpenYouVersion,
     versionOptions, onSelectVersion, onSelectNarrationSpeed,
     metadata: { translationName: '測試譯本', publisher: '測試出版社', copyrightNotice: '測試版權文字', officialUrl: 'https://example.test/version', audioAttribution },
     journal: journalNode,
@@ -83,7 +107,7 @@ describe('fullscreen reader layout and chrome', () => {
     act(() => { button('更多閱讀工具').props.onPress(); });
     expect(text()).toContain('連讀是什麼？');
     expect(text()).toContain('這不是加快語速');
-    expect(text()).toContain('開啟設定不會立即播放');
+    expect(text()).toContain('切換設定不會立即播放');
     expect(text()).toContain('遇到沒有朗讀的章節會停下並提示');
   });
   beforeEach(() => {
@@ -95,6 +119,7 @@ describe('fullscreen reader layout and chrome', () => {
     native.screenReader = false;
     native.audioMounts = 0;
     native.audioUnmounts = 0;
+    native.pauseAudio.mockClear();
     native.safeInsets = { top: 0, bottom: 0, left: 0, right: 0 };
     currentChapter = 'PSA.90';
     assignedReferences = ['PSA.90', 'PSA.91'];
@@ -104,6 +129,10 @@ describe('fullscreen reader layout and chrome', () => {
     audioAttribution = undefined;
     onSelectNarrationSpeed = undefined;
     journalNode = undefined;
+    selectedDate = '2026-09-23'; previousDate = '2026-09-22'; nextDate = '2026-09-24';
+    completed = false; completionDisabled = false; completionLabel = undefined; onComplete = undefined; onUndo = undefined;
+    onSelectDate = vi.fn(); noPlanMessage = undefined; statusMessage = undefined; canOpenYouVersion = false;
+    accountNode = undefined; loginGateNode = undefined; updateNode = undefined; onOpenYouVersion = undefined;
     controls = { ready: true, openChapterPicker: vi.fn(), openVersionPicker: vi.fn(), openSettings: vi.fn() };
     vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       const message = String(args[0]);
@@ -119,7 +148,7 @@ describe('fullscreen reader layout and chrome', () => {
     vi.useRealTimers();
   });
 
-  it('places visible wrapping daily controls before the flex reader without a fixed-height header or footer', async () => {
+  it('keeps date, selected chapter and more in one compact row above the reader', async () => {
     await mount();
     const root = all('View')[0];
     expect(styleOf(root)).toMatchObject({ flex: 1, backgroundColor: '#FFFFFF' });
@@ -134,96 +163,124 @@ describe('fullscreen reader layout and chrome', () => {
     expect(toolbar.props.accessibilityElementsHidden).not.toBe(true);
     const siblings = root.children.filter(child => typeof child !== 'string');
     expect(siblings.indexOf(toolbar)).toBeLessThan(siblings.indexOf(reader.parent!));
-    // The daily passage chips have their own row below the title row, and only that row wraps.
-    let dailyRow = button('前往詩90').parent!;
-    while (String(dailyRow.type) !== 'View') dailyRow = dailyRow.parent!;
-    expect(styleOf(dailyRow)).toMatchObject({ flexDirection: 'row', flexWrap: 'wrap' });
-    expect(button('前往詩90').props.accessibilityState).toMatchObject({ selected: true });
-    expect(styleOf(button('前往詩91'))).toMatchObject({ minWidth: 48, minHeight: 48 });
+    const topRow = button('選擇今日章節').parent!;
+    expect(styleOf(topRow).flexWrap).not.toBe('wrap');
+    expect(styleOf(button('上一個排定讀經日'))).toMatchObject({ width: 48, minHeight: 48 });
+    expect(styleOf(button('下一個排定讀經日'))).toMatchObject({ width: 48, minHeight: 48 });
+    expect(topRow.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual([
+      '上一個排定讀經日', '下一個排定讀經日', '選擇今日章節', '更多閱讀工具',
+    ]);
+    expect(all('Text').some(node => node.props.children === '9/23')).toBe(true);
+    expect(all('Pressable').some(node => String(node.props.accessibilityLabel).startsWith('前往'))).toBe(false);
     expect(all('Pressable').some(node => ['選擇譯本', '調整字體', '選擇章節'].includes(node.props.accessibilityLabel))).toBe(false);
     expect(text()).not.toContain('測試版權文字');
     expect(text()).not.toContain('我已完成讀經');
     expect(text()).not.toContain('ProgressCard');
   });
 
-  it('keeps the top row to exactly back, one title, journal and more — one row, never wrapping', async () => {
+  it('opens the assigned passage list from the chapter title without keeping chips on screen', async () => {
     journalNode = React.createElement('JournalPanelStub');
     await mount();
-    const topRow = button('返回今日').parent!;
-    expect(styleOf(topRow).flexWrap).not.toBe('wrap');
-    const items = topRow.children.filter((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string');
-    expect(items.map(node => node.props.accessibilityLabel ?? null)).toEqual(['返回今日', null, '靈修日記', '更多閱讀工具']);
-    const title = items[1];
-    expect(title.type).toBe('Text');
-    expect(title.props.accessibilityRole).toBe('header');
-    expect(title.props.numberOfLines).toBe(1);
-    expect(title.props.children).toBe('詩篇 90');
-    // Play/pause and 連讀 must not be in this row at all — they moved to the bottom player bar.
-    expect(topRow.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(0);
-    expect(items.some(node => node.props.accessibilityLabel === '連讀')).toBe(false);
+    expect(text()).not.toContain('前往詩90');
+    act(() => { button('選擇今日章節').props.onPress(); });
+    expect(button('前往詩90').props.accessibilityState).toMatchObject({ selected: true });
+    expect(button('前往詩91').props.accessibilityState).toMatchObject({ selected: false });
+    act(() => { button('前往詩91').props.onPress(); });
+    expect(onSelectReference).toHaveBeenCalledWith(1);
+    expect(text()).not.toContain('前往詩90');
   });
 
-  it('omits the journal icon from the top row when no journal is supplied, without adding a wrap', async () => {
-    journalNode = undefined;
+  it('renders the three equal bottom actions and keeps audio mounted in the center', async () => {
+    journalNode = React.createElement('JournalPanelStub');
     await mount();
-    const topRow = button('返回今日').parent!;
-    const items = topRow.children.filter((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string');
-    expect(items.map(node => node.props.accessibilityLabel ?? null)).toEqual(['返回今日', null, '更多閱讀工具']);
-    expect(styleOf(topRow).flexWrap).not.toBe('wrap');
+    const diary = button('靈修日記');
+    const finish = button('完成讀經');
+    const bottomRow = all('View').find(node => styleOf(node).flexDirection === 'row'
+      && node.findAll(child => child.props.accessibilityLabel === '靈修日記').length > 0
+      && node.findAll(child => String(child.type) === 'ChapterAudioControls').length > 0)!;
+    expect(styleOf(bottomRow)).toMatchObject({ flexDirection: 'row' });
+    expect(styleOf(diary)).toMatchObject({ flex: 1, minHeight: 48 });
+    expect(styleOf(finish)).toMatchObject({ flex: 1, minHeight: 48 });
+    expect(styleOf(all('ChapterAudioControls')[0].parent!.parent!)).toMatchObject({ flex: 1, minHeight: 48 });
+    expect(bottomRow.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual([
+      '靈修日記', '播放詩篇 90', '完成讀經',
+    ]);
+    act(() => chrome.hideTools());
+    expect(all('ChapterAudioControls')).toHaveLength(1);
+    expect(button('播放詩篇 90')).toBeDefined();
   });
 
-  it.each([['PSA.90'], ['1TI.1']] as const)('shows the full book/chapter title once for %s', async (chapter) => {
+  it('keeps no-plan and sync-error states visible while disabling completion', async () => {
+    assignedReferences = [];
+    noPlanMessage = '這一天沒有排定讀經。';
+    statusMessage = '同步遇到問題';
+    completionDisabled = true;
+    completionLabel = '無排定讀經';
+    await mount();
+    expect(text()).toContain('這一天沒有排定讀經。');
+    expect(text()).toContain('同步遇到問題');
+    expect(button('無排定讀經').props.disabled).toBe(true);
+    expect(button('靈修日記')).toBeDefined();
+  });
+
+  it.each([['PSA.90'], ['1TI.1']] as const)('shows the current book/chapter in the title for %s', async (chapter) => {
     currentChapter = chapter;
     await mount();
-    const title = button('返回今日').parent!.children.find((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string' && child.props.accessibilityRole === 'header')!;
+    const title = button('選擇今日章節').findAll(node => node.props.accessibilityRole === 'header')[0];
     expect(title).toBeDefined();
-    // Exactly one visible title node for the chapter — not duplicated anywhere else in the chrome.
+    // Exactly one visible title node for the chapter — not duplicated in the chrome.
     expect(all('Text').filter(node => node.props.accessibilityRole === 'header' && node.props.children === title.props.children)).toHaveLength(1);
   });
 
-  it.each([1, 2, 3])('keeps the top row unchanged whether today has %i passage chip(s)', async (chipCount) => {
-    journalNode = React.createElement('JournalPanelStub');
-    assignedReferences = ['PSA.90', 'PSA.91', 'PSA.92'].slice(0, chipCount);
+  it('keeps play/pause actionable after downward scroll and restores the other tools on reverse scroll', async () => {
     await mount();
-    const topRow = button('返回今日').parent!;
-    const items = topRow.children.filter((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string');
-    expect(items.map(node => node.props.accessibilityLabel ?? null)).toEqual(['返回今日', null, '靈修日記', '更多閱讀工具']);
-    expect(styleOf(topRow).flexWrap).not.toBe('wrap');
-    // The chips render in their own row, sized by chipCount, and never bleed into the top row.
-    expect(topRow.findAll(node => node.props.accessibilityLabel?.toString().startsWith('前往'))).toHaveLength(0);
-    expect(all('Pressable').filter(node => node.props.accessibilityLabel?.toString().startsWith('前往'))).toHaveLength(chipCount);
+    act(() => chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }));
+    const toolbar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')!;
+    expect(chrome.toolsVisible).toBe(false);
+    expect(toolbar.props.accessibilityElementsHidden).toBe(true);
+    expect(all('ChapterAudioControls')).toHaveLength(1);
+    expect(button('播放詩篇 90')).toBeDefined();
+    act(() => chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }));
+    expect(chrome.toolsVisible).toBe(true);
+    expect(button('更多閱讀工具')).toBeDefined();
   });
 
-  it('renders play/pause and 連讀 only in the fixed bottom player bar, after the reader', async () => {
+  it('renders the three bottom actions after the reader and keeps 連讀 in More', async () => {
     await mount();
     const root = all('View')[0];
     const reader = all('BibleReader')[0];
     const toolbar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')!;
-    const playerBar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '播放列')!;
+    const playerBar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '讀經控制列')!;
     expect(playerBar).toBeDefined();
     expect(styleOf(playerBar).position).not.toBe('absolute');
     const siblings = root.children.filter(child => typeof child !== 'string');
     expect(siblings.indexOf(toolbar)).toBeLessThan(siblings.indexOf(reader.parent!));
     expect(siblings.indexOf(reader.parent!)).toBeLessThan(siblings.indexOf(playerBar));
     expect(playerBar.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(1);
-    expect(playerBar.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(1);
-    // and they are absent from the top toolbar entirely
+    expect(playerBar.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(0);
+    expect(playerBar.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual([
+      '靈修日記', '播放詩篇 90', '完成讀經',
+    ]);
     expect(toolbar.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(0);
     expect(toolbar.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(0);
+    act(() => button('更多閱讀工具').props.onPress());
+    expect(all('Pressable').some(node => node.props.accessibilityRole === 'switch' && node.props.accessibilityLabel === '連讀')).toBe(true);
   });
 
-  it('keeps daily tools visible through canvas taps, scroll, and idle time without unmounting audio', async () => {
+  it('collapses tools on effective downward scroll and keeps the same audio owner mounted', async () => {
     await mount();
     const audio = all('ChapterAudioControls')[0];
     expect(audio).toBeDefined();
-    expect(audio.props).toMatchObject({ compact: true, active: true, detailsVisible: false });
-    act(() => { chrome.toggleTools(); });
-    expect(chrome.toolsVisible).toBe(true);
+    expect(audio.props).toMatchObject({ bottomCell: true, active: true });
+    act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); });
+    expect(chrome.toolsVisible).toBe(false);
     act(() => { vi.advanceTimersByTime(3999); });
-    expect(chrome.toolsVisible).toBe(true);
+    expect(chrome.toolsVisible).toBe(false);
     act(() => { vi.advanceTimersByTime(1); });
+    expect(chrome.toolsVisible).toBe(false);
+    act(() => { chrome.openMore(); });
     expect(chrome.toolsVisible).toBe(true);
-    act(() => { chrome.toggleTools(); chrome.hideTools(); });
+    act(() => { chrome.closeMore(); chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }); });
     expect(chrome.toolsVisible).toBe(true);
     expect(all('ChapterAudioControls')[0]).toBe(audio);
     expect(native.audioMounts).toBe(1);
@@ -261,6 +318,7 @@ describe('fullscreen reader layout and chrome', () => {
   it('keeps the audio owner mounted when a daily passage is selected', async () => {
     await mount();
     const audio = all('ChapterAudioControls')[0];
+    act(() => { button('選擇今日章節').props.onPress(); });
     act(() => { button('前往詩91').props.onPress(); });
     expect(onSelectReference).toHaveBeenCalledWith(1);
     currentChapter = 'PSA.91';
@@ -275,6 +333,7 @@ describe('fullscreen reader layout and chrome', () => {
     assignedReferences = ['1TI.1', 'PSA.90-91', 'PSA.92'];
     currentChapter = 'PSA.91';
     await mount();
+    act(() => { button('選擇今日章節').props.onPress(); });
     expect(button('前往詩90-91').props.accessibilityState).toMatchObject({ selected: true });
     expect(button('前往詩92').props.accessibilityState).toMatchObject({ selected: false });
     for (const chapter of ['PSA.9', 'ZZZ.91', 'GEN.91']) {
@@ -292,6 +351,7 @@ describe('fullscreen reader layout and chrome', () => {
     assignedReferences = ['PSA.90-GEN.92', 'PSA.92-90', 'ZZZ.90-91'];
     currentChapter = 'PSA.91';
     await mount();
+    act(() => { button('選擇今日章節').props.onPress(); });
     expect(all('Pressable').filter(node => node.props.accessibilityState?.selected)).toHaveLength(0);
   });
 
@@ -299,11 +359,13 @@ describe('fullscreen reader layout and chrome', () => {
     native.screenReader = enabled;
     await mount();
     expect(chrome.toolsVisible).toBe(true);
-    act(() => { chrome.hideTools(); vi.advanceTimersByTime(10000); });
-    expect(chrome.toolsVisible).toBe(true);
+    act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); vi.advanceTimersByTime(10000); });
+    expect(chrome.toolsVisible).toBe(enabled);
     const toolbar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')!;
-    expect(toolbar.props.accessibilityElementsHidden).toBe(false);
-    expect(toolbar.props.importantForAccessibility).toBe('auto');
+    expect(toolbar.props.accessibilityElementsHidden).toBe(!enabled);
+    expect(toolbar.props.importantForAccessibility).toBe(enabled ? 'auto' : 'no-hide-descendants');
+    if (!enabled) act(() => { chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }); });
+    act(() => { button('選擇今日章節').props.onPress(); });
     expect(button('前往詩90').props.accessibilityRole).toBe('button');
   });
 
@@ -398,13 +460,27 @@ describe('fullscreen reader layout and chrome', () => {
     }
   });
 
-  it('keeps only version, font settings, other chapters and information in More', async () => {
+  it('keeps YouVersion, account, versions, reading settings, and speed in More', async () => {
+    accountNode = React.createElement('AccountEntryButton');
+    loginGateNode = React.createElement('TodayAuthGate');
+    updateNode = React.createElement('UpdateBanner');
+    canOpenYouVersion = true;
+    onOpenYouVersion = vi.fn();
+    onSelectNarrationSpeed = vi.fn();
     await mount();
     act(() => { chrome.showTools(); button('更多閱讀工具').props.onPress(); });
     expect(chrome.moreOpen).toBe(true);
     const menu = all('Modal')[0];
     // The backdrop closes the sheet, an unlabelled wrapper swallows taps inside it, then the controls.
-    expect(menu.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual(['關閉更多閱讀工具', undefined, '關閉', '選擇譯本', '調整字體', '選擇其他章節', '版本資訊']);
+    const menuLabels = menu.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel);
+    expect(menuLabels).toContain('選擇譯本');
+    expect(menuLabels).toContain('調整字體');
+    expect(menuLabels).toContain('選擇其他章節');
+    expect(menuLabels).toContain('在 YouVersion 開啟此章');
+    expect(menu.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(1);
+    expect(menu.findAll(node => String(node.type) === 'AccountEntryButton')).toHaveLength(1);
+    expect(menu.findAll(node => String(node.type) === 'TodayAuthGate')).toHaveLength(1);
+    expect(menu.findAll(node => String(node.type) === 'UpdateBanner')).toHaveLength(1);
     act(() => { button('選擇譯本').props.onPress(); });
     expect(controls.openVersionPicker).toHaveBeenCalledOnce();
     expect(chrome.moreOpen).toBe(false);
@@ -415,6 +491,10 @@ describe('fullscreen reader layout and chrome', () => {
     act(() => { button('選擇其他章節').props.onPress(); });
     expect(controls.openChapterPicker).toHaveBeenCalledOnce();
     expect(chrome.moreOpen).toBe(false);
+    act(() => { chrome.openMore(); });
+    await act(async () => { button('在 YouVersion 開啟此章').props.onPress(); await Promise.resolve(); });
+    expect(native.pauseAudio).toHaveBeenCalledOnce();
+    expect(onOpenYouVersion).toHaveBeenCalledOnce();
   });
 
   it('exposes copyright only in the dismissible Info modal and supports Android close', async () => {
@@ -430,18 +510,22 @@ describe('fullscreen reader layout and chrome', () => {
     expect(text()).not.toContain('測試版權文字');
   });
 
-  it('keeps exit and chapter controls actionable without intercepting the ready reader surface', async () => {
+  it('keeps date, chapter, and More controls actionable without intercepting the ready reader surface', async () => {
     await mount();
-    act(() => { button('返回今日').props.onPress(); chrome.openMore(); });
+    act(() => { button('上一個排定讀經日').props.onPress(); });
+    expect(onSelectDate).toHaveBeenCalledWith(previousDate);
+    act(() => { button('選擇今日章節').props.onPress(); });
+    act(() => { button('前往詩91').props.onPress(); });
+    expect(onSelectReference).toHaveBeenCalledWith(1);
+    act(() => { chrome.openMore(); });
     act(() => { button('選擇其他章節').props.onPress(); });
-    expect(onExit).toHaveBeenCalledOnce();
     expect(controls.openChapterPicker).toHaveBeenCalledOnce();
     expect(all('BibleReader')[0].parent?.props.onTouchEnd).toBeUndefined();
     controls.ready = false;
     act(() => { chrome.hideTools(); renderer!.update(React.createElement(Harness)); });
     act(() => { all('BibleReader')[0].parent?.props.onTouchEnd(); });
     expect(chrome.toolsVisible).toBe(true);
-    expect(button('返回今日').props.disabled).not.toBe(true);
+    expect(button('下一個排定讀經日').props.disabled).not.toBe(true);
     act(() => { chrome.openMore(); });
     expect(button('選擇其他章節').props.disabled).toBe(true);
   });

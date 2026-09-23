@@ -61,8 +61,13 @@ vi.mock('expo-audio', () => ({
 }));
 vi.mock('expo-crypto', () => ({ randomUUID: vi.fn(() => 'fixture-operation') }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: (key: string) => preferenceIO.get(key), setItemAsync: (key: string, value: string) => preferenceIO.set(key, value) }));
+vi.mock('expo-application', () => ({ nativeBuildVersion: '30' }));
+vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn(), maybeCompleteAuthSession() {} }));
 vi.mock('react-native', () => ({
   ActivityIndicator: primitive('ActivityIndicator'),
+  KeyboardAvoidingView: primitive('KeyboardAvoidingView'),
+  Keyboard: { isVisible: () => false, addListener: () => ({ remove() {} }) },
+  Platform: { OS: 'android' },
   Modal: (props: { visible: boolean; children?: React.ReactNode }) => props.visible ? React.createElement('Modal', props, props.children) : null,
   BackHandler: { addEventListener: vi.fn(() => ({ remove: vi.fn() })) },
   AccessibilityInfo: {
@@ -77,12 +82,15 @@ vi.mock('react-native', () => ({
   TextInput: primitive('TextInput'), View: primitive('View'),
   Linking: { openURL: vi.fn() },
 }));
-vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => React.createElement('AccountEntryButton') }));
+vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => React.createElement('Pressable', { accessibilityRole: 'button', accessibilityLabel: '開啟帳戶', onPress: vi.fn() } as never) }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
+vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
+vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost: () => null }));
 vi.mock('../../src/ui/completionFeedback', () => ({ CompletionFeedback: () => React.createElement('CompletionFeedback') }));
-vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ session: readerAuth.memberId ? { memberId: readerAuth.memberId, sessionToken: 'memory-session' } : null, epoch: readerAuth.epoch }) }));
+vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ session: readerAuth.memberId ? { memberId: readerAuth.memberId, sessionToken: 'memory-session' } : null, epoch: readerAuth.epoch }), isCurrentAuthSession: (session: { memberId?: string } | null) => session?.memberId === readerAuth.memberId }));
 vi.mock('../../src/services/reminderScheduler', () => ({ createReminderScheduler: () => ({}) }));
 vi.mock('../../src/services/reminderCompletion', () => ({ syncReadingReminderForCompletion: vi.fn() }));
+vi.mock('../../src/services/useOutboxRecovery', () => ({ useOutboxRecovery: () => undefined }));
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: vi.fn() }));
 
 // two assigned passages for the day: this is what "第二指定段" means
@@ -176,6 +184,7 @@ vi.mock('../../src/services/contentCapabilityClient', async (importOriginal) => 
 });
 
 import ReaderScreen from '../../app/(tabs)/reader';
+import { FullscreenReaderLayout } from '../../src/ui/FullscreenReaderLayout';
 
 type Node = TestRenderer.ReactTestInstance;
 
@@ -227,14 +236,22 @@ function openMore(renderer: TestRenderer.ReactTestRenderer): void {
 }
 
 function selectAssigned(renderer: TestRenderer.ReactTestRenderer, referenceLabel: string): void {
+  pressByLabel(renderer, '選擇今日章節');
   pressByLabel(renderer, `前往${referenceLabel}`);
   expect(renderer.root.findAll((n: Node) => String(n.type) === 'Modal' && n.props.visible)).toHaveLength(0);
 }
 
-async function selectDateFromHome(date: string): Promise<void> {
-  // Date selection moved to Home. Exercise the shared store the real Reader subscribes to.
-  const { setSelectedReadingDate } = await import('../../src/ui/readingSession');
-  await act(async () => { setSelectedReadingDate(date); });
+function readerLayout(renderer: TestRenderer.ReactTestRenderer): Node {
+  return renderer.root.findByType(FullscreenReaderLayout);
+}
+
+async function selectDateInReader(renderer: TestRenderer.ReactTestRenderer, date: string): Promise<void> {
+  for (let step = 0; step < 40 && readerLayout(renderer).props.selectedDate !== date; step += 1) {
+    const current = String(readerLayout(renderer).props.selectedDate);
+    pressByLabel(renderer, current > date ? '上一個排定讀經日' : '下一個排定讀經日');
+    await act(async () => { await Promise.resolve(); });
+  }
+  expect(readerLayout(renderer).props.selectedDate).toBe(date);
 }
 
 function bibleReader(renderer: TestRenderer.ReactTestRenderer): Node {
@@ -266,6 +283,13 @@ beforeEach(async () => {
   const db = await import('../../src/storage/mobileDatabase');
   (db.openQingmuReaderPositionStore() as unknown as { __reset: () => void }).__reset();
   const rs = await import('../../src/ui/readingSession');
+  const calendar = await import('../../src/domain/calendar');
+  const days = calendar.canonicalSeptemberPlan.days.map(day => day.date === BASE_DATE
+    ? { ...day, references: ['JHN.19', 'JHN.20'] }
+    : day.date === '2026-09-03'
+      ? { ...day, references: ['PSA.88', 'PSA.89'] }
+      : day);
+  rs.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, uniqueReferences: [...new Set(days.flatMap(day => day.references))] });
   rs.setSelectedReadingDate(BASE_DATE);
 });
 
@@ -301,6 +325,7 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
 
   it('advances to the NEXT assigned passage through persistent daily buttons', async () => {
     const renderer = await mount();
+    pressByLabel(renderer, '選擇今日章節');
     const entries = renderer.root.findAll((n: Node) => String(n.type) === 'Pressable'
       && String(n.props.accessibilityLabel).startsWith('前往') && isReachable(renderer, n));
     expect(entries.map((n: Node) => n.props.accessibilityLabel)).toEqual(['前往約19', '前往約20']);
@@ -511,7 +536,7 @@ describe('C5 — changing the reading date moves reader AND audio to that day\'s
 
   it('follows the Home date store to a day with DIFFERENT assigned passages', async () => {
     const renderer = await mount();
-    await selectDateFromHome('2026-09-03');
+    await selectDateInReader(renderer, '2026-09-03');
     await act(async () => { await Promise.resolve(); });
 
     expect(lastRequest()?.usfm).toBe('PSA.88');
@@ -522,7 +547,7 @@ describe('C5 — changing the reading date moves reader AND audio to that day\'s
 
   it('still follows the second passage of the NEW date', async () => {
     const renderer = await mount();
-    await selectDateFromHome('2026-09-03');
+    await selectDateInReader(renderer, '2026-09-03');
     await act(async () => { await Promise.resolve(); });
     selectAssigned(renderer, '詩89');
     await act(async () => { await Promise.resolve(); });
@@ -537,7 +562,7 @@ describe('C5 — changing the reading date moves reader AND audio to that day\'s
     await act(async () => { await Promise.resolve(); });
     expect(lastRequest()?.usfm).toBe('GEN.1');
 
-    await selectDateFromHome('2026-09-03');
+    await selectDateInReader(renderer, '2026-09-03');
     await act(async () => { await Promise.resolve(); });
     expect(lastRequest()?.usfm).toBe('PSA.88');
     await act(async () => { renderer.unmount(); });
@@ -573,7 +598,7 @@ describe('account preference integration at the REAL Reader caller', () => {
     await act(async () => { await bibleReader(renderer).props.onVersionChange(40); });
     const db = await import('../../src/storage/mobileDatabase');
     db.openQingmuReaderPositionStore().save({ memberId: 'A', planId: 'church-2026-09', taskDate: '2026-09-03', versionId: 46, book: 'PSA', chapter: '88', reference: 'PSA.88', mode: 'FREE_BROWSE', updatedAt: 'test' });
-    await selectDateFromHome('2026-09-03');
+    await selectDateInReader(renderer, '2026-09-03');
     expect(bibleReader(renderer).props.versionId).toBe(40);
     expect(lastRequest()).toEqual({ versionId: 40, usfm: 'PSA.88' });
     selectAssigned(renderer, '詩89');
@@ -581,14 +606,14 @@ describe('account preference integration at the REAL Reader caller', () => {
     await act(async () => { renderer.unmount(); });
   });
 
-  it('does not preload scripture/audio before a delayed preference read and still provides Back', async () => {
+  it('does not preload scripture/audio before a delayed preference read and still provides account access', async () => {
     readerAuth.memberId = 'A';
     let release!: (value: string | null) => void;
     preferenceIO.get.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     const renderer = await mount();
     expect(renderer.root.findAll(n => String(n.type) === 'BibleReader')).toHaveLength(0);
     expect(recorded.requests).toHaveLength(0);
-    expect(renderer.root.findAll(n => n.props.accessibilityLabel === '返回今日' && typeof n.props.onPress === 'function').length).toBeGreaterThan(0);
+    expect(renderer.root.findAll(n => n.props.accessibilityLabel === '開啟帳戶' && typeof n.props.onPress === 'function').length).toBeGreaterThan(0);
     await act(async () => { release(JSON.stringify({ schemaVersion: 1, owner: 'A', preferences: { versionId: 40, settings: null } })); });
     expect(bibleReader(renderer).props.versionId).toBe(40);
     expect(recorded.requests.every(request => request.versionId === 40)).toBe(true);

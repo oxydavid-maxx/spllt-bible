@@ -18,7 +18,7 @@ describe('focused Reader route composition', () => {
   beforeAll(() => { console.error = (...args: unknown[]) => { const message = String(args[0] ?? ''); if (message.includes('react-test-renderer is deprecated') || message.includes('testing environment is not configured to support act')) return; originalError(...args); }; });
   afterAll(() => { console.error = originalError; });
 
-  it('keeps the shared account entry on the focused Reader route while hiding navigation chrome', () => {
+  it('keeps Reader out of the tab list while preserving tab navigation around it', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => { renderer = TestRenderer.create(React.createElement(TabsLayout)); });
 
@@ -27,9 +27,11 @@ describe('focused Reader route composition', () => {
 
     expect(tabs).toBeDefined();
     expect(reader).toBeDefined();
-    expect(reader?.props.options).toMatchObject({ headerShown: false, tabBarStyle: { display: 'none' } });
-    expect(reader?.props.options.headerRight).toBe(tabs.props.screenOptions.headerRight);
-    expect(reader?.props.options.headerRight().type).toBe(tabs.props.screenOptions.headerRight().type);
+    expect(reader?.props.options).toMatchObject({ headerShown: false, tabBarAccessibilityLabel: '讀經閱讀器' });
+    expect(reader?.props.options.tabBarStyle).not.toMatchObject({ display: 'none' });
+    expect(reader?.props.options.href).toBeNull();
+    expect(reader?.props.options.headerRight).toBeUndefined();
+    expect(tabs.props.screenOptions.headerRight().type).toBeTypeOf('function');
     renderer.unmount();
   });
 });

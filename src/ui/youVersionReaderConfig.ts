@@ -1,3 +1,5 @@
+import { bookAbbreviationZhTw } from '../domain/scriptureReference';
+
 export interface YouVersionReaderConfig {
   references: string[];
   versionId: number;
@@ -25,4 +27,14 @@ export function buildYouVersionReaderConfig(config: YouVersionReaderConfig) {
     references: config.references,
     allowTechnicalProbe: config.allowTechnicalProbe,
   };
+}
+
+/** Build the official YouVersion app link for the reader's current chapter, never an old task reference. */
+export function buildYouVersionChapterUrl(versionId: number | null, usfm: string): string | null {
+  if (!Number.isSafeInteger(versionId) || versionId === null || versionId <= 0) return null;
+  const match = usfm.trim().toUpperCase().match(/^([A-Z0-9]{3,4})\.(\d+)(?:-\d+)?(?:\.\d+(?:-\d+)?)?$/);
+  if (!match || !bookAbbreviationZhTw(match[1])) return null;
+  const chapter = Number(match[2]);
+  if (!Number.isSafeInteger(chapter) || chapter <= 0) return null;
+  return `https://www.bible.com/bible/${versionId}/${match[1]}.${chapter}`;
 }
