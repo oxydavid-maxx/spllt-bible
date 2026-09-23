@@ -44,4 +44,3 @@ describe('Android build-type network policy', () => {
     expect(debug).not.toContain('includeSubdomains="true"');
   });
 });
-
