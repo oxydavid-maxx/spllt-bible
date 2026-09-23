@@ -16,9 +16,9 @@ describe('gamification api client', () => {
   it('accepts an optional chart query and preserves the returned chart extension', async () => {
     const memberId = 'member-chart';
     const chart = {
-      range: 'week', anchor: '2026-09-07', periodStart: '2026-09-07', periodEnd: '2026-09-13', earnedPoints: 1,
+      range: 'week', anchor: '2026-09-07', periodStart: '2026-09-07', periodEnd: '2026-09-13', earnedPoints: 1, openingEarnedPoints: 2,
       previousAnchor: '2026-08-31', nextAnchor: '2026-09-14',
-      buckets: [{ key: '2026-09-07', startDate: '2026-09-07', endDate: '2026-09-07', earnedPoints: 1 }],
+      buckets: [{ key: '2026-09-07', startDate: '2026-09-07', endDate: '2026-09-07', earnedPoints: 1, cumulativeEarnedPoints: 3 }],
     };
     const fetchImpl = vi.fn(async () => response({
       memberId, displayName: '小明', earnedTotal: 1, band: null,
@@ -28,6 +28,39 @@ describe('gamification api client', () => {
     const client = createGamificationApiClient({ baseUrl: 'https://example.test', token: 't', memberId, fetchImpl });
     await expect(client.getProfile(memberId, 'me', '2026-09', { range: 'week', anchor: '2026-09-07' })).resolves.toMatchObject({ chart });
     expect((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[0]).toBe('https://example.test/api/points/profiles/member-chart?scope=me&anchorMonth=2026-09&chartRange=week&chartAnchor=2026-09-07');
+  });
+
+  it('continues to accept a legacy chart with no cumulative fields', async () => {
+    const legacyChart = {
+      range: 'week', anchor: '2026-09-07', periodStart: '2026-09-07', periodEnd: '2026-09-13', earnedPoints: 1,
+      previousAnchor: '2026-08-31', nextAnchor: '2026-09-14',
+      buckets: [{ key: '2026-09-07', startDate: '2026-09-07', endDate: '2026-09-07', earnedPoints: 1 }],
+    };
+    const fetchImpl = vi.fn(async () => response({
+      memberId: 'member-chart', displayName: '小明', earnedTotal: 1, band: null,
+      months: [{ month: '2026-09', earnedPoints: 1 }], chart: legacyChart,
+      permissions: { canEditTarget: false, canRedeem: false },
+    }));
+    const client = createGamificationApiClient({ baseUrl: 'https://example.test', token: 't', memberId: 'member-chart', fetchImpl });
+    const profile = await client.getProfile('member-chart', 'me', '2026-09');
+    expect(profile.chart).toMatchObject({ range: 'week', buckets: [{ earnedPoints: 1 }] });
+    expect(profile.chart).not.toHaveProperty('openingEarnedPoints');
+    expect(profile.chart?.buckets[0]).not.toHaveProperty('cumulativeEarnedPoints');
+  });
+
+  it('rejects a malformed cumulative value instead of exposing it to the chart', async () => {
+    const fetchImpl = vi.fn(async () => response({
+      memberId: 'member-chart', displayName: '小明', earnedTotal: 1, band: null,
+      months: [{ month: '2026-09', earnedPoints: 1 }],
+      chart: {
+        range: 'week', anchor: '2026-09-07', periodStart: '2026-09-07', periodEnd: '2026-09-13', earnedPoints: 1,
+        openingEarnedPoints: 2, previousAnchor: '2026-08-31', nextAnchor: '2026-09-14',
+        buckets: [{ key: '2026-09-07', startDate: '2026-09-07', endDate: '2026-09-07', earnedPoints: 1, cumulativeEarnedPoints: 2.5 }],
+      },
+      permissions: { canEditTarget: false, canRedeem: false },
+    }));
+    const client = createGamificationApiClient({ baseUrl: 'https://example.test', token: 't', memberId: 'member-chart', fetchImpl });
+    await expect(client.getProfile('member-chart', 'me', '2026-09')).rejects.toMatchObject({ code: 'INVALID_API_RESPONSE' });
   });
 
   it('sends bearer auth and explicit profile scope without a client actor', async () => {

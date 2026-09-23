@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 const { primitive } = vi.hoisted(() => ({ primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children) }));
 vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
 
-vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle') }; });
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline') }; });
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { chartQueryForRange } from '../../src/ui/gamification/ScoreProfileChart';
 
@@ -37,13 +37,57 @@ function profile() {
   return { memberId: 'member-chart', displayName: '小明', earnedTotal: 4, band: null, months: [{ month: '2026-09', earnedPoints: 4 }], chart, permissions: { canEditTarget: false, canRedeem: false } };
 }
 
-function render(props: Record<string, unknown>) {
+function render(props: Record<string, unknown>, initialView: 'calendar' | 'trend' = 'calendar') {
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { today: TODAY, ...props } as never)); });
+  if (initialView === 'calendar') {
+    const calendarTab = renderer.root.findAll((node) => node.props.accessibilityLabel === '日曆')[0];
+    if (calendarTab) act(() => { calendarTab.props.onPress(); });
+  }
   return renderer;
 }
 
 describe('score profile reading calendar', () => {
+  it('defaults to an accurate cumulative curve, allows point selection, and can switch back to the calendar', () => {
+    const cumulativeChart = {
+      ...chart,
+      openingEarnedPoints: 2,
+      buckets: chart.buckets.map((bucket, index) => ({ ...bucket, cumulativeEarnedPoints: [2, 3, 3, 6, 6, 6, 6][index] })),
+    };
+    const renderer = render({ profile: { ...profile(), chart: cumulativeChart } }, 'trend');
+    expect(texts(renderer)).toContain('累積積分走勢');
+    expect(renderer.root.findByProps({ accessibilityLabel: '走勢' }).props.accessibilityState.selected).toBe(true);
+    const plot = renderer.root.findByProps({ accessibilityLabel: '累積積分走勢' });
+    expect(plot.props.accessibilityRole).toBe('adjustable');
+    expect(plot.props.style.minHeight).toBeGreaterThanOrEqual(48);
+    expect(plot.props.accessibilityValue.text).toBe('2026-09-10 累積 6 分');
+    act(() => { plot.props.onPress({ nativeEvent: { locationX: 112 } }); });
+    expect(texts(renderer)).toContain('選取：9月8日　累積 3 分');
+
+    act(() => { renderer.root.findByProps({ accessibilityLabel: '日曆' }).props.onPress(); });
+    expect(texts(renderer)).toContain('讀經日曆');
+    expect(cells(renderer)).toHaveLength(7);
+  });
+
+  it('does not infer a curve from old payloads that have no cumulative projection', () => {
+    const renderer = render({ profile: profile() }, 'trend');
+    expect(texts(renderer)).toContain('累積走勢尚未提供可靠資料');
+    expect(renderer.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '累積積分走勢')).toHaveLength(0);
+    act(() => { renderer.root.findByProps({ accessibilityLabel: '日曆' }).props.onPress(); });
+    expect(cells(renderer)).toHaveLength(7);
+  });
+
+  it('does not count future-dated awards as completed days in the calendar', () => {
+    const futureChart = {
+      ...chart,
+      openingEarnedPoints: 0,
+      buckets: chart.buckets.map((bucket, index) => ({ ...bucket, earnedPoints: index === 0 ? 1 : index === 6 ? 9 : 0, cumulativeEarnedPoints: 1 })),
+    };
+    const renderer = render({ profile: { ...profile(), chart: futureChart } });
+    expect(texts(renderer)).toContain('本期 1 天');
+    expect(cells(renderer).find((cell) => cell.props.accessibilityLabel.startsWith('2026-09-13'))?.props.accessibilityLabel).toBe('2026-09-13 0 分 未到');
+  });
+
   it('renders range controls, period navigation, one accessible cell per day, and counts read days', () => {
     const onChartChange = vi.fn();
     const renderer = render({ profile: profile(), onChartChange });
@@ -164,19 +208,20 @@ describe('score profile reading calendar', () => {
   });
 
   it('renders yearly buckets as month cells with day counts and selects the current month', () => {
-    const yearChart = { ...chart, range: 'year' as const, anchor: '2026', periodStart: '2026-01-01', periodEnd: '2026-12-31', buckets: [{ key: '2026-08', startDate: '2026-08-01', endDate: '2026-08-31', earnedPoints: 16 }, { key: '2026-09', startDate: '2026-09-01', endDate: '2026-09-30', earnedPoints: 5 }], earnedPoints: 21 };
+    const yearChart = { ...chart, range: 'year' as const, anchor: '2026', periodStart: '2026-01-01', periodEnd: '2026-12-31', openingEarnedPoints: 1, buckets: [{ key: '2026-08', startDate: '2026-08-01', endDate: '2026-08-31', earnedPoints: 16, cumulativeEarnedPoints: 17 }, { key: '2026-09', startDate: '2026-09-01', endDate: '2026-09-30', earnedPoints: 5, cumulativeEarnedPoints: 20 }], earnedPoints: 21 };
     const renderer = render({ profile: { ...profile(), chart: yearChart } });
     const text = texts(renderer);
     expect(text).toContain('2026年');
-    expect(text).toContain('本期 21 天');
-    expect(text).toContain('選取：2026年9月，5 天');
+    expect(text).toContain('本期 19 天');
+    expect(text).toContain('選取：2026年9月，3 天');
     expect(text).not.toContain('2026-09年');
     // Each month cell carries a proportional bar: 16 of 31 days ≈ 52%.
     const bars = renderer.root.findAll((node) => String(node.type) === 'View' && node.props?.testID === 'count-bar');
     expect(bars).toHaveLength(2);
     expect(flat((bars[0].children[0] as TestRenderer.ReactTestInstance).props.style).width).toBe('52%');
+    expect(flat((bars[1].children[0] as TestRenderer.ReactTestInstance).props.style).width).toBe('10%');
     const strong = renderer.root.findByProps({ accessibilityLabel: '2026年8月 16 天' });
     expect(flat(strong.props.style).backgroundColor).toBe('#1A5544');
-    expect(renderer.root.findByProps({ accessibilityLabel: '2026年9月 5 天' }).props.style.some((style: unknown) => style && typeof style === 'object' && (style as { minHeight?: number }).minHeight === 48)).toBe(true);
+    expect(renderer.root.findByProps({ accessibilityLabel: '2026年9月 3 天' }).props.style.some((style: unknown) => style && typeof style === 'object' && (style as { minHeight?: number }).minHeight === 48)).toBe(true);
   });
 });

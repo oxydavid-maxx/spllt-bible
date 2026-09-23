@@ -396,7 +396,29 @@ function chartTotal(buckets: readonly ScoreChartBucket[]): number {
   return buckets.reduce((total, bucket) => total + bucket.earnedPoints, 0);
 }
 
-function buildCalendarBuckets(db: DatabaseSync, memberId: string, range: Exclude<ScoreChartRange, 'all'>, anchor: string, today: string): { periodStart: string; periodEnd: string; buckets: ScoreChartBucket[] } {
+function activeEarnedBefore(db: DatabaseSync, memberId: string, periodStart: string): number {
+  const row = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM daily_point_entitlements
+    WHERE member_id = ? AND active = 1 AND task_date < ?`).get(memberId, periodStart);
+  return Math.max(0, readInt(row, 'total'));
+}
+
+function withCumulativeEarnedPoints(buckets: readonly ScoreChartBucket[], earnedByDate: ReadonlyMap<string, number>, opening: number, today: string): ScoreChartBucket[] {
+  const earnedDates = [...earnedByDate.entries()].sort(([left], [right]) => left.localeCompare(right));
+  let cursor = 0;
+  let running = opening;
+  return buckets.map((bucket) => {
+    if (bucket.startDate <= today) {
+      const throughDate = bucket.endDate < today ? bucket.endDate : today;
+      while (cursor < earnedDates.length && earnedDates[cursor][0] <= throughDate) {
+        running += earnedDates[cursor][1];
+        cursor += 1;
+      }
+    }
+    return { ...bucket, cumulativeEarnedPoints: running };
+  });
+}
+
+function buildCalendarBuckets(db: DatabaseSync, memberId: string, range: Exclude<ScoreChartRange, 'all'>, anchor: string, today: string): { periodStart: string; periodEnd: string; buckets: ScoreChartBucket[]; earnedByDate: Map<string, number> } {
   let periodStart: string;
   let periodEnd: string;
   if (range === 'week') {
@@ -423,7 +445,7 @@ function buildCalendarBuckets(db: DatabaseSync, memberId: string, range: Exclude
   } else {
     for (let date = periodStart; date <= periodEnd; date = shiftChartDate(date, 1)) buckets.push(chartBucket(date, date, date, earnedByDate.get(date) ?? 0));
   }
-  return { periodStart, periodEnd, buckets };
+  return { periodStart, periodEnd, buckets, earnedByDate };
 }
 
 function chartAnchorFor(range: ScoreChartRange, requestedAnchor: string | undefined, anchorMonth: string, today: string): string | null {
@@ -446,12 +468,12 @@ function chartAnchorFor(range: ScoreChartRange, requestedAnchor: string | undefi
   return raw;
 }
 
-function getAllChart(db: DatabaseSync, memberId: string): ScoreChart {
+function getAllChart(db: DatabaseSync, memberId: string, today: string): ScoreChart {
   const rows = db.prepare(`SELECT MIN(task_date) AS first_date, MAX(task_date) AS last_date
     FROM daily_point_entitlements WHERE member_id = ? AND active = 1`).all(memberId) as Array<{ first_date: string | null; last_date: string | null }>;
   const firstDate = rows[0]?.first_date ?? null;
   const lastDate = rows[0]?.last_date ?? null;
-  if (!firstDate || !lastDate) return { range: 'all', anchor: null, periodStart: null, periodEnd: null, earnedPoints: 0, buckets: [], previousAnchor: null, nextAnchor: null };
+  if (!firstDate || !lastDate) return { range: 'all', anchor: null, periodStart: null, periodEnd: null, earnedPoints: 0, openingEarnedPoints: 0, buckets: [], previousAnchor: null, nextAnchor: null };
   const firstYear = Number(firstDate.slice(0, 4));
   const lastYear = Number(lastDate.slice(0, 4));
   const earnedByDate = activeEarnedByDate(db, memberId, `${firstYear.toString().padStart(4, '0')}-01-01`, lastDate);
@@ -462,12 +484,12 @@ function getAllChart(db: DatabaseSync, memberId: string): ScoreChart {
     for (const [date, amount] of earnedByDate) if (date.slice(0, 4) === key) earnedPoints += amount;
     buckets.push(chartBucket(key, `${key}-01-01`, `${key}-12-31`, earnedPoints));
   }
-  return { range: 'all', anchor: null, periodStart: firstDate, periodEnd: lastDate, earnedPoints: chartTotal(buckets), buckets, previousAnchor: null, nextAnchor: null };
+  return { range: 'all', anchor: null, periodStart: firstDate, periodEnd: lastDate, earnedPoints: chartTotal(buckets), openingEarnedPoints: 0, buckets: withCumulativeEarnedPoints(buckets, earnedByDate, 0, today), previousAnchor: null, nextAnchor: null };
 }
 
 export function getScoreChart(db: DatabaseSync, memberId: string, query: ScoreChartQuery, today: string, defaultMonth = today.slice(0, 7)): ScoreChart {
   if (!isScoreChartRange(query.range)) throw new Error('INVALID_CHART_RANGE');
-  if (query.range === 'all') return getAllChart(db, memberId);
+  if (query.range === 'all') return getAllChart(db, memberId, today);
   const anchor = chartAnchorFor(query.range, query.anchor, defaultMonth, today);
   if (!anchor) throw new Error('INVALID_CHART_ANCHOR');
   const calendar = buildCalendarBuckets(db, memberId, query.range, anchor, today);
@@ -477,7 +499,9 @@ export function getScoreChart(db: DatabaseSync, memberId: string, query: ScoreCh
   const nextCandidate = query.range === 'week' ? shiftChartDate(anchor, 7) : query.range === 'month' ? shiftChartMonth(anchor, 1) : shiftChartYear(anchor, 1);
   const nextStart = query.range === 'week' ? nextCandidate : query.range === 'month' ? `${nextCandidate}-01` : `${nextCandidate}-01-01`;
   const nextAnchor = nextStart <= today ? nextCandidate : null;
-  return { range: query.range, anchor, periodStart: calendar.periodStart, periodEnd: calendar.periodEnd, earnedPoints: chartTotal(calendar.buckets), buckets: calendar.buckets, previousAnchor, nextAnchor };
+  const openingEarnedPoints = activeEarnedBefore(db, memberId, calendar.periodStart);
+  const buckets = withCumulativeEarnedPoints(calendar.buckets, calendar.earnedByDate, openingEarnedPoints, today);
+  return { range: query.range, anchor, periodStart: calendar.periodStart, periodEnd: calendar.periodEnd, earnedPoints: chartTotal(calendar.buckets), openingEarnedPoints, buckets, previousAnchor, nextAnchor };
 }
 
 function allEarnedTotals(db: DatabaseSync): Array<{ memberId: string; total: number; enabled: boolean }> {

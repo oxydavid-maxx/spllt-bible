@@ -92,6 +92,18 @@ describe('the shelf appears only when it has something to offer', () => {
     expect(card.byLabel('獎品架')).toBeDefined();
   });
 
+  it('opens the existing picker when another active target is available and hides a dead-end action', () => {
+    const openPicker = vi.fn();
+    const alternate: Reward = { rewardId: 'r-alternate', name: '雞排', costPoints: 25, active: true, revision: 1 };
+    const card = render({ target: movie, rewards: [movie, alternate], onOpenPicker: openPicker });
+    expect(card.text()).toContain('更換目標 ›');
+    act(() => { card.byLabel('更換目標獎品').props.onPress(); });
+    expect(openPicker).toHaveBeenCalledTimes(1);
+
+    const onlyCurrentReward = render({ target: movie, rewards: [movie], onOpenPicker: openPicker });
+    expect(onlyCurrentReward.byLabel('更換目標獎品')).toBeUndefined();
+  });
+
   it('ignores retired rewards when deciding, so a shelf of one live reward stays hidden', () => {
     const retired: Reward = { ...popcorn, active: false };
     const card = render({ target: movie, rewards: [movie, retired] });

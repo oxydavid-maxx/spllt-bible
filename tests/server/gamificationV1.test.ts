@@ -146,10 +146,12 @@ describe('gamification v1 API', () => {
     const reward = await api({ method: 'POST', url: '/api/admin/rewards', headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID(), name: '飲料', costPoints: 1 }) });
     expect(reward.status).toBe(201);
     const rewardId = String(reward.body.rewardId);
-    const target = await api({ method: 'PUT', url: '/api/me/reward-target', headers: headers('member-self'), body: JSON.stringify({ rewardId }) });
-    expect(target.status).toBe(200);
     const complete = await api({ method: 'PUT', url: '/api/me/completions/church-2026-09/2026-09-08', headers: headers('member-self'), body: JSON.stringify({ operation_id: randomUUID(), expected_revision: 0, status: 'COMPLETED' }) });
     expect(complete.status).toBe(200);
+    const walletBeforeTarget = database.db.prepare('SELECT COALESCE(SUM(delta), 0) AS total FROM wallet_entries WHERE member_id=?').get('member-self');
+    const target = await api({ method: 'PUT', url: '/api/me/reward-target', headers: headers('member-self'), body: JSON.stringify({ rewardId }) });
+    expect(target.status).toBe(200);
+    expect(database.db.prepare('SELECT COALESCE(SUM(delta), 0) AS total FROM wallet_entries WHERE member_id=?').get('member-self')).toEqual(walletBeforeTarget);
     const operationId = randomUUID();
     const redeemBody = { operationId, memberId: 'member-self', rewardId, expectedRewardRevision: 1 };
     const redeem = await api({ method: 'POST', url: '/api/admin/redemptions', headers: headers('member-admin'), body: JSON.stringify(redeemBody) });

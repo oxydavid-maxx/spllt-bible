@@ -30,6 +30,8 @@ export default function ProgressScreen() {
   const [people, setPeople] = useState<PersonListItem[]>([]);
   const [selected, setSelected] = useState<PersonListItem | null>(null);
   const [profile, setProfile] = useState<Awaited<ReturnType<NonNullable<typeof client>['getProfile']>> | null>(null);
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [redemptions, setRedemptions] = useState<Awaited<ReturnType<NonNullable<typeof client>['getMyRedemptions']>>>([]);
   const [pendingOperations, setPendingOperations] = useState<PendingGamificationOperations | null>(null);
@@ -77,15 +79,16 @@ export default function ProgressScreen() {
   // Account-wide secondary content is independent of the selected chart range/member.
   const isViewLive = useCallback((generation: number) => Boolean(focusedRef.current && appActive.current && viewGeneration.current === generation && session && isCurrentAuthSession(session)), [session]);
   const stopPrefetch = useCallback(() => { if (prefetchTimer.current !== null) clearTimeout(prefetchTimer.current); prefetchTimer.current = null; }, []);
-  const clearProtectedState = useCallback((preserveScanner = false) => {
+  const clearProtectedState = useCallback((preserveScanner = false, preserveOwnProfile = false) => {
     requestGeneration.current += 1; viewGeneration.current += 1; profileRequest.current += 1; nominationRead.current += 1;
     nominationPending.current = null; stopPrefetch(); client?.cancelReads?.();
     activeScope.current = 'me'; activeMember.current = null; guard.current.clear(); chartCache.current.clear();
-    setScope('me'); setPeople([]); setSelected(null); setProfile(null); setProfileStale(false); setBusy(false); setError(null); setRewards([]);
-    setRedemptions([]); setPendingOperations(null); setRetryAction(null); setSheet(preserveScanner ? 'scan' : null); setPrimaryReady(false);
+    const ownProfile = preserveOwnProfile && session && profileRef.current?.memberId === session.memberId ? profileRef.current : null;
+    setScope('me'); setPeople([]); setSelected(null); setProfile(ownProfile); setProfileStale(Boolean(ownProfile)); setBusy(false); setError(null); setRewards([]);
+    setRedemptions([]); setPendingOperations(null); setRetryAction(null); setSheet(preserveScanner ? 'scan' : null); setPrimaryReady(Boolean(ownProfile));
     if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
     setNominationBusy(false); setNominationError(null); setShelfRewards(null); setNominations(null); setCommunity(null);
-  }, [client, stopPrefetch]);
+  }, [client, session, stopPrefetch]);
   useEffect(() => registerAuthLifecycleListener((change) => { if (!change.current || change.current.memberId !== session?.memberId || change.current.sessionToken !== session?.sessionToken) clearProtectedState(); }), [accountKey, clearProtectedState]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => {
@@ -125,14 +128,16 @@ export default function ProgressScreen() {
     const generation = requestGeneration.current;
     const requestId = ++profileRequest.current;
     const owns = () => requestId === profileRequest.current && isLive(generation, nextScope, memberId, nextScope === 'all');
-    stopPrefetch(); setBusy(true); setError(null);
+    const keepVisibleProfile = nextScope === 'me' && memberId === session.memberId && profileRef.current?.memberId === memberId;
+    stopPrefetch(); setBusy(!keepVisibleProfile); setError(null);
+    if (keepVisibleProfile) setProfileStale(true);
     let remoteSettled = false;
     let remembered: ScoreProfileData | null = null;
     // Storage and network start together. A late cache must never replace a fresh response.
     const cached = !chartQuery && nextScope === 'me' && memberId === session.memberId
       ? profileCache.load(memberId).then((value) => {
         remembered = value;
-        if (value && !remoteSettled && owns()) { setProfile(value); setProfileStale(true); }
+        if (value && !remoteSettled && owns() && !keepVisibleProfile) { setProfile(value); setProfileStale(true); }
       }) : Promise.resolve();
     try {
       const value = chartQuery ? await client.getProfile(memberId, nextScope, monthNow(), chartQuery) : await client.getProfile(memberId, nextScope, monthNow());
@@ -149,7 +154,7 @@ export default function ProgressScreen() {
       remoteSettled = true;
       await cached;
       if (!owns()) return;
-      if (remembered) { setProfile(remembered); setProfileStale(true); }
+      if (remembered) { if (!keepVisibleProfile) setProfile(remembered); setProfileStale(true); }
       else setError(messageFor(reason));
     } finally {
       if (owns()) { setBusy(false); setPrimaryReady(true); }
@@ -176,13 +181,13 @@ export default function ProgressScreen() {
   }, [client, session, loadProfile, stopPrefetch]);
   const refreshOwnProfile = useCallback((preserveScanner = false) => {
     if (!client || !session || !focusedRef.current || !appActive.current) return;
-    clearProtectedState(preserveScanner); activeMember.current = session.memberId;
+    clearProtectedState(preserveScanner, true); activeMember.current = session.memberId;
     void loadProfile(session.memberId, 'me');
   }, [client, session, clearProtectedState, loadProfile]);
   refreshOnForeground.current = refreshOwnProfile;
   useFocusEffect(useCallback(() => {
     focusedRef.current = true; setFocused(true); refreshOwnProfile();
-    return () => { focusedRef.current = false; setFocused(false); clearProtectedState(); };
+    return () => { focusedRef.current = false; setFocused(false); clearProtectedState(false, true); };
   }, [clearProtectedState, refreshOwnProfile]));
   // Everything secondary waits for the one critical own-profile request to settle.
   useEffect(() => {

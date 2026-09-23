@@ -64,15 +64,16 @@ function parseChartBucket(value: unknown, range: ScoreChart['range']): ScoreChar
   const item = object(value);
   const validKey = range === 'week' || range === 'month' ? typeof item?.key === 'string' && validDate(item.key) : range === 'year' ? typeof item?.key === 'string' && validMonth(item.key) : typeof item?.key === 'string' && /^\d{4}$/.test(item.key);
   return item && validKey && validDate(item.startDate) && validDate(item.endDate) && item.startDate <= item.endDate && nonNegativeInt(item.earnedPoints)
-    ? { key: item.key as string, startDate: item.startDate, endDate: item.endDate, earnedPoints: item.earnedPoints } : null;
+    && (item.cumulativeEarnedPoints === undefined || nonNegativeInt(item.cumulativeEarnedPoints))
+    ? { key: item.key as string, startDate: item.startDate, endDate: item.endDate, earnedPoints: item.earnedPoints, ...(item.cumulativeEarnedPoints !== undefined ? { cumulativeEarnedPoints: item.cumulativeEarnedPoints as number } : {}) } : null;
 }
 function parseChart(value: unknown): ScoreChart | null {
   const item = object(value);
   const range = item?.range;
-  if (!item || !isScoreChartRange(range) || !(item.anchor === null || string(item.anchor)) || !(item.periodStart === null || validDate(item.periodStart)) || !(item.periodEnd === null || validDate(item.periodEnd)) || !nonNegativeInt(item.earnedPoints) || !(item.previousAnchor === null || string(item.previousAnchor)) || !(item.nextAnchor === null || string(item.nextAnchor)) || !Array.isArray(item.buckets)) return null;
+  if (!item || !isScoreChartRange(range) || !(item.anchor === null || string(item.anchor)) || !(item.periodStart === null || validDate(item.periodStart)) || !(item.periodEnd === null || validDate(item.periodEnd)) || !nonNegativeInt(item.earnedPoints) || !(item.openingEarnedPoints === undefined || nonNegativeInt(item.openingEarnedPoints)) || !(item.previousAnchor === null || string(item.previousAnchor)) || !(item.nextAnchor === null || string(item.nextAnchor)) || !Array.isArray(item.buckets)) return null;
   const buckets = item.buckets.map((entry) => parseChartBucket(entry, range));
   if (buckets.some((bucket) => bucket === null)) return null;
-  return { range, anchor: item.anchor as string | null, periodStart: item.periodStart as string | null, periodEnd: item.periodEnd as string | null, earnedPoints: item.earnedPoints, buckets: buckets as ScoreChartBucket[], previousAnchor: item.previousAnchor as string | null, nextAnchor: item.nextAnchor as string | null };
+  return { range, anchor: item.anchor as string | null, periodStart: item.periodStart as string | null, periodEnd: item.periodEnd as string | null, earnedPoints: item.earnedPoints, ...(item.openingEarnedPoints !== undefined ? { openingEarnedPoints: item.openingEarnedPoints as number } : {}), buckets: buckets as ScoreChartBucket[], previousAnchor: item.previousAnchor as string | null, nextAnchor: item.nextAnchor as string | null };
 }
 function parseReward(value: unknown): Reward | null {
   const item = object(value);
