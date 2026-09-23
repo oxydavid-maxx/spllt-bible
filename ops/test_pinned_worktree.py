@@ -1,9 +1,10 @@
+import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from pinned_worktree import preflight, WorktreeNotPinnedError
+from pinned_worktree import preflight, preflight_against_declared_pin, read_declared_pin, WorktreeNotPinnedError
 
 
 def run_git(args, cwd):
@@ -82,6 +83,78 @@ class PinnedWorktreeTests(unittest.TestCase):
     def test_nonexistent_path_raises(self):
         with self.assertRaises(FileNotFoundError):
             preflight(Path(self.temp.name) / 'does-not-exist')
+
+
+class DeclaredPinTests(unittest.TestCase):
+    """Covers the gap a commit landing directly inside a live pinned worktree exposed
+    on 2026-09-23: preflight() alone only proves a tree is consistent with its OWN
+    HEAD, not that HEAD is the commit the deployment is declared to run. These tests
+    use a real repo (git init/commit, a real second commit to simulate the drift) and a
+    real pin-record JSON file living outside that repo, exactly like PILOT/
+    pinned-commit.json would sit outside the pinned worktree in production.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name) / 'repo'
+        self.repo.mkdir()
+        run_git(['init', '--initial-branch=main'], self.repo)
+        run_git(['config', 'user.email', 'test@example.invalid'], self.repo)
+        run_git(['config', 'user.name', 'Test'], self.repo)
+        (self.repo / 'server.txt').write_text('original content\n', encoding='utf-8')
+        run_git(['add', 'server.txt'], self.repo)
+        run_git(['commit', '-m', 'initial commit'], self.repo)
+        self.pinned_commit = self._head()
+        self.pin_path = Path(self.temp.name) / 'pinned-commit.json'
+        self.pin_path.write_text(json.dumps({'commit': self.pinned_commit}), encoding='utf-8')
+
+    def _head(self):
+        return subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=str(self.repo), capture_output=True,
+                               text=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW).stdout.strip()
+
+    def test_head_matching_the_declared_pin_passes(self):
+        self.assertEqual(preflight_against_declared_pin(self.repo, self.pin_path), self.pinned_commit)
+
+    def test_a_new_commit_landed_directly_in_the_worktree_is_refused_even_though_clean(self):
+        # This is exactly the 2026-09-23 scenario: a real, clean, committed change
+        # lands straight in the worktree. `git status` reports nothing -- the tree is
+        # internally consistent -- but HEAD has moved past what was declared.
+        (self.repo / 'server.txt').write_text('a real, clean, committed change\n', encoding='utf-8')
+        run_git(['add', 'server.txt'], self.repo)
+        run_git(['commit', '-m', 'landed directly in the live worktree'], self.repo)
+        new_head = self._head()
+        self.assertNotEqual(new_head, self.pinned_commit)
+        with self.assertRaises(WorktreeNotPinnedError) as ctx:
+            preflight_against_declared_pin(self.repo, self.pin_path)
+        self.assertEqual(ctx.exception.reason, 'COMMIT_MISMATCH')
+        self.assertEqual(ctx.exception.detail['expected'], self.pinned_commit)
+        self.assertEqual(ctx.exception.detail['actual'], new_head)
+
+    def test_missing_pin_record_refuses_with_a_clear_reason(self):
+        missing = Path(self.temp.name) / 'does-not-exist-pinned-commit.json'
+        with self.assertRaises(WorktreeNotPinnedError) as ctx:
+            preflight_against_declared_pin(self.repo, missing)
+        self.assertEqual(ctx.exception.reason, 'PIN_RECORD_MISSING')
+
+    def test_malformed_pin_record_refuses_with_a_clear_reason(self):
+        for content in ('not json', '{}', '{"commit": "too-short"}', '{"commit": 12345}', '[]'):
+            with self.subTest(content=content):
+                self.pin_path.write_text(content, encoding='utf-8')
+                with self.assertRaises(WorktreeNotPinnedError) as ctx:
+                    read_declared_pin(self.pin_path)
+                self.assertEqual(ctx.exception.reason, 'PIN_RECORD_INVALID')
+
+    def test_dirty_tree_is_still_refused_even_when_head_matches_the_declared_pin(self):
+        # The declared-pin check must not bypass the ordinary dirty-tree check.
+        (self.repo / 'server.txt').write_text('edited live, nobody noticed\n', encoding='utf-8')
+        with self.assertRaises(WorktreeNotPinnedError) as ctx:
+            preflight_against_declared_pin(self.repo, self.pin_path)
+        self.assertEqual(ctx.exception.reason, 'DIRTY_WORKTREE')
+
+    def test_pin_record_commit_is_case_insensitive(self):
+        self.pin_path.write_text(json.dumps({'commit': self.pinned_commit.upper()}), encoding='utf-8')
+        self.assertEqual(preflight_against_declared_pin(self.repo, self.pin_path), self.pinned_commit)
 
 
 if __name__ == '__main__':

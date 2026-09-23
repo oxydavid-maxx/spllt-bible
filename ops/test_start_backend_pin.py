@@ -35,8 +35,14 @@ class StartBackendPinTests(unittest.TestCase):
         run_git(['config', 'user.name', 'Test'], self.repo)
         run_git(['add', '.'], self.repo)
         run_git(['commit', '-m', 'initial commit'], self.repo)
+        self.pinned_commit = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=str(self.repo), capture_output=True, text=True,
+            check=True, creationflags=subprocess.CREATE_NO_WINDOW,
+        ).stdout.strip()
         self.pilot_scratch = Path(self.temp.name) / 'pilot-scratch'
         self.pilot_scratch.mkdir()
+        (self.pilot_scratch / 'pinned-commit.json').write_text(
+            json.dumps({'commit': self.pinned_commit}), encoding='utf-8')
         self.receipt_path = self.repo / 'ops' / 'last-startup-result.json'
 
     def invoke(self):
@@ -90,6 +96,36 @@ class StartBackendPinTests(unittest.TestCase):
         receipt = self.read_receipt()
         self.assertNotEqual(receipt['status'], 'REFUSED', msg=receipt)
         self.assertEqual(receipt['status'], 'FAILED')
+
+    def test_a_new_commit_landed_directly_in_the_worktree_is_refused_with_commit_mismatch(self):
+        # The exact 2026-09-23 scenario, exercised against the real start_backend.py
+        # subprocess: a genuinely clean, committed change lands straight in the
+        # worktree (not a dirty edit). `git status` reports nothing, but HEAD has moved
+        # past the commit pinned-commit.json declares.
+        (self.repo / 'ops' / 'reminder_config.py').write_text(
+            (self.repo / 'ops' / 'reminder_config.py').read_text(encoding='utf-8') + '\n# a real, clean, committed change\n',
+            encoding='utf-8',
+        )
+        run_git(['add', '.'], self.repo)
+        run_git(['commit', '-m', 'landed directly in the live worktree'], self.repo)
+        result = self.invoke()
+        self.assertNotEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+        receipt = self.read_receipt()
+        self.assertEqual(receipt['status'], 'REFUSED')
+        self.assertEqual(receipt['reason'], 'COMMIT_MISMATCH')
+        self.assertEqual(receipt['detail']['expected'], self.pinned_commit)
+        self.assertNotEqual(receipt['detail']['actual'], self.pinned_commit)
+        # Confirms the check happened before any secret was touched, same as the
+        # dirty-tree cases.
+        self.assertFalse((self.pilot_scratch / 'pilot-private-config.json').exists())
+
+    def test_missing_pin_record_is_refused_with_a_clear_reason(self):
+        (self.pilot_scratch / 'pinned-commit.json').unlink()
+        result = self.invoke()
+        self.assertNotEqual(result.returncode, 0, msg=result.stdout + result.stderr)
+        receipt = self.read_receipt()
+        self.assertEqual(receipt['status'], 'REFUSED')
+        self.assertEqual(receipt['reason'], 'PIN_RECORD_MISSING')
 
 
 if __name__ == '__main__':

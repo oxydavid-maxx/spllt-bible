@@ -16,6 +16,17 @@ going stale; the git pin structurally cannot go stale the same way. CFG_SHA (the
 the real pilot-private-config.json secret file, which lives outside git in PILOT) and
 ai_runtime.py's boundarySha256 (the claudeCli.ts security boundary) are unrelated to
 source drift and are unchanged.
+
+`preflight()` alone only proves the worktree is consistent with its OWN HEAD -- it says
+nothing about whether HEAD is the commit this deployment is declared to run. On
+2026-09-23 a commit landed directly inside the live pinned worktree, moving its HEAD
+without anyone touching anything outside the tree; the next start would have silently
+run it. `PIN_PATH` (a small JSON record living in PILOT, outside the worktree, so a
+commit inside the worktree cannot move it) declares the one commit this deployment must
+be on; `pinned_worktree.preflight_against_declared_pin()` refuses with
+`COMMIT_MISMATCH` if HEAD has moved away from it, even on an otherwise clean tree. See
+`read_declared_pin()`'s docstring in pinned_worktree.py for the full incident and
+ops/README.md for the record's exact format and the re-pin procedure that updates it.
 """
 import ctypes
 import datetime
@@ -28,7 +39,7 @@ import sys
 import time
 import urllib.request
 from backend_owner import record_successful_start
-from pinned_worktree import preflight, WorktreeNotPinnedError
+from pinned_worktree import preflight_against_declared_pin, WorktreeNotPinnedError
 
 BASE = Path(__file__).resolve().parent
 LIVE = BASE.parent
@@ -38,6 +49,11 @@ RESULT = BASE / 'last-startup-result.json'
 # Test-only seam: a dry run on a scratch port passes this; the real Startup shortcut
 # invocation never sets it, so PORT is always 8788 in production.
 PORT = int(os.environ.get('QINGMU_SERVER_PORT_OVERRIDE') or '8788')
+# Same override as deployment_support.py's PILOT (kept in sync deliberately -- these two
+# files are separate processes, not importable from each other, exactly like PORT above).
+PILOT = Path(os.environ.get('QINGMU_PILOT_DIR_OVERRIDE')
+             or r'C:/Users/User/AppData/Local/Packages/OpenAI.Codex_2p2nqsd0c76g0/LocalCache/Local/QingmuYouthPilot')
+PIN_PATH = PILOT / 'pinned-commit.json'
 
 
 def healthy():
@@ -49,8 +65,8 @@ def healthy():
 
 def start():
     # Refuse before anything else -- including before the mutex does any real work --
-    # if this worktree is not an exact, clean checkout of a single commit.
-    commit = preflight(LIVE)
+    # if this worktree is not an exact, clean checkout of the commit PIN_PATH declares.
+    commit = preflight_against_declared_pin(LIVE, PIN_PATH)
     # Concurrent logon/manual calls must not create multiple backend writers. Scoped to
     # PORT so a scratch-port dry run never contends with a real production start.
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)

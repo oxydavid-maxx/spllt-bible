@@ -16,12 +16,42 @@ After validating the real CLI boundary, the private configuration may contain:
 {
   "enabled": true,
   "executable": "C:/path/to/claude.exe",
-  "boundarySha256": "<SHA256 of the exact verified server/claudeCli.ts bytes>"
+  "boundarySha256": "<SHA256 of the committed git blob for server/claudeCli.ts>"
 }
 ```
 
-The boundary hash must match the deployed file. Rolling back server code without
-changing the hardened launcher disables AI automatically. Never restore the old
+**`boundarySha256` pins the committed git blob, not the working-tree file.**
+`read_ai_environment()` hashes `git cat-file blob HEAD:server/claudeCli.ts` inside the
+pinned worktree (see `ai_runtime.read_committed_boundary_bytes()`) -- never the file's
+on-disk bytes. This is deliberate: a worktree checked out with `core.autocrlf=true` has
+CRLF line endings on disk while one checked out elsewhere (or the original untracked
+qingmu-youth copy, which had mixed CRLF/LF) does not, even for the exact same commit
+with byte-identical *content*. Hashing the working-tree file made the pin depend on the
+checkout machine's own git configuration instead of on the commit -- exactly what broke
+the 2026-09-23 cutover (`ai_status: BOUNDARY_MISMATCH` on first start, for a file nobody
+had actually edited). Hashing the git blob is invariant to that.
+
+To derive the pin value for a specific commit, from any clone of this repo (worktree not
+required to be checked out at that commit -- `git cat-file` reads any reachable commit):
+
+```text
+git cat-file blob <commit>:server/claudeCli.ts | sha256sum
+```
+
+On Windows PowerShell, equivalently:
+
+```powershell
+git cat-file blob <commit>:server/claudeCli.ts | Out-File -Encoding utf8 -NoNewline $tmp; (Get-FileHash $tmp -Algorithm SHA256).Hash.ToLower()
+```
+
+The deployed launcher also reports this exact value on every start, in its receipt's
+`ai_boundary_sha256` field (`deployment_support.py` computes it the same way, via
+`read_committed_boundary_bytes`) -- use that field to update the private config at the
+next redeploy instead of recomputing it by hand, unless verifying an *upcoming* commit
+that hasn't been deployed yet.
+
+The boundary hash must match the deployed commit's blob. Rolling back server code
+without changing the hardened launcher disables AI automatically. Never restore the old
 unrestricted launcher as part of a server rollback. CLI invocation itself disables
 tools, MCP, customizations and persisted sessions while preserving authentication.
 
@@ -96,13 +126,22 @@ itself only recycles rather than deletes.
 
 1. **Pick the commit.** `main` once PR #2 (`codex/qingmu-p2-repairs`) merges, per the
    resolved caveat above -- no separate decision needed.
-2. **Create the pinned worktree.**
+2. **Create the pinned worktree, and declare the pin in the same step.**
    ```text
    git -C C:/dev/apps/qingmu-bible worktree add --detach C:/dev/machine/worktrees/qingmu-bible/active <commit>
    ```
    Use a fresh subdirectory (not `active` again) for every future re-pin instead of
    reusing one in place, so a bad re-pin can be rolled back by pointing the shortcut at
-   the previous directory.
+   the previous directory. **Immediately after**, write (or overwrite) the pin record
+   the launcher checks against -- see "The commit pin record" below for the exact path
+   and format:
+   ```text
+   '{"commit": "<commit>"}' | Set-Content -Encoding utf8 <PILOT>\pinned-commit.json
+   ```
+   These two actions are one logical step: a worktree without a matching pin record
+   refuses to start at all (`PIN_RECORD_MISSING` / `COMMIT_MISMATCH`), and a pin record
+   pointing at a worktree that doesn't exist yet is simply inert until the worktree
+   does. Do this before step 5 repoints the shortcut, not after.
 3. **Install node_modules in the new worktree.** Either `npm ci` inside it (matches
    `package-lock.json` exactly, slower) or, if a trusted install of the *same*
    `package-lock.json` already exists elsewhere on this machine, a directory junction:
@@ -196,12 +235,15 @@ to the live file byte-for-byte (CRLF-normalized). No further action needed.
   `Path(__file__).resolve().parent.parent`; `start_backend.py` computes it as
   `BASE.parent`. Both resolve to whatever pinned worktree the file physically lives in
   -- re-pinning to a new worktree needs no code edit.
-- `start_backend.py.start()` calls `pinned_worktree.preflight(LIVE)` before doing
-  anything else (before the mutex does real work, before any secret is read). A dirty or
-  unpinned worktree produces `{"status": "REFUSED", "reason": "DIRTY_WORKTREE", ...}` and
-  exit code 1, written to `ops/last-startup-result.json` exactly like every other
-  outcome. `deployment_support.py.launch()` independently re-checks the same thing
-  (defense in depth; it is also directly invocable).
+- `start_backend.py.start()` calls
+  `pinned_worktree.preflight_against_declared_pin(LIVE, PIN_PATH)` before doing anything
+  else (before the mutex does real work, before any secret is read). A dirty worktree,
+  an unpinned one, or one whose HEAD does not match `PIN_PATH`'s declared commit
+  produces `{"status": "REFUSED", "reason": "DIRTY_WORKTREE" | "COMMIT_MISMATCH" |
+  "PIN_RECORD_MISSING" | "PIN_RECORD_INVALID", ...}` and exit code 1, written to
+  `ops/last-startup-result.json` exactly like every other outcome.
+  `deployment_support.py.launch()` independently re-checks the same thing (defense in
+  depth; it is also directly invocable).
 - **The old SHA256 hash-pin on `deployment_support.py`'s own bytes (`LAUNCHER_CHANGED`)
   is removed, not kept alongside the git pin.** `preflight()` already verifies that file,
   and every other tracked file in the worktree, matches its committed content exactly --
@@ -220,6 +262,53 @@ to the live file byte-for-byte (CRLF-normalized). No further action needed.
   a dry run can exercise the exact same secret-loading code path against a scratch
   `PILOT` directory and a scratch port instead of the real one. See
   `ops/test_start_backend_pin.py` for the refusal tests.
+
+### The commit pin record (closes the "commit inside the worktree" gap)
+
+**`preflight()` alone only proves a worktree is consistent with its OWN HEAD -- clean,
+no drift from whatever commit it happens to be on right now. It says nothing about
+whether that HEAD is the commit this deployment is declared to run.** On 2026-09-23 a
+commit (`6f37bfc`) landed directly inside the live pinned worktree
+(`C:\dev\machine\worktrees\qingmu-bible\r-7fe612f`), moving its HEAD past the intended
+pin (`7fe612f`) without anyone touching anything outside the worktree. The running
+process was unaffected, but the *next* start would have silently run whatever HEAD had
+become -- nothing outside the tree said otherwise, and the directory's own name
+(`r-7fe612f`) had already stopped matching its checked-out commit.
+
+The fix: a small JSON record declaring the one commit this deployment must be on,
+living **outside** the git worktree -- so a commit made inside the worktree structurally
+cannot move it.
+
+- **Path**: `<PILOT>\pinned-commit.json`, alongside `pilot-private-config.json` and the
+  other PILOT-side files (real path:
+  `C:\Users\User\AppData\Local\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Local\QingmuYouthPilot\pinned-commit.json`;
+  overridable for tests via the same `QINGMU_PILOT_DIR_OVERRIDE` seam PILOT itself uses).
+- **Format**: `{"commit": "<40-character hex SHA>"}`. Extra fields are ignored, not
+  rejected, so a human can add `"pinned_at_utc"` / `"note"` for their own audit trail if
+  they want to -- only `commit` is load-bearing.
+- **Enforcement**: `pinned_worktree.preflight_against_declared_pin(worktree_root,
+  pin_path)` (used by both `start_backend.py` and `deployment_support.py`, replacing the
+  bare `preflight(worktree_root)` call from round 2 of this ticket) reads this file
+  first, then preflights the worktree with that value as `expected_commit`. Refusal
+  reasons: `PIN_RECORD_MISSING` (no file), `PIN_RECORD_INVALID` (unreadable / not JSON /
+  `commit` not a 40-hex SHA), `COMMIT_MISMATCH` (worktree HEAD differs -- this is the
+  case that fires if another commit lands directly inside the worktree again), plus the
+  existing `DIRTY_WORKTREE` / `NOT_A_GIT_WORKTREE` / `NOT_WORKTREE_ROOT` reasons from an
+  ordinary drifted checkout -- the declared-pin check does not weaken or bypass any of
+  those, it only adds one more thing that must also be true.
+- **Migration for the live system**: this fix is not yet on `release/0.5.9` (it is
+  mechanism only on this branch, `ops/ai-boundary-git-blob-pin`, not pushed). Before
+  merging and re-pinning the live worktree to a commit that includes it, the pin record
+  MUST already exist at `<PILOT>\pinned-commit.json`, or the very next start will refuse
+  with `PIN_RECORD_MISSING` -- this is not a hypothetical, it is exactly what will
+  happen given the live worktree currently has no such file. Decide the value
+  deliberately rather than rubber-stamping whatever the worktree happens to be on: the
+  live worktree's HEAD is currently `6f37bfc` (a commit that landed directly inside it,
+  per the incident above, not through a decided re-pin) -- confirm with 光佑 whether that
+  is the intended commit to declare, or whether the worktree should first be reset to
+  `7fe612f` (or another decided commit) before writing the record. Going forward, every
+  re-pin (step 2 above) writes this file in the same action as creating the new
+  worktree, so this one-time bootstrap gap cannot recur.
 
 Dry run performed 2026-09-23 from a real pinned worktree of this branch, port 8798, a
 scratch `PILOT` directory containing a synthetic (non-real) `pilot-private-config.json`
