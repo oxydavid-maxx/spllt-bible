@@ -37,6 +37,15 @@ describe('reading what the weekly job published', () => {
       next: { date: '9/27', signup: 'https://forms.gle/Z7EvQyzCVEmnQYHNA' },
     });
     expect(announcement?.past).toHaveLength(1);
+    expect(announcement?.past[0]).toMatchObject({ week: '2026-09-13', speaker: null });
+  });
+
+  it('keeps a verified historical speaker and trims it when parsing newer JSON', () => {
+    const announcement = parseAnnouncement({
+      ...PUBLISHED,
+      past: [{ ...PUBLISHED.past[0], speaker: '  中亮  ' }],
+    });
+    expect(announcement?.past[0].speaker).toBe('中亮');
   });
 
   // A later run adding a field must not stop an older phone rendering the rest. That is the opposite

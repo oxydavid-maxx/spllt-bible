@@ -32,7 +32,7 @@ const parent = listing(['week20', '20260920'], ['week13', '20260913']);
 const current = listing(['audio20', '20260920.mp3'], ['doc20', '20260920 青崇講道｜先']);
 const normalProgram = workbook({ '中亮第一三周信息排班': [['Date', 'Topic', 'Owner', 'Note'], ['46285', '先', '講員', '約3'], ['46292', '下一次', '輔導', '']] });
 const normalSunday = workbook({ '常設': [['key', 'value'], ['地址', '測試地址']] });
-const oldWeek: Announcement['past'][number] = { week: '2026-09-13', title: 'Last good', audio: 'https://example.invalid/last-good.mp3', slides: null, transcript: null };
+const oldWeek: Announcement['past'][number] = { week: '2026-09-13', title: 'Last good', speaker: null, audio: 'https://example.invalid/last-good.mp3', slides: null, transcript: null };
 const previous: Announcement = { week: '2026-09-13', generatedAt: '2026-09-15T00:00:00Z', sermon: { ...oldWeek, speaker: null, passage: null, youtube: null }, next: null, standing: { 地址: 'Previous address' }, past: [] };
 
 beforeEach(() => {

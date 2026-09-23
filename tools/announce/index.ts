@@ -42,7 +42,10 @@ function previousWeek(week: string, fallbackFiles: Map<string, string | null>): 
       const item = prior.week === week ? prior.sermon : prior.past?.find((entry) => entry.week === week);
       if (!item) continue;
       const text = (value: unknown) => typeof value === 'string' && value.trim() ? value : null;
-      const result = { week, title: text(item.title), audio: text(item.audio), slides: text(item.slides), transcript: text(item.transcript) };
+      const result = {
+        week, title: text(item.title), speaker: text(item.speaker),
+        audio: text(item.audio), slides: text(item.slides), transcript: text(item.transcript),
+      };
       if (result.audio || result.slides || result.transcript) return result;
     } catch { /* Try the other last-good copy; a broken cache must never invent a week. */ }
   }

@@ -73,7 +73,7 @@ afterEach(() => {
 describe('announcement publisher with a real temporary bare Git remote', () => {
   it.each(['archive', 'latest'])('refuses stale %s fallback after remote correction, then rebuilds safely on the next run', async (source) => {
     const f = fixture();
-    const historical = { ...announcement, week: '2026-09-13', sermon: { ...announcement.sermon!, title: 'Old history', audio: 'https://example.invalid/old.mp3' } };
+    const historical = { ...announcement, week: '2026-09-13', sermon: { ...announcement.sermon!, title: 'Old history', speaker: 'Cached speaker', audio: 'https://example.invalid/old.mp3' } };
     const sourcePath = source === 'archive' ? 'announcements/20260913.json' : 'announcements/latest.json';
     put(f.publisher, sourcePath, JSON.stringify(historical) + '\n');
     git(f.publisher, 'add', sourcePath); git(f.publisher, 'commit', '-m', 'Seed historical fallback'); git(f.publisher, 'push', 'origin', 'main');
@@ -91,7 +91,7 @@ describe('announcement publisher with a real temporary bare Git remote', () => {
     expect(git(f.publisher, 'status', '--porcelain')).toBe('');
 
     expect((await run(f.publisher, announcement, false, true)).code).toBe(0);
-    expect(JSON.parse(blob(f.remote, 'main', paths[1])).past[0]).toMatchObject({ week: '2026-09-13', title: 'Corrected history', audio: 'https://example.invalid/correct.mp3' });
+    expect(JSON.parse(blob(f.remote, 'main', paths[1])).past[0]).toMatchObject({ week: '2026-09-13', title: 'Corrected history', speaker: 'Cached speaker', audio: 'https://example.invalid/correct.mp3' });
     expect(blob(f.remote, 'main', 'app-version.json')).toBe(release);
   }, 30_000);
 
@@ -109,7 +109,7 @@ describe('announcement publisher with a real temporary bare Git remote', () => {
 
   it('preserves a corrected visible history row even when an older usable archive also exists', async () => {
     const f = fixture();
-    const old = { week: '2026-09-13', title: 'Old history', audio: 'https://example.invalid/old.mp3', slides: null, transcript: null };
+    const old = { week: '2026-09-13', title: 'Old history', speaker: 'Visible speaker', audio: 'https://example.invalid/old.mp3', slides: null, transcript: null };
     put(f.publisher, 'announcements/20260913.json', JSON.stringify({ ...announcement, week: old.week, sermon: { ...announcement.sermon, ...old } }) + '\n');
     put(f.publisher, paths[1], JSON.stringify({ ...announcement, past: [old] }) + '\n');
     git(f.publisher, 'add', 'announcements/20260913.json', paths[1]); git(f.publisher, 'commit', '-m', 'Seed old archive and displayed history'); git(f.publisher, 'push', 'origin', 'main');

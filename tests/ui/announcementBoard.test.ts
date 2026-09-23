@@ -27,7 +27,7 @@ const FULL: Announcement = {
   },
   next: { date: '9/27', topic: '豚汁定食/如何殺柚子', owner: '淑君校長/大廚', signup: 'https://forms.gle/Z7Ev' },
   standing: { 地址: '新竹市東區龍山西路107號2樓', 地圖: 'https://maps.app.goo.gl/k9NF', 午餐: '80 元（教會補助 80）' },
-  past: [{ week: '2026-09-13', title: null, audio: null, slides: 'https://docs.google.com/presentation/d/1Bf/preview', transcript: null }],
+  past: [{ week: '2026-09-13', title: null, speaker: '中亮', audio: null, slides: 'https://docs.google.com/presentation/d/1Bf/preview', transcript: null }],
 };
 
 function render(announcement: Announcement, stale = false) {
@@ -38,6 +38,8 @@ function render(announcement: Announcement, stale = false) {
     onOpen,
     text: () => JSON.stringify(tree.toJSON()),
     byLabel: (label: string) => tree.root.findAll((node) => node.props?.accessibilityLabel === label)[0],
+    textNodes: () => tree.root.findAll((node) => String(node.type) === 'Text'),
+    wrapRows: () => tree.root.findAll((node) => (node.props?.style as Record<string, unknown>)?.flexWrap === 'wrap'),
   };
 }
 
@@ -52,6 +54,20 @@ describe('the notice board', () => {
 
   it('gives the sermon its speaker and passage on one line', () => {
     expect(render(FULL).text()).toContain('光佑 · 創3');
+  });
+
+  it('keeps the past date and speaker together and lets long names wrap without clipping', () => {
+    const longSpeaker = '中亮哥是這一週青年啟發的帶領者';
+    const board = render({
+      ...FULL,
+      past: [{ ...FULL.past[0], speaker: longSpeaker }],
+    });
+    const line = board.textNodes().find((node) => String(node.props.children).startsWith('9/13 · '));
+
+    expect(line?.props.children).toBe('9/13 · ' + longSpeaker);
+    expect(line?.props.numberOfLines).toBeUndefined();
+    expect(line?.props.style).toMatchObject({ flexGrow: 1, flexBasis: 140, minWidth: 140 });
+    expect(board.wrapRows()).not.toHaveLength(0);
   });
 
   it('opens each of the three sermon links', () => {

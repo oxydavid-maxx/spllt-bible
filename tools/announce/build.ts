@@ -2,7 +2,7 @@ import { fetchDriveFile, fetchFolderHtml, fetchSlidesText, fetchWorkbook } from 
 import { pptxSlideText, xlsxSheetRows } from './office';
 import {
   classifyFile, findSignupUrl, isGoogleNative, listWeekFolders, nextAfter, parseFolderListing,
-  headline, pickWeekFolder, readPlanRows, rowFor, sermonTitleFromName, shortDate, viewUrl,
+  excelSerialToDate, headline, pickWeekFolder, readPlanRows, rowFor, sermonTitleFromName, shortDate, viewUrl,
   type DriveEntry, type PlanRow,
 } from './parse';
 
@@ -41,7 +41,7 @@ export interface Announcement {
   sermon: SermonBlock | null;
   next: { date: string; topic: string; owner: string | null; signup: string | null } | null;
   standing: Record<string, string> | null;
-  past: Array<{ week: string; title: string | null; audio: string | null; slides: string | null; transcript: string | null }>;
+  past: Array<{ week: string; title: string | null; speaker: string | null; audio: string | null; slides: string | null; transcript: string | null }>;
 }
 
 function isoWeek(folderName: string): string {
@@ -92,6 +92,24 @@ function standingFrom(workbook: Buffer): Record<string, string> | null {
   return Object.keys(standing).length > 0 ? standing : null;
 }
 
+/** The dated service sheet labels the speaker explicitly; program-tab owners can be a group. */
+function speakersByWeek(workbook: Buffer): Map<string, string> {
+  const rows = xlsxSheetRows(workbook, '2026服事表');
+  const headerIndex = rows.findIndex((row) => row.some((cell) => cell.trim() === '日期')
+    && row.some((cell) => cell.trim() === '講員'));
+  if (headerIndex < 0) return new Map();
+  const header = rows[headerIndex];
+  const dateColumn = header.findIndex((cell) => cell.trim() === '日期');
+  const speakerColumn = header.findIndex((cell) => cell.trim() === '講員');
+  const speakers = new Map<string, string>();
+  for (const row of rows.slice(headerIndex + 1)) {
+    const date = excelSerialToDate(Number(row[dateColumn]));
+    const speaker = (row[speakerColumn] ?? '').trim();
+    if (date && speaker) speakers.set(date, speaker);
+  }
+  return speakers;
+}
+
 export interface BuildOptions {
   today: string;
   parentFolder?: string;
@@ -116,10 +134,12 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
   const [program, sunday] = await Promise.all([fetchWorkbook(PROGRAM_WORKBOOK), fetchWorkbook(SUNDAY_WORKBOOK)]);
   if (program === null || sunday === null) return { announcement: null, reason: 'REQUIRED_WORKBOOK_UNREACHABLE' };
   let sermonRows: PlanRow[], gatheringRows: PlanRow[], standing: Record<string, string> | null;
+  let speakers: Map<string, string>;
   try {
     sermonRows = readTabs(program, SERMON_TABS);
     gatheringRows = readTabs(program, GATHERING_TABS);
     standing = standingFrom(sunday);
+    speakers = speakersByWeek(sunday);
   } catch {
     return { announcement: null, reason: 'REQUIRED_WORKBOOK_UNREADABLE' };
   }
@@ -144,20 +164,23 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
   const past: Announcement['past'] = [];
   const warnings: string[] = [];
   for (const folder of listWeekFolders(folders, options.today).slice(1, PAST_WEEKS + 1)) {
+    const priorWeek = isoWeek(folder.name);
     const listing = await fetchFolderHtml(folder.id);
     if (listing === null) {
-      const priorWeek = isoWeek(folder.name);
       const remembered = options.previousWeek?.(priorWeek);
       if (!remembered || remembered.week !== priorWeek || (!remembered.audio && !remembered.slides && !remembered.transcript)) {
         return { announcement: null, reason: `HISTORY_UNREACHABLE_WITHOUT_FALLBACK:${priorWeek}` };
       }
-      past.push({ ...remembered });
+      past.push({ ...remembered, speaker: remembered.speaker ?? speakers.get(priorWeek) ?? null });
       warnings.push(`HISTORY_LAST_GOOD:${priorWeek}`);
       continue;
     }
     const older = readWeekFiles(parseFolderListing(listing));
     if (!older.audio && !older.slides && !older.transcript) continue;
-    past.push({ week: isoWeek(folder.name), title: older.title, audio: older.audio, slides: older.slides, transcript: older.transcript });
+    past.push({
+      week: priorWeek, title: older.title, speaker: speakers.get(priorWeek) ?? null,
+      audio: older.audio, slides: older.slides, transcript: older.transcript,
+    });
   }
 
   return {
