@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "lane": "W1 Reader",
+  "status": "FOCUS_PASS",
+  "baseCommit": "f561b83d8719d12ee55d2a1c5466a9cbbcab3074",
+  "candidateCommit": "4fa95bbdbf5e36130d002301ee9bbefcc96b2093",
+  "branch": "codex/qm-compact-reader",
+  "worktree": "C:/dev/machine/worktrees/qm-c23-w1",
+  "focusCommand": "npm exec -- vitest run tests/ui/route-contract.test.ts tests/ui/focusedReaderRoute.test.ts tests/ui/unscheduledReaderRoute.test.ts tests/ui/fullscreenReaderLayout.test.ts tests/ui/readerImmersionSettings.test.ts tests/ui/readerAudioSelectionWiring.test.ts tests/ui/readerAutoplayNativeFlow.test.ts tests/ui/chapterAudioReplay.test.ts tests/storage/readerPosition.test.ts tests/ui/compactToday.test.ts tests/ui/readerDailyFlow.test.ts tests/ui/fullscreenReaderWrapper.test.ts tests/ui/focusedReaderVisibleIdentity.test.ts",
+  "focusResult": {
+    "status": "PASS",
+    "testFiles": 13,
+    "testsPassed": 122,
+    "testsFailed": 0
+  },
+  "typecheck": {
+    "command": "npm run typecheck",
+    "status": "PASS"
+  },
+  "diffCheck": {
+    "command": "git diff --check",
+    "status": "PASS"
+  },
+  "changedFiles": [
+    "app/(tabs)/_layout.tsx",
+    "app/(tabs)/reader.tsx",
+    "app/(tabs)/today.tsx",
+    "src/ui/ChapterAudioControls.tsx",
+    "src/ui/FullscreenReaderLayout.tsx",
+    "src/ui/YouVersionReader.tsx",
+    "src/ui/readerSettingsBridge.ts",
+    "src/ui/youVersionReaderConfig.ts",
+    "tests/ui/chapterAudioReplay.test.ts",
+    "tests/ui/compactToday.test.ts",
+    "tests/ui/focusedReaderRoute.test.ts",
+    "tests/ui/focusedReaderVisibleIdentity.test.ts",
+    "tests/ui/fullscreenReaderLayout.test.ts",
+    "tests/ui/fullscreenReaderWrapper.test.ts",
+    "tests/ui/readerAudioSelectionWiring.test.ts",
+    "tests/ui/readerAutoplayNativeFlow.test.ts",
+    "tests/ui/readerDailyFlow.test.ts",
+    "tests/ui/readerImmersionSettings.test.ts",
+    "tests/ui/unscheduledReaderRoute.test.ts"
+  ],
+  "screenshot": {
+    "status": "WAITING_FOR_SINGLE_OPERATOR",
+    "path": null,
+    "phoneInputSent": false,
+    "realScreenshotVisualReview": "BLOCKED_PENDING_OPERATOR"
+  },
+  "screenshotContext": "No emulator was running. ADB read-only inventory showed USB and TCP transports for the same Pixel; per CEO direction, no emulator was started and no device input was sent. RC operator owns the first real Reader screenshot.",
+  "testEnvironment": "npm ci used the locked package tree. A junction in ignored candidate node_modules exposes the already-installed expo-modules-core package at the top-level path expected by test resolution; package.json and package-lock.json are unchanged.",
+  "worktreeStatus": "CLEAN_AFTER_COMMIT"
+}
