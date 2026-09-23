@@ -94,12 +94,19 @@
       "pack": "full W2 FOCUS: 75/75 PASS",
       "candidateCommit": "a4df134ac128dafa4f0fd256a6c6e0589eaf6f40",
       "candidateTree": "d7570fdfed85c811e32a9ea0da378bc2c1f03295"
+    },
+    {
+      "atUtc": "2026-09-23T15:22:27Z",
+      "change": "chair-review-01 R06/R07/R08 corrections",
+      "pack": "affected UI FOCUS: 44/44 PASS",
+      "candidateCommit": "674af45c0a8c6c846a11af7fd6f8455405ad3c7d",
+      "candidateTree": "54b31b309ce37a66db180bc225eb5294cd81a49b"
     }
   ],
   "behavior": {
     "R06": "A same-member profile snapshot survives normal Points blur/refocus while its background refresh runs; busy/loading stays hidden for that refresh. Sign-out/account change clears the profile and invalidates generation/session ownership; deferred member A data cannot replace member B.",
     "R07": "Server projects active daily_point_entitlements by task_date; opening/cumulative fields are optional/additive, carry-in uses the same active predicate as lifetime earned, redemptions leave earned history unchanged, and backfill/revoke move cumulative values from the affected task date. Trend is default; calendar remains selectable, with week/month/year/all and period navigation preserved. Future-dated awards are not counted as happened calendar days or included as future curve points.",
-    "R08": "Goal CTA opens the existing rewards picker only when a different active option exists (or the initial unset goal can be loaded). Retired rewards remain excluded; target mutation does not change wallet balance."
+    "R08": "The main goal area is an accessible Pressable that opens the existing rewards picker, including when its sole active reward is already selected. Active options remain selectable; target changes use the existing setTarget path and do not change wallet balance."
   },
   "compatibility": {
     "oldClientNewServer": "Additive unknown JSON fields: the base client parser validates known required fields and projects them without rejecting unrecognized keys. No old-client change is required.",
@@ -108,11 +115,72 @@
   },
   "nativeEvidence": {
     "status": "NOT RUN / BLOCKED BY SINGLE OPERATOR LEASE",
-    "detail": "No phone input or Reader↔Points video captured by W2. CEO retains the device lease; final RC needs operator-owned D09 video."
+    "detail": "No phone input or Reader↔Points video captured by W2. The single USB operator lease is currently held by /root/rc_integration; D09 remains pending RC operator verification."
   },
   "report": {
     "receiptPath": "C:\\dev\\machine\\worktrees\\qm-c23-w2\\.handoff\\compact-20260923\\w2-points-receipt.json",
-    "recordedAtUtc": "2026-09-23T14:43:50Z",
-    "developmentStartAtUtc": "2026-09-23T14:08:01Z"
+    "recordedAtUtc": "2026-09-23T15:25:10Z",
+    "developmentStartAtUtc": "2026-09-23T15:00:50Z"
+  },
+  "followUp": {
+    "chairReview": "C:/dev/apps/qingmu-bible/.handoff/compact-20260923/chair-review-01.md",
+    "chairReviewSha256": "AB9E31431EB81180F0F06716470EAD684AF3DC71D01F9E9A3B1B482DE7587D09",
+    "baseCommit": "a4df134ac128dafa4f0fd256a6c6e0589eaf6f40",
+    "commit": "674af45c0a8c6c846a11af7fd6f8455405ad3c7d",
+    "tree": "54b31b309ce37a66db180bc225eb5294cd81a49b",
+    "commitTime": "2026-09-23T15:23:06Z",
+    "diffStat": "8 files changed, 171 insertions(+), 59 deletions(-)",
+    "changedFiles": [
+      "app/(tabs)/progress.tsx",
+      "src/ui/gamification/RewardControls.tsx",
+      "src/ui/gamification/RewardGoalCard.tsx",
+      "src/ui/gamification/ScoreProfileChart.tsx",
+      "tests/ui/gamificationProgressRoute.test.ts",
+      "tests/ui/gamificationProgressSecurity.test.ts",
+      "tests/ui/rewardGoalCard.test.ts",
+      "tests/ui/scoreProfileChart.test.ts"
+    ],
+    "fixes": [
+      {
+        "id": "R08",
+        "status": "FIXED",
+        "detail": "The main goal content is an accessible Pressable that opens the existing picker, including with one selected reward. Picker shows the selected active item immediately. The shelf remains a sibling, avoiding nested Pressables. Route coverage verifies setRewardTarget and no redeem call."
+      },
+      {
+        "id": "R06",
+        "status": "FIXED",
+        "detail": "Normal same-session blur/refocus invalidates old work but preserves profile, nominations banner, community node, reward shelf, and existing stale state. Refresh start no longer marks fresh data stale; an actual failed refresh does, while retaining all visible blocks. Logout/account change still clears state and blocks stale responses."
+      },
+      {
+        "id": "R07",
+        "status": "FIXED",
+        "detail": "SVG uses preserveAspectRatio=none and tap x is mapped into viewBox coordinates before subtracting x=14..306 plot insets. UI test verifies first/middle/last dates at plot widths 320 and 640."
+      }
+    ],
+    "focus": {
+      "command": "npm exec -- vitest run tests/ui/scoreProfileChart.test.ts tests/ui/gamificationProgressRoute.test.ts tests/ui/gamificationProgressSecurity.test.ts tests/ui/rewardGoalCard.test.ts",
+      "result": "PASS",
+      "testFilesPassed": 4,
+      "testsPassed": 44,
+      "testsFailed": 0,
+      "candidateCommit": "674af45c0a8c6c846a11af7fd6f8455405ad3c7d",
+      "candidateTree": "54b31b309ce37a66db180bc225eb5294cd81a49b",
+      "startedAtUtc": "2026-09-23T15:22:27Z",
+      "notes": "Only the four affected UI packs were run; previously green server chart and gamification packs were not rerun."
+    },
+    "redEvidence": [
+      {
+        "id": "R08",
+        "result": "Before implementation, selected single-reward card had no goal-button node; picker selected-row test found zero radio choices."
+      },
+      {
+        "id": "R06",
+        "result": "Before implementation, same-session refocus inserted the stale banner during the in-flight request and cleared secondary state."
+      },
+      {
+        "id": "R07",
+        "result": "Before implementation, first dot x=14 at width 320 selected 2026-09-02, not 2026-09-01."
+      }
+    ]
   }
 }
