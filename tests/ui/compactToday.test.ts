@@ -67,6 +67,14 @@ describe('compact Today home', () => {
   });
   afterAll(() => { console.error = originalError; });
   beforeEach(() => {
+    // The screen asks the real clock what today is — `isWithinCompletionWindow(selectedDate,
+    // taipeiDate(new Date()))` — and the back-fill window is today plus the previous six days. These
+    // cases are written around 9/12 to 9/17, so they passed during the week they were written and
+    // then quietly began asserting 超過補登期限 instead of 我已完成讀經. A test whose result depends
+    // on when it runs is not a test, so the clock is pinned: 9/18 in Taipei puts 9/12 exactly six
+    // days back, at the far edge of the window, which is also the boundary most worth covering.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-18T04:00:00.000Z'));
     vi.stubEnv('EXPO_PUBLIC_QINGMU_FIXTURE', 'false');
     vi.stubEnv('EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID', 'component-test-client');
     vi.stubEnv('EXPO_PUBLIC_QINGMU_API_BASE_URL', 'https://example.test');
@@ -88,6 +96,7 @@ describe('compact Today home', () => {
     act(() => { renderers.splice(0).forEach(renderer => renderer.unmount()); clearAuthSession(); });
     database.close();
     vi.unstubAllEnvs();
+    vi.useRealTimers();
   });
   async function render(component = TodayScreen) {
     let renderer!: TestRenderer.ReactTestRenderer;

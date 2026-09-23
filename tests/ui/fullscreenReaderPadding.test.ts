@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -12,6 +12,37 @@ import { buildReaderDomBridge } from '../../src/ui/readerSettingsBridge';
 // then let a real Chromium engine resolve the native/app !important cascade.
 // This fixture is offline and isolated from the user's browser profile. It is
 // desktop Chromium proof of CSS, never Android/WebView geometry acceptance.
+
+/**
+ * A binary that still understands `--dump-dom`.
+ *
+ * Chrome removed the headless shell from its main binary in M132, so `--dump-dom` — which belonged
+ * to the old headless implementation — silently produces nothing on a current Chrome. The installed
+ * Chrome here is 153, which exits 0 and prints an empty string, and this test then failed with
+ * "Chromium must execute all actual-CSS fixtures" as if the fixtures had not run. They had not been
+ * asked to.
+ *
+ * chrome-headless-shell is the supported replacement and Playwright already ships one. Preferring
+ * the newest installed shell keeps the engine roughly current without pinning a version that a
+ * Playwright update would move.
+ */
+function resolveDumpDomBinary(): string {
+  const shellRoot = join(process.env.LOCALAPPDATA ?? '', 'ms-playwright');
+  try {
+    const builds = readdirSync(shellRoot)
+      .filter((name) => name.startsWith('chromium_headless_shell-'))
+      .sort((a, b) => Number(a.split('-')[1]) - Number(b.split('-')[1]));
+    for (const build of builds.reverse()) {
+      for (const platform of ['chrome-headless-shell-win64', 'chrome-headless-shell-linux64', 'chrome-headless-shell-mac-arm64']) {
+        const candidate = join(shellRoot, build, platform, process.platform === 'win32' ? 'chrome-headless-shell.exe' : 'chrome-headless-shell');
+        if (existsSync(candidate)) return candidate;
+      }
+    }
+  } catch { /* fall through to the browser path below */ }
+  // No shell installed. Chrome itself will not dump anything on M132 or later, so this path exists
+  // for older installs and for platforms where the browser is the shell.
+  return process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : 'google-chrome';
+}
 it('applies compact padding to the actual fullscreen scroll container, regardless of native style order, while preserving legacy and content', () => {
   const webSource = readFileSync('node_modules/@youversion/platform-react-ui/dist/index.js', 'utf8');
   const nativeSource = readFileSync('node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js', 'utf8');
@@ -75,7 +106,7 @@ it('applies compact padding to the actual fullscreen scroll container, regardles
   try {
     const page = join(work, 'fixture.html');
     writeFileSync(page, html);
-    const chromePath = process.env.CHROME_PATH ?? (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : 'google-chrome');
+    const chromePath = process.env.CHROME_PATH ?? resolveDumpDomBinary();
     const output = execFileSync(chromePath, [
       '--headless=new', '--disable-gpu', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--disable-extensions',
       '--no-first-run', '--no-default-browser-check', '--host-resolver-rules=MAP * ~NOTFOUND',

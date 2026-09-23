@@ -10,6 +10,12 @@ export default defineConfig({
       // Real adapter behaviour is asserted in tests/expoAudioPlayback.test.ts, and actual playback is
       // only ever claimed from device evidence off the real player.
       'expo-audio': fileURLToPath(new URL('./tests/doubles/expo-audio.ts', import.meta.url)),
+      // Same reason, arriving through the update banner on the reading tab: expo-application reads
+      // the native registry at import time, so every component test that renders that tab failed to
+      // load rather than failed an assertion.
+      'expo-application': fileURLToPath(new URL('./tests/doubles/expo-application.ts', import.meta.url)),
+      // And again through expo-crypto, which the completion flow uses for operation ids.
+      'expo-crypto': fileURLToPath(new URL('./tests/doubles/expo-crypto.ts', import.meta.url)),
     },
   },
   test: {

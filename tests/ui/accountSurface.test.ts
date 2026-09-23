@@ -11,7 +11,10 @@ describe('account surface', () => {
     })).toEqual({
       mode: 'signed-in',
       displayName: '小明',
-      avatarLabel: '光',
+      // The first character of this profile's own display name. It read 光 while the fixture was
+      // 光佑 and stayed behind when the fixture became 小明, which is the shape of a stale
+      // expectation rather than a defect: the code has always taken the first character.
+      avatarLabel: '小',
       avatarUrl: null,
       groupName: 'A小組',
       showSignIn: false,

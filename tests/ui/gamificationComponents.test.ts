@@ -50,7 +50,13 @@ describe('shared gamification UI', () => {
     expect(renderer.root.findByType('SafeAreaProvider' as any)).toBeDefined();
     const safeArea = renderer.root.findByType('SafeAreaView' as any);
     expect(safeArea.props.edges).toEqual(['bottom', 'left', 'right']);
-    expect(safeArea.props.style.maxHeight).toBe('85%');
+    // The 85% cap sits on the wrapper the scrim lays out, not on this sheet. A percentage height
+    // resolves against the parent's height, and while the cap was here the parent was an unstyled
+    // Pressable whose height came from the sheet, whose height came from the cap — so it never
+    // resolved. On the device that produced a 718px menu on a 2400px screen with its fifth action
+    // clipped to seventeen visible pixels. Asserting it here again would re-describe that bug.
+    expect(safeArea.props.style.maxHeight).toBeUndefined();
+    expect(safeArea.props.style.flexShrink).toBe(1);
     const keyboardView = renderer.root.findByType('KeyboardAvoidingView' as any);
     expect(keyboardView.props.behavior).toBe('padding');
     const body = renderer.root.findByType('ScrollView' as any);

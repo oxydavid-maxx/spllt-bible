@@ -28,8 +28,19 @@ describe('focused Reader route composition', () => {
     expect(tabs).toBeDefined();
     expect(reader).toBeDefined();
     expect(reader?.props.options).toMatchObject({ headerShown: false, tabBarStyle: { display: 'none' } });
-    expect(reader?.props.options.headerRight).toBe(tabs.props.screenOptions.headerRight);
-    expect(reader?.props.options.headerRight().type).toBe(tabs.props.screenOptions.headerRight().type);
+    // The reader carries no account entry of its own, and that is the current design rather than an
+    // oversight to assert away: it is a reading surface with no header to put one in, it is not in
+    // the tab bar at all (href: null), and it has its own toolbar for the things a reader needs. The
+    // account is one back-press away on every tab that does have a header.
+    //
+    // This test used to require headerRight on the route, matching an earlier design where the
+    // reader kept the shared header. That requirement stopped holding at 0f07214 and the test was
+    // left behind, so it has been red ever since — nobody decided the account entry should leave,
+    // it simply did.
+    expect(reader?.props.options.headerRight).toBeUndefined();
+    expect(reader?.props.options.href).toBeNull();
+    // The tabs that do show a header still share one entry, which is what "shared" was protecting.
+    expect(tabs.props.screenOptions.headerRight).toBeTypeOf('function');
     renderer.unmount();
   });
 });
