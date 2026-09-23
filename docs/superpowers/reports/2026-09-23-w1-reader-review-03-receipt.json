@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "lane": "W1 Reader review03",
+  "status": "FOCUS_PASS",
+  "baseCommit": "f561b83d8719d12ee55d2a1c5466a9cbbcab3074",
+  "parentCandidate": "4fa95bbdbf5e36130d002301ee9bbefcc96b2093",
+  "candidateCommit": "04c8a3fa624f9b2e4c04f7d4a194dc3232355347",
+  "commitMessage": "fix(reader): collapse immersion chrome and center audio",
+  "branch": "codex/qm-compact-reader",
+  "worktree": "C:/dev/machine/worktrees/qm-c23-w1",
+  "focusCommand": "npm test -- tests/ui/fullscreenReaderLayout.test.ts tests/ui/focusedReaderRoute.test.ts tests/ui/focusedReaderVisibleIdentity.test.ts tests/ui/readerAudioSelectionWiring.test.ts tests/ui/readerImmersionSettings.test.ts tests/ui/unscheduledReaderRoute.test.ts tests/ui/fullscreenReaderWrapper.test.ts",
+  "focusResult": {
+    "status": "PASS",
+    "testFiles": 7,
+    "testsPassed": 95,
+    "testsFailed": 0
+  },
+  "typecheck": {
+    "command": "npm run typecheck",
+    "status": "PASS"
+  },
+  "diffCheck": {
+    "command": "git show --check --oneline HEAD",
+    "status": "PASS"
+  },
+  "changedFiles": [
+    "app/(tabs)/_layout.tsx",
+    "src/ui/FullscreenReaderLayout.tsx",
+    "src/ui/readerImmersionState.ts",
+    "tests/ui/focusedReaderRoute.test.ts",
+    "tests/ui/fullscreenReaderLayout.test.ts",
+    "tests/ui/readerImmersionSettings.test.ts"
+  ],
+  "review03": {
+    "R04": "Toolbar and bottom action row are conditionally unmounted while immersed; Reader safe-inset padding and shared tab bar restore on reverse scroll or Reader blur.",
+    "R03": "One ChapterAudioControls owner remains mounted in a centered overlay; collapsed mode uses a 48dp control without an extra restore row or flow height.",
+    "accessibility": "TalkBack blocks collapse, and activating TalkBack while already immersed restores Reader controls and tab bar state.",
+    "layoutContracts": [
+      "Collapsed render tree contains neither toolbar nor bottom action SafeAreaView.",
+      "Reader body padding reflects safe-area top and reserves 48dp control plus 8dp gap; reverse scroll restores normal padding.",
+      "Three equal audio overlay slots place the collapsed play/pause target in the center.",
+      "Reader blur resets shared tab immersion; focus re-entry restores tools.",
+      "The same audio control node remains mounted across collapse and restore."
+    ]
+  },
+  "baselineDiagnostic": {
+    "status": "BASELINE_FAILURE_NOT_COUNTED_AS_PASS",
+    "testCommand": "npm test -- tests/ui/fullscreenReaderScreen.test.ts --reporter=verbose",
+    "baselineCommit": "f561b83d8719d12ee55d2a1c5466a9cbbcab3074",
+    "baselinePackageLockBlob": "3f7deec31985c97ff3fb02477ea3cc41b83a3ac5",
+    "baselineTestFileBlob": "709bdb36f143ab227d102c1c8ea957a52bd50ee7",
+    "observed": "Vitest fails during collection with SyntaxError: Unexpected token 'typeof'; zero tests collected. The same failure reproduces on W1 parent 4fa95bb and the review03 candidate under the same locked dependency tree.",
+    "firstFailingImport": "app/(tabs)/reader -> src/ui/YouVersionReader -> src/ui/BibleContentPreloadHost -> @youversion/platform-react-native-expo-core",
+    "causeEvidence": "A temporary import probe passes when only @youversion/platform-react-native-expo-core is mocked and reproduces the error when that mock is removed. The test file does not mock the SDK native core boundary. Probe and baseline worktrees were removed.",
+    "countedInFocus": false
+  },
+  "testEnvironment": {
+    "node": "v24.16.0",
+    "npm": "11.13.0",
+    "packageLockBlob": "3f7deec31985c97ff3fb02477ea3cc41b83a3ac5",
+    "fullSuiteRun": false
+  },
+  "screenshot": {
+    "status": "WAITING_FOR_SINGLE_OPERATOR",
+    "path": null,
+    "phoneInputSent": false,
+    "realScreenshotVisualReview": "BLOCKED_PENDING_OPERATOR"
+  },
+  "worktreeStatus": "CLEAN_AFTER_COMMIT"
+}
