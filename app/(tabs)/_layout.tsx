@@ -27,13 +27,17 @@ export default function TabsLayout() {
         headerShown: false,
         headerRight: accountEntry,
         tabBarAccessibilityLabel: '讀經入口',
-        tabBarButton: ({ ref, accessibilityState, ...buttonProps }) => (
-          <Pressable
-            {...buttonProps}
-            ref={ref as Ref<ComponentRef<typeof Pressable>> | undefined}
-            accessibilityState={{ ...accessibilityState, selected: readerRouteSelected || Boolean(accessibilityState?.selected) }}
-          />
-        ),
+        tabBarButton: ({ ref, accessibilityState, 'aria-selected': ariaSelected, ...buttonProps }) => {
+          const logicalSelected = readerRouteSelected || Boolean(ariaSelected ?? accessibilityState?.selected);
+          return (
+            <Pressable
+              {...buttonProps}
+              ref={ref as Ref<ComponentRef<typeof Pressable>> | undefined}
+              aria-selected={logicalSelected}
+              accessibilityState={{ ...accessibilityState, selected: logicalSelected }}
+            />
+          );
+        },
         tabBarLabel: ({ color }) => <Text style={{ color: readerRouteSelected ? theme.colors.primary : color, fontSize: 12, fontWeight: '600' }}>讀經</Text>,
         tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="book-open-page-variant-outline" color={readerRouteSelected ? theme.colors.primary : color} size={size} />,
       }} />

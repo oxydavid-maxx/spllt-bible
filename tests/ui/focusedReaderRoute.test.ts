@@ -60,6 +60,7 @@ describe('focused Reader route composition', () => {
     const pressable = today.props.options.tabBarButton({
       accessibilityLabel: '讀經入口',
       accessibilityRole: 'tab',
+      'aria-selected': false,
       accessibilityState: { selected: false },
       onPress,
       onLongPress: vi.fn(),
@@ -67,6 +68,10 @@ describe('focused Reader route composition', () => {
       children: React.createElement('TabContent'),
     });
     expect(pressable.props.accessibilityState.selected).toBe(true);
+    expect(pressable.props['aria-selected']).toBe(true);
+    // Mirrors installed RN Pressable normalization: aria-selected ?? accessibilityState.selected.
+    const nativeSelected = pressable.props['aria-selected'] ?? pressable.props.accessibilityState.selected;
+    expect(nativeSelected).toBe(true);
     expect(pressable.props.onPress).toBe(onPress);
     expect(today.props.options.tabBarIcon({ color: theme.colors.muted, size: 20, focused: false }).props.color).toBe(theme.colors.primary);
     const label = today.props.options.tabBarLabel({ color: theme.colors.muted, focused: false, position: 'below' });
@@ -83,6 +88,7 @@ describe('focused Reader route composition', () => {
     const inactiveButton = inactiveToday.props.options.tabBarButton({
       accessibilityLabel: '讀經入口',
       accessibilityRole: 'tab',
+      'aria-selected': false,
       accessibilityState: { selected: false },
       onPress: vi.fn(),
       onLongPress: vi.fn(),
@@ -90,6 +96,7 @@ describe('focused Reader route composition', () => {
       children: React.createElement('TabContent'),
     });
     expect(inactiveButton.props.accessibilityState.selected).toBe(false);
+    expect((inactiveButton.props['aria-selected'] ?? inactiveButton.props.accessibilityState.selected)).toBe(false);
     expect(inactiveToday.props.options.tabBarIcon({ color: theme.colors.muted, size: 20, focused: false }).props.color).toBe(theme.colors.muted);
     expect(inactiveToday.props.options.tabBarLabel({ color: theme.colors.muted, focused: false, position: 'below' }).props.style.color).toBe(theme.colors.muted);
     renderer.unmount();
