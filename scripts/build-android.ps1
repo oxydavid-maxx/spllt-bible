@@ -37,6 +37,22 @@ if ($yvEnvFile -and (Test-Path -LiteralPath $yvEnvFile)) {
   }
 }
 
+# Bring node_modules to exactly package-lock.json + every patches/*.patch before anything else
+# reads it. A checkout that skips `npm ci` (or an install whose postinstall/patch-package step
+# silently failed to take effect) must never reach Gradle: JS bundled into the APK reflects
+# whatever is actually on disk in node_modules, not what package-lock.json or patches/ say should
+# be there. scripts/sync-deps.ts hashes package-lock.json + patches/*.patch, reinstalls via
+# `npm ci` only when that digest has moved past the last successful sync, and then always
+# re-verifies every patch's added lines are present in the real target file — so a reinstall
+# that didn't actually patch anything still fails the build instead of shipping stale code.
+Push-Location $root
+try {
+  & npx tsx scripts/sync-deps.ts
+  if ($LASTEXITCODE -ne 0) { throw "Dependency sync failed (scripts/sync-deps.ts exited $LASTEXITCODE); node_modules does not match package-lock.json + patches/. See output above." }
+} finally {
+  Pop-Location
+}
+
 # Validate authoritative process inputs before native prerequisites or generated-file mutations.
 if ($Variant -eq 'release') {
   . (Join-Path $PSScriptRoot 'release-environment.ps1')

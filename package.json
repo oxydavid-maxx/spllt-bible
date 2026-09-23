@@ -16,6 +16,7 @@
     "migrate:gamification": "tsx scripts/migrate-gamification.ts",
     "verify:inputs": "tsx scripts/verify-inputs.ts",
     "verify:candidate": "tsx scripts/verify-candidate.ts",
+    "sync:deps": "tsx scripts/sync-deps.ts",
     "export:android": "expo export --platform android",
     "postinstall": "patch-package --error-on-fail"
   },
