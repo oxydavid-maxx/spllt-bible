@@ -416,6 +416,39 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     await act(async () => { renderer.unmount(); });
   });
 
+  it('drops a no-plan Today tab intent when a date arrow moves to another scheduled day', async () => {
+    const calendar = await import('../../src/domain/calendar');
+    const session = await import('../../src/ui/readingSession');
+    const { taipeiDate } = await import('../../src/domain/gamificationV1');
+    const today = taipeiDate();
+    const days = calendar.canonicalSeptemberPlan.days.filter(day => day.date !== today);
+    session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, dates: days.map(day => day.date), uniqueReferences: [...new Set(days.flatMap(day => day.references))] });
+    session.setSelectedReadingDate(today);
+
+    const renderer = await mount();
+    expect(readerLayout(renderer).props.noPlanMessage).toBeTruthy();
+    const targetDate = (readerLayout(renderer).props.nextDate ?? readerLayout(renderer).props.previousDate) as string;
+    expect(targetDate).toBeTruthy();
+    const targetPlanId = session.getReadingPlanId(targetDate) ?? calendar.canonicalSeptemberPlan.planId;
+    const db = await import('../../src/storage/mobileDatabase');
+    (db.openQingmuReaderPositionStore() as unknown as { save: (row: Record<string, unknown>) => void }).save({
+      memberId: 'fixture:self', planId: targetPlanId, taskDate: targetDate, versionId: 46,
+      book: 'GEN', chapter: '2', reference: 'GEN.2', mode: 'FREE_BROWSE', updatedAt: 'test',
+    });
+
+    await pressTodayTabFromPoints();
+    expect(session.getReadingSessionSnapshot()).toMatchObject({ selectedDate: today });
+    const arrowLabel = readerLayout(renderer).props.nextDate ? '下一個排定讀經日' : '上一個排定讀經日';
+    pressByLabel(renderer, arrowLabel);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(session.getReadingSessionSnapshot()).toMatchObject({ selectedDate: targetDate, todayReaderTabPressTargetDate: null });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('GEN.2');
+    expect(lastRequest()?.usfm).toBe('GEN.2');
+    expect(await savedRow()).toMatchObject({ taskDate: targetDate, mode: 'FREE_BROWSE', reference: 'GEN.2' });
+    await act(async () => { renderer.unmount(); });
+  });
+
   it('waits for Reader owner readiness and drops a tabPress owned by another account', async () => {
     const session = await import('../../src/ui/readingSession');
     const { taipeiDate } = await import('../../src/domain/gamificationV1');

@@ -37,7 +37,7 @@ let handledTodayReaderTabPressRevision = 0;
 
 export default function ReaderScreen() {
   const chrome = useReaderChrome();
-  const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate } = useReadingSession();
+  const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate } = useReadingSession();
   // Set when a verse is copied while the journal is open, cleared once the panel has taken it.
   const [pendingQuote, setPendingQuote] = useState<string | null>(null);
   const auth = useAuthSnapshot();
@@ -386,6 +386,10 @@ export default function ReaderScreen() {
   };
   useEffect(() => {
     if (todayReaderTabPressRevision <= handledTodayReaderTabPressRevision) return;
+    if (todayReaderTabPressTargetDate !== selectedDate) {
+      handledTodayReaderTabPressRevision = todayReaderTabPressRevision;
+      return;
+    }
     if (auth.status === 'hydrating') return;
     if (todayReaderTabPressMemberId !== memberId || todayReaderTabPressAuthEpoch !== (auth.epoch ?? 0)) {
       handledTodayReaderTabPressRevision = todayReaderTabPressRevision;
@@ -414,7 +418,7 @@ export default function ReaderScreen() {
 
     selectAssigned(assignedIndex >= 0 ? assignedIndex : 0);
     handledTodayReaderTabPressRevision = todayReaderTabPressRevision;
-  }, [todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, auth.status, auth.epoch, memberId, planId, selectedDate, day?.date, referencesKey, owner]);
+  }, [todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, auth.status, auth.epoch, memberId, planId, selectedDate, day?.date, referencesKey, owner]);
   const visibleRecord = record.memberId === (memberId ?? 'signed-out') && record.planId === planId && record.taskDate === selectedDate
     ? record
     : { memberId: memberId ?? 'signed-out', planId, taskDate: selectedDate, status: 'UNREPORTED' as const, revision: 0, syncStatus: 'CONFIRMED' as const };

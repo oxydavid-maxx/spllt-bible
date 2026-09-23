@@ -27,10 +27,12 @@ let todayReaderTabPressRevision = 0;
 let todayReaderTabPressMemberId: string | null = null;
 let todayReaderTabPressAuthEpoch = 0;
 let todayReaderTabPressSameDate = false;
+let todayReaderTabPressTargetDate: string | null = null;
 
 export function setSelectedReadingDate(date: string): void {
   if (!validDateOnly(date) || date === selectedDate) return;
   selectedDate = date;
+  if (todayReaderTabPressTargetDate && todayReaderTabPressTargetDate !== date) todayReaderTabPressTargetDate = null;
   publish();
 }
 
@@ -42,6 +44,7 @@ export function requestTodayReaderTabPress(date: string, memberId: string | null
   todayReaderTabPressRevision += 1;
   todayReaderTabPressMemberId = memberId;
   todayReaderTabPressAuthEpoch = authEpoch;
+  todayReaderTabPressTargetDate = date;
   publish();
 }
 
@@ -60,7 +63,11 @@ function validDateOnly(value: string): boolean {
 export function setReadingPlan(plan: ReadingPlanSnapshot): void {
   activePlan = normalizePlan(plan);
   planIdByDate = new Map(activePlan.days.map((day) => [day.date, day.planId ?? activePlan.planId]));
-  if (!getReadingDay(activePlan, selectedDate)) selectedDate = activePlan.days[0]?.date ?? selectedDate;
+  if (!getReadingDay(activePlan, selectedDate)) {
+    const fallbackDate = activePlan.days[0]?.date ?? selectedDate;
+    if (fallbackDate !== selectedDate && todayReaderTabPressTargetDate && todayReaderTabPressTargetDate !== fallbackDate) todayReaderTabPressTargetDate = null;
+    selectedDate = fallbackDate;
+  }
   publish();
 }
 
@@ -91,7 +98,7 @@ export function getReadingSessionSnapshot() {
   const day = getReadingDay(activePlan, selectedDate);
   const period = getPeriodForDate(activePlan, selectedDate);
   const adjacent = getAdjacentScheduledDates(activePlan, selectedDate);
-  return { selectedDate, planId: planIdByDate.get(selectedDate) ?? activePlan.planId, day, period, previousDate: adjacent.previous, nextDate: adjacent.next, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate };
+  return { selectedDate, planId: planIdByDate.get(selectedDate) ?? activePlan.planId, day, period, previousDate: adjacent.previous, nextDate: adjacent.next, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate };
 }
 
 export function getReadingPlanId(taskDate: string): string | null {
