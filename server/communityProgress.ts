@@ -24,13 +24,13 @@ import { ZH_TW_BOOK_ABBREVIATIONS, ZH_TW_BOOK_NAMES } from '../src/domain/script
 const MIN_MEMBERS_FOR_SHARED_COUNT = 10;
 
 /**
- * The 一起走過 book list names no one and adds no numbers, so it carries none of the
- * re-identification risk `MIN_MEMBERS_FOR_SHARED_COUNT` guards against. The floor here is a product
- * choice, not a privacy one: with five or fewer members "books the group has read" reads as "books
- * the two or three of us happened to read", which is not the collective the section claims to show.
- * Six is the smallest group where that claim is true (光佑, 2026-09-23).
+ * Decision by 光佑, 2026-09-23: show when more than 5 members.
+ *
+ * Governs the whole 一起走過 section on the points page -- both the book list (`books`) and the
+ * in-progress book goal (`currentBook`). It is a separate, lower floor than
+ * `MIN_MEMBERS_FOR_SHARED_COUNT`, which still applies to `personDays` alone.
  */
-const MIN_MEMBERS_FOR_BOOK_LIST = 6;
+const MIN_MEMBERS_FOR_BOOK_SECTION = 6;
 
 export interface CommunityChapter {
   chapter: number;
@@ -57,7 +57,7 @@ export interface CommunityProgress {
   books: string[];
   /** Total days read across everyone, or null while that number would give away a person. */
   personDays: number | null;
-  /** The book the group is finishing together, or null before the plan has started. */
+  /** The book the group is finishing together, or null before the plan has started or while the group is five or fewer. */
   currentBook: CommunityBookGoal | null;
 }
 
@@ -182,11 +182,11 @@ export function getCommunityProgress(db: DatabaseSync, today: string): Community
 
   const crowdEnough = Number(enabled.count) >= MIN_MEMBERS_FOR_SHARED_COUNT
     && Number(scoring.members) >= MIN_MEMBERS_FOR_SHARED_COUNT;
-  const bookListEnough = Number(enabled.count) >= MIN_MEMBERS_FOR_BOOK_LIST;
+  const bookSectionEnough = Number(enabled.count) >= MIN_MEMBERS_FOR_BOOK_SECTION;
 
   return {
-    books: bookListEnough ? seen : [],
+    books: bookSectionEnough ? seen : [],
     personDays: crowdEnough ? Math.max(0, Number(scoring.total)) : null,
-    currentBook: crowdEnough ? buildBookGoal(db, plan, today) : null,
+    currentBook: bookSectionEnough ? buildBookGoal(db, plan, today) : null,
   };
 }
