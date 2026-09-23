@@ -219,5 +219,30 @@ to the live file byte-for-byte (CRLF-normalized). No further action needed.
   of these are ever set by the real Startup-shortcut invocation** -- they exist purely so
   a dry run can exercise the exact same secret-loading code path against a scratch
   `PILOT` directory and a scratch port instead of the real one. See
-  `ops/test_start_backend_pin.py` for the refusal tests and this file's dry-run log for a
-  full `STARTED_HEALTHY` run through this path.
+  `ops/test_start_backend_pin.py` for the refusal tests.
+
+Dry run performed 2026-09-23 from a real pinned worktree of this branch, port 8798, a
+scratch `PILOT` directory containing a synthetic (non-real) `pilot-private-config.json`
+shaped like the production one, with `QINGMU_CFG_SHA_OVERRIDE` set to that file's own
+SHA256 (never the real `CFG_SHA`, which stays the hardcoded default everywhere else).
+`python ops/start_backend.py` produced:
+
+```json
+{
+  "status": "STARTED_HEALTHY",
+  "pid": 25560,
+  "commit": "8d5e4c872737c0d24ed989a2974f1a76d363182b",
+  "bootstrap_seeds_absent": true,
+  "fixture_off": true,
+  "ai_status": "DISABLED",
+  "ai_boundary_sha256": "4ffc55d336060c226662ce132e669298cbdc1027b81591027569754a76e1958c"
+}
+```
+
+`GET /api/health` on port 8798 answered `{"status":"ok","instanceId":"qingmu-pilot-08e0903c0bb3","authMode":"google-only"}`
+-- `google-only`, not `fixture`, confirming the real `deployment_support.py` secret-config
+validation path ran, not a fixture shortcut. The process was then stopped directly (no
+production traffic to protect on a scratch port). Editing a tracked file in the same
+pinned worktree and re-running produced `{"status":"REFUSED","reason":"DIRTY_WORKTREE",...}`;
+reverting the edit restored a clean run. Port 8788's owner (pid, start time) was checked
+before, during, and after this entire dry run and never changed.
