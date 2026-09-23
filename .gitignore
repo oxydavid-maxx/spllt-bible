@@ -34,6 +34,10 @@ GoogleService-Info.plist
 data/receipts/
 docs/receipts/
 .tmp/
+# Runtime start-attempt receipts written by ops/start_backend.py -- regenerated on
+# every start, would otherwise make a pinned git worktree look dirty to itself.
+ops/active-backend.json
+ops/last-startup-result.json
 expo-env.d.ts
 .DS_Store
 Thumbs.db
