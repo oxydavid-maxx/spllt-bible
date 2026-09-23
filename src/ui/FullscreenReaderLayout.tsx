@@ -5,7 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationBar } from 'expo-navigation-bar';
 import { ChapterAudioAutoplayNotice, ChapterAudioAutoplayToggle, ChapterAudioControls } from './ChapterAudioControls';
-import { bookAbbreviationZhTw, formatReferenceListZhTw } from '../domain/scriptureReference';
+import { bookAbbreviationZhTw, formatChapterTitleZhTw, formatReferenceListZhTw } from '../domain/scriptureReference';
 import { theme } from './Theme';
 import type { ReaderOverlayControls } from './YouVersionReader';
 import { READER_SPEEDS } from '../services/readerSpeedPreference';
@@ -84,21 +84,39 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
         pointerEvents={chrome.toolsVisible ? 'box-none' : 'none'}
         style={styles.toolbarSurface}
       >
-        <View style={styles.toolbar} onTouchStart={chrome.showTools}>
+        {/* Single non-wrapping row: back, the one book/chapter title, journal, more. Play/pause and
+            連讀 moved to the fixed bottom player bar below; daily passage chips moved to their own
+            row beneath this one. Cramming all of those into one row was what forced ⋯ onto a second
+            line on real devices (2026-09-22 review). */}
+        <View style={styles.topRow} onTouchStart={chrome.showTools}>
           <Pressable accessibilityRole="button" accessibilityLabel="返回今日" onPress={onExit} style={styles.iconButton}><Text style={styles.icon}>‹</Text></Pressable>
-          <ChapterAudioControls chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} compact active={chrome.focused} detailsVisible={chrome.audioOpen} onDetailsClose={chrome.closeAudio} />
-          <ChapterAudioAutoplayToggle active={chrome.focused} />
+          <Text accessibilityRole="header" numberOfLines={1} ellipsizeMode="tail" style={styles.titleText}>{formatChapterTitleZhTw(chapterUsfm)}</Text>
+          {journal ? <Pressable accessibilityRole="button" accessibilityLabel="靈修日記" onPress={chrome.openJournal} style={styles.iconButton}><Text style={styles.icon}>✎</Text></Pressable> : null}
+          <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} style={styles.iconButton}><Text style={styles.icon}>⋯</Text></Pressable>
+        </View>
+        {references.length > 0 && <View style={styles.dailyRow} onTouchStart={chrome.showTools}>
           {references.map((reference, index) => {
             const selected = isChapterInDailyReference(chapterUsfm, reference);
             return <Pressable key={`${index}:${reference}`} accessibilityRole="button" accessibilityLabel={`前往${formatReferenceListZhTw([reference])}`} accessibilityState={{ selected }} onPress={() => onSelectReference(index)} style={[styles.referenceButton, selected && styles.referenceSelected]}><Text style={[styles.referenceLabel, selected && styles.referenceLabelSelected]}>{formatReferenceListZhTw([reference])}</Text></Pressable>;
           })}
-          {journal ? <Pressable accessibilityRole="button" accessibilityLabel="靈修日記" onPress={chrome.openJournal} style={styles.iconButton}><Text style={styles.icon}>✎</Text></Pressable> : null}
-          <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} style={styles.iconButton}><Text style={styles.icon}>⋯</Text></Pressable>
-        </View>
+        </View>}
       </SafeAreaView>
       <ChapterAudioAutoplayNotice active={chrome.focused} />
       <View style={[styles.reader, { paddingTop: 0, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]} onTouchEnd={controls.ready ? undefined : chrome.toggleTools}>{reader}</View>
       {journal}
+      <SafeAreaView
+        edges={['bottom', 'left', 'right']}
+        accessibilityLabel="播放列"
+        accessibilityElementsHidden={!chrome.toolsVisible}
+        importantForAccessibility={chrome.toolsVisible ? 'auto' : 'no-hide-descendants'}
+        pointerEvents={chrome.toolsVisible ? 'box-none' : 'none'}
+        style={styles.playerBarSurface}
+      >
+        <View style={styles.playerBar}>
+          <ChapterAudioControls chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} compact active={chrome.focused} detailsVisible={chrome.audioOpen} onDetailsClose={chrome.closeAudio} />
+          <ChapterAudioAutoplayToggle active={chrome.focused} />
+        </View>
+      </SafeAreaView>
       <Modal transparent animationType="fade" visible={chrome.moreOpen} onRequestClose={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore}>
         {chrome.moreOpen && <Pressable accessibilityRole="button" accessibilityLabel="關閉更多閱讀工具" onPress={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore} style={styles.scrim}><Pressable onPress={() => undefined} style={styles.sheetHost}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
           {versionPageOpen && curatedVersions ? <CuratedVersionChoices options={versionOptions} versionId={versionId} onSelect={onSelectVersion} onBack={() => setVersionPageOpen(false)} onClose={closeVersionPage} /> : <>
@@ -214,9 +232,16 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.surface },
   reader: { flex: 1 },
   toolbarSurface: { backgroundColor: theme.colors.surface, flexShrink: 0 },
-  toolbar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm },
+  // Exactly one row, never wraps: back, single title, journal, more.
+  topRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm },
+  titleText: { flex: 1, minWidth: 0, color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
+  // Today's passage chips: a separate row below the title row, free to wrap when there are many.
+  dailyRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm, paddingBottom: theme.spacing.xs },
   iconButton: { minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center' },
   icon: { color: theme.colors.ink, fontSize: 28, lineHeight: 32 },
+  // Fixed bottom player bar: play/pause and 連讀 only, as in the approved prototype.
+  playerBarSurface: { backgroundColor: theme.colors.surface, flexShrink: 0, borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.border },
+  playerBar: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.sm, minHeight: 64 },
   referenceButton: { minWidth: 48, minHeight: 48, flexShrink: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: theme.radius.chip, borderWidth: 1, borderColor: theme.colors.borderStrong },
   referenceSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
   referenceLabel: { color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700', textAlign: 'center' },

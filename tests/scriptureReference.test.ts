@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ZH_TW_BOOK_ABBREVIATIONS, ZH_TW_BOOK_NAMES, bookAbbreviationZhTw, formatReferenceListZhTw, formatReferenceZhTw } from '../src/domain/scriptureReference';
+import { ZH_TW_BOOK_ABBREVIATIONS, ZH_TW_BOOK_NAMES, bookAbbreviationZhTw, formatChapterTitleZhTw, formatReferenceListZhTw, formatReferenceZhTw } from '../src/domain/scriptureReference';
 
 // 使用者 2026-09-11: App 顯示面一律使用台灣教會慣用繁體中文簡寫。
 // 內部識別 (USFM / API / 資料庫 / 同步 / 深連結) 保持原值,只改顯示。
@@ -70,6 +70,29 @@ describe('scripture reference display (zh-TW)', () => {
   it('accepts a lowercase or mixed-case book code defensively', () => {
     expect(formatReferenceZhTw('psa.88')).toBe('詩88');
     expect(formatReferenceZhTw('Jhn.3.16')).toBe('約3:16');
+  });
+});
+
+describe('formatChapterTitleZhTw (full-screen reader single top title)', () => {
+  it('formats a full-name book + chapter title, unlike the button abbreviation', () => {
+    expect(formatChapterTitleZhTw('2TI.2')).toBe('提摩太後書 2');
+    expect(formatChapterTitleZhTw('PSA.90')).toBe('詩篇 90');
+  });
+
+  it('handles a book-only usfm', () => {
+    expect(formatChapterTitleZhTw('PSA')).toBe('詩篇');
+  });
+
+  it('returns an unknown book unchanged rather than inventing a name', () => {
+    expect(formatChapterTitleZhTw('XYZ.1')).toBe('XYZ.1');
+  });
+
+  it('leaves blank input alone instead of throwing', () => {
+    expect(formatChapterTitleZhTw('')).toBe('');
+  });
+
+  it('accepts a lowercase or mixed-case book code defensively', () => {
+    expect(formatChapterTitleZhTw('psa.90')).toBe('詩篇 90');
   });
 });
 
