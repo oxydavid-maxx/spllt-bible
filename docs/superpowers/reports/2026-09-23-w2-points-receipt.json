@@ -101,6 +101,13 @@
       "pack": "affected UI FOCUS: 44/44 PASS",
       "candidateCommit": "674af45c0a8c6c846a11af7fd6f8455405ad3c7d",
       "candidateTree": "54b31b309ce37a66db180bc225eb5294cd81a49b"
+    },
+    {
+      "atUtc": "2026-09-23T15:45:04Z",
+      "change": "chair-review-02 R06 focus/foreground secondary refresh",
+      "pack": "affected UI FOCUS: 44/44 PASS",
+      "candidateCommit": "a39ecca408439b118f1e9c27d3e288037c1c843a",
+      "candidateTree": "98b23df827c75fec0ea6d2389d34f3ba00f40e54"
     }
   ],
   "behavior": {
@@ -119,8 +126,8 @@
   },
   "report": {
     "receiptPath": "C:\\dev\\machine\\worktrees\\qm-c23-w2\\.handoff\\compact-20260923\\w2-points-receipt.json",
-    "recordedAtUtc": "2026-09-23T15:25:10Z",
-    "developmentStartAtUtc": "2026-09-23T15:00:50Z"
+    "recordedAtUtc": "2026-09-23T15:45:22Z",
+    "developmentStartAtUtc": "2026-09-23T15:30:00Z"
   },
   "followUp": {
     "chairReview": "C:/dev/apps/qingmu-bible/.handoff/compact-20260923/chair-review-01.md",
@@ -182,5 +189,31 @@
         "result": "Before implementation, first dot x=14 at width 320 selected 2026-09-02, not 2026-09-01."
       }
     ]
+  },
+  "review02FollowUp": {
+    "chairReview": "C:/dev/apps/qingmu-bible/.handoff/compact-20260923/chair-review-02.md",
+    "chairReviewSha256": "B4F66FB4AAEB806F9FC83A662F3B8E26AF78E7D1BC9B00927B5F43E58EE692D0",
+    "baseCommit": "674af45c0a8c6c846a11af7fd6f8455405ad3c7d",
+    "commit": "a39ecca408439b118f1e9c27d3e288037c1c843a",
+    "tree": "98b23df827c75fec0ea6d2389d34f3ba00f40e54",
+    "commitTime": "2026-09-23T15:44:55Z",
+    "diffStat": "2 files changed, 123 insertions(+), 27 deletions(-)",
+    "changedFiles": [
+      "app/(tabs)/progress.tsx",
+      "tests/ui/gamificationProgressSecurity.test.ts"
+    ],
+    "fix": "On normal own-view blur/refocus and app foreground, preserve the same-member profile, rewards shelf, nominations, and community content while refreshing all three secondary APIs. The inactive app renders a blank surface while the snapshot stays available for foreground restoration. Friends/admin scopes and sign-out/account changes still clear; generation/session ownership still blocks old responses. Old secondary values survive deferred and failed refreshes; successful reads replace them. No polling timer or dependency added.",
+    "focus": {
+      "command": "npm exec -- vitest run tests/ui/scoreProfileChart.test.ts tests/ui/gamificationProgressRoute.test.ts tests/ui/gamificationProgressSecurity.test.ts tests/ui/rewardGoalCard.test.ts",
+      "result": "PASS",
+      "testFilesPassed": 4,
+      "testsPassed": 44,
+      "testsFailed": 0,
+      "candidateCommit": "a39ecca408439b118f1e9c27d3e288037c1c843a",
+      "candidateTree": "98b23df827c75fec0ea6d2389d34f3ba00f40e54",
+      "startedAtUtc": "2026-09-23T15:45:04Z",
+      "notes": "Affected UI packs only. Server chart and gamification proofs were not rerun. Standard react-test-renderer act warnings were emitted."
+    },
+    "redEvidence": "The deferred focus-refresh regression test first failed because getRewards had one call after refocus instead of two. After adding app-foreground coverage, the same test confirmed a second boundary performs all three reads while old values remain."
   }
 }
