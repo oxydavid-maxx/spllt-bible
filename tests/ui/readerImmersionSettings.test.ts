@@ -67,7 +67,8 @@ const press = (label: string) => act(() => {
   const n = rendered.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
   expect(n, 'Missing control: ' + label).toBeDefined(); n.props.onPress();
 });
-const canvas = (type = 'qingmu.reader.canvas.tap') => act(() => { all('BibleReader')[0].props.dom.onMessage({ nativeEvent: { data: JSON.stringify({ type, data: null }) } }); });
+const canvas = (type = 'qingmu.reader.canvas.tap', data: unknown = null) => act(() => { all('BibleReader')[0].props.dom.onMessage({ nativeEvent: { data: JSON.stringify({ type, data }) } }); });
+const restoreChromeWithReverseScroll = () => canvas('qingmu.reader.canvas.scroll', { direction: 'up', deltaY: -20 });
 const toolbar = () => rendered.root.findAll(n => n.props.accessibilityLabel === '閱讀工具列')[0];
 beforeEach(async () => {
   readerSettings.value = { fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 }; readerSettings.listeners.clear();
@@ -80,7 +81,7 @@ afterEach(() => { act(() => rendered?.unmount()); vi.restoreAllMocks(); });
 describe('Reader secondary information and controls', () => {
   it('shows version details only on demand and returns to the same chapter', () => {
     const reader = all('BibleReader')[0];
-    canvas(); press('更多閱讀工具'); press('版本資訊');
+    canvas(); expect(toolbar()).toBeUndefined(); restoreChromeWithReverseScroll(); press('更多閱讀工具'); press('版本資訊');
     expect(all('Text').map(n => String(n.props.children)).join(' ')).toContain('Hong Kong Bible Society');
     press('關閉版本資訊');
     expect(all('Text').map(n => String(n.props.children)).join(' ')).not.toContain('Hong Kong Bible Society');
@@ -94,7 +95,7 @@ describe('Reader secondary information and controls', () => {
     expect(native.audioMounts).toBe(mounts);
   });
   it('keeps the translation shown in information aligned with the official picker', async () => {
-    canvas(); press('更多閱讀工具'); press('選擇譯本');
+    canvas(); expect(toolbar()).toBeUndefined(); restoreChromeWithReverseScroll(); press('更多閱讀工具'); press('選擇譯本');
     const label = getYouVersionVersionOptions().find(option => option.versionId === 40)!.translationName;
     await act(async () => { press(label); });
     expect(all('BibleReader')[0].props.versionId).toBe(40);

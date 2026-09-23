@@ -34,4 +34,17 @@ describe('focused Reader route composition', () => {
     expect(tabs.props.screenOptions.headerRight().type).toBeTypeOf('function');
     renderer.unmount();
   });
+
+  it('hides the main tab bar only while Reader immersion is active, then restores it', async () => {
+    const { setReaderImmersed } = await import('../../src/ui/readerImmersionState');
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(React.createElement(TabsLayout)); });
+    const tabs = renderer.root.findAll((node) => String(node.type) === 'Tabs')[0];
+    expect(tabs.props.screenOptions.tabBarStyle).toBeUndefined();
+    act(() => { setReaderImmersed(true); });
+    expect(renderer.root.findAll((node) => String(node.type) === 'Tabs')[0].props.screenOptions.tabBarStyle).toMatchObject({ display: 'none' });
+    act(() => { setReaderImmersed(false); });
+    expect(renderer.root.findAll((node) => String(node.type) === 'Tabs')[0].props.screenOptions.tabBarStyle).toBeUndefined();
+    renderer.unmount();
+  });
 });

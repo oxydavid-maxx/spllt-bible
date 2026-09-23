@@ -2,8 +2,10 @@ import { Tabs } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../../src/ui/Theme';
 import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
+import { useReaderImmersionSnapshot } from '../../src/ui/readerImmersionState';
 
 export default function TabsLayout() {
+  const readerImmersed = useReaderImmersionSnapshot();
   const accountEntry = () => <AccountEntryButton />;
   return (
     <Tabs
@@ -13,6 +15,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.muted,
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+        tabBarStyle: readerImmersed ? { display: 'none' } : undefined,
       }}
     >
       <Tabs.Screen name="today" options={{ title: '讀經', headerShown: false, headerRight: accountEntry, tabBarAccessibilityLabel: '讀經入口', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="book-open-page-variant-outline" color={color} size={size} /> }} />

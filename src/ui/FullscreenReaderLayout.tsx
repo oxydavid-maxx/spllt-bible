@@ -9,6 +9,7 @@ import { ChapterAudioAutoplayNotice, ChapterAudioAutoplayToggle, ChapterAudioCon
 import { bookAbbreviationZhTw, formatChapterTitleZhTw, formatReferenceListZhTw } from '../domain/scriptureReference';
 import { theme } from './Theme';
 import { formatReadingDateLabel } from './ReadingDateNavigator';
+import { setReaderImmersed } from './readerImmersionState';
 import type { ReaderOverlayControls } from './YouVersionReader';
 import { READER_SPEEDS } from '../services/readerSpeedPreference';
 
@@ -22,15 +23,30 @@ export function useReaderChrome() {
   const [journalOpen, setJournalOpen] = useState(false);
   useEffect(() => {
     let active = true;
-    void AccessibilityInfo.isScreenReaderEnabled().then(enabled => { if (active) setScreenReaderEnabled(enabled); }).catch(() => {});
-    const subscription = AccessibilityInfo.addEventListener('screenReaderChanged', setScreenReaderEnabled);
+    let latestEvent: boolean | null = null;
+    const applyScreenReaderState = (enabled: boolean) => {
+      if (!active) return;
+      setScreenReaderEnabled(enabled);
+      if (enabled) {
+        setToolsVisible(true);
+        setReaderImmersed(false);
+      }
+    };
+    const subscription = AccessibilityInfo.addEventListener('screenReaderChanged', enabled => {
+      latestEvent = enabled;
+      applyScreenReaderState(enabled);
+    });
+    void AccessibilityInfo.isScreenReaderEnabled().then(enabled => applyScreenReaderState(latestEvent ?? enabled)).catch(() => {});
     return () => { active = false; subscription.remove(); };
   }, []);
   useFocusEffect(useCallback(() => {
     setFocused(true);
     setToolsVisible(true);
+    setReaderImmersed(false);
     return () => {
       setFocused(false);
+      setToolsVisible(true);
+      setReaderImmersed(false);
       setMoreOpen(false);
       setAudioOpen(false);
       setInfoOpen(false);
@@ -38,12 +54,22 @@ export function useReaderChrome() {
     };
   }, []));
 
-  const showTools = useCallback(() => setToolsVisible(true), []);
-  const hideTools = useCallback(() => { if (!screenReaderEnabled && !moreOpen && !audioOpen && !infoOpen && !journalOpen) setToolsVisible(false); }, [screenReaderEnabled, moreOpen, audioOpen, infoOpen, journalOpen]);
-  const toggleTools = useCallback(() => { if (!screenReaderEnabled && !moreOpen && !audioOpen && !infoOpen && !journalOpen) setToolsVisible(value => !value); }, [screenReaderEnabled, moreOpen, audioOpen, infoOpen, journalOpen]);
+  const showTools = useCallback(() => { setToolsVisible(true); setReaderImmersed(false); }, []);
+  const hideTools = useCallback(() => {
+    if (screenReaderEnabled || moreOpen || audioOpen || infoOpen || journalOpen) return;
+    setToolsVisible(false);
+    setReaderImmersed(true);
+  }, [screenReaderEnabled, moreOpen, audioOpen, infoOpen, journalOpen]);
+  const toggleTools = useCallback(() => {
+    if (screenReaderEnabled || moreOpen || audioOpen || infoOpen || journalOpen) return;
+    setToolsVisible(value => !value);
+    setReaderImmersed(toolsVisible);
+  }, [screenReaderEnabled, moreOpen, audioOpen, infoOpen, journalOpen, toolsVisible]);
   const handleCanvasScroll = useCallback(({ direction, deltaY }: { direction: 'up' | 'down'; deltaY: number }) => {
     if (!focused || screenReaderEnabled || moreOpen || audioOpen || infoOpen || journalOpen || Math.abs(deltaY) < 12) return;
-    setToolsVisible(direction === 'up');
+    const show = direction === 'up';
+    setToolsVisible(show);
+    setReaderImmersed(!show);
   }, [focused, screenReaderEnabled, moreOpen, audioOpen, infoOpen, journalOpen]);
   const openMore = useCallback(() => { setMoreOpen(true); setAudioOpen(false); setInfoOpen(false); showTools(); }, [showTools]);
   const closeMore = useCallback(() => { setMoreOpen(false); showTools(); }, [showTools]);
@@ -119,14 +145,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
   return (
     <View style={styles.root}>
       {chrome.focused && <><StatusBar hidden style="dark" /><NavigationBar hidden style="dark" /></>}
-      <SafeAreaView
-        edges={['top', 'left', 'right']}
-        accessibilityLabel="閱讀工具列"
-        accessibilityElementsHidden={!chrome.toolsVisible}
-        importantForAccessibility={chrome.toolsVisible ? 'auto' : 'no-hide-descendants'}
-        pointerEvents={chrome.toolsVisible ? 'box-none' : 'none'}
-        style={styles.toolbarSurface}
-      >
+      {chrome.toolsVisible ? <SafeAreaView edges={['top', 'left', 'right']} accessibilityLabel="閱讀工具列" style={styles.toolbarSurface}>
         <View style={styles.topRow} onTouchStart={chrome.showTools}>
           <View style={styles.dateControls}>
             <Pressable accessibilityRole="button" accessibilityLabel="上一個排定讀經日" disabled={!previousDate} onPress={() => previousDate && onSelectDate(previousDate)} style={styles.dateStep}>
@@ -145,34 +164,41 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
             <MaterialCommunityIcons name="dots-horizontal" size={24} color={theme.colors.ink} />
           </Pressable>
         </View>
-      </SafeAreaView>
+      </SafeAreaView> : null}
       {noPlanMessage ? <Text accessibilityRole="text" style={styles.statusBanner}>{noPlanMessage}</Text> : null}
       <ChapterAudioAutoplayNotice active={chrome.focused} />
-      <View style={[styles.reader, { paddingTop: 0, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right }]} onTouchEnd={controls.ready ? undefined : chrome.toggleTools}>{reader}</View>
+      <View style={[styles.reader, { paddingTop: chrome.toolsVisible ? 0 : insets.top, paddingBottom: chrome.toolsVisible ? insets.bottom : insets.bottom + 56, paddingLeft: insets.left, paddingRight: insets.right }]} onTouchEnd={controls.ready ? undefined : chrome.toggleTools}>{reader}</View>
       {journal}
-      <SafeAreaView edges={['bottom', 'left', 'right']} accessibilityLabel="讀經控制列" style={styles.playerBarSurface}>
+      {chrome.toolsVisible ? <SafeAreaView edges={['bottom', 'left', 'right']} accessibilityLabel="讀經控制列" style={styles.playerBarSurface}>
         {statusMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.statusBanner}>{statusMessage}</Text> : null}
-        <View style={chrome.toolsVisible ? styles.playerBar : styles.collapsedRow}>
-          <View style={chrome.toolsVisible ? styles.bottomActionSlot : styles.collapsedEmptySlot}>
-            {chrome.toolsVisible ? <Pressable accessibilityRole="button" accessibilityLabel="靈修日記" onPress={chrome.openJournal} style={styles.bottomAction}>
+        <View style={styles.playerBar}>
+          <View style={styles.bottomActionSlot}>
+            <Pressable accessibilityRole="button" accessibilityLabel="靈修日記" onPress={chrome.openJournal} style={styles.bottomAction}>
               <MaterialCommunityIcons name="notebook-edit-outline" size={21} color={theme.colors.ink} />
               <Text style={styles.bottomActionLabel}>日記</Text>
-            </Pressable> : null}
+            </Pressable>
           </View>
-          <View style={chrome.toolsVisible ? styles.bottomAudioCell : styles.collapsedAudioCell}>
-            <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell active={chrome.focused} />
-          </View>
-          <View style={chrome.toolsVisible ? styles.bottomActionSlot : styles.collapsedRestoreSlot}>
-            {chrome.toolsVisible ? <Pressable accessibilityRole="button" accessibilityLabel={completionFailed ? '同步失敗，重試同步' : completeLabel} accessibilityState={{ disabled: completionDisabled, busy: completionPending }} disabled={completionDisabled} onPress={completionFailed ? onComplete : completed ? onUndo : onComplete} style={[styles.bottomAction, completionDisabled && styles.disabled]}>
+          <View accessible={false} style={styles.bottomAudioPlaceholder} />
+          <View style={styles.bottomActionSlot}>
+            <Pressable accessibilityRole="button" accessibilityLabel={completionFailed ? '同步失敗，重試同步' : completeLabel} accessibilityState={{ disabled: completionDisabled, busy: completionPending }} disabled={completionDisabled} onPress={completionFailed ? onComplete : completed ? onUndo : onComplete} style={[styles.bottomAction, completionDisabled && styles.disabled]}>
               <MaterialCommunityIcons name={completed ? 'check-circle' : completionFailed ? 'sync-alert' : 'check-circle-outline'} size={21} color={completed ? theme.colors.primary : theme.colors.ink} />
               <Text style={[styles.bottomActionLabel, completed && styles.completedLabel]}>{completeLabel}</Text>
-            </Pressable> : <Pressable accessibilityRole="button" accessibilityLabel="顯示閱讀工具" onPress={chrome.showTools} style={styles.showToolsButton}>
-              <MaterialCommunityIcons name="chevron-up" size={20} color={theme.colors.primary} />
-              <Text style={styles.bottomActionLabel}>顯示</Text>
-            </Pressable>}
+            </Pressable>
           </View>
         </View>
-      </SafeAreaView>
+      </SafeAreaView> : statusMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.statusBanner}>{statusMessage}</Text> : null}
+      <View
+        accessibilityLabel={chrome.toolsVisible ? '讀經播放控制' : '沉浸播放控制'}
+        accessible={false}
+        pointerEvents="box-none"
+        style={[styles.audioOverlay, { left: insets.left, right: insets.right, bottom: insets.bottom + (chrome.toolsVisible ? 0 : 8) }]}
+      >
+        <View accessible={false} pointerEvents="none" style={styles.audioOverlaySide} />
+        <View accessible={false} style={[styles.bottomAudioCell, !chrome.toolsVisible && styles.collapsedAudioCenter]}>
+          <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={chrome.toolsVisible} active={chrome.focused} />
+        </View>
+        <View accessible={false} pointerEvents="none" style={styles.audioOverlaySide} />
+      </View>
       <Modal transparent animationType="fade" visible={chapterPickerOpen} onRequestClose={() => { setChapterPickerOpen(false); chrome.showTools(); }}>
         {chapterPickerOpen && <Pressable accessibilityRole="button" accessibilityLabel="關閉今日章節選單" onPress={() => { setChapterPickerOpen(false); chrome.showTools(); }} style={styles.scrim}><Pressable onPress={() => undefined} style={styles.sheetHost}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
           <View style={styles.sheetHeader}><Text accessibilityRole="header" style={styles.heading}>今日讀經章節</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={() => { setChapterPickerOpen(false); chrome.showTools(); }} style={styles.iconButton}><Text style={styles.close}>關閉</Text></Pressable></View>
@@ -319,11 +345,10 @@ const styles = StyleSheet.create({
   bottomActionLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
   completedLabel: { color: theme.colors.primary },
   bottomAudioCell: { flex: 1, minWidth: 0, minHeight: 48, alignItems: 'stretch', justifyContent: 'center' },
-  collapsedRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.sm },
-  collapsedEmptySlot: { width: 0, height: 0, overflow: 'hidden' },
-  collapsedAudioCell: { width: 112, minHeight: 48, alignItems: 'stretch', justifyContent: 'center' },
-  collapsedRestoreSlot: { width: 72, minHeight: 48, alignItems: 'stretch', justifyContent: 'center' },
-  showToolsButton: { width: 72, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xxs },
+  bottomAudioPlaceholder: { flex: 1, minWidth: 0, minHeight: 48 },
+  audioOverlay: { position: 'absolute', height: 48, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm, zIndex: 2 },
+  audioOverlaySide: { flex: 1, minWidth: 0, minHeight: 48 },
+  collapsedAudioCenter: { alignItems: 'center' },
   statusBanner: { color: theme.colors.muted, backgroundColor: theme.colors.surfaceMuted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs },
   dailyReferenceOption: { minHeight: 48, justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderBottomWidth: theme.control.hairline, borderBottomColor: theme.colors.border },
   dailyReferenceSelected: { backgroundColor: theme.colors.primarySoft },

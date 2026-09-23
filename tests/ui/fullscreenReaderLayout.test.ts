@@ -136,7 +136,7 @@ describe('fullscreen reader layout and chrome', () => {
     controls = { ready: true, openChapterPicker: vi.fn(), openVersionPicker: vi.fn(), openSettings: vi.fn() };
     vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       const message = String(args[0]);
-      if (message.includes('react-test-renderer is deprecated') || message.includes('testing environment is not configured to support act')) return;
+      if (message.includes('react-test-renderer is deprecated') || message.includes('testing environment is not configured to support act') || message.includes('Accessing element.ref was removed in React 19')) return;
       throw new Error(message);
     });
   });
@@ -196,15 +196,14 @@ describe('fullscreen reader layout and chrome', () => {
     const diary = button('靈修日記');
     const finish = button('完成讀經');
     const bottomRow = all('View').find(node => styleOf(node).flexDirection === 'row'
-      && node.findAll(child => child.props.accessibilityLabel === '靈修日記').length > 0
-      && node.findAll(child => String(child.type) === 'ChapterAudioControls').length > 0)!;
+      && node.findAll(child => child.props.accessibilityLabel === '靈修日記').length > 0)!;
     expect(styleOf(bottomRow)).toMatchObject({ flexDirection: 'row' });
+    expect(bottomRow.children.filter(child => typeof child !== 'string')).toHaveLength(3);
     expect(styleOf(diary)).toMatchObject({ flex: 1, minHeight: 48 });
     expect(styleOf(finish)).toMatchObject({ flex: 1, minHeight: 48 });
     expect(styleOf(all('ChapterAudioControls')[0].parent!.parent!)).toMatchObject({ flex: 1, minHeight: 48 });
-    expect(bottomRow.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual([
-      '靈修日記', '播放詩篇 90', '完成讀經',
-    ]);
+    expect(bottomRow.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual(['靈修日記', '完成讀經']);
+    expect(all('View').find(node => node.props.accessibilityLabel === '讀經播放控制')?.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(1);
     act(() => chrome.hideTools());
     expect(all('ChapterAudioControls')).toHaveLength(1);
     expect(button('播放詩篇 90')).toBeDefined();
@@ -235,14 +234,54 @@ describe('fullscreen reader layout and chrome', () => {
   it('keeps play/pause actionable after downward scroll and restores the other tools on reverse scroll', async () => {
     await mount();
     act(() => chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }));
-    const toolbar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')!;
     expect(chrome.toolsVisible).toBe(false);
-    expect(toolbar.props.accessibilityElementsHidden).toBe(true);
+    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeUndefined();
     expect(all('ChapterAudioControls')).toHaveLength(1);
     expect(button('播放詩篇 90')).toBeDefined();
     act(() => chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }));
     expect(chrome.toolsVisible).toBe(true);
     expect(button('更多閱讀工具')).toBeDefined();
+  });
+
+  it('removes both flow rows while immersed and keeps the audio owner in a centered overlay', async () => {
+    native.safeInsets = { top: 24, bottom: 24, left: 0, right: 0 };
+    await mount();
+    const audio = all('ChapterAudioControls')[0];
+    const reader = all('BibleReader')[0];
+    act(() => chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }));
+    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeUndefined();
+    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '讀經控制列')).toBeUndefined();
+    const overlay = all('View').find(node => node.props.accessibilityLabel === '沉浸播放控制');
+    expect(overlay).toBeDefined();
+    expect(styleOf(overlay!)).toMatchObject({ position: 'absolute', left: 0, right: 0, height: 48, alignItems: 'center' });
+    expect(styleOf(reader.parent!)).toMatchObject({ paddingTop: 24, paddingBottom: 80 });
+    expect(overlay!.children).toHaveLength(3);
+    const slots = overlay!.children.filter(child => typeof child !== 'string') as TestRenderer.ReactTestInstance[];
+    expect(slots.map(styleOf)).toEqual([
+      expect.objectContaining({ flex: 1, minHeight: 48 }),
+      expect.objectContaining({ flex: 1, minHeight: 48, alignItems: 'center' }),
+      expect.objectContaining({ flex: 1, minHeight: 48 }),
+    ]);
+    expect(all('ChapterAudioControls')[0].props.bottomCell).toBe(false);
+    expect(styleOf(button('播放詩篇 90'))).toMatchObject({ minHeight: 48 });
+    expect(all('ChapterAudioControls')[0]).toBe(audio);
+    act(() => chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }));
+    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeDefined();
+    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '讀經控制列')).toBeDefined();
+    expect(styleOf(reader.parent!)).toMatchObject({ paddingTop: 0, paddingBottom: 24 });
+    expect(all('ChapterAudioControls')[0]).toBe(audio);
+  });
+
+  it('clears shared tab immersion when Reader loses focus', async () => {
+    const { getReaderImmersionSnapshot } = await import('../../src/ui/readerImmersionState');
+    await mount();
+    act(() => chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }));
+    expect(getReaderImmersionSnapshot()).toBe(true);
+    act(() => { native.blur?.(); });
+    expect(getReaderImmersionSnapshot()).toBe(false);
+    act(() => { native.focus?.(); });
+    expect(chrome.toolsVisible).toBe(true);
+    expect(getReaderImmersionSnapshot()).toBe(false);
   });
 
   it('renders the three bottom actions after the reader and keeps 連讀 in More', async () => {
@@ -256,11 +295,13 @@ describe('fullscreen reader layout and chrome', () => {
     const siblings = root.children.filter(child => typeof child !== 'string');
     expect(siblings.indexOf(toolbar)).toBeLessThan(siblings.indexOf(reader.parent!));
     expect(siblings.indexOf(reader.parent!)).toBeLessThan(siblings.indexOf(playerBar));
-    expect(playerBar.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(1);
+    expect(playerBar.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(0);
+    expect(all('View').find(node => node.props.accessibilityLabel === '讀經播放控制')?.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(1);
     expect(playerBar.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(0);
     expect(playerBar.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual([
-      '靈修日記', '播放詩篇 90', '完成讀經',
+      '靈修日記', '完成讀經',
     ]);
+    expect(all('ChapterAudioControls')[0].props.bottomCell).toBe(true);
     expect(toolbar.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(0);
     expect(toolbar.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(0);
     act(() => button('更多閱讀工具').props.onPress());
@@ -274,6 +315,8 @@ describe('fullscreen reader layout and chrome', () => {
     expect(audio.props).toMatchObject({ bottomCell: true, active: true });
     act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); });
     expect(chrome.toolsVisible).toBe(false);
+    expect(all('ChapterAudioControls')[0].props.bottomCell).toBe(false);
+    expect(button('播放詩篇 90')).toBeDefined();
     act(() => { vi.advanceTimersByTime(3999); });
     expect(chrome.toolsVisible).toBe(false);
     act(() => { vi.advanceTimersByTime(1); });
@@ -361,12 +404,30 @@ describe('fullscreen reader layout and chrome', () => {
     expect(chrome.toolsVisible).toBe(true);
     act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); vi.advanceTimersByTime(10000); });
     expect(chrome.toolsVisible).toBe(enabled);
-    const toolbar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')!;
-    expect(toolbar.props.accessibilityElementsHidden).toBe(!enabled);
-    expect(toolbar.props.importantForAccessibility).toBe(enabled ? 'auto' : 'no-hide-descendants');
-    if (!enabled) act(() => { chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }); });
+    if (enabled) {
+      expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeDefined();
+      expect(button('選擇今日章節')).toBeDefined();
+      expect(button('播放詩篇 90')).toBeDefined();
+    } else {
+      expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeUndefined();
+      expect(button('播放詩篇 90')).toBeDefined();
+      act(() => { chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }); });
+    }
     act(() => { button('選擇今日章節').props.onPress(); });
     expect(button('前往詩90').props.accessibilityRole).toBe('button');
+  });
+
+  it('restores the full controls immediately when TalkBack turns on while immersed', async () => {
+    const { getReaderImmersionSnapshot } = await import('../../src/ui/readerImmersionState');
+    await mount();
+    act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); });
+    expect(chrome.toolsVisible).toBe(false);
+    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeUndefined();
+    act(() => { native.screenReaderChanged?.(true); });
+    expect(chrome.toolsVisible).toBe(true);
+    expect(getReaderImmersionSnapshot()).toBe(false);
+    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeDefined();
+    expect(button('播放詩篇 90')).toBeDefined();
   });
 
   it('mounts system-bar overrides only while focused and closes every popup on blur', async () => {
