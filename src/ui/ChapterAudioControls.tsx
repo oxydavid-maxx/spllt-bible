@@ -598,6 +598,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
           accessibilityLabel={bottomCell ? (canRetry ? '重試' : progress.playing ? '暫停' : '播放') : canRetry ? `重試${label}語音` : progress.playing ? `暫停${label}語音` : `播放${label}語音`}
           accessibilityHint={bottomCell ? `${canRetry ? '重試' : progress.playing ? '暫停' : '播放'}${label}語音` : undefined}
           onPress={canRetry ? retryPlayback : run(progress.playing ? '暫停' : '播放', () => progress.playing ? pauseCurrentPlayback() : playCurrentPlayback())}
+          android_ripple={{ color: theme.colors.primarySoft }}
           style={[styles.button, bottomCell && styles.bottomButton]}
         >
           <MaterialCommunityIcons name={canRetry ? 'replay' : progress.playing ? 'pause' : 'play'} size={21} color={theme.colors.primary} />
@@ -625,9 +626,9 @@ const styles = StyleSheet.create({
   bottomHost: { width: '100%', height: theme.control.tap, flex: 1 },
   slot: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
   bottomSlot: { width: '100%', height: theme.control.tap, flex: 1, flexDirection: 'row', gap: theme.spacing.xxs },
-  // Play/pause/retry sits in a round outline so it reads as a button like its neighbours.
+  // The collapsed overlay keeps a circular boundary; the bottom action row overrides it with borderless chrome.
   button: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.pill, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, backgroundColor: theme.colors.surface },
-  bottomButton: { width: '100%', height: theme.control.tap, flexDirection: 'row', gap: theme.spacing.xxs, borderRadius: theme.radius.button },
+  bottomButton: { width: '100%', height: theme.control.tap, minHeight: theme.control.tap, flexDirection: 'row', gap: theme.spacing.xxs, borderWidth: 0, borderColor: 'transparent', borderRadius: 0, backgroundColor: 'transparent' },
   bottomLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
   autoplayToggle: { minWidth: theme.control.tapCompact, minHeight: theme.control.tapCompact, flexShrink: 0, alignItems: 'center', justifyContent: 'center', gap: 3 },
   autoplayTrack: { width: 34, height: 18, borderRadius: 9, justifyContent: 'center' },

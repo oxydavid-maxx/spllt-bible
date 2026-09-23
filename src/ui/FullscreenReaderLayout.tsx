@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -118,6 +118,7 @@ export interface FullscreenReaderLayoutProps {
 }
 export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, versionId, references, onSelectReference, selectedDate, previousDate, nextDate, onSelectDate, completed = false, completionDisabled = false, completionPending = false, completionFailed = false, completionLabel, onComplete, onUndo, noPlanMessage, statusMessage, canOpenYouVersion = false, onOpenYouVersion, versionOptions, onSelectVersion, metadata, journal, accountEntry, loginGate, updateBanner, narrationSpeed = 1, onSelectNarrationSpeed }: FullscreenReaderLayoutProps) {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, fontScale } = useWindowDimensions();
   const [versionPageOpen, setVersionPageOpen] = useState(false);
   const [chapterPickerOpen, setChapterPickerOpen] = useState(false);
   const audioControlRef = useRef<ChapterAudioControlsHandle | null>(null);
@@ -136,7 +137,17 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
     void audioControlRef.current.pause().then(launch).catch(() => Alert.alert('朗讀', '暫停朗讀失敗，請再試一次。'));
   };
   const chapterTitle = formatChapterTitleZhTw(chapterUsfm) || '選擇章節';
+  const chapterSummary = formatReferenceListZhTw([chapterUsfm]) || chapterTitle;
+  const chapterHeader = `${formatReadingDateLabel(selectedDate)}·${chapterSummary}`;
+  const widestAdjacentDate = Math.max(formatReadingDateLabel(previousDate ?? '').length, formatReadingDateLabel(nextDate ?? '').length);
+  const adjacentDateTextWidth = widestAdjacentDate * theme.type.caption.size * fontScale * 0.56;
+  const nextDateControlWidth = Math.max(theme.control.tap, adjacentDateTextWidth + 18 + theme.spacing.xxs * 2);
+  const headerColumnWidth = (windowWidth - insets.left - insets.right - theme.spacing.xxs * 4) / 3;
+  const showAdjacentDateLabels = headerColumnWidth >= theme.control.tap + nextDateControlWidth;
   const completeLabel = completionPending ? '同步中' : completionFailed ? '重試同步' : completed ? '已完成' : completionLabel ?? '完成讀經';
+  const visibleCompletionLabel = !completionPending && !completionFailed && !completed && !completionDisabled ? '完成' : completeLabel;
+  const completionAccessibilityLabel = completionFailed ? '同步失敗，重試同步' : completionPending ? '同步中' : completed ? '已完成，可撤銷完成確認' : completionLabel ?? '完成讀經';
+  const completionActionDisabled = completionDisabled || completionPending;
   const openDailyChapterPicker = () => {
     chrome.showTools();
     if (references.length > 0) setChapterPickerOpen(true);
@@ -147,22 +158,25 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
       {chrome.focused && <><StatusBar hidden style="dark" /><NavigationBar hidden style="dark" /></>}
       {chrome.toolsVisible ? <SafeAreaView edges={['top', 'left', 'right']} accessibilityLabel="閱讀工具列" style={styles.toolbarSurface}>
         <View style={styles.topRow} onTouchStart={chrome.showTools}>
-          <View style={styles.dateControls}>
-            <Pressable accessibilityRole="button" accessibilityLabel="上一個排定讀經日" disabled={!previousDate} onPress={() => previousDate && onSelectDate(previousDate)} style={styles.dateStep}>
-              <MaterialCommunityIcons name="chevron-left" size={22} color={previousDate ? theme.colors.primary : theme.colors.muted} />
-            </Pressable>
-            <Text accessibilityLabel={'讀經日期' + selectedDate} style={styles.dateText}>{formatReadingDateLabel(selectedDate)}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="下一個排定讀經日" disabled={!nextDate} onPress={() => nextDate && onSelectDate(nextDate)} style={styles.dateStep}>
-              <MaterialCommunityIcons name="chevron-right" size={22} color={nextDate ? theme.colors.primary : theme.colors.muted} />
+          <View style={styles.headerSide}>
+            <Pressable accessibilityRole="button" accessibilityLabel="上一個排定讀經日" accessibilityHint={previousDate ? `前往${formatReadingDateLabel(previousDate)}` : undefined} disabled={!previousDate} onPress={() => previousDate && onSelectDate(previousDate)} style={[styles.dateStep, !previousDate && styles.disabled]}>
+              <MaterialCommunityIcons name="chevron-left" size={18} color={previousDate ? theme.colors.primary : theme.colors.muted} />
+              {previousDate && showAdjacentDateLabels ? <Text numberOfLines={1} style={styles.sideDateText}>{formatReadingDateLabel(previousDate)}</Text> : null}
             </Pressable>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="選擇今日章節" onPress={openDailyChapterPicker} style={styles.chapterButton}>
-            <Text accessibilityRole="header" numberOfLines={1} ellipsizeMode="tail" style={styles.titleText}>{chapterTitle}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="選擇今日章節" accessibilityHint={`目前${chapterHeader}，開啟今日章節清單`} onPress={openDailyChapterPicker} style={styles.chapterButton}>
+            <Text accessibilityRole="header" numberOfLines={1} ellipsizeMode="tail" style={styles.titleText}>{chapterHeader}</Text>
             <MaterialCommunityIcons name="chevron-down" size={18} color={theme.colors.primary} />
           </Pressable>
-          <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} style={styles.iconButton}>
-            <MaterialCommunityIcons name="dots-horizontal" size={24} color={theme.colors.ink} />
-          </Pressable>
+          <View style={[styles.headerSide, styles.trailingSide]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="下一個排定讀經日" accessibilityHint={nextDate ? `前往${formatReadingDateLabel(nextDate)}` : undefined} disabled={!nextDate} onPress={() => nextDate && onSelectDate(nextDate)} style={[styles.dateStep, styles.nextDateStep, !nextDate && styles.disabled]}>
+              {nextDate && showAdjacentDateLabels ? <Text numberOfLines={1} style={styles.sideDateText}>{formatReadingDateLabel(nextDate)}</Text> : null}
+              <MaterialCommunityIcons name="chevron-right" size={18} color={nextDate ? theme.colors.primary : theme.colors.muted} />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} android_ripple={{ color: theme.colors.primarySoft }} style={styles.iconButton}>
+              <MaterialCommunityIcons name="dots-horizontal" size={24} color={theme.colors.ink} />
+            </Pressable>
+          </View>
         </View>
       </SafeAreaView> : null}
       {noPlanMessage ? <Text accessibilityRole="text" style={styles.statusBanner}>{noPlanMessage}</Text> : null}
@@ -173,16 +187,16 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
         {statusMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.statusBanner}>{statusMessage}</Text> : null}
         <View style={styles.playerBar}>
           <View style={styles.bottomActionSlot}>
-            <Pressable accessibilityRole="button" accessibilityLabel="靈修日記" onPress={chrome.openJournal} style={styles.bottomAction}>
+            <Pressable accessibilityRole="button" accessibilityLabel="靈修日記" onPress={chrome.openJournal} android_ripple={{ color: theme.colors.primarySoft }} style={styles.bottomAction}>
               <MaterialCommunityIcons name="notebook-edit-outline" size={21} color={theme.colors.ink} />
               <Text style={styles.bottomActionLabel}>日記</Text>
             </Pressable>
           </View>
           <View accessible={false} style={styles.bottomAudioPlaceholder} />
           <View style={styles.bottomActionSlot}>
-            <Pressable accessibilityRole="button" accessibilityLabel={completionFailed ? '同步失敗，重試同步' : completeLabel} accessibilityState={{ disabled: completionDisabled, busy: completionPending }} disabled={completionDisabled} onPress={completionFailed ? onComplete : completed ? onUndo : onComplete} style={[styles.bottomAction, completionDisabled && styles.disabled]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={completionAccessibilityLabel} accessibilityHint={completed ? '點按撤銷所選日期的完成確認' : undefined} accessibilityState={{ disabled: completionActionDisabled, busy: completionPending }} disabled={completionActionDisabled} onPress={completionFailed ? onComplete : completed ? onUndo : onComplete} android_ripple={{ color: theme.colors.primarySoft }} style={[styles.bottomAction, completionActionDisabled && styles.disabled]}>
               <MaterialCommunityIcons name={completed ? 'check-circle' : completionFailed ? 'sync-alert' : 'check-circle-outline'} size={21} color={completed ? theme.colors.primary : theme.colors.ink} />
-              <Text style={[styles.bottomActionLabel, completed && styles.completedLabel]}>{completeLabel}</Text>
+              <Text numberOfLines={1} style={[styles.bottomActionLabel, completed && styles.completedLabel]}>{visibleCompletionLabel}</Text>
             </Pressable>
           </View>
         </View>
@@ -331,18 +345,20 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.surface },
   reader: { flex: 1 },
   toolbarSurface: { backgroundColor: theme.colors.surface, flexShrink: 0 },
-  topRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm },
-  dateControls: { flexDirection: 'row', flexShrink: 0, alignItems: 'center' },
-  dateStep: { width: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  dateText: { width: 42, color: theme.colors.ink, fontSize: theme.type.label.size, fontWeight: '700', textAlign: 'center' },
-  chapterButton: { flex: 1, minWidth: 48, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xs },
-  titleText: { flex: 1, minWidth: 0, color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
+  topRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
+  headerSide: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' },
+  trailingSide: { justifyContent: 'flex-end' },
+  dateStep: { minWidth: 48, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
+  nextDateStep: { justifyContent: 'flex-end' },
+  sideDateText: { color: theme.colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
+  chapterButton: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
+  titleText: { flexShrink: 1, minWidth: 0, color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700', textAlign: 'center' },
   iconButton: { minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center' },
   playerBarSurface: { backgroundColor: theme.colors.surface, flexShrink: 0, borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.border },
   playerBar: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm, minHeight: 48 },
   bottomActionSlot: { flex: 1, minWidth: 0 },
-  bottomAction: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs, borderWidth: theme.control.hairline, borderColor: theme.colors.border, borderRadius: theme.radius.button, backgroundColor: theme.colors.surface },
-  bottomActionLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
+  bottomAction: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs, backgroundColor: 'transparent' },
+  bottomActionLabel: { flexShrink: 1, minWidth: 0, color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
   completedLabel: { color: theme.colors.primary },
   bottomAudioCell: { flex: 1, minWidth: 0, minHeight: 48, alignItems: 'stretch', justifyContent: 'center' },
   bottomAudioPlaceholder: { flex: 1, minWidth: 0, minHeight: 48 },
