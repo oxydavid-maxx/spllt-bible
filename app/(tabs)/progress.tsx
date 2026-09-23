@@ -44,6 +44,8 @@ export default function ProgressScreen() {
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const [focused, setFocused] = useState(false);
   const [primaryReady, setPrimaryReady] = useState(false);
+  const [appForeground, setAppForeground] = useState(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
+  const [secondaryRefresh, setSecondaryRefresh] = useState(0);
   const guard = useRef(createAdminUnlockGuard({ authenticate: createNativeAdminAuthenticator() }));
   // The member's own points, kept on the device so a backend that is off does not blank this page.
   // Only their own: see profileCache for why a friend's totals must not land here.
@@ -100,12 +102,13 @@ export default function ProgressScreen() {
     const subscription = AppState.addEventListener('change', (next) => {
       const wasActive = appActive.current;
       appActive.current = next === 'active';
+      setAppForeground(appActive.current);
       if (next !== 'active') {
-        // Native permission/scanner activities can pause Android while the scan pane is in use.
-        // Preserve only the pending scanner pane; protected data still clears.
+        // Hide the screen while inactive. Preserve only a same-member own view for a smooth
+        // foreground refresh; friends/admin data still clears, and auth changes always clear it.
         const preserveScanner = wasActive && focusedRef.current && activeSheet.current === 'scan' && scannerActivityRequest.current !== null;
         resumeScannerAfterActivity.current = preserveScanner;
-        clearProtectedState(preserveScanner);
+        clearProtectedState(preserveScanner, true, true);
       } else if (focusedRef.current) {
         const preserveScanner = resumeScannerAfterActivity.current && activeSheet.current === 'scan';
         resumeScannerAfterActivity.current = false;
@@ -187,6 +190,7 @@ export default function ProgressScreen() {
   }, [client, session, loadProfile, stopPrefetch]);
   const refreshOwnProfile = useCallback((preserveScanner = false) => {
     if (!client || !session || !focusedRef.current || !appActive.current) return;
+    setSecondaryRefresh((current) => current + 1);
     clearProtectedState(preserveScanner, true, true); activeMember.current = session.memberId;
     void loadProfile(session.memberId, 'me');
   }, [client, session, clearProtectedState, loadProfile]);
@@ -289,7 +293,7 @@ export default function ProgressScreen() {
     const origin = sheetVersion.current;
     const owns = () => isLive(generation, 'me', session.memberId);
     if (!owns()) return;
-    try { await client.setRewardTarget(rewardId); if (!owns()) return; if (sheetVersion.current === origin) setSheet(null); setShelfRewards(null); await loadProfile(session.memberId, 'me'); }
+    try { await client.setRewardTarget(rewardId); if (!owns()) return; if (sheetVersion.current === origin) setSheet(null); await loadProfile(session.memberId, 'me'); }
     catch (reason) { if (owns()) setError(messageFor(reason)); }
   };
   const mutateRewards = async (action: () => Promise<unknown>) => {
@@ -303,12 +307,19 @@ export default function ProgressScreen() {
   const [shelfRewards, setShelfRewards] = useState<Reward[] | null>(null);
   const [nominations, setNominations] = useState<NominationBoardView | null>(null);
   const [community, setCommunity] = useState<CommunityProgressView | null>(null);
+  const shelfRewardsRef = useRef(shelfRewards); shelfRewardsRef.current = shelfRewards;
+  const communityRef = useRef(community); communityRef.current = community;
+  const hasOwnPrivateProfile = Boolean(session && profile?.memberId === session.memberId && profile.private);
   useEffect(() => {
-    if (!client || !session || !focused || !primaryReady || scope !== 'me' || profile?.memberId !== session.memberId || !profile.private || shelfRewards !== null || typeof client.getRewards !== 'function') return;
+    if (!client || !session || !focused || !primaryReady || scope !== 'me' || !hasOwnPrivateProfile || typeof client.getRewards !== 'function') return;
     let active = true; const generation = viewGeneration.current;
-    void client.getRewards().then((value) => { if (active && isViewLive(generation)) setShelfRewards(value); }).catch(() => { if (active && isViewLive(generation)) setShelfRewards([]); });
+    void client.getRewards().then((value) => { if (active && isViewLive(generation)) setShelfRewards(value); }).catch((reason) => {
+      if (!active || !isViewLive(generation)) return;
+      if (shelfRewardsRef.current === null) setShelfRewards([]);
+      else setError(messageFor(reason));
+    });
     return () => { active = false; };
-  }, [client, session, scope, profile?.private, shelfRewards, focused, primaryReady, isViewLive]);
+  }, [client, session, scope, hasOwnPrivateProfile, focused, primaryReady, secondaryRefresh, isViewLive]);
   const reloadNominations = useCallback(async (reportError = false, afterMutation = false): Promise<boolean> => {
     if (!client || !session || !focusedRef.current || !appActive.current || typeof client.getNominations !== 'function' || (nominationPending.current && !afterMutation)) return false;
     const generation = viewGeneration.current;
@@ -322,15 +333,20 @@ export default function ProgressScreen() {
     } catch (reason) { if (owns() && reportError) setNominationError(messageFor(reason)); return false; }
   }, [client, session, isViewLive]);
   useEffect(() => {
-    if (!focused || !primaryReady || scope !== 'me' || nominations !== null) return;
-    void reloadNominations();
-  }, [focused, primaryReady, scope, nominations, reloadNominations]);
+    if (!focused || !primaryReady || scope !== 'me') return;
+    void reloadNominations(true);
+  }, [focused, primaryReady, scope, secondaryRefresh, reloadNominations]);
+
   useEffect(() => {
-    if (!client || !session || !focused || !primaryReady || scope !== 'me' || community !== null || typeof client.getCommunityProgress !== 'function') return;
+    if (!client || !session || !focused || !primaryReady || scope !== 'me' || typeof client.getCommunityProgress !== 'function') return;
     let active = true; const generation = viewGeneration.current;
-    void client.getCommunityProgress().then((value) => { if (active && isViewLive(generation)) setCommunity(value); }).catch(() => { if (active && isViewLive(generation)) setCommunity({ books: [], personDays: null, currentBook: null }); });
+    void client.getCommunityProgress().then((value) => { if (active && isViewLive(generation)) setCommunity(value); }).catch((reason) => {
+      if (!active || !isViewLive(generation)) return;
+      if (communityRef.current === null) setCommunity({ books: [], personDays: null, currentBook: null });
+      else setError(messageFor(reason));
+    });
     return () => { active = false; };
-  }, [client, session, scope, community, focused, primaryReady, isViewLive]);
+  }, [client, session, scope, focused, primaryReady, secondaryRefresh, isViewLive]);
   useEffect(() => {
     if (!focused || sheet !== 'nominations') return;
     void reloadNominations(true);
@@ -376,6 +392,7 @@ export default function ProgressScreen() {
   const retrySavedRedemption = (operationId: string) => retrySaved(operationId, false);
   const retrySavedReversal = (operationId: string) => retrySaved(operationId, true);
 
+  if (!appForeground) return <View style={styles.screen} />;
   if (!session) return <View style={styles.screen}><Text style={styles.title}>積分</Text><Text style={styles.note}>請先登入以查看積分。</Text></View>;
   const ownProfile = profile?.memberId === session.memberId ? profile : null;
   const showingProfile = scope !== 'me' && selected && profile;

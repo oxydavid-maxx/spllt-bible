@@ -115,18 +115,25 @@ describe('progress protected response lifecycle', () => {
 
   it('keeps the same-account profile and secondary blocks stable until refresh fails', async () => {
     const profile = { memberId: 'self', displayName: '自己', earnedTotal: 1, band: null, months: [], private: { redeemableBalance: 1, targetReward: { rewardId: 'goal', name: '電影票', costPoints: 10, active: true, revision: 1 } }, permissions: { canEditTarget: true, canRedeem: false } };
-    let resolveRefresh!: (value: unknown) => void; let rejectRefresh!: (reason: unknown) => void;
-    api.getProfile.mockReset().mockResolvedValueOnce(profile).mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; })).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRefresh = reject; }));
+    let resolveRefresh!: (value: unknown) => void; let resolveForeground!: (value: unknown) => void; let rejectRefresh!: (reason: unknown) => void;
+    let resolveRewards!: (value: unknown[]) => void; let resolveNominations!: (value: unknown) => void; let resolveCommunity!: (value: unknown) => void;
+    let rejectRewards!: (reason: unknown) => void; let rejectNominations!: (reason: unknown) => void; let rejectCommunity!: (reason: unknown) => void;
+    api.getProfile.mockReset().mockResolvedValueOnce(profile).mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; })).mockImplementationOnce(() => new Promise((resolve) => { resolveForeground = resolve; })).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRefresh = reject; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); await Promise.resolve(); await Promise.resolve(); });
-    const expectSecondaryPresence = () => {
+    const expectSecondary = (rewardName: string, roundTitle: string, book: string) => {
       const score = renderer.root.findByType('ScoreProfile' as any);
-      expect(score.props.rewards).toHaveLength(1);
+      expect(score.props.rewards.map((reward: any) => reward.name)).toContain(rewardName);
       expect(score.props.community).toBeDefined();
-      expect(renderer.root.findAll((node) => String(node.type) === 'NominationBanner')).toHaveLength(1);
+      expect(score.props.community.props.books).toContain(book);
+      expect(renderer.root.findByType('NominationBanner' as any).props.round.title).toBe(roundTitle);
     };
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'self', earnedTotal: 1 });
-    expectSecondaryPresence();
+    expectSecondary('電影票', '提案', '約翰福音');
+    const initialCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, community: api.getCommunityProgress.mock.calls.length };
+    api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewards = resolve; }));
+    api.getNominations.mockImplementationOnce(() => new Promise((resolve) => { resolveNominations = resolve; }));
+    api.getCommunityProgress.mockImplementationOnce(() => new Promise((resolve) => { resolveCommunity = resolve; }));
 
     await act(async () => {
       focusCleanupRef.current?.(); focusCleanupRef.current = null;
@@ -135,37 +142,91 @@ describe('progress protected response lifecycle', () => {
       await Promise.resolve();
     });
     expect(api.getProfile).toHaveBeenCalledTimes(2);
+    expect(api.getRewards).toHaveBeenCalledTimes(initialCalls.rewards + 1);
+    expect(api.getNominations).toHaveBeenCalledTimes(initialCalls.nominations + 1);
+    expect(api.getCommunityProgress).toHaveBeenCalledTimes(initialCalls.community + 1);
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'self', earnedTotal: 1 });
-    expectSecondaryPresence();
+    expectSecondary('電影票', '提案', '約翰福音');
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '載入中…')).toHaveLength(0);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
 
+    await act(async () => {
+      resolveRewards([{ rewardId: 'new-goal', name: '新獎品', costPoints: 12, active: true, revision: 1 }]);
+      resolveNominations({ round: { roundId: 'round-2', title: '新提案', closesAt: 9999999999999 }, nominations: [] });
+      resolveCommunity({ books: ['羅馬書'], personDays: 5, currentBook: null });
+      await Promise.resolve();
+    });
+    expectSecondary('新獎品', '新提案', '羅馬書');
     await act(async () => { resolveRefresh({ ...profile, earnedTotal: 2, private: { redeemableBalance: 2, targetReward: profile.private.targetReward } }); });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(2);
-    expectSecondaryPresence();
+    expectSecondary('新獎品', '新提案', '羅馬書');
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
 
-    await act(async () => { focusCallbacks.at(-1)?.(); await Promise.resolve(); });
-    expectSecondaryPresence();
+    const refreshedCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, community: api.getCommunityProgress.mock.calls.length };
+    api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewards = resolve; }));
+    api.getNominations.mockImplementationOnce(() => new Promise((resolve) => { resolveNominations = resolve; }));
+    api.getCommunityProgress.mockImplementationOnce(() => new Promise((resolve) => { resolveCommunity = resolve; }));
+    await act(async () => { appListeners.at(-1)?.('background'); await Promise.resolve(); });
+    expect(renderer.root.findAll((node) => String(node.type) === 'ScoreProfile')).toHaveLength(0);
+    await act(async () => { appListeners.at(-1)?.('active'); await Promise.resolve(); });
+    expect(api.getProfile).toHaveBeenCalledTimes(3);
+    expect(api.getRewards).toHaveBeenCalledTimes(refreshedCalls.rewards + 1);
+    expect(api.getNominations).toHaveBeenCalledTimes(refreshedCalls.nominations + 1);
+    expect(api.getCommunityProgress).toHaveBeenCalledTimes(refreshedCalls.community + 1);
+    expectSecondary('新獎品', '新提案', '羅馬書');
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
-    await act(async () => { rejectRefresh(new Error('offline')); await Promise.resolve(); });
-    expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(2);
-    expectSecondaryPresence();
+    await act(async () => {
+      resolveRewards([{ rewardId: 'foreground-goal', name: '前景獎品', costPoints: 15, active: true, revision: 1 }]);
+      resolveNominations({ round: { roundId: 'foreground-round', title: '前景提案', closesAt: 9999999999999 }, nominations: [] });
+      resolveCommunity({ books: ['以弗所書'], personDays: 8, currentBook: null });
+      resolveForeground({ ...profile, earnedTotal: 3, private: { redeemableBalance: 3, targetReward: profile.private.targetReward } });
+      await Promise.resolve();
+    });
+    expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(3);
+    expectSecondary('前景獎品', '前景提案', '以弗所書');
+
+    const foregroundCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, community: api.getCommunityProgress.mock.calls.length };
+    api.getRewards.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRewards = reject; }));
+    api.getNominations.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectNominations = reject; }));
+    api.getCommunityProgress.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectCommunity = reject; }));
+    await act(async () => { focusCallbacks.at(-1)?.(); await Promise.resolve(); });
+    expect(api.getProfile).toHaveBeenCalledTimes(4);
+    expect(api.getRewards).toHaveBeenCalledTimes(foregroundCalls.rewards + 1);
+    expect(api.getNominations).toHaveBeenCalledTimes(foregroundCalls.nominations + 1);
+    expect(api.getCommunityProgress).toHaveBeenCalledTimes(foregroundCalls.community + 1);
+    expectSecondary('前景獎品', '前景提案', '以弗所書');
+    expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
+    await act(async () => { rejectRewards(new Error('offline')); rejectNominations(new Error('offline')); rejectCommunity(new Error('offline')); rejectRefresh(new Error('offline')); await Promise.resolve(); });
+    expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(3);
+    expectSecondary('前景獎品', '前景提案', '以弗所書');
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(1);
   });
 
   it('clears member A on account change and never applies A response after member B signs in', async () => {
     auth.status = 'signed-in'; auth.session = { memberId: 'member-a', sessionToken: 'token-a' };
     let resolveRefreshA!: (value: unknown) => void;
+    let resolveRewardsA!: (value: unknown[]) => void; let resolveNominationsA!: (value: unknown) => void; let resolveCommunityA!: (value: unknown) => void;
     const profileA = { memberId: 'member-a', displayName: 'A私人資料', earnedTotal: 1, band: null, months: [], private: { redeemableBalance: 1, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } };
     const profileB = { memberId: 'member-b', displayName: 'B私人資料', earnedTotal: 2, band: null, months: [], private: { redeemableBalance: 2, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } };
     api.getProfile.mockReset().mockResolvedValueOnce(profileA).mockImplementationOnce(() => new Promise((resolve) => { resolveRefreshA = resolve; })).mockResolvedValueOnce(profileB);
     let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
+    await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); await Promise.resolve(); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledWith('member-a', 'me', expect.any(String));
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'member-a', earnedTotal: 1 });
-    await act(async () => { focusCallbacks.at(-1)?.(); await Promise.resolve(); });
+    const initialSecondaryCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, community: api.getCommunityProgress.mock.calls.length };
+    api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewardsA = resolve; }));
+    api.getNominations.mockImplementationOnce(() => new Promise((resolve) => { resolveNominationsA = resolve; }));
+    api.getCommunityProgress.mockImplementationOnce(() => new Promise((resolve) => { resolveCommunityA = resolve; }));
+    await act(async () => {
+      focusCleanupRef.current?.(); focusCleanupRef.current = null;
+      const cleanup = focusCallbacks.at(-1)?.();
+      focusCleanupRef.current = typeof cleanup === 'function' ? cleanup : null;
+      await Promise.resolve();
+    });
     expect(api.getProfile).toHaveBeenCalledTimes(2);
+    expect(api.getRewards).toHaveBeenCalledTimes(initialSecondaryCalls.rewards + 1);
+    expect(api.getNominations).toHaveBeenCalledTimes(initialSecondaryCalls.nominations + 1);
+    expect(api.getCommunityProgress).toHaveBeenCalledTimes(initialSecondaryCalls.community + 1);
 
     auth.status = 'signed-out'; auth.session = null;
     await act(async () => { authListeners.at(-1)?.({ current: null }); });
@@ -173,14 +234,32 @@ describe('progress protected response lifecycle', () => {
     await act(async () => { renderer.update(React.createElement(ProgressScreen)); });
 
     auth.status = 'signed-in'; auth.session = { memberId: 'member-b', sessionToken: 'token-b' };
+    const rewardB = { rewardId: 'b-goal', name: 'B獎品', costPoints: 4, active: true, revision: 1 };
+    api.getRewards.mockResolvedValueOnce([rewardB]);
+    api.getNominations.mockResolvedValueOnce({ round: { roundId: 'b-round', title: 'B提案', closesAt: 9999999999999 }, nominations: [] });
+    api.getCommunityProgress.mockResolvedValueOnce({ books: ['B書卷'], personDays: 7, currentBook: null });
     await act(async () => { authListeners.at(-1)?.({ current: auth.session }); });
     await act(async () => { renderer.update(React.createElement(ProgressScreen)); });
     await act(async () => { focusCallbacks.at(-1)?.(); await Promise.resolve(); });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'member-b', earnedTotal: 2 });
+    const expectBSecondary = () => {
+      const score = renderer.root.findByType('ScoreProfile' as any);
+      expect(score.props.rewards.map((reward: any) => reward.name)).toContain('B獎品');
+      expect(score.props.community.props.books).toContain('B書卷');
+      expect(renderer.root.findByType('NominationBanner' as any).props.round.title).toBe('B提案');
+    };
+    expectBSecondary();
 
     await act(async () => { resolveRefreshA({ ...profileA, displayName: 'A舊請求私人資料', earnedTotal: 99, private: { redeemableBalance: 99, targetReward: null } }); });
+    await act(async () => {
+      resolveRewardsA([{ rewardId: 'a-late', name: 'A舊獎品', costPoints: 1, active: true, revision: 1 }]);
+      resolveNominationsA({ round: { roundId: 'a-late-round', title: 'A舊提案', closesAt: 9999999999999 }, nominations: [] });
+      resolveCommunityA({ books: ['A舊書卷'], personDays: 99, currentBook: null });
+      await Promise.resolve();
+    });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'member-b', earnedTotal: 2 });
     expect(renderer.root.findAll((node) => String(node.type) === 'ScoreProfile' && node.props.profile.displayName === 'A舊請求私人資料')).toHaveLength(0);
+    expectBSecondary();
   });
 
 });
