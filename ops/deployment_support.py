@@ -3,12 +3,19 @@
 Migrated from the untracked C:/dev/apps/qingmu-youth/ops/deployment_support.py. The
 only structural change is `LIVE`: instead of a hardcoded path to an untracked copy,
 it is computed from this file's own location, which must be the ops/ directory of a
-clean, pinned git worktree -- `launch()` calls pinned_worktree.preflight(LIVE) before
-touching any production secret and refuses (propagating WorktreeNotPinnedError) if the
-worktree has drifted at all. See ops/README.md for the three env-var test seams
-(QINGMU_PILOT_DIR_OVERRIDE, QINGMU_SERVER_PORT_OVERRIDE, QINGMU_CFG_SHA_OVERRIDE): each
-defaults to exactly today's production hardcoded value and is only ever set by a
-dry-run harness, never by the real Windows-logon start.
+clean, pinned git worktree -- `launch()` calls
+pinned_worktree.preflight_against_declared_pin(LIVE, PIN_PATH) before touching any
+production secret and refuses (propagating WorktreeNotPinnedError) if the worktree has
+drifted, or if its HEAD is not the commit `PIN_PATH` declares. See ops/README.md for
+the env-var test seams (QINGMU_PILOT_DIR_OVERRIDE, QINGMU_SERVER_PORT_OVERRIDE,
+QINGMU_CFG_SHA_OVERRIDE): each defaults to exactly today's production hardcoded value
+and is only ever set by a dry-run harness, never by the real Windows-logon start.
+
+PIN_PATH declares, from OUTSIDE the git worktree, which single commit this deployment
+is supposed to be running -- see pinned_worktree.read_declared_pin()'s docstring for why
+that has to live outside the tree (a commit landing directly inside the live pinned
+worktree on 2026-09-23 moved its HEAD without anyone touching anything outside it; the
+next start would otherwise have silently run whatever HEAD had become).
 """
 import argparse
 import hashlib
@@ -20,7 +27,7 @@ import subprocess
 import time
 from reminder_config import read_reminder_environment
 from ai_runtime import read_ai_environment, read_committed_boundary_bytes
-from pinned_worktree import preflight
+from pinned_worktree import preflight_against_declared_pin
 
 PILOT = Path(os.environ.get('QINGMU_PILOT_DIR_OVERRIDE')
               or r'C:/Users/User/AppData/Local/Packages/OpenAI.Codex_2p2nqsd0c76g0/LocalCache/Local/QingmuYouthPilot')
@@ -28,6 +35,7 @@ LIVE = Path(__file__).resolve().parent.parent
 CFG_SHA = os.environ.get('QINGMU_CFG_SHA_OVERRIDE') \
     or '2baa5b89b739e9758e5b4e826af857eadb649d579f5eb98ad544f65f71252023'
 PORT = int(os.environ.get('QINGMU_SERVER_PORT_OVERRIDE') or '8788')
+PIN_PATH = PILOT / 'pinned-commit.json'
 
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -52,9 +60,10 @@ def inspect_database():
 def launch(label):
     if not label.replace('-', '').isalnum():
         raise ValueError('INVALID_LOG_LABEL')
-    # Refuse before touching any secret: a drifted worktree must not even get as far
-    # as reading pilot-private-config.json.
-    commit = preflight(LIVE)
+    # Refuse before touching any secret: a drifted worktree, or one whose HEAD is not
+    # the commit PIN_PATH declares, must not even get as far as reading
+    # pilot-private-config.json.
+    commit = preflight_against_declared_pin(LIVE, PIN_PATH)
     config_path = PILOT / 'pilot-private-config.json'
     if digest(config_path) != CFG_SHA:
         raise ValueError('CONFIG_CHANGED')

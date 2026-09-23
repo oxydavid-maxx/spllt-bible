@@ -10,6 +10,8 @@ modified tracked files, no untracked files, nothing staged. If the tree has drif
 any way, starting is refused instead of silently serving stale-looking-but-actually-
 different code.
 """
+import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -70,3 +72,44 @@ def preflight(worktree_root, expected_commit=None):
     if expected_commit and commit.lower() != expected_commit.strip().lower():
         raise WorktreeNotPinnedError('COMMIT_MISMATCH', {'expected': expected_commit, 'actual': commit})
     return commit
+
+
+def read_declared_pin(pin_path):
+    """Return the full commit SHA a deployment is *declared* to run, from a small JSON
+    record living OUTSIDE the git worktree -- e.g. `{"commit": "<40-hex sha>"}`.
+
+    Why this has to live outside the worktree: `preflight(worktree_root)` alone only
+    proves the tree is internally consistent with *its own* HEAD -- clean, no drift from
+    whatever commit it happens to be on right now. It says nothing about whether that
+    HEAD is the commit this deployment is actually supposed to be running. On
+    2026-09-23 a commit (`6f37bfc`) landed directly inside the live pinned worktree
+    `C:\\dev\\machine\\worktrees\\qingmu-bible\\r-7fe612f`, moving its HEAD past the
+    intended pin `7fe612f` without anyone touching anything outside the worktree; the
+    running backend was unaffected, but the *next* start would have silently run
+    whatever HEAD had become, since nothing outside the tree said otherwise. A record
+    that lives outside the worktree cannot be moved by a commit inside it.
+
+    Raises WorktreeNotPinnedError, never returns a partial/best-effort value:
+      - PIN_RECORD_MISSING: no file at `pin_path`.
+      - PIN_RECORD_INVALID: unreadable, not JSON, not an object, or `commit` is not a
+        40-character lowercase-or-mixed-case hex SHA.
+    """
+    pin_path = Path(pin_path)
+    if not pin_path.is_file():
+        raise WorktreeNotPinnedError('PIN_RECORD_MISSING', str(pin_path))
+    try:
+        record = json.loads(pin_path.read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError) as error:
+        raise WorktreeNotPinnedError('PIN_RECORD_INVALID', f'{pin_path}: {error}') from error
+    commit = record.get('commit') if isinstance(record, dict) else None
+    if not isinstance(commit, str) or not re.fullmatch(r'[0-9a-fA-F]{40}', commit):
+        raise WorktreeNotPinnedError('PIN_RECORD_INVALID', f'{pin_path}: "commit" must be a 40-character hex SHA')
+    return commit.lower()
+
+
+def preflight_against_declared_pin(worktree_root, pin_path):
+    """The check every real caller should use: read the declared pin record, then
+    preflight the worktree against it. Calling preflight() alone (no expected_commit)
+    is not enough on its own -- see read_declared_pin()'s docstring for why."""
+    expected = read_declared_pin(pin_path)
+    return preflight(worktree_root, expected_commit=expected)
