@@ -72,13 +72,13 @@ describe('reader highlight does not paint blank verse whitespace (real Psalm 98 
     expect(blank.map((el) => ({ verse: el.getAttribute('v'), text: el.textContent }))).toEqual([]);
   });
 
-  it('does not paint a cloned padding fragment before the next poetry verse', () => {
-    // Real Pixel and Chromium screenshots show a grey bar at Psalm 98:2 while verse 1 plays:
-    // the verse wrappers have real text, but clone + 2px inline padding paints an extra fragment.
-    const css = readFileSync('node_modules/@youversion/platform-core/src/styles/bible-reader.css', 'utf8');
-    const verseRule = css.match(/& \.yv-v\s*\{([^}]+)\}/)?.[1] ?? '';
-    expect(verseRule).toMatch(/box-decoration-break:\s*clone/);
-    expect(verseRule).toMatch(/padding-inline:\s*0(?:px)?;/);
+  it('overrides the WebView reader highlight padding without changing vendor CSS bundles', () => {
+    // The real Psalm 98 browser/Pixel replay paints an empty bar at verse 2 from
+    // the vendor stylesheet's cloned 2px padding even when every wrapper has text.
+    const domReader = readFileSync('node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js', 'utf8');
+    expect(domReader.includes('href: "qingmu-verse-highlight-padding"')).toBe(true);
+    const override = domReader.match(/\.yv-v\s*\{[^}]*padding-inline:[^}]*\}/)?.[0] ?? '';
+    expect(override).toMatch(/padding-inline:\s*0\s*!important/);
   });
 
   it('is carried by tracked patches so a clean install reproduces it', () => {
