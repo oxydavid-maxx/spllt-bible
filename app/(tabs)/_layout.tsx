@@ -4,15 +4,27 @@ import type { ComponentRef, Ref } from 'react';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../../src/ui/Theme';
 import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
+import { taipeiDate } from '../../src/domain/gamificationV1';
+import { useAuthSnapshot } from '../../src/services/authSession';
+import { fixtureProfile } from '../../src/ui/fixtureProfile';
+import { requestTodayReaderTabPress } from '../../src/ui/readingSession';
 import { useReaderImmersionSnapshot } from '../../src/ui/readerImmersionState';
 
 export default function TabsLayout() {
   const readerImmersed = useReaderImmersionSnapshot();
+  const auth = useAuthSnapshot();
+  const memberId = auth.session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
   // Reader is a hidden sibling route; keep its visible reading entry selected for users and screen readers.
   const readerRouteSelected = usePathname() === '/reader';
   const accountEntry = () => <AccountEntryButton />;
   return (
     <Tabs
+      screenListeners={({ route }) => ({
+        tabPress: event => {
+          if (route.name !== 'today' || event.defaultPrevented) return;
+          requestTodayReaderTabPress(taipeiDate(), memberId, auth.epoch);
+        },
+      })}
       screenOptions={{
         headerShown: true,
         headerRight: accountEntry,

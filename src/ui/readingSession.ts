@@ -22,10 +22,31 @@ function initialDate(): string {
 let activePlan: ReadingPlanSnapshot = canonicalSeptemberPlan;
 let planIdByDate = new Map(canonicalSeptemberPlan.days.map((day) => [day.date, canonicalSeptemberPlan.planId]));
 let selectedDate = initialDate();
+let snapshotRevision = 0;
+let todayReaderTabPressRevision = 0;
+let todayReaderTabPressMemberId: string | null = null;
+let todayReaderTabPressAuthEpoch = 0;
+let todayReaderTabPressSameDate = false;
 
 export function setSelectedReadingDate(date: string): void {
   if (!validDateOnly(date) || date === selectedDate) return;
   selectedDate = date;
+  publish();
+}
+
+/** An explicit tap on the visible Reader tab is an entry action even when today is already selected. */
+export function requestTodayReaderTabPress(date: string, memberId: string | null, authEpoch: number): void {
+  if (!validDateOnly(date)) return;
+  todayReaderTabPressSameDate = selectedDate === date;
+  selectedDate = date;
+  todayReaderTabPressRevision += 1;
+  todayReaderTabPressMemberId = memberId;
+  todayReaderTabPressAuthEpoch = authEpoch;
+  publish();
+}
+
+function publish(): void {
+  snapshotRevision += 1;
   listeners.forEach((listener) => listener());
 }
 
@@ -40,7 +61,7 @@ export function setReadingPlan(plan: ReadingPlanSnapshot): void {
   activePlan = normalizePlan(plan);
   planIdByDate = new Map(activePlan.days.map((day) => [day.date, day.planId ?? activePlan.planId]));
   if (!getReadingDay(activePlan, selectedDate)) selectedDate = activePlan.days[0]?.date ?? selectedDate;
-  listeners.forEach((listener) => listener());
+  publish();
 }
 
 /** Merge a server schedule while preserving old dates and their original plan IDs. */
@@ -52,13 +73,13 @@ export function mergeReadingPlan(plan: ReadingPlanSnapshot): void {
   }
   const days = [...byDate.values()].sort((left, right) => left.date.localeCompare(right.date));
   activePlan = normalizePlan({ ...activePlan, planId: plan.planId, timezone: plan.timezone, days, dates: days.map((day) => day.date), uniqueReferences: [...new Set(days.flatMap((day) => day.references))] });
-  listeners.forEach((listener) => listener());
+  publish();
 }
 
 export function resetReadingPlan(): void {
   activePlan = canonicalSeptemberPlan;
   planIdByDate = new Map(canonicalSeptemberPlan.days.map((day) => [day.date, canonicalSeptemberPlan.planId]));
-  listeners.forEach((listener) => listener());
+  publish();
 }
 
 function normalizePlan(plan: ReadingPlanSnapshot): ReadingPlanSnapshot {
@@ -70,7 +91,7 @@ export function getReadingSessionSnapshot() {
   const day = getReadingDay(activePlan, selectedDate);
   const period = getPeriodForDate(activePlan, selectedDate);
   const adjacent = getAdjacentScheduledDates(activePlan, selectedDate);
-  return { selectedDate, planId: planIdByDate.get(selectedDate) ?? activePlan.planId, day, period, previousDate: adjacent.previous, nextDate: adjacent.next };
+  return { selectedDate, planId: planIdByDate.get(selectedDate) ?? activePlan.planId, day, period, previousDate: adjacent.previous, nextDate: adjacent.next, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate };
 }
 
 export function getReadingPlanId(taskDate: string): string | null {
@@ -83,6 +104,6 @@ function subscribe(listener: Listener): () => void {
 }
 
 export function useReadingSession() {
-  useSyncExternalStore(subscribe, () => selectedDate, () => selectedDate);
+  useSyncExternalStore(subscribe, () => snapshotRevision, () => snapshotRevision);
   return getReadingSessionSnapshot();
 }

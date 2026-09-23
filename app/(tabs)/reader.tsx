@@ -33,9 +33,11 @@ import { UpdateBanner } from '../../src/ui/UpdateBanner';
 import { runtimeConfig } from '../../src/config/runtime';
 import { useOutboxRecovery } from '../../src/services/useOutboxRecovery';
 
+let handledTodayReaderTabPressRevision = 0;
+
 export default function ReaderScreen() {
   const chrome = useReaderChrome();
-  const { selectedDate, planId, day, period, previousDate, nextDate } = useReadingSession();
+  const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate } = useReadingSession();
   // Set when a verse is copied while the journal is open, cleared once the panel has taken it.
   const [pendingQuote, setPendingQuote] = useState<string | null>(null);
   const auth = useAuthSnapshot();
@@ -44,6 +46,7 @@ export default function ReaderScreen() {
   const memberId = session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
   const model = buildFixtureModels(selectedDate);
   const references = day?.references ?? model.reader.references;
+  const referencesKey = references.join('|');
   const [preferencesStore] = useState(createNativeReaderPreferencesStore);
   const preferences = useReaderPreferences(memberId, preferencesStore);
   const [speedStore] = useState(() => createReaderSpeedStore({
@@ -381,6 +384,37 @@ export default function ReaderScreen() {
       saveReaderPosition({ memberId, planId, taskDate: selectedDate, versionId: selectedVersionId, book, chapter, reference, mode: 'ASSIGNED', updatedAt: new Date().toISOString() });
     }
   };
+  useEffect(() => {
+    if (todayReaderTabPressRevision <= handledTodayReaderTabPressRevision) return;
+    if (auth.status === 'hydrating') return;
+    if (todayReaderTabPressMemberId !== memberId || todayReaderTabPressAuthEpoch !== (auth.epoch ?? 0)) {
+      handledTodayReaderTabPressRevision = todayReaderTabPressRevision;
+      return;
+    }
+    if (!ownsReader() || selectionOwner.current !== owner || !day) return;
+    if (references.length === 0) {
+      handledTodayReaderTabPressRevision = todayReaderTabPressRevision;
+      return;
+    }
+
+    let assignedIndex = -1;
+    if (memberId) {
+      const store = positionStoreRef.current ?? openQingmuReaderPositionStore();
+      positionStoreRef.current = store;
+      const saved = store.get(memberId, planId, selectedDate);
+      if (saved?.mode === 'ASSIGNED') {
+        assignedIndex = references.findIndex(reference => reference === saved.reference);
+      } else if (saved?.mode === 'FREE_BROWSE') {
+        const savedReference = saved.reference || saved.book + '.' + saved.chapter;
+        assignedIndex = references.findIndex(reference => reference === savedReference);
+      }
+    } else if (todayReaderTabPressSameDate && selectionOwner.current === owner && selection.source === 'ASSIGNED') {
+      assignedIndex = selection.index;
+    }
+
+    selectAssigned(assignedIndex >= 0 ? assignedIndex : 0);
+    handledTodayReaderTabPressRevision = todayReaderTabPressRevision;
+  }, [todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, auth.status, auth.epoch, memberId, planId, selectedDate, day?.date, referencesKey, owner]);
   const visibleRecord = record.memberId === (memberId ?? 'signed-out') && record.planId === planId && record.taskDate === selectedDate
     ? record
     : { memberId: memberId ?? 'signed-out', planId, taskDate: selectedDate, status: 'UNREPORTED' as const, revision: 0, syncStatus: 'CONFIRMED' as const };

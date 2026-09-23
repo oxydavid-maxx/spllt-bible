@@ -10,6 +10,7 @@ vi.mock('expo-router', () => {
   Object.assign(Tabs, { Screen });
   return { Tabs, usePathname: () => navigation.pathname };
 });
+vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ status: 'signed-out', session: null, epoch: 0 }) }));
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: () => React.createElement('Icon') }));
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => React.createElement('AccountEntryButton') }));
 
