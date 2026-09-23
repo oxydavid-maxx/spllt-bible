@@ -14,6 +14,7 @@ vi.mock('react-native', () => ({
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { RewardGoalCard } from '../../src/ui/gamification/RewardGoalCard';
+import { RewardControls } from '../../src/ui/gamification/RewardControls';
 import type { Reward } from '../../src/services/gamificationApiClient';
 
 const movie: Reward = { rewardId: 'r-movie', name: '電影票', costPoints: 75, active: true, revision: 1 };
@@ -92,16 +93,28 @@ describe('the shelf appears only when it has something to offer', () => {
     expect(card.byLabel('獎品架')).toBeDefined();
   });
 
-  it('opens the existing picker when another active target is available and hides a dead-end action', () => {
+  it('opens the existing picker from the main goal even when its sole reward is already selected', () => {
     const openPicker = vi.fn();
     const alternate: Reward = { rewardId: 'r-alternate', name: '雞排', costPoints: 25, active: true, revision: 1 };
-    const card = render({ target: movie, rewards: [movie, alternate], onOpenPicker: openPicker });
+    const card = render({ target: movie, rewards: [movie], onOpenPicker: openPicker });
+    const goal = card.byLabel('目標獎品：電影票 75 分，開啟獎品選擇');
+    expect(goal.props.accessibilityRole).toBe('button');
     expect(card.text()).toContain('更換目標 ›');
-    act(() => { card.byLabel('更換目標獎品').props.onPress(); });
+    act(() => { goal.props.onPress(); });
     expect(openPicker).toHaveBeenCalledTimes(1);
 
-    const onlyCurrentReward = render({ target: movie, rewards: [movie], onOpenPicker: openPicker });
-    expect(onlyCurrentReward.byLabel('更換目標獎品')).toBeUndefined();
+    const otherChoices = render({ target: movie, rewards: [movie, alternate], onOpenPicker: openPicker });
+    const otherGoal = otherChoices.byLabel('目標獎品：電影票 75 分，開啟獎品選擇');
+    expect(otherGoal.findAll((node) => String(node.type) === 'Pressable')).toHaveLength(1);
+    expect(otherChoices.byLabel('獎品架')).toBeDefined();
+  });
+
+  it('shows the selected sole active reward immediately in the existing picker', () => {
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(React.createElement(RewardControls, { rewards: [movie, { ...movie, rewardId: 'retired', active: false }], selectedRewardId: movie.rewardId, canEdit: true })); });
+    const choices = tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityRole === 'radio');
+    expect(choices).toHaveLength(1);
+    expect(choices[0].props.accessibilityState.selected).toBe(true);
   });
 
   it('ignores retired rewards when deciding, so a shelf of one live reward stays hidden', () => {

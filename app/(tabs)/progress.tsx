@@ -79,15 +79,21 @@ export default function ProgressScreen() {
   // Account-wide secondary content is independent of the selected chart range/member.
   const isViewLive = useCallback((generation: number) => Boolean(focusedRef.current && appActive.current && viewGeneration.current === generation && session && isCurrentAuthSession(session)), [session]);
   const stopPrefetch = useCallback(() => { if (prefetchTimer.current !== null) clearTimeout(prefetchTimer.current); prefetchTimer.current = null; }, []);
-  const clearProtectedState = useCallback((preserveScanner = false, preserveOwnProfile = false) => {
+  const clearProtectedState = useCallback((preserveScanner = false, preserveOwnProfile = false, preserveOwnView = false) => {
     requestGeneration.current += 1; viewGeneration.current += 1; profileRequest.current += 1; nominationRead.current += 1;
     nominationPending.current = null; stopPrefetch(); client?.cancelReads?.();
-    activeScope.current = 'me'; activeMember.current = null; guard.current.clear(); chartCache.current.clear();
-    const ownProfile = preserveOwnProfile && session && profileRef.current?.memberId === session.memberId ? profileRef.current : null;
-    setScope('me'); setPeople([]); setSelected(null); setProfile(ownProfile); setProfileStale(Boolean(ownProfile)); setBusy(false); setError(null); setRewards([]);
-    setRedemptions([]); setPendingOperations(null); setRetryAction(null); setSheet(preserveScanner ? 'scan' : null); setPrimaryReady(Boolean(ownProfile));
+    const currentProfile = profileRef.current;
+    const ownProfile = preserveOwnProfile && session && isCurrentAuthSession(session) && currentProfile?.memberId === session.memberId && currentProfile.private ? currentProfile : null;
+    const preserveView = Boolean(preserveOwnView && ownProfile && activeScope.current === 'me' && activeMember.current === session?.memberId);
+    activeScope.current = 'me'; activeMember.current = preserveView ? session?.memberId ?? null : null; guard.current.clear(); chartCache.current.clear();
+    setScope('me'); setPeople([]); setSelected(null); setProfile(ownProfile); setBusy(false); setError(null);
+    setSheet(preserveScanner ? 'scan' : null);
+    if (!preserveView) {
+      setProfileStale(Boolean(ownProfile)); setRewards([]); setRedemptions([]); setPendingOperations(null); setRetryAction(null); setPrimaryReady(Boolean(ownProfile));
+      setNominationError(null); setShelfRewards(null); setNominations(null); setCommunity(null);
+    }
+    setNominationBusy(false);
     if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
-    setNominationBusy(false); setNominationError(null); setShelfRewards(null); setNominations(null); setCommunity(null);
   }, [client, session, stopPrefetch]);
   useEffect(() => registerAuthLifecycleListener((change) => { if (!change.current || change.current.memberId !== session?.memberId || change.current.sessionToken !== session?.sessionToken) clearProtectedState(); }), [accountKey, clearProtectedState]);
   useEffect(() => {
@@ -128,9 +134,9 @@ export default function ProgressScreen() {
     const generation = requestGeneration.current;
     const requestId = ++profileRequest.current;
     const owns = () => requestId === profileRequest.current && isLive(generation, nextScope, memberId, nextScope === 'all');
-    const keepVisibleProfile = nextScope === 'me' && memberId === session.memberId && profileRef.current?.memberId === memberId;
+    const currentProfile = profileRef.current;
+    const keepVisibleProfile = nextScope === 'me' && memberId === session.memberId && currentProfile?.memberId === memberId && Boolean(currentProfile.private);
     stopPrefetch(); setBusy(!keepVisibleProfile); setError(null);
-    if (keepVisibleProfile) setProfileStale(true);
     let remoteSettled = false;
     let remembered: ScoreProfileData | null = null;
     // Storage and network start together. A late cache must never replace a fresh response.
@@ -155,7 +161,7 @@ export default function ProgressScreen() {
       await cached;
       if (!owns()) return;
       if (remembered) { if (!keepVisibleProfile) setProfile(remembered); setProfileStale(true); }
-      else setError(messageFor(reason));
+      else { if (keepVisibleProfile) setProfileStale(true); setError(messageFor(reason)); }
     } finally {
       if (owns()) { setBusy(false); setPrimaryReady(true); }
     }
@@ -181,13 +187,13 @@ export default function ProgressScreen() {
   }, [client, session, loadProfile, stopPrefetch]);
   const refreshOwnProfile = useCallback((preserveScanner = false) => {
     if (!client || !session || !focusedRef.current || !appActive.current) return;
-    clearProtectedState(preserveScanner, true); activeMember.current = session.memberId;
+    clearProtectedState(preserveScanner, true, true); activeMember.current = session.memberId;
     void loadProfile(session.memberId, 'me');
   }, [client, session, clearProtectedState, loadProfile]);
   refreshOnForeground.current = refreshOwnProfile;
   useFocusEffect(useCallback(() => {
     focusedRef.current = true; setFocused(true); refreshOwnProfile();
-    return () => { focusedRef.current = false; setFocused(false); clearProtectedState(false, true); };
+    return () => { focusedRef.current = false; setFocused(false); clearProtectedState(false, true, true); };
   }, [clearProtectedState, refreshOwnProfile]));
   // Everything secondary waits for the one critical own-profile request to settle.
   useEffect(() => {
@@ -298,7 +304,7 @@ export default function ProgressScreen() {
   const [nominations, setNominations] = useState<NominationBoardView | null>(null);
   const [community, setCommunity] = useState<CommunityProgressView | null>(null);
   useEffect(() => {
-    if (!client || !session || !focused || !primaryReady || scope !== 'me' || !profile?.private || shelfRewards !== null || typeof client.getRewards !== 'function') return;
+    if (!client || !session || !focused || !primaryReady || scope !== 'me' || profile?.memberId !== session.memberId || !profile.private || shelfRewards !== null || typeof client.getRewards !== 'function') return;
     let active = true; const generation = viewGeneration.current;
     void client.getRewards().then((value) => { if (active && isViewLive(generation)) setShelfRewards(value); }).catch(() => { if (active && isViewLive(generation)) setShelfRewards([]); });
     return () => { active = false; };
@@ -371,13 +377,14 @@ export default function ProgressScreen() {
   const retrySavedReversal = (operationId: string) => retrySaved(operationId, true);
 
   if (!session) return <View style={styles.screen}><Text style={styles.title}>積分</Text><Text style={styles.note}>請先登入以查看積分。</Text></View>;
+  const ownProfile = profile?.memberId === session.memberId ? profile : null;
   const showingProfile = scope !== 'me' && selected && profile;
   return <View style={styles.screen}>
     <View style={styles.scopeHeader}><View style={styles.scopes}>{(['me', 'friends', ...(capabilities?.canViewAllScores ? ['all'] : [])] as ScoreScope[]).map((item) => <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: scope === item }} accessibilityLabel={item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體（管理）'} onPress={() => void chooseScope(item)} style={[styles.scope, scope === item && styles.scopeActive]}><Text style={[styles.scopeText, scope === item && styles.scopeTextActive]}>{item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體（管理）'}</Text></Pressable>)}</View><Pressable accessibilityRole="button" accessibilityLabel="開啟積分操作" onPress={() => setSheet('menu')} style={styles.menu}><Text style={styles.menuText}>⋯</Text></Pressable></View>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}{busy ? <Text style={styles.note}>載入中…</Text> : null}
     {/* A number with no note beside it claims to be current. This one is not. */}
-    {profileStale && scope === 'me' ? <Text style={styles.stale}>目前顯示上次的積分，還沒連上更新</Text> : null}
-    {scope === 'me' && !profile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
+    {profileStale && ownProfile ? <Text style={styles.stale}>目前顯示上次的積分，還沒連上更新</Text> : null}
+    {scope === 'me' && !ownProfile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
     {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
     {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { requestGeneration.current += 1; stopPrefetch(); activeMember.current = null; setBusy(false); setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}
     {scope === 'me' && nominations?.round ? <NominationBanner
@@ -386,7 +393,7 @@ export default function ProgressScreen() {
       mine={nominations.nominations.some((item) => item.mine && item.status === 'OPEN')}
       onOpen={() => setSheet('nominations')}
     /> : null}
-    {scope === 'me' && profile ? <ScoreProfile profile={profile} rewards={shelfRewards ?? undefined} community={community ? <CommunityProgress books={community.books} personDays={community.personDays} currentBook={community.currentBook} /> : undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
+    {scope === 'me' && ownProfile ? <ScoreProfile profile={ownProfile} rewards={shelfRewards ?? undefined} community={community ? <CommunityProgress books={community.books} personDays={community.personDays} currentBook={community.currentBook} /> : undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
     <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: () => setSheet('qr') }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards('admin-rewards'); } }] : []), ...(capabilities?.canManageRewards && !nominations?.round ? [{ label: '開一輪獎品提案', onPress: () => setSheet('open-round') }] : []), ...(nominations?.round ? [{ label: '獎品提案', onPress: () => setSheet('nominations') }] : [])]} />
     <ActionSheet visible={sheet === 'nominations'} title={nominations?.round?.title ?? '獎品提案'} onClose={() => setSheet(null)}>
       {nominationBusy ? <Text accessibilityLiveRegion="polite" style={styles.note}>處理中…</Text> : null}

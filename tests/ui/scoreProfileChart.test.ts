@@ -69,6 +69,23 @@ describe('score profile reading calendar', () => {
     expect(cells(renderer)).toHaveLength(7);
   });
 
+  it('maps first, middle, and last curve dots to their own dates at different plot widths', () => {
+    const buckets = Array.from({ length: 30 }, (_, index) => {
+      const day = String(index + 1).padStart(2, '0');
+      return { key: `2026-09-${day}`, startDate: `2026-09-${day}`, endDate: `2026-09-${day}`, earnedPoints: 1, cumulativeEarnedPoints: index + 1 };
+    });
+    const monthChart = { ...chart, range: 'month' as const, anchor: '2026-09', periodStart: '2026-09-01', periodEnd: '2026-09-30', openingEarnedPoints: 0, earnedPoints: 30, buckets };
+    for (const width of [320, 640]) {
+      const renderer = render({ today: '2026-09-23', profile: { ...profile(), chart: monthChart } }, 'trend');
+      const plot = renderer.root.findByProps({ accessibilityLabel: '累積積分走勢' });
+      act(() => { plot.props.onLayout({ nativeEvent: { layout: { width } } }); });
+      for (const [viewBoxX, expected] of [[14, '選取：9月1日　累積 1 分'], [160, '選取：9月12日　累積 12 分'], [306, '選取：9月23日　累積 23 分']] as const) {
+        act(() => { plot.props.onPress({ nativeEvent: { locationX: viewBoxX * width / 320 } }); });
+        expect(texts(renderer)).toContain(expected);
+      }
+    }
+  });
+
   it('does not infer a curve from old payloads that have no cumulative projection', () => {
     const renderer = render({ profile: profile() }, 'trend');
     expect(texts(renderer)).toContain('累積走勢尚未提供可靠資料');
@@ -156,7 +173,7 @@ describe('score profile reading calendar', () => {
     const same = render({ profile: { ...profile(), private: { redeemableBalance: 4, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } }, onChooseReward: () => undefined });
     expect(texts(same)).not.toContain('可兌換');
     expect(texts(same)).toContain('選一個目標獎品');
-    expect(same.root.findByProps({ accessibilityLabel: '選擇獎品' })).toBeDefined();
+    expect(same.root.findByProps({ accessibilityLabel: '選擇目標獎品' })).toBeDefined();
     const spent = render({ profile: { ...profile(), private: { redeemableBalance: 1, targetReward: null } } });
     expect(texts(spent)).toContain('可兌換 1 分 · 已兌換 3 分');
     const withTarget = render({ profile: { ...profile(), earnedTotal: 72, private: { redeemableBalance: 72, targetReward: { rewardId: 'r1', name: '冰淇淋', costPoints: 120, active: true, revision: 1 } } } });

@@ -37,6 +37,17 @@ interface CumulativePoint {
   y: number;
 }
 
+const CURVE_VIEW_BOX_WIDTH = 320;
+const CURVE_LEFT_INSET = 14;
+const CURVE_RIGHT_INSET = 306;
+
+function curvePointIndex(locationX: number, plotWidth: number, pointCount: number): number {
+  if (pointCount <= 1 || plotWidth <= 0) return 0;
+  const viewBoxX = locationX / plotWidth * CURVE_VIEW_BOX_WIDTH;
+  const ratio = (viewBoxX - CURVE_LEFT_INSET) / (CURVE_RIGHT_INSET - CURVE_LEFT_INSET);
+  return Math.max(0, Math.min(pointCount - 1, Math.round(Math.max(0, Math.min(1, ratio)) * (pointCount - 1))));
+}
+
 function cumulativePoints(chart: ScoreChart, today: string): CumulativePoint[] | null {
   if (!Number.isInteger(chart.openingEarnedPoints) || chart.openingEarnedPoints! < 0 || chart.buckets.some((bucket) => !Number.isInteger(bucket.cumulativeEarnedPoints) || bucket.cumulativeEarnedPoints! < 0)) return null;
   const buckets = chart.buckets.filter((bucket) => bucket.startDate <= today);
@@ -74,13 +85,12 @@ function CumulativeCurve({ chart, today, selectedKey, onSelect }: { chart: Score
       }}
       onLayout={(event) => setPlotWidth(event.nativeEvent.layout.width || 320)}
       onPress={(event) => {
-        const ratio = Math.max(0, Math.min(1, event.nativeEvent.locationX / plotWidth));
-        const index = points.length === 1 ? 0 : Math.round(ratio * (points.length - 1));
+        const index = curvePointIndex(event.nativeEvent.locationX, plotWidth, points.length);
         onSelect(points[index].bucket.key);
       }}
       style={styles.curveControl}
     >
-      <Svg width="100%" height={144} viewBox="0 0 320 128" pointerEvents="none" accessible={false}>
+      <Svg width="100%" height={144} viewBox={`0 0 ${CURVE_VIEW_BOX_WIDTH} 128`} preserveAspectRatio="none" pointerEvents="none" accessible={false}>
         {points.length > 1 ? <Polyline points={points.map((point) => `${point.x},${point.y}`).join(' ')} fill="none" stroke={theme.colors.primary} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /> : null}
         {points.map(({ bucket, value, x, y }) => <Circle key={bucket.key} cx={x} cy={y} r={bucket.key === selectedKey ? 6 : 4} fill={bucket.key === selectedKey ? theme.colors.primaryDeep : theme.colors.primary} stroke={theme.colors.white} strokeWidth={2} />)}
       </Svg>
