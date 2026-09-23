@@ -4,7 +4,9 @@
 
 這是正在開發的 React Native/Expo 專案，Android 優先。此 repository 是可共同開發的原始碼快照，不代表所有功能已完成正式環境驗收。公開原始碼不會授予正式服務、既有會員資料或聖經內容的使用權限。
 
-## 功能（0.5.7）
+目前的 [0.5.9 Android 個人試用版](https://github.com/oxydavid-maxx/spllt-bible/releases/tag/android-beta-2026-09-23-0.5.9) 先由光佑驗，再交家人試用；雙帳號好友互掃和其他條件情境通過前不提供學生。
+
+## 功能（0.5.9 個人試用）
 
 | 區塊 | 內容 |
 | --- | --- |
@@ -28,6 +30,7 @@
 
 | 版本 | 內容 |
 | --- | --- |
+| 0.5.9 | 讀經器改為單排章節列與底部播放列；修正《詩篇》98 朗讀高亮的灰條、積分載入與撤回提案後的三票額度；Android 好友掃碼改用系統掃碼畫面。建置與後端啟動加上來源一致性檢查 |
 | 0.5.7 | 一人三票（對應三個獎品名額）；票數在看板上看得到，投完只鎖未選的、已選的仍可收回 |
 | 0.5.6 | 修正積分操作面板高度：`maxHeight: '85%'` 掛在沒有高度的父層上，百分比因此從未解析，導致第五項「獎品提案」只露 17 px |
 | 0.5.5 | 版本更新提示 |
@@ -46,7 +49,7 @@
 | `server/` | Node HTTP API、SQLite、Google 身份驗證與提醒服務程式 |
 | `tests/` | Vitest 單元與整合測試 |
 | `data/` | 2026 年 9 月讀經計畫與歷史規格輸入；不是會員資料 |
-| `patches/` | YouVersion SDK 的最小擴充：閱讀設定介面、朗讀中經節灰底（`playingVerse`） |
+| `patches/` | YouVersion SDK 的必要擴充：閱讀設定、朗讀中經節高亮，以及讀經器的高亮邊界修正 |
 
 核心依賴：Expo SDK 56、React Native 0.85、React 19、TypeScript、YouVersion React Native/Expo SDK、SQLite。
 
@@ -94,6 +97,7 @@ npx vitest run tests/ui/unscheduledReaderRoute.test.ts tests/services/reminderRu
 - Reader 支援無排定進度日的自由閱讀；修改仍需真實 Android 驗證。
 - 已在 Pixel 實測提醒設定修改/重開保存、後端排程經 FCM 送達及通知點擊返回小組；正式聚會需要有來源的日期與時間。讀經提醒依排定讀經日建立 Android 本機排程，仍受系統通知權限及省電排程影響。
 - Google 登入採可撤銷的持續裝置 session，憑證存於 SecureStore，後端只保存 hash。已在 Pixel 驗證真實登入、超過一小時仍可操作、冷啟動及登出清理；Family Link、其他裝置與更完整的背景情境仍待驗證。
+- 目前正式環境只有一位成員；Pixel 上已驗好友掃碼畫面的開啟/取消，隔離環境的兩個正常身分可完成 QR 領取。兩個真實帳號的掃碼與好友導頁留待家庭試用，不列為學生版已驗收。
 - `data/` 部分檔案與驗證腳本保留早期規格，不能當成目前功能或正式部署已通過的證據。
 
 歡迎先開 Issue 描述問題或提案，再以小範圍 PR 貢獻。優先方向包括通用譯本/音訊能力、提醒設定與送達、Android 可達性及測試可攜性。
