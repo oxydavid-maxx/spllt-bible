@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const boundary = vi.hoisted(() => ({ replace: vi.fn(), setDate: vi.fn() }));
 vi.mock('expo-router', () => {
@@ -13,13 +13,19 @@ vi.mock('expo-router', () => {
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: () => React.createElement('Icon') }));
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => React.createElement('AccountEntryButton') }));
 vi.mock('../../src/ui/readingSession', () => ({ setSelectedReadingDate: boundary.setDate }));
-vi.mock('../../src/domain/gamificationV1', () => ({ taipeiDate: () => '2026-09-23' }));
 
 import TodayScreen from '../../app/(tabs)/today';
 import TabsLayout from '../../app/(tabs)/_layout';
 
 const all = (renderer: TestRenderer.ReactTestRenderer, type: string) => renderer.root.findAll(node => String(node.type) === type);
-afterEach(() => { vi.clearAllMocks(); });
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-23T04:00:00.000Z'));
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.clearAllMocks();
+});
 
 describe('reading tab entry', () => {
   it('uses Taipei today and opens Reader only when the reading tab route focuses', async () => {

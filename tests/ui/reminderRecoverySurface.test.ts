@@ -3,7 +3,10 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { beforeEach, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({ error: 'load' as 'load' | 'save' | null, retryLoad: vi.fn(async () => undefined), retrySave: vi.fn(async () => undefined), save: vi.fn(async () => undefined) }));
-vi.mock('react-native', () => ({ Image: 'Image', Linking: {}, Pressable: 'Pressable', Text: 'Text', View: 'View', Switch: 'Switch', TextInput: 'TextInput', StyleSheet: { create: (x: unknown) => x, hairlineWidth: 1 } }));
+// ScrollView joined this list because the account surface gained one; a mock that is missing a
+// primitive the tree renders fails the whole file at import, which reads as two broken retry
+// behaviours rather than as an out-of-date mock.
+vi.mock('react-native', () => ({ Image: 'Image', Linking: {}, Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View', Switch: 'Switch', TextInput: 'TextInput', StyleSheet: { create: (x: unknown) => x, hairlineWidth: 1 } }));
 vi.mock('../../src/services/authSession', () => ({ clearAuthSession: vi.fn(), retryAuthProfile: vi.fn(), useAuthSnapshot: () => ({ status: 'signed-in', session: { memberId: 'test:member', sessionToken: 'memory-only' }, profile: { memberId: 'test:member', displayName: '測試', groupName: '測試小組' }, profileStatus: 'ready' }) }));
 vi.mock('../../src/services/reminderRuntime', () => ({ getReminderRuntimeOwner: () => ({ retryLoad: state.retryLoad, retrySave: state.retrySave, savePreferences: state.save }), useReminderRuntimeSnapshot: () => ({ ready: state.error !== 'load', error: state.error, readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'REMOTE_PENDING', permission: 'undetermined' }) }));
 vi.mock('../../src/ui/GoogleLoginCard', () => ({ GoogleLoginCard: () => null }));
