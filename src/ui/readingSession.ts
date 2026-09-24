@@ -28,6 +28,7 @@ let todayReaderTabPressMemberId: string | null = null;
 let todayReaderTabPressAuthEpoch = 0;
 let todayReaderTabPressSameDate = false;
 let todayReaderTabPressTargetDate: string | null = null;
+let todayReaderTabPressResetToAssignedStart = false;
 let journalEntryDate: string | null = null;
 let journalEntryRevision = 0;
 let pendingJournalQuote: string | null = null;
@@ -35,12 +36,15 @@ let pendingJournalQuote: string | null = null;
 export function setSelectedReadingDate(date: string): void {
   if (!validDateOnly(date) || date === selectedDate) return;
   selectedDate = date;
-  if (todayReaderTabPressTargetDate && todayReaderTabPressTargetDate !== date) todayReaderTabPressTargetDate = null;
+  if (todayReaderTabPressTargetDate && todayReaderTabPressTargetDate !== date) {
+    todayReaderTabPressTargetDate = null;
+    todayReaderTabPressResetToAssignedStart = false;
+  }
   publish();
 }
 
 /** An explicit tap on the visible Reader tab is an entry action even when today is already selected. */
-export function requestTodayReaderTabPress(date: string, memberId: string | null, authEpoch: number): void {
+export function requestTodayReaderTabPress(date: string, memberId: string | null, authEpoch: number, resetToAssignedStart = false): void {
   if (!validDateOnly(date)) return;
   todayReaderTabPressSameDate = selectedDate === date;
   selectedDate = date;
@@ -48,6 +52,7 @@ export function requestTodayReaderTabPress(date: string, memberId: string | null
   todayReaderTabPressMemberId = memberId;
   todayReaderTabPressAuthEpoch = authEpoch;
   todayReaderTabPressTargetDate = date;
+  todayReaderTabPressResetToAssignedStart = resetToAssignedStart;
   publish();
 }
 
@@ -89,7 +94,10 @@ export function setReadingPlan(plan: ReadingPlanSnapshot): void {
   planIdByDate = new Map(activePlan.days.map((day) => [day.date, day.planId ?? activePlan.planId]));
   if (!getReadingDay(activePlan, selectedDate)) {
     const fallbackDate = activePlan.days[0]?.date ?? selectedDate;
-    if (fallbackDate !== selectedDate && todayReaderTabPressTargetDate && todayReaderTabPressTargetDate !== fallbackDate) todayReaderTabPressTargetDate = null;
+    if (fallbackDate !== selectedDate && todayReaderTabPressTargetDate && todayReaderTabPressTargetDate !== fallbackDate) {
+      todayReaderTabPressTargetDate = null;
+      todayReaderTabPressResetToAssignedStart = false;
+    }
     selectedDate = fallbackDate;
   }
   publish();
@@ -122,7 +130,7 @@ export function getReadingSessionSnapshot() {
   const day = getReadingDay(activePlan, selectedDate);
   const period = getPeriodForDate(activePlan, selectedDate);
   const adjacent = getAdjacentScheduledDates(activePlan, selectedDate);
-  return { selectedDate, planId: planIdByDate.get(selectedDate) ?? activePlan.planId, day, period, previousDate: adjacent.previous, nextDate: adjacent.next, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, journalEntryDate, journalEntryRevision, pendingJournalQuote };
+  return { selectedDate, planId: planIdByDate.get(selectedDate) ?? activePlan.planId, day, period, previousDate: adjacent.previous, nextDate: adjacent.next, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart, journalEntryDate, journalEntryRevision, pendingJournalQuote };
 }
 
 export function getReadingPlanId(taskDate: string): string | null {

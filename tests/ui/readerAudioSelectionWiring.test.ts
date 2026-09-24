@@ -67,10 +67,10 @@ vi.mock('expo-audio', () => ({
     if (!ref.current) {
       recorded.audioOwnerMounts += 1;
       ref.current = {
-      play: () => { recorded.audioPlayCalls += 1; }, pause: () => undefined, replace: () => undefined,
-      addListener: () => ({ remove: () => undefined }),
-      seekTo: async () => undefined, setPlaybackRate: () => undefined, remove: () => undefined,
-      currentTime: 0, duration: 0, playing: false, isLoaded: false, isBuffering: false,
+        play: () => { recorded.audioPlayCalls += 1; }, pause: () => undefined, replace: () => undefined,
+        addListener: () => ({ remove: () => undefined }),
+        seekTo: async () => undefined, setPlaybackRate: () => undefined, remove: () => undefined,
+        currentTime: 0, duration: 0, playing: false, isLoaded: false, isBuffering: false,
       };
     }
     return ref.current;
@@ -228,6 +228,7 @@ import ReaderScreen from '../../app/(tabs)/reader';
 import JournalScreen from '../../app/(tabs)/journal';
 import TabsLayout from '../../app/(tabs)/_layout';
 import { FullscreenReaderLayout } from '../../src/ui/FullscreenReaderLayout';
+import { YouVersionReader } from '../../src/ui/YouVersionReader';
 
 type Node = TestRenderer.ReactTestInstance;
 
@@ -312,8 +313,8 @@ async function mount(): Promise<TestRenderer.ReactTestRenderer> {
 
 const lastRequest = () => recorded.requests[recorded.requests.length - 1];
 
-async function pressTodayTabFromPoints(): Promise<void> {
-  navigationState.pathname = '/progress';
+async function pressTodayTabFrom(pathname = '/progress'): Promise<void> {
+  navigationState.pathname = pathname;
   let tabsRenderer!: TestRenderer.ReactTestRenderer;
   await act(async () => { tabsRenderer = TestRenderer.create(React.createElement(TabsLayout)); });
   const tabs = tabsRenderer.root.findAll((node: Node) => String(node.type) === 'Tabs')[0];
@@ -324,6 +325,20 @@ async function pressTodayTabFromPoints(): Promise<void> {
   act(() => { todayTabPress({ defaultPrevented: false }); });
   await act(async () => { await Promise.resolve(); });
   await act(async () => { tabsRenderer.unmount(); });
+}
+
+const pressTodayTabFromPoints = (): Promise<void> => pressTodayTabFrom('/progress');
+
+async function configureTodayReferences(references: string[]) {
+  const calendar = await import('../../src/domain/calendar');
+  const session = await import('../../src/ui/readingSession');
+  const { taipeiDate } = await import('../../src/domain/gamificationV1');
+  const today = taipeiDate();
+  const days = [...calendar.canonicalSeptemberPlan.days.filter(day => day.date !== today), { date: today, sourceRows: [], references }]
+    .sort((left, right) => left.date.localeCompare(right.date));
+  session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, dates: days.map(day => day.date), uniqueReferences: [...new Set(days.flatMap(day => day.references))] });
+  session.setSelectedReadingDate(today);
+  return { session, today };
 }
 
 // FILE-level reset. A describe-scoped beforeEach left later suites reading the previous suite's saved
@@ -563,31 +578,79 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     await act(async () => { renderer.unmount(); });
   });
 
-  it('preserves an assigned position within today when the Reader tab is tapped', async () => {
-    const calendar = await import('../../src/domain/calendar');
-    const session = await import('../../src/ui/readingSession');
-    const { taipeiDate } = await import('../../src/domain/gamificationV1');
-    const today = taipeiDate();
-    const days = [...calendar.canonicalSeptemberPlan.days.filter(day => day.date !== today), { date: today, sourceRows: [], references: ['TIT.1', 'TIT.2'] }].sort((a, b) => a.date.localeCompare(b.date));
-    session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, dates: days.map(day => day.date), uniqueReferences: [...new Set(days.flatMap(day => day.references))] });
-    session.setSelectedReadingDate(today);
-
+  it.each(['/progress', '/announcements'])('resets a manually selected same-day PSA.100 to TIT.1 on explicit Today entry from %s', async sourcePath => {
+    const { today } = await configureTodayReferences(['TIT.1', 'PSA.99', 'PSA.100']);
     const renderer = await mount();
-    pressByLabel(renderer, '選擇今日章節清單');
-    const options = renderer.root.findAll((node: Node) => String(node.type) === 'Pressable'
-      && String(node.props.accessibilityLabel).startsWith('前往') && isReachable(renderer, node));
-    expect(options).toHaveLength(2);
-    act(() => { options[1].props.onPress(); });
-    expect(lastRequest()?.usfm).toBe('TIT.2');
-    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'TIT.2' });
+    selectAssigned(renderer, '詩100');
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('PSA.100');
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'PSA.100' });
 
-    await pressTodayTabFromPoints();
+    await pressTodayTabFrom(sourcePath);
     await act(async () => { await Promise.resolve(); });
 
-    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('TIT.2');
-    expect(lastRequest()?.usfm).toBe('TIT.2');
-    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'TIT.2' });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('TIT.1');
+    expect(lastRequest()?.usfm).toBe('TIT.1');
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'TIT.1' });
     expect(recorded.audioPlayCalls).toBe(0);
+    expect(recorded.completionWrites).toBe(0);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('preserves EOF-advanced PSA.100 and its shared audio binding on Diary return, then resets on Points→Today', async () => {
+    readerAuth.memberId = 'fixture:self';
+    readerAuth.status = 'signed-in';
+    const { today } = await configureTodayReferences(['TIT.1', 'PSA.99', 'PSA.100']);
+    await act(async () => { for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+    const readerAndDiary = (showDiary: boolean) => React.createElement(React.Fragment, null,
+      React.createElement(ReaderScreen),
+      showDiary ? React.createElement(JournalScreen) : null,
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(readerAndDiary(false)); await Promise.resolve(); });
+    selectAssigned(renderer, '詩99');
+    const audioOwnerMountsBeforeDiary = recorded.audioOwnerMounts;
+
+    navigationState.pathname = '/journal';
+    await act(async () => { renderer.update(readerAndDiary(true)); await Promise.resolve(); });
+    const reader = renderer.root.findByType(YouVersionReader);
+    expect(reader.props.activeReferenceIndex).toBe(1);
+    // handlePlaybackEnded's real EOF branch emits this controlled-selection callback; its
+    // end-to-end emission is covered by readerAutoplayNativeFlow.test.ts.
+    await act(async () => {
+      reader.props.onActiveReferenceChange(2);
+    });
+    await act(async () => { await Promise.resolve(); });
+    const playsBeforeDiaryReturn = recorded.audioPlayCalls;
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('PSA.100');
+    expect(readerLayout(renderer).props.chapterUsfm).toBe('PSA.100');
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'PSA.100' });
+    expect(recorded.audioPlayCalls).toBe(0);
+
+    const session = await import('../../src/ui/readingSession');
+    const beforeDiaryReturnRevision = session.getReadingSessionSnapshot().todayReaderTabPressRevision;
+    let tabsRenderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { tabsRenderer = TestRenderer.create(React.createElement(TabsLayout)); });
+    const tabs = tabsRenderer.root.findAll((node: Node) => String(node.type) === 'Tabs')[0];
+    const listeners = tabs.props.screenListeners as (input: { route: { name: string } }) => { tabPress?: (event: { defaultPrevented: boolean; preventDefault?: () => void }) => void };
+    const diaryReturn = { defaultPrevented: false, preventDefault: vi.fn() };
+    act(() => { listeners({ route: { name: 'today' } }).tabPress!(diaryReturn); });
+    expect(diaryReturn.preventDefault).toHaveBeenCalledOnce();
+    await act(async () => { tabsRenderer.unmount(); });
+    navigationState.pathname = '/reader';
+    await act(async () => { renderer.update(readerAndDiary(false)); await Promise.resolve(); });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('PSA.100');
+    expect(readerLayout(renderer).props.chapterUsfm).toBe('PSA.100');
+    expect(session.getReadingSessionSnapshot().todayReaderTabPressRevision).toBe(beforeDiaryReturnRevision);
+    expect(recorded.audioPlayCalls).toBe(playsBeforeDiaryReturn);
+    expect(recorded.audioOwnerMounts).toBe(audioOwnerMountsBeforeDiary);
+
+    await pressTodayTabFrom('/progress');
+    await act(async () => { await Promise.resolve(); });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('TIT.1');
+    expect(readerLayout(renderer).props.chapterUsfm).toBe('TIT.1');
+    expect(lastRequest()?.usfm).toBe('TIT.1');
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'TIT.1' });
+    expect(recorded.audioPlayCalls).toBe(playsBeforeDiaryReturn);
     expect(recorded.completionWrites).toBe(0);
     await act(async () => { renderer.unmount(); });
   });

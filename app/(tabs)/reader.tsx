@@ -37,7 +37,7 @@ export default function ReaderScreen() {
   // The Reader tab route remains mounted underneath Diary so the one native player and its queue
   // survive that tab transition. Other tabs still release the audio binding as before.
   const sharedAudioActive = chrome.focused || pathname === '/journal';
-  const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate } = useReadingSession();
+  const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession();
   const auth = useAuthSnapshot();
   const session = auth.session;
   const memberId = session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
@@ -208,6 +208,27 @@ export default function ReaderScreen() {
   useEffect(() => {
     if (!ownsReader()) return;
     selectionOwner.current = owner;
+    const externalTodayResetPending = todayReaderTabPressRevision > handledTodayReaderTabPressRevision
+      && todayReaderTabPressResetToAssignedStart
+      && todayReaderTabPressTargetDate === selectedDate
+      && todayReaderTabPressMemberId === memberId
+      && todayReaderTabPressAuthEpoch === (auth.epoch ?? 0)
+      && auth.status !== 'hydrating'
+      && Boolean(day && references.length > 0);
+    if (externalTodayResetPending) {
+      if (memberId) {
+        const store = positionStoreRef.current ?? openQingmuReaderPositionStore();
+        positionStoreRef.current = store;
+        store.resetToAssigned(memberId, planId, selectedDate, references);
+        setReaderPosition(store.get(memberId, planId, selectedDate) ?? null);
+      } else {
+        setReaderPosition(null);
+      }
+      freePositionRef.current = null;
+      setSelection({ source: 'ASSIGNED', index: 0 });
+      handledTodayReaderTabPressRevision = todayReaderTabPressRevision;
+      return;
+    }
     if (!memberId) { setReaderPosition(null); freePositionRef.current = null; setSelection(initialSelection()); return; }
     const store = positionStoreRef.current ?? openQingmuReaderPositionStore();
     positionStoreRef.current = store;
@@ -227,7 +248,7 @@ export default function ReaderScreen() {
       : hasSavedFreePosition
         ? { source: 'FREE', book: saved.book, chapter: saved.chapter }
         : initialSelection());
-  }, [memberId, planId, selectedDate, owner, references.join('|')]);
+  }, [memberId, planId, selectedDate, owner, references.join('|'), todayReaderTabPressRevision, todayReaderTabPressResetToAssignedStart, todayReaderTabPressTargetDate, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, auth.status, auth.epoch, day?.date]);
   const selectAssigned = (index: number) => {
     if (!ownsReader()) return;
     freePositionRef.current = null;
@@ -272,7 +293,7 @@ export default function ReaderScreen() {
 
     selectAssigned(assignedIndex >= 0 ? assignedIndex : 0);
     handledTodayReaderTabPressRevision = todayReaderTabPressRevision;
-  }, [todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, auth.status, auth.epoch, memberId, planId, selectedDate, day?.date, referencesKey, owner]);
+  }, [todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart, auth.status, auth.epoch, memberId, planId, selectedDate, day?.date, referencesKey, owner]);
   const visibleRecord = record.memberId === (memberId ?? 'signed-out') && record.planId === planId && record.taskDate === selectedDate
     ? record
     : { memberId: memberId ?? 'signed-out', planId, taskDate: selectedDate, status: 'UNREPORTED' as const, revision: 0, syncStatus: 'CONFIRMED' as const };

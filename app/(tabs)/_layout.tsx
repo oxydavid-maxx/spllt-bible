@@ -32,7 +32,7 @@ export default function TabsLayout() {
               router.replace('/reader');
               return;
             }
-            requestTodayReaderTabPress(taipeiDate(), memberId, auth.epoch);
+            requestTodayReaderTabPress(taipeiDate(), memberId, auth.epoch, pathname !== '/reader');
             return;
           }
           if (route.name === 'journal' && pathname !== '/journal') {
