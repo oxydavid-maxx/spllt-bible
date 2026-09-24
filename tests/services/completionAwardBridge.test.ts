@@ -9,6 +9,57 @@ import {
 import type { SyncResult } from '../../src/storage/outbox';
 
 describe('completion award route bridge', () => {
+  it('drops numeric award if the app backgrounds before the response but preserves confirmed sync refresh', async () => {
+    const identity = { memberId: 'background-bridge-member', planId: 'church-2026-09', taskDate: '2026-09-12' };
+    let record: CompletionRecord = { ...identity, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
+    const operationId = 'background-bridge-operation';
+    let appActive = true;
+    let surfaceVisible = true;
+    let finishFlush!: (results: SyncResult[]) => void;
+    const dependencies: CompletionControllerDependencies = {
+      identity,
+      authEpoch: 703,
+      canComplete: () => true,
+      isCurrent: () => true,
+      isSessionCurrent: () => true,
+      isAppActive: () => appActive,
+      isVisible: () => surfaceVisible,
+      hasPendingCompletion: () => false,
+      getRecord: () => record,
+      saveCompletion: (command: CompletionCommand) => {
+        record = { ...identity, status: command.desiredStatus, revision: 1, syncStatus: 'PENDING_SAVE', lastOperationId: command.operationId };
+        return record;
+      },
+      flush: () => new Promise((resolve) => { finishFlush = resolve; }),
+      onRecord: () => undefined,
+      onSyncError: () => undefined,
+      confirmUndo: () => undefined,
+      generateOperationId: () => operationId,
+    };
+    const awardEvents: unknown[] = [];
+    const syncEvents: unknown[] = [];
+    const stop = subscribeCompletionAwardSurface(identity, 703, () => surfaceVisible, (event) => awardEvents.push(event), (event) => syncEvents.push(event));
+    try {
+      const action = createCompletionController(() => dependencies).complete();
+      await vi.waitFor(() => expect(finishFlush).toBeTypeOf('function'));
+
+      appActive = false;
+      surfaceVisible = false;
+      finishFlush([{ ok: true, operationId, revision: 1, status: 'COMPLETED', pointsDelta: 1, earnedTotal: 1, redeemableBalance: 1 }]);
+      await action;
+      expect(awardEvents).toEqual([]);
+      expect(syncEvents).toEqual([]);
+
+      appActive = true;
+      surfaceVisible = true;
+      activateCompletionAwardSurface(identity, 703);
+      expect(awardEvents).toEqual([]);
+      expect(syncEvents).toHaveLength(1);
+    } finally {
+      stop();
+    }
+  });
+
   it('delivers once when the current-auth surface returns to foreground before the TTL', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-24T00:00:00.000Z'));
@@ -22,6 +73,7 @@ describe('completion award route bridge', () => {
         canComplete: () => true,
         isCurrent: () => true,
         isSessionCurrent: () => true,
+        isAppActive: () => true,
         isVisible: () => true,
         hasPendingCompletion: () => false,
         getRecord: () => record,
@@ -66,6 +118,7 @@ describe('completion award route bridge', () => {
         canComplete: () => true,
         isCurrent: () => true,
         isSessionCurrent: () => true,
+        isAppActive: () => true,
         isVisible: () => true,
         hasPendingCompletion: () => false,
         getRecord: () => record,

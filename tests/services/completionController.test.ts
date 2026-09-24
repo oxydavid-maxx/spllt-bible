@@ -40,6 +40,7 @@ function makeHarness(options: {
     canComplete: options.canComplete ?? (() => true),
     isCurrent: options.isCurrent ?? (() => true),
     isSessionCurrent: options.isSessionCurrent ?? (() => true),
+    isAppActive: () => true,
     isVisible: () => true,
     hasPendingCompletion: options.hasPendingCompletion ?? (() => false),
     getRecord: () => record,

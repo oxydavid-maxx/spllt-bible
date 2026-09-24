@@ -129,6 +129,7 @@ export function useCompletionController(options: UseCompletionControllerOptions)
     canComplete: () => options.canComplete && isWithinCompletionWindow(owner.taskDate, taipeiDate()),
     isCurrent,
     isSessionCurrent,
+    isAppActive: () => AppState.currentState === 'active',
     isVisible: () => focusedRef.current && AppState.currentState === 'active' && isCurrent(),
     hasPendingCompletion: () => getRepository()?.hasPendingCompletion(identity) ?? false,
     getRecord: () => getRepository()?.get(identity),

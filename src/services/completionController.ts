@@ -26,6 +26,7 @@ export interface CompletionControllerDependencies {
   canComplete: () => boolean;
   isCurrent: () => boolean;
   isSessionCurrent: () => boolean;
+  isAppActive: () => boolean;
   isVisible: () => boolean;
   hasPendingCompletion: () => boolean;
   getRecord: () => CompletionRecord | undefined;
@@ -48,6 +49,7 @@ interface TrackedOperation {
   identity: CompletionIdentity;
   authEpoch: number;
   isSessionCurrent: () => boolean;
+  isAppActive: () => boolean;
   desiredStatus: CompletionRecord['status'];
 }
 
@@ -214,6 +216,10 @@ function observeFlushResults(results: SyncResult[]): void {
       ...(Number.isSafeInteger(result.earnedTotal) ? { earnedTotal: result.earnedTotal } : {}),
       ...(Number.isSafeInteger(result.redeemableBalance) ? { redeemableBalance: result.redeemableBalance } : {}),
     }), tracked.authEpoch);
+    if (!tracked.isAppActive()) {
+      pendingAwards.delete(operationId);
+      continue;
+    }
     if (tracked.desiredStatus !== 'COMPLETED'
       || result.status !== 'COMPLETED' || !Number.isSafeInteger(result.pointsDelta) || (result.pointsDelta ?? 0) <= 0) continue;
     deliverAward(Object.freeze({
@@ -273,7 +279,7 @@ export function createCompletionController(getDependencies: () => CompletionCont
       expectedRevision: current.revision,
       syncStatus: 'PENDING_SAVE',
     };
-    trackedOperations.set(command.operationId, { identity: { ...identity }, authEpoch: dependencies.authEpoch, isSessionCurrent: dependencies.isSessionCurrent, desiredStatus });
+    trackedOperations.set(command.operationId, { identity: { ...identity }, authEpoch: dependencies.authEpoch, isSessionCurrent: dependencies.isSessionCurrent, isAppActive: dependencies.isAppActive, desiredStatus });
     let pending: CompletionRecord;
     try {
       pending = dependencies.saveCompletion(command);

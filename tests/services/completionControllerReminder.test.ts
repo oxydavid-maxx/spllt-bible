@@ -28,6 +28,7 @@ describe('shared completion reminder boundary', () => {
       canComplete: () => true,
       isCurrent: () => true,
       isSessionCurrent: () => true,
+      isAppActive: () => true,
       isVisible: () => true,
       hasPendingCompletion: () => false,
       getRecord: () => record,
