@@ -62,6 +62,15 @@ describe('a day of writing survives every way it could be dropped', () => {
     expect(store.get({ memberId: 'member-self', taskDate: '2026-09-12' })?.body).toBe('還沒到兩秒就換頁了');
   });
 
+  it('does not persist the same draft twice when an explicit flush is followed by a date change', () => {
+    const save = vi.spyOn(store, 'save');
+    const hook = mountHook('2026-09-12');
+    act(() => { hook.view().setBody('先保存一次'); });
+    act(() => { hook.view().flushNow(); });
+    hook.setDate('2026-09-13');
+    expect(save).toHaveBeenCalledOnce();
+  });
+
   it('shows the right day after going away and coming back', () => {
     const hook = mountHook('2026-09-12');
     act(() => { hook.view().setBody('第一天寫的'); });

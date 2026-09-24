@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.hoisted(() => { process.env.EXPO_PUBLIC_QINGMU_FIXTURE = 'false'; (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
 const primitive = vi.hoisted(() => (name: string) => (props: any) => require('react').createElement(name, props, props.children));
 vi.mock('react-native', () => ({ ActivityIndicator: primitive('ActivityIndicator'), TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'), StyleSheet: { create: (value: unknown) => value } }));
+vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }));
 const native = vi.hoisted(() => ({ player: null as any }));
 vi.mock('expo-audio', () => ({ useAudioPlayer: () => native.player }));
@@ -16,7 +17,7 @@ const env = { EXPO_PUBLIC_QINGMU_AUDIO_AUTHORIZED: 'true' };
 const payload = (usfm = '1TI.1', uri = `https://example.test/${usfm}.mp3`) => ({ identity: { versionId: 46, usfm }, text: true, audio: true, offline: false, status: 'verified_source', reason: '', uri, providerExpiry: null, validUntil: new Date(Date.now() + 300_000).toISOString(), provenance: { publisher: 'Test publisher', edition: 'Test edition', recordingId: 'test-source', reference: usfm, attribution: 'Test attribution' } });
 const response = (body: unknown) => new Response(JSON.stringify(body));
 const props = (chapterUsfm = '1TI.1', onPlaybackStarted?: (chapterUsfm: string) => void) => ({ chapterUsfm, versionId: 46, env, baseUrl: 'https://in-memory.test', fetchImpl: fetchImpl as typeof fetch, onPlaybackStarted });
-async function mount(onPlaybackStarted?: (chapterUsfm: string) => void) { await act(async () => { view = TestRenderer.create(React.createElement(ChapterAudioControls, props('1TI.1', onPlaybackStarted))); }); }
+async function mount(onPlaybackStarted?: (chapterUsfm: string) => void, ref?: React.Ref<{ pause(): Promise<void> }>) { await act(async () => { view = TestRenderer.create(React.createElement(ChapterAudioControls, { ...props('1TI.1', onPlaybackStarted), ref } as never)); }); }
 const button = () => view!.root.findAll(node => String(node.type) === 'Pressable')[0];
 const text = () => view!.root.findAll(node => String(node.type) === 'Text').map(node => String(node.props.children)).join(' ');
 async function press() { await act(async () => { button().props.onPress(); }); }
@@ -83,6 +84,16 @@ describe('single play intent after capability expiry and native EOF', () => {
   it('pause remains available after capability expiry without a new query', async () => {
     await mount(); await press(); await expire(); await press();
     expect(native.player.playing).toBe(false); expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+  it('exposes a pause operation for the existing player before an external Bible handoff', async () => {
+    const ref = React.createRef<{ pause(): Promise<void> }>();
+    await mount(undefined, ref);
+    await press();
+    expect(native.player.playing).toBe(true);
+    expect(ref.current).toBeDefined();
+    await act(async () => { await ref.current!.pause(); });
+    expect(native.player.playing).toBe(false);
+    expect(native.player.calls.at(-1)).toBe('pause');
   });
   it.each(['chapter', 'account'])('a late refresh cannot auto-play after the %s changes', async transition => {
     await mount(); await expire(); let release!: (value: Response) => void;

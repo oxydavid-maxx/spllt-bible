@@ -26,7 +26,7 @@ function taipeiToday(): string {
   return `${pick('year')}-${pick('month')}-${pick('day')}`;
 }
 
-/** Archived weeks survive a temporary source failure; unreadable/empty copies are not evidence. */
+/** Archived speakers fill missing schedule rows; unreadable/empty copies are not evidence. */
 function previousWeek(week: string, fallbackFiles: Map<string, string | null>): Announcement['past'][number] | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) return null;
   // Preserve the history currently shown to members before consulting an older weekly archive.
@@ -42,7 +42,10 @@ function previousWeek(week: string, fallbackFiles: Map<string, string | null>): 
       const item = prior.week === week ? prior.sermon : prior.past?.find((entry) => entry.week === week);
       if (!item) continue;
       const text = (value: unknown) => typeof value === 'string' && value.trim() ? value : null;
-      const result = { week, title: text(item.title), audio: text(item.audio), slides: text(item.slides), transcript: text(item.transcript) };
+      const result = {
+        week, title: text(item.title), speaker: text(item.speaker),
+        audio: text(item.audio), slides: text(item.slides), transcript: text(item.transcript),
+      };
       if (result.audio || result.slides || result.transcript) return result;
     } catch { /* Try the other last-good copy; a broken cache must never invent a week. */ }
   }

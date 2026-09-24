@@ -8,6 +8,17 @@ export function formatReadingDateLabel(date: string): string {
   return `${Number(month)}/${Number(day)}`;
 }
 
+export function formatReadingDateWithWeekday(date: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const weekday = WEEKDAYS[new Date(Date.UTC(year ?? 2026, (month ?? 1) - 1, day ?? 1)).getUTCDay()] ?? '';
+  return `${formatReadingDateLabel(date)}（${weekday}）`;
+}
+
+export function formatReadingDateHeader(date: string, today: string): string {
+  const label = formatReadingDateWithWeekday(date);
+  return date === today ? `今天·${label}` : label;
+}
+
 export function formatReadingDateFull(date: string): string {
   const [year, month, day] = date.split('-').map(Number);
   const weekday = WEEKDAYS[new Date(Date.UTC(year ?? 2026, (month ?? 1) - 1, day ?? 1)).getUTCDay()] ?? '';

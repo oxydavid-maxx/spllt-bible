@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 1,
+  "owner": "/root/w2_points",
+  "userVisibleTaskId": "01a0ce94-61d3-7552-b87e-6d9813a7d9b5",
+  "scope": [
+    "R06",
+    "R07",
+    "R08"
+  ],
+  "repository": "C:/dev/apps/qingmu-bible",
+  "worktree": "C:/dev/machine/worktrees/qm-c23-w2",
+  "branch": "codex/qm-compact-points",
+  "base": {
+    "originMainVerifiedAtUtc": "2026-09-23T14:08:01Z",
+    "originMainSha": "f561b83d8719d12ee55d2a1c5466a9cbbcab3074",
+    "baseTree": "c33b3ac8252a1ed905cb8486b1ea567ec003b63f"
+  },
+  "candidate": {
+    "commit": "a4df134ac128dafa4f0fd256a6c6e0589eaf6f40",
+    "tree": "d7570fdfed85c811e32a9ea0da378bc2c1f03295",
+    "commitTime": "2026-09-23T14:43:04Z",
+    "diffStat": "12 files changed, 365 insertions(+), 55 deletions(-)"
+  },
+  "changedFiles": [
+    "app/(tabs)/progress.tsx",
+    "server/gamification.ts",
+    "src/domain/gamificationV1.ts",
+    "src/services/gamificationApiClient.ts",
+    "src/ui/gamification/RewardGoalCard.tsx",
+    "src/ui/gamification/ScoreProfileChart.tsx",
+    "tests/server/gamificationV1.test.ts",
+    "tests/server/scoreProfileChart.test.ts",
+    "tests/ui/gamificationApiClient.test.ts",
+    "tests/ui/gamificationProgressSecurity.test.ts",
+    "tests/ui/rewardGoalCard.test.ts",
+    "tests/ui/scoreProfileChart.test.ts"
+  ],
+  "constraints": {
+    "readerLayoutUntouched": true,
+    "newDependencies": false,
+    "phoneInputPerformed": false,
+    "releaseOrBuildPerformed": false,
+    "liveBackendCutoverPerformed": false,
+    "githubPublicationPerformed": false,
+    "originalCheckoutWrittenByW2": false
+  },
+  "focus": {
+    "command": "npm exec -- vitest run tests/server/scoreProfileChart.test.ts tests/ui/scoreProfileChart.test.ts tests/ui/gamificationApiClient.test.ts tests/ui/gamificationProgressRoute.test.ts tests/ui/gamificationProgressSecurity.test.ts tests/ui/rewardGoalCard.test.ts tests/server/gamificationV1.test.ts",
+    "result": "PASS",
+    "testFilesPassed": 7,
+    "testsPassed": 75,
+    "testsFailed": 0,
+    "candidateCommit": "a4df134ac128dafa4f0fd256a6c6e0589eaf6f40",
+    "candidateTree": "d7570fdfed85c811e32a9ea0da378bc2c1f03295",
+    "startedAtUtc": "2026-09-23T14:43:13Z",
+    "node": "v24.16.0",
+    "npm": "11.13.0",
+    "packageLockSha256": "82FBBDF6F0CBFC9A888C22FC7D2E86B9F89A27C8ECD62CA7784BB4FDDAD8C352",
+    "notes": "React test-renderer deprecation and act-environment warnings were emitted; no test failures."
+  },
+  "proofHistory": [
+    {
+      "atUtc": "2026-09-23T14:32:36Z",
+      "pack": "full W2 FOCUS",
+      "result": "74/74 PASS",
+      "candidateBinding": "uncommitted worktree diff based on f561b83; tree SHA was not captured then, so this proof is historical and not reusable against final commit"
+    },
+    {
+      "atUtc": "2026-09-23T14:34:17Z",
+      "change": "strengthened August lifetime=5 oracle and explicit sign-out/member-switch stale-response case",
+      "packs": [
+        "tests/server/scoreProfileChart.test.ts: 6/6 PASS",
+        "tests/ui/gamificationProgressSecurity.test.ts -t clears member A: 1/1 PASS"
+      ]
+    },
+    {
+      "atUtc": "2026-09-23T14:36:52Z",
+      "change": "large, adjustable accessible cumulative-curve interaction",
+      "pack": "tests/ui/scoreProfileChart.test.ts: 11/11 PASS"
+    },
+    {
+      "atUtc": "2026-09-23T14:37:28Z",
+      "change": "wallet-unchanged assertion around target selection",
+      "pack": "tests/server/gamificationV1.test.ts: 8/8 PASS"
+    },
+    {
+      "atUtc": "2026-09-23T14:40:26Z",
+      "change": "future-dated awards excluded from calendar completed-day display",
+      "pack": "tests/ui/scoreProfileChart.test.ts: 12/12 PASS"
+    },
+    {
+      "atUtc": "2026-09-23T14:43:13Z",
+      "change": "final exact-commit verification",
+      "pack": "full W2 FOCUS: 75/75 PASS",
+      "candidateCommit": "a4df134ac128dafa4f0fd256a6c6e0589eaf6f40",
+      "candidateTree": "d7570fdfed85c811e32a9ea0da378bc2c1f03295"
+    },
+    {
+      "atUtc": "2026-09-23T15:22:27Z",
+      "change": "chair-review-01 R06/R07/R08 corrections",
+      "pack": "affected UI FOCUS: 44/44 PASS",
+      "candidateCommit": "674af45c0a8c6c846a11af7fd6f8455405ad3c7d",
+      "candidateTree": "54b31b309ce37a66db180bc225eb5294cd81a49b"
+    },
+    {
+      "atUtc": "2026-09-23T15:45:04Z",
+      "change": "chair-review-02 R06 focus/foreground secondary refresh",
+      "pack": "affected UI FOCUS: 44/44 PASS",
+      "candidateCommit": "a39ecca408439b118f1e9c27d3e288037c1c843a",
+      "candidateTree": "98b23df827c75fec0ea6d2389d34f3ba00f40e54"
+    },
+    {
+      "atUtc": "2026-09-23T16:13:33Z",
+      "change": "chair-review-04 native scanner lifecycle",
+      "pack": "p2ScreenLifecycle + gamificationProgressSecurity: 45/45 PASS; typecheck PASS",
+      "candidateCommit": "2cdab06930557c984060658dc77a5989abf17993",
+      "candidateTree": "25258af729e455534bd4374d16adde41ad821daa"
+    }
+  ],
+  "behavior": {
+    "R06": "A same-member profile snapshot survives normal Points blur/refocus while its background refresh runs; busy/loading stays hidden for that refresh. Sign-out/account change clears the profile and invalidates generation/session ownership; deferred member A data cannot replace member B.",
+    "R07": "Server projects active daily_point_entitlements by task_date; opening/cumulative fields are optional/additive, carry-in uses the same active predicate as lifetime earned, redemptions leave earned history unchanged, and backfill/revoke move cumulative values from the affected task date. Trend is default; calendar remains selectable, with week/month/year/all and period navigation preserved. Future-dated awards are not counted as happened calendar days or included as future curve points.",
+    "R08": "The main goal area is an accessible Pressable that opens the existing rewards picker, including when its sole active reward is already selected. Active options remain selectable; target changes use the existing setTarget path and do not change wallet balance."
+  },
+  "compatibility": {
+    "oldClientNewServer": "Additive unknown JSON fields: the base client parser validates known required fields and projects them without rejecting unrecognized keys. No old-client change is required.",
+    "newClientOldServer": "New chart fields are optional. The client accepts old payloads; UI does not infer cumulative values and displays a clear unavailable state while preserving the calendar.",
+    "backendDependency": "server/gamification.ts now emits the chart fields. The pinned live backend has not changed; release/integration must carry this server commit through a separate pinned release worktree and approved cutover before the cumulative curve is available from the live API."
+  },
+  "nativeEvidence": {
+    "status": "NOT RUN / BLOCKED BY SINGLE OPERATOR LEASE",
+    "detail": "No phone input or Reader↔Points video captured by W2. The single USB operator lease is currently held by /root/rc_integration; D09 remains pending RC operator verification."
+  },
+  "report": {
+    "receiptPath": "C:\\dev\\machine\\worktrees\\qm-c23-w2\\.handoff\\compact-20260923\\w2-points-receipt.json",
+    "recordedAtUtc": "2026-09-23T16:13:49Z",
+    "developmentStartAtUtc": "2026-09-23T16:02:38Z"
+  },
+  "followUp": {
+    "chairReview": "C:/dev/apps/qingmu-bible/.handoff/compact-20260923/chair-review-01.md",
+    "chairReviewSha256": "AB9E31431EB81180F0F06716470EAD684AF3DC71D01F9E9A3B1B482DE7587D09",
+    "baseCommit": "a4df134ac128dafa4f0fd256a6c6e0589eaf6f40",
+    "commit": "674af45c0a8c6c846a11af7fd6f8455405ad3c7d",
+    "tree": "54b31b309ce37a66db180bc225eb5294cd81a49b",
+    "commitTime": "2026-09-23T15:23:06Z",
+    "diffStat": "8 files changed, 171 insertions(+), 59 deletions(-)",
+    "changedFiles": [
+      "app/(tabs)/progress.tsx",
+      "src/ui/gamification/RewardControls.tsx",
+      "src/ui/gamification/RewardGoalCard.tsx",
+      "src/ui/gamification/ScoreProfileChart.tsx",
+      "tests/ui/gamificationProgressRoute.test.ts",
+      "tests/ui/gamificationProgressSecurity.test.ts",
+      "tests/ui/rewardGoalCard.test.ts",
+      "tests/ui/scoreProfileChart.test.ts"
+    ],
+    "fixes": [
+      {
+        "id": "R08",
+        "status": "FIXED",
+        "detail": "The main goal content is an accessible Pressable that opens the existing picker, including with one selected reward. Picker shows the selected active item immediately. The shelf remains a sibling, avoiding nested Pressables. Route coverage verifies setRewardTarget and no redeem call."
+      },
+      {
+        "id": "R06",
+        "status": "FIXED",
+        "detail": "Normal same-session blur/refocus invalidates old work but preserves profile, nominations banner, community node, reward shelf, and existing stale state. Refresh start no longer marks fresh data stale; an actual failed refresh does, while retaining all visible blocks. Logout/account change still clears state and blocks stale responses."
+      },
+      {
+        "id": "R07",
+        "status": "FIXED",
+        "detail": "SVG uses preserveAspectRatio=none and tap x is mapped into viewBox coordinates before subtracting x=14..306 plot insets. UI test verifies first/middle/last dates at plot widths 320 and 640."
+      }
+    ],
+    "focus": {
+      "command": "npm exec -- vitest run tests/ui/scoreProfileChart.test.ts tests/ui/gamificationProgressRoute.test.ts tests/ui/gamificationProgressSecurity.test.ts tests/ui/rewardGoalCard.test.ts",
+      "result": "PASS",
+      "testFilesPassed": 4,
+      "testsPassed": 44,
+      "testsFailed": 0,
+      "candidateCommit": "674af45c0a8c6c846a11af7fd6f8455405ad3c7d",
+      "candidateTree": "54b31b309ce37a66db180bc225eb5294cd81a49b",
+      "startedAtUtc": "2026-09-23T15:22:27Z",
+      "notes": "Only the four affected UI packs were run; previously green server chart and gamification packs were not rerun."
+    },
+    "redEvidence": [
+      {
+        "id": "R08",
+        "result": "Before implementation, selected single-reward card had no goal-button node; picker selected-row test found zero radio choices."
+      },
+      {
+        "id": "R06",
+        "result": "Before implementation, same-session refocus inserted the stale banner during the in-flight request and cleared secondary state."
+      },
+      {
+        "id": "R07",
+        "result": "Before implementation, first dot x=14 at width 320 selected 2026-09-02, not 2026-09-01."
+      }
+    ]
+  },
+  "review02FollowUp": {
+    "chairReview": "C:/dev/apps/qingmu-bible/.handoff/compact-20260923/chair-review-02.md",
+    "chairReviewSha256": "B4F66FB4AAEB806F9FC83A662F3B8E26AF78E7D1BC9B00927B5F43E58EE692D0",
+    "baseCommit": "674af45c0a8c6c846a11af7fd6f8455405ad3c7d",
+    "commit": "a39ecca408439b118f1e9c27d3e288037c1c843a",
+    "tree": "98b23df827c75fec0ea6d2389d34f3ba00f40e54",
+    "commitTime": "2026-09-23T15:44:55Z",
+    "diffStat": "2 files changed, 123 insertions(+), 27 deletions(-)",
+    "changedFiles": [
+      "app/(tabs)/progress.tsx",
+      "tests/ui/gamificationProgressSecurity.test.ts"
+    ],
+    "fix": "On normal own-view blur/refocus and app foreground, preserve the same-member profile, rewards shelf, nominations, and community content while refreshing all three secondary APIs. The inactive app renders a blank surface while the snapshot stays available for foreground restoration. Friends/admin scopes and sign-out/account changes still clear; generation/session ownership still blocks old responses. Old secondary values survive deferred and failed refreshes; successful reads replace them. No polling timer or dependency added.",
+    "focus": {
+      "command": "npm exec -- vitest run tests/ui/scoreProfileChart.test.ts tests/ui/gamificationProgressRoute.test.ts tests/ui/gamificationProgressSecurity.test.ts tests/ui/rewardGoalCard.test.ts",
+      "result": "PASS",
+      "testFilesPassed": 4,
+      "testsPassed": 44,
+      "testsFailed": 0,
+      "candidateCommit": "a39ecca408439b118f1e9c27d3e288037c1c843a",
+      "candidateTree": "98b23df827c75fec0ea6d2389d34f3ba00f40e54",
+      "startedAtUtc": "2026-09-23T15:45:04Z",
+      "notes": "Affected UI packs only. Server chart and gamification proofs were not rerun. Standard react-test-renderer act warnings were emitted."
+    },
+    "redEvidence": "The deferred focus-refresh regression test first failed because getRewards had one call after refocus instead of two. After adding app-foreground coverage, the same test confirmed a second boundary performs all three reads while old values remain."
+  },
+  "scannerFollowUp": {
+    "chairReview": "C:/dev/apps/qingmu-bible/.handoff/compact-20260923/chair-review-04-scanner.md",
+    "chairReviewSha256": "71E488F21024DA752C6C12A9BA41274DBAA8CBB411DC7D2DF0A506CFFFF952A3",
+    "baseCommit": "a39ecca408439b118f1e9c27d3e288037c1c843a",
+    "commit": "2cdab06930557c984060658dc77a5989abf17993",
+    "tree": "25258af729e455534bd4374d16adde41ad821daa",
+    "commitTime": "2026-09-23T16:13:22Z",
+    "diffStat": "4 files changed, 24 insertions(+), 13 deletions(-)",
+    "changedFiles": [
+      "app/(tabs)/progress.tsx",
+      "tests/ui/gamificationProgressRoute.test.ts",
+      "tests/ui/gamificationProgressSecurity.test.ts",
+      "tests/ui/p2ScreenLifecycle.test.ts"
+    ],
+    "fix": "Keep the actual scan ActionSheet/FriendQrPanel/FriendScanner React tree mounted while app is inactive, covered by an opaque non-interactive surface hidden from accessibility. For a live same-session scanner activity, preserve sheet and scannerActivityRequest ownership across background/active; auth invalidation, tab blur, and explicit close still clear. FriendQrPanel mounted/run/session guards and ProgressScreen generation/sheet checks remain in place.",
+    "tests": {
+      "red": "Before the fix, tests/ui/p2ScreenLifecycle.test.ts failed both real-system-scanner scan and cancel flows: the native event listener was removed on background and the ActionSheet was absent on active return.",
+      "focusCommand": "npm exec -- vitest run tests/ui/p2ScreenLifecycle.test.ts tests/ui/gamificationProgressSecurity.test.ts",
+      "focusResult": "PASS: 2 test files, 45/45 tests",
+      "focusStartedAtUtc": "2026-09-23T16:13:33Z",
+      "typecheckCommand": "npm run typecheck",
+      "typecheckResult": "PASS: tsc --noEmit"
+    },
+    "coverage": {
+      "nativeLogic": "p2ScreenLifecycle uses the real FriendQrPanel/FriendScanner; expo-camera is mocked only at the native event boundary.",
+      "scan": "Open scanner, launch Android system QR activity, app backgrounds, deliver duplicate valid scan, resume; listener survives, claim occurs once, then old listener is removed.",
+      "cancel": "Open scanner, launch native activity, app backgrounds, reject as Barcode scanning cancelled, resume; panel returns to one Open button and no claim occurs.",
+      "staleOwners": "Explicit dismiss, tab blur, logout, and account switch ignore late native events.",
+      "security": "The same-account data tree is covered while app is inactive; non-self scopes and auth changes still clear. No FriendQrPanel mounted/run/session guard was weakened."
+    }
+  }
+}

@@ -15,6 +15,7 @@ export interface ScoreChartBucket {
   startDate: string;
   endDate: string;
   earnedPoints: number;
+  cumulativeEarnedPoints?: number;
 }
 
 export interface ScoreChart {
@@ -23,6 +24,7 @@ export interface ScoreChart {
   periodStart: string | null;
   periodEnd: string | null;
   earnedPoints: number;
+  openingEarnedPoints?: number;
   buckets: ScoreChartBucket[];
   previousAnchor: string | null;
   nextAnchor: string | null;

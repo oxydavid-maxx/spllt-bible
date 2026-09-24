@@ -2,7 +2,7 @@ import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
-import { isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
+import { getAuthSnapshot, isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
 import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type NominationBoardView, type ScoreChartQuery, type ScoreChartRange, type CommunityProgressView, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
 import type { PendingGamificationOperations } from '../../src/services/gamificationPendingStore';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../src/services/adminUnlockGuard';
@@ -18,6 +18,14 @@ import { NominationBoard } from '../../src/ui/gamification/NominationBoard';
 import { NominationBanner } from '../../src/ui/gamification/NominationBanner';
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { theme } from '../../src/ui/Theme';
+import { createApiClient } from '../../src/services/apiClient';
+import { useCompletionController } from '../../src/services/useCompletionController';
+import type { CompletionAwardEvent, CompletionSyncEvent } from '../../src/services/completionController';
+import { applyCompletionSyncToProfile } from '../../src/ui/completionProfileSync';
+import { CompletionTodayButton } from '../../src/ui/CompletionTodayButton';
+import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
+import { getReadingPlanId } from '../../src/ui/readingSession';
+import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
 
 type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'admin-rewards' | 'redeem' | 'redemptions' | 'pending' | 'nominations' | 'open-round' | null;
 
@@ -25,11 +33,22 @@ export default function ProgressScreen() {
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
   const client = useMemo(() => session ? createGamificationApiClient({ baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [session?.memberId, session?.sessionToken]);
+  const completionClient = useMemo(() => session ? createApiClient({ baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [session?.memberId, session?.sessionToken]);
+  const today = taipeiDate();
+  const localTodayPlanId = getReadingPlanId(today);
+  const fallbackTodayPlanId = localTodayPlanId ?? monthlyPlanId(today);
+  const [todaySchedule, setTodaySchedule] = useState<{ taskDate: string; planId: string; canComplete: boolean } | null>(() => localTodayPlanId
+    ? { taskDate: today, planId: localTodayPlanId, canComplete: isWithinCompletionWindow(today, today) }
+    : null);
+  const [completionAward, setCompletionAward] = useState<CompletionAwardEvent | null>(null);
+  const awardRefreshRef = useRef<(memberId: string) => void>(() => undefined);
   const [capabilities, setCapabilities] = useState<ViewerCapabilities | null>(null);
   const [scope, setScope] = useState<ScoreScope>('me');
   const [people, setPeople] = useState<PersonListItem[]>([]);
   const [selected, setSelected] = useState<PersonListItem | null>(null);
   const [profile, setProfile] = useState<Awaited<ReturnType<NonNullable<typeof client>['getProfile']>> | null>(null);
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [redemptions, setRedemptions] = useState<Awaited<ReturnType<NonNullable<typeof client>['getMyRedemptions']>>>([]);
   const [pendingOperations, setPendingOperations] = useState<PendingGamificationOperations | null>(null);
@@ -42,6 +61,8 @@ export default function ProgressScreen() {
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const [focused, setFocused] = useState(false);
   const [primaryReady, setPrimaryReady] = useState(false);
+  const [appForeground, setAppForeground] = useState(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
+  const [secondaryRefresh, setSecondaryRefresh] = useState(0);
   const guard = useRef(createAdminUnlockGuard({ authenticate: createNativeAdminAuthenticator() }));
   // The member's own points, kept on the device so a backend that is off does not blank this page.
   // Only their own: see profileCache for why a friend's totals must not land here.
@@ -73,30 +94,55 @@ export default function ProgressScreen() {
     if (chart.anchor !== null) chartCache.current.set(chartKey(memberId, nextScope, { range: chart.range, anchor: chart.anchor }), chart);
   };
   const accountKey = session ? JSON.stringify([session.memberId, session.sessionToken]) : null;
+  useEffect(() => {
+    let active = true;
+    const expectedAuthEpoch = auth.epoch;
+    const localPlanId = getReadingPlanId(today);
+    setTodaySchedule(localPlanId ? { taskDate: today, planId: localPlanId, canComplete: isWithinCompletionWindow(today, today) } : null);
+    if (!completionClient || !session) return () => { active = false; };
+    void completionClient.getReadingDays(today, today).then((schedule) => {
+      if (!active || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
+      const day = schedule?.days.find((item) => item.taskDate === today);
+      setTodaySchedule(day
+        ? { taskDate: today, planId: day.planId, canComplete: day.canComplete }
+        : schedule ? { taskDate: today, planId: fallbackTodayPlanId, canComplete: false } : localPlanId
+          ? { taskDate: today, planId: localPlanId, canComplete: isWithinCompletionWindow(today, today) }
+          : null);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [completionClient, session?.memberId, session?.sessionToken, today, auth.epoch]);
   const isLive = useCallback((generation: number, expectedScope: ScoreScope, expectedMember?: string | null, requiresUnlock = false) => Boolean(focusedRef.current && appActive.current && requestGeneration.current === generation && activeScope.current === expectedScope && (expectedMember === undefined || expectedMember === activeMember.current) && session && isCurrentAuthSession(session) && (!requiresUnlock || guard.current.state === 'unlocked')), [session]);
   // Account-wide secondary content is independent of the selected chart range/member.
   const isViewLive = useCallback((generation: number) => Boolean(focusedRef.current && appActive.current && viewGeneration.current === generation && session && isCurrentAuthSession(session)), [session]);
   const stopPrefetch = useCallback(() => { if (prefetchTimer.current !== null) clearTimeout(prefetchTimer.current); prefetchTimer.current = null; }, []);
-  const clearProtectedState = useCallback((preserveScanner = false) => {
+  const clearProtectedState = useCallback((preserveScanner = false, preserveOwnProfile = false, preserveOwnView = false) => {
     requestGeneration.current += 1; viewGeneration.current += 1; profileRequest.current += 1; nominationRead.current += 1;
     nominationPending.current = null; stopPrefetch(); client?.cancelReads?.();
-    activeScope.current = 'me'; activeMember.current = null; guard.current.clear(); chartCache.current.clear();
-    setScope('me'); setPeople([]); setSelected(null); setProfile(null); setProfileStale(false); setBusy(false); setError(null); setRewards([]);
-    setRedemptions([]); setPendingOperations(null); setRetryAction(null); setSheet(preserveScanner ? 'scan' : null); setPrimaryReady(false);
+    const currentProfile = profileRef.current;
+    const ownProfile = preserveOwnProfile && session && isCurrentAuthSession(session) && currentProfile?.memberId === session.memberId && currentProfile.private ? currentProfile : null;
+    const preserveView = Boolean(preserveOwnView && ownProfile && activeScope.current === 'me' && activeMember.current === session?.memberId);
+    activeScope.current = 'me'; activeMember.current = preserveView ? session?.memberId ?? null : null; guard.current.clear(); chartCache.current.clear();
+    setScope('me'); setPeople([]); setSelected(null); setProfile(ownProfile); setBusy(false); setError(null);
+    setSheet(preserveScanner ? 'scan' : null);
+    if (!preserveView) {
+      setProfileStale(Boolean(ownProfile)); setRewards([]); setRedemptions([]); setPendingOperations(null); setRetryAction(null); setPrimaryReady(Boolean(ownProfile));
+      setNominationError(null); setShelfRewards(null); setNominations(null); setCommunity(null);
+    }
+    setNominationBusy(false);
     if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
-    setNominationBusy(false); setNominationError(null); setShelfRewards(null); setNominations(null); setCommunity(null);
-  }, [client, stopPrefetch]);
+  }, [client, session, stopPrefetch]);
   useEffect(() => registerAuthLifecycleListener((change) => { if (!change.current || change.current.memberId !== session?.memberId || change.current.sessionToken !== session?.sessionToken) clearProtectedState(); }), [accountKey, clearProtectedState]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => {
       const wasActive = appActive.current;
       appActive.current = next === 'active';
+      setAppForeground(appActive.current);
       if (next !== 'active') {
-        // Native permission/scanner activities can pause Android while the scan pane is in use.
-        // Preserve only the pending scanner pane; protected data still clears.
+        // Hide the screen while inactive. Preserve only a same-member own view for a smooth
+        // foreground refresh; friends/admin data still clears, and auth changes always clear it.
         const preserveScanner = wasActive && focusedRef.current && activeSheet.current === 'scan' && scannerActivityRequest.current !== null;
         resumeScannerAfterActivity.current = preserveScanner;
-        clearProtectedState(preserveScanner);
+        clearProtectedState(preserveScanner, true, true);
       } else if (focusedRef.current) {
         const preserveScanner = resumeScannerAfterActivity.current && activeSheet.current === 'scan';
         resumeScannerAfterActivity.current = false;
@@ -105,7 +151,7 @@ export default function ProgressScreen() {
     });
     return () => subscription.remove();
   }, [clearProtectedState]);
-  useEffect(() => { setCapabilities(null); setError(null); }, [accountKey]);
+  useEffect(() => { setCapabilities(null); setError(null); setCompletionAward(null); }, [accountKey]);
 
   const prefetchCharts = useCallback(async (memberId: string, nextScope: ScoreScope, currentRange: ScoreChartRange, generation: number, requestId: number) => {
     if (!client) return;
@@ -125,14 +171,16 @@ export default function ProgressScreen() {
     const generation = requestGeneration.current;
     const requestId = ++profileRequest.current;
     const owns = () => requestId === profileRequest.current && isLive(generation, nextScope, memberId, nextScope === 'all');
-    stopPrefetch(); setBusy(true); setError(null);
+    const currentProfile = profileRef.current;
+    const keepVisibleProfile = nextScope === 'me' && memberId === session.memberId && currentProfile?.memberId === memberId && Boolean(currentProfile.private);
+    stopPrefetch(); setBusy(!keepVisibleProfile); setError(null);
     let remoteSettled = false;
     let remembered: ScoreProfileData | null = null;
     // Storage and network start together. A late cache must never replace a fresh response.
     const cached = !chartQuery && nextScope === 'me' && memberId === session.memberId
       ? profileCache.load(memberId).then((value) => {
         remembered = value;
-        if (value && !remoteSettled && owns()) { setProfile(value); setProfileStale(true); }
+        if (value && !remoteSettled && owns() && !keepVisibleProfile) { setProfile(value); setProfileStale(true); }
       }) : Promise.resolve();
     try {
       const value = chartQuery ? await client.getProfile(memberId, nextScope, monthNow(), chartQuery) : await client.getProfile(memberId, nextScope, monthNow());
@@ -149,8 +197,8 @@ export default function ProgressScreen() {
       remoteSettled = true;
       await cached;
       if (!owns()) return;
-      if (remembered) { setProfile(remembered); setProfileStale(true); }
-      else setError(messageFor(reason));
+      if (remembered) { if (!keepVisibleProfile) setProfile(remembered); setProfileStale(true); }
+      else { if (keepVisibleProfile) setProfileStale(true); setError(messageFor(reason)); }
     } finally {
       if (owns()) { setBusy(false); setPrimaryReady(true); }
     }
@@ -176,13 +224,14 @@ export default function ProgressScreen() {
   }, [client, session, loadProfile, stopPrefetch]);
   const refreshOwnProfile = useCallback((preserveScanner = false) => {
     if (!client || !session || !focusedRef.current || !appActive.current) return;
-    clearProtectedState(preserveScanner); activeMember.current = session.memberId;
+    setSecondaryRefresh((current) => current + 1);
+    clearProtectedState(preserveScanner, true, true); activeMember.current = session.memberId;
     void loadProfile(session.memberId, 'me');
   }, [client, session, clearProtectedState, loadProfile]);
   refreshOnForeground.current = refreshOwnProfile;
   useFocusEffect(useCallback(() => {
     focusedRef.current = true; setFocused(true); refreshOwnProfile();
-    return () => { focusedRef.current = false; setFocused(false); clearProtectedState(); };
+    return () => { focusedRef.current = false; setFocused(false); clearProtectedState(false, true, true); };
   }, [clearProtectedState, refreshOwnProfile]));
   // Everything secondary waits for the one critical own-profile request to settle.
   useEffect(() => {
@@ -278,7 +327,7 @@ export default function ProgressScreen() {
     const origin = sheetVersion.current;
     const owns = () => isLive(generation, 'me', session.memberId);
     if (!owns()) return;
-    try { await client.setRewardTarget(rewardId); if (!owns()) return; if (sheetVersion.current === origin) setSheet(null); setShelfRewards(null); await loadProfile(session.memberId, 'me'); }
+    try { await client.setRewardTarget(rewardId); if (!owns()) return; if (sheetVersion.current === origin) setSheet(null); await loadProfile(session.memberId, 'me'); }
     catch (reason) { if (owns()) setError(messageFor(reason)); }
   };
   const mutateRewards = async (action: () => Promise<unknown>) => {
@@ -292,12 +341,19 @@ export default function ProgressScreen() {
   const [shelfRewards, setShelfRewards] = useState<Reward[] | null>(null);
   const [nominations, setNominations] = useState<NominationBoardView | null>(null);
   const [community, setCommunity] = useState<CommunityProgressView | null>(null);
+  const shelfRewardsRef = useRef(shelfRewards); shelfRewardsRef.current = shelfRewards;
+  const communityRef = useRef(community); communityRef.current = community;
+  const hasOwnPrivateProfile = Boolean(session && profile?.memberId === session.memberId && profile.private);
   useEffect(() => {
-    if (!client || !session || !focused || !primaryReady || scope !== 'me' || !profile?.private || shelfRewards !== null || typeof client.getRewards !== 'function') return;
+    if (!client || !session || !focused || !primaryReady || scope !== 'me' || !hasOwnPrivateProfile || typeof client.getRewards !== 'function') return;
     let active = true; const generation = viewGeneration.current;
-    void client.getRewards().then((value) => { if (active && isViewLive(generation)) setShelfRewards(value); }).catch(() => { if (active && isViewLive(generation)) setShelfRewards([]); });
+    void client.getRewards().then((value) => { if (active && isViewLive(generation)) setShelfRewards(value); }).catch((reason) => {
+      if (!active || !isViewLive(generation)) return;
+      if (shelfRewardsRef.current === null) setShelfRewards([]);
+      else setError(messageFor(reason));
+    });
     return () => { active = false; };
-  }, [client, session, scope, profile?.private, shelfRewards, focused, primaryReady, isViewLive]);
+  }, [client, session, scope, hasOwnPrivateProfile, focused, primaryReady, secondaryRefresh, isViewLive]);
   const reloadNominations = useCallback(async (reportError = false, afterMutation = false): Promise<boolean> => {
     if (!client || !session || !focusedRef.current || !appActive.current || typeof client.getNominations !== 'function' || (nominationPending.current && !afterMutation)) return false;
     const generation = viewGeneration.current;
@@ -311,15 +367,20 @@ export default function ProgressScreen() {
     } catch (reason) { if (owns() && reportError) setNominationError(messageFor(reason)); return false; }
   }, [client, session, isViewLive]);
   useEffect(() => {
-    if (!focused || !primaryReady || scope !== 'me' || nominations !== null) return;
-    void reloadNominations();
-  }, [focused, primaryReady, scope, nominations, reloadNominations]);
+    if (!focused || !primaryReady || scope !== 'me') return;
+    void reloadNominations(true);
+  }, [focused, primaryReady, scope, secondaryRefresh, reloadNominations]);
+
   useEffect(() => {
-    if (!client || !session || !focused || !primaryReady || scope !== 'me' || community !== null || typeof client.getCommunityProgress !== 'function') return;
+    if (!client || !session || !focused || !primaryReady || scope !== 'me' || typeof client.getCommunityProgress !== 'function') return;
     let active = true; const generation = viewGeneration.current;
-    void client.getCommunityProgress().then((value) => { if (active && isViewLive(generation)) setCommunity(value); }).catch(() => { if (active && isViewLive(generation)) setCommunity({ books: [], personDays: null, currentBook: null }); });
+    void client.getCommunityProgress().then((value) => { if (active && isViewLive(generation)) setCommunity(value); }).catch((reason) => {
+      if (!active || !isViewLive(generation)) return;
+      if (communityRef.current === null) setCommunity({ books: [], personDays: null, currentBook: null });
+      else setError(messageFor(reason));
+    });
     return () => { active = false; };
-  }, [client, session, scope, community, focused, primaryReady, isViewLive]);
+  }, [client, session, scope, focused, primaryReady, secondaryRefresh, isViewLive]);
   useEffect(() => {
     if (!focused || sheet !== 'nominations') return;
     void reloadNominations(true);
@@ -365,14 +426,54 @@ export default function ProgressScreen() {
   const retrySavedRedemption = (operationId: string) => retrySaved(operationId, false);
   const retrySavedReversal = (operationId: string) => retrySaved(operationId, true);
 
+  awardRefreshRef.current = (memberId) => {
+    if (session?.memberId === memberId && scope === 'me' && focusedRef.current && appActive.current) void loadProfile(memberId, 'me');
+  };
+  const todayPlanId = todaySchedule?.taskDate === today ? todaySchedule.planId : localTodayPlanId ?? fallbackTodayPlanId;
+  const todayCanComplete = todaySchedule?.taskDate === today
+    ? todaySchedule.canComplete
+    : Boolean(localTodayPlanId && isWithinCompletionWindow(today, today));
+  const refreshedCompletionOperations = useRef(new Set<string>());
+  const refreshCompletionProfile = useCallback((event: CompletionSyncEvent | CompletionAwardEvent) => {
+    if (event.memberId !== session?.memberId || refreshedCompletionOperations.current.has(event.operationId)) return;
+    if (refreshedCompletionOperations.current.size >= 64) {
+      const oldestOperation = refreshedCompletionOperations.current.values().next().value;
+      if (oldestOperation) refreshedCompletionOperations.current.delete(oldestOperation);
+    }
+    refreshedCompletionOperations.current.add(event.operationId);
+    setProfile((current) => applyCompletionSyncToProfile(current, event));
+    awardRefreshRef.current(event.memberId);
+  }, [session?.memberId]);
+  const onCompletionAward = useCallback((event: CompletionAwardEvent) => {
+    setCompletionAward(event);
+    refreshCompletionProfile(event);
+  }, [refreshCompletionProfile]);
+  const onCompletionConfirmed = useCallback((event: CompletionSyncEvent) => {
+    // The event carries its original taskDate; a cross-month backfill still refreshes this member's profile.
+    refreshCompletionProfile(event);
+  }, [refreshCompletionProfile]);
+  const completion = useCompletionController({ planId: todayPlanId, taskDate: today, canComplete: todayCanComplete, onAward: onCompletionAward, onConfirmed: onCompletionConfirmed });
+
   if (!session) return <View style={styles.screen}><Text style={styles.title}>積分</Text><Text style={styles.note}>請先登入以查看積分。</Text></View>;
+  const ownProfile = profile?.memberId === session.memberId ? profile : null;
   const showingProfile = scope !== 'me' && selected && profile;
-  return <View style={styles.screen}>
+  return <View style={styles.screen} accessibilityElementsHidden={!appForeground} importantForAccessibility={appForeground ? 'auto' : 'no-hide-descendants'}>
     <View style={styles.scopeHeader}><View style={styles.scopes}>{(['me', 'friends', ...(capabilities?.canViewAllScores ? ['all'] : [])] as ScoreScope[]).map((item) => <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: scope === item }} accessibilityLabel={item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體（管理）'} onPress={() => void chooseScope(item)} style={[styles.scope, scope === item && styles.scopeActive]}><Text style={[styles.scopeText, scope === item && styles.scopeTextActive]}>{item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體（管理）'}</Text></Pressable>)}</View><Pressable accessibilityRole="button" accessibilityLabel="開啟積分操作" onPress={() => setSheet('menu')} style={styles.menu}><Text style={styles.menuText}>⋯</Text></Pressable></View>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}{busy ? <Text style={styles.note}>載入中…</Text> : null}
     {/* A number with no note beside it claims to be current. This one is not. */}
-    {profileStale && scope === 'me' ? <Text style={styles.stale}>目前顯示上次的積分，還沒連上更新</Text> : null}
-    {scope === 'me' && !profile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
+    {profileStale && ownProfile ? <Text style={styles.stale}>目前顯示上次的積分，還沒連上更新</Text> : null}
+    {scope === 'me' && !ownProfile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
+    {scope === 'me' && ownProfile ? <View style={styles.completionAction}>
+      <CompletionTodayButton
+        record={completion.record}
+        pending={completion.pending}
+        retryable={completion.retryable}
+        canComplete={todayCanComplete}
+        onComplete={() => { void completion.complete(); }}
+        onUndo={completion.requestUndo}
+      />
+      {completion.syncError ? <Text accessibilityRole="alert" style={styles.stale}>{completion.record.syncStatus === 'SAVE_FAILED' && !completion.retryable ? '完成記錄無法同步，本機完成狀態仍保留。' : '同步遇到問題，完成狀態已保留，連線後會重試。'}</Text> : null}
+    </View> : null}
     {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
     {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { requestGeneration.current += 1; stopPrefetch(); activeMember.current = null; setBusy(false); setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}
     {scope === 'me' && nominations?.round ? <NominationBanner
@@ -381,7 +482,8 @@ export default function ProgressScreen() {
       mine={nominations.nominations.some((item) => item.mine && item.status === 'OPEN')}
       onOpen={() => setSheet('nominations')}
     /> : null}
-    {scope === 'me' && profile ? <ScoreProfile profile={profile} rewards={shelfRewards ?? undefined} community={community ? <CommunityProgress books={community.books} personDays={community.personDays} currentBook={community.currentBook} /> : undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
+    {scope === 'me' && ownProfile ? <ScoreProfile profile={ownProfile} rewards={shelfRewards ?? undefined} community={community ? <CommunityProgress books={community.books} personDays={community.personDays} currentBook={community.currentBook} /> : undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
+    <CompletionAwardFeedback event={completionAward} onFinished={(operationId) => setCompletionAward((current) => current?.operationId === operationId ? null : current)} />
     <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: () => setSheet('qr') }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards('admin-rewards'); } }] : []), ...(capabilities?.canManageRewards && !nominations?.round ? [{ label: '開一輪獎品提案', onPress: () => setSheet('open-round') }] : []), ...(nominations?.round ? [{ label: '獎品提案', onPress: () => setSheet('nominations') }] : [])]} />
     <ActionSheet visible={sheet === 'nominations'} title={nominations?.round?.title ?? '獎品提案'} onClose={() => setSheet(null)}>
       {nominationBusy ? <Text accessibilityLiveRegion="polite" style={styles.note}>處理中…</Text> : null}
@@ -419,9 +521,11 @@ export default function ProgressScreen() {
       {pendingOperations?.redemptions.map((item) => <Pressable key={item.operationId} accessibilityRole="button" accessibilityLabel={`重試尚未確認兌換 ${item.rewardId}`} onPress={() => { void retrySavedRedemption(item.operationId); }} style={styles.retry}><Text style={styles.retryText}>重試兌換：{item.memberId}/{item.rewardId}</Text></Pressable>)}
       {pendingOperations?.reversals.map((item) => <Pressable key={item.operationId} accessibilityRole="button" accessibilityLabel={`重試尚未確認撤銷 ${item.redemptionId}`} onPress={() => { void retrySavedReversal(item.operationId); }} style={styles.retry}><Text style={styles.retryText}>重試撤銷：{item.redemptionId}</Text></Pressable>)}
     </ActionSheet>
+    {!appForeground ? <View testID="progress-inactive-cover" pointerEvents="auto" style={styles.inactiveCover} /> : null}
   </View>;
 }
 
 function monthNow(): string { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).formatToParts(new Date()); const year = parts.find((part) => part.type === 'year')?.value ?? '1970'; const month = parts.find((part) => part.type === 'month')?.value ?? '01'; return `${year}-${month}`; }
+function monthlyPlanId(date: string): string { return `church-${date.slice(0, 7)}`; }
 function messageFor(reason: unknown): string { return reason instanceof GamificationApiError ? reason.userMessage : '目前無法載入積分，請稍後再試。'; }
-const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' } });
+const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, inactiveCover: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: theme.colors.background }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, completionAction: { gap: theme.spacing.xs, marginBottom: theme.spacing.md }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' } });

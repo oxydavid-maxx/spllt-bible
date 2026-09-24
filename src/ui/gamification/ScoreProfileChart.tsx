@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, Polyline } from 'react-native-svg';
 import type { MonthPoints, ScoreChart, ScoreChartBucket, ScoreChartQuery, ScoreChartRange } from '../../services/gamificationApiClient';
 import { taipeiDate } from '../../domain/gamificationV1';
 import { theme } from '../Theme';
@@ -27,6 +28,79 @@ export interface ScoreProfileChartProps {
 
 export function chartQueryForRange(_chart: ScoreChart, range: ScoreChartRange): ScoreChartQuery {
   return { range };
+}
+
+interface CumulativePoint {
+  bucket: ScoreChartBucket;
+  value: number;
+  x: number;
+  y: number;
+}
+
+const CURVE_VIEW_BOX_WIDTH = 320;
+const CURVE_LEFT_INSET = 14;
+const CURVE_RIGHT_INSET = 306;
+
+function curvePointIndex(locationX: number, plotWidth: number, pointCount: number): number {
+  if (pointCount <= 1 || plotWidth <= 0) return 0;
+  const viewBoxX = locationX / plotWidth * CURVE_VIEW_BOX_WIDTH;
+  const ratio = (viewBoxX - CURVE_LEFT_INSET) / (CURVE_RIGHT_INSET - CURVE_LEFT_INSET);
+  return Math.max(0, Math.min(pointCount - 1, Math.round(Math.max(0, Math.min(1, ratio)) * (pointCount - 1))));
+}
+
+function cumulativePoints(chart: ScoreChart, today: string): CumulativePoint[] | null {
+  if (!Number.isInteger(chart.openingEarnedPoints) || chart.openingEarnedPoints! < 0 || chart.buckets.some((bucket) => !Number.isInteger(bucket.cumulativeEarnedPoints) || bucket.cumulativeEarnedPoints! < 0)) return null;
+  const buckets = chart.buckets.filter((bucket) => bucket.startDate <= today);
+  if (buckets.length === 0) return [];
+  const max = Math.max(1, chart.openingEarnedPoints!, ...buckets.map((bucket) => bucket.cumulativeEarnedPoints!));
+  const width = 320;
+  const height = 128;
+  const horizontalPadding = 14;
+  const verticalPadding = 12;
+  return buckets.map((bucket, index) => {
+    const value = bucket.cumulativeEarnedPoints!;
+    const x = buckets.length === 1 ? width / 2 : horizontalPadding + index * (width - horizontalPadding * 2) / (buckets.length - 1);
+    const y = height - verticalPadding - (value / max) * (height - verticalPadding * 2);
+    return { bucket, value, x, y };
+  });
+}
+
+function CumulativeCurve({ chart, today, selectedKey, onSelect }: { chart: ScoreChart; today: string; selectedKey: string | null; onSelect: (key: string) => void }) {
+  const points = cumulativePoints(chart, today);
+  const [plotWidth, setPlotWidth] = useState(320);
+  if (!points) return <Text style={styles.empty}>累積走勢尚未提供可靠資料</Text>;
+  if (points.length === 0) return <Text style={styles.empty}>這個期間尚無已發生的積分紀錄</Text>;
+  const selectedIndex = Math.max(0, points.findIndex((point) => point.bucket.key === selectedKey));
+  const selectedPoint = points[selectedIndex];
+  return <View>
+    <Pressable
+      accessibilityRole="adjustable"
+      accessibilityLabel="累積積分走勢"
+      accessibilityHint="點選走勢讀取日期與累積分數，也可向前或向後移動。"
+      accessibilityValue={{ min: 1, max: points.length, now: selectedIndex + 1, text: `${selectedPoint.bucket.key} 累積 ${selectedPoint.value} 分` }}
+      accessibilityActions={[{ name: 'increment', label: '下一個日期' }, { name: 'decrement', label: '上一個日期' }]}
+      onAccessibilityAction={(event) => {
+        const delta = event.nativeEvent.actionName === 'increment' ? 1 : -1;
+        onSelect(points[Math.max(0, Math.min(points.length - 1, selectedIndex + delta))].bucket.key);
+      }}
+      onLayout={(event) => setPlotWidth(event.nativeEvent.layout.width || 320)}
+      onPress={(event) => {
+        const index = curvePointIndex(event.nativeEvent.locationX, plotWidth, points.length);
+        onSelect(points[index].bucket.key);
+      }}
+      style={styles.curveControl}
+    >
+      <Svg width="100%" height={144} viewBox={`0 0 ${CURVE_VIEW_BOX_WIDTH} 128`} preserveAspectRatio="none" pointerEvents="none" accessible={false}>
+        {points.length > 1 ? <Polyline points={points.map((point) => `${point.x},${point.y}`).join(' ')} fill="none" stroke={theme.colors.primary} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /> : null}
+        {points.map(({ bucket, value, x, y }) => <Circle key={bucket.key} cx={x} cy={y} r={bucket.key === selectedKey ? 6 : 4} fill={bucket.key === selectedKey ? theme.colors.primaryDeep : theme.colors.primary} stroke={theme.colors.white} strokeWidth={2} />)}
+      </Svg>
+    </Pressable>
+    <View style={styles.trendFooter}>
+      <Text style={styles.trendDate}>{bucketPeriodLabel(points[0].bucket)}</Text>
+      <Text style={styles.trendDate}>{bucketPeriodLabel(points.at(-1)!.bucket)}</Text>
+    </View>
+    <Text style={styles.trendOpening}>{`期間前累積 ${chart.openingEarnedPoints} 分`}</Text>
+  </View>;
 }
 
 function daysInMonth(month: string): number {
@@ -109,6 +183,15 @@ function readDays(chart: ScoreChart): number {
     : chart.buckets.reduce((total, bucket) => total + bucket.earnedPoints, 0);
 }
 
+function earnedThroughToday(chart: ScoreChart, index: number, today: string): number {
+  const bucket = chart.buckets[index];
+  if (bucket.startDate > today) return 0;
+  if (bucket.endDate <= today) return bucket.earnedPoints;
+  if (bucket.cumulativeEarnedPoints === undefined) return bucket.earnedPoints;
+  const previous = index === 0 ? chart.openingEarnedPoints : chart.buckets[index - 1]?.cumulativeEarnedPoints;
+  return previous === undefined ? bucket.earnedPoints : Math.max(0, bucket.cumulativeEarnedPoints - previous);
+}
+
 function cellState(bucket: ScoreChartBucket, today: string): 'read' | 'missed' | 'future' | 'count' {
   if (!isDayKey(bucket.key)) return 'count';
   if (bucket.key > today) return 'future';
@@ -176,20 +259,28 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
   const chart = suppliedChart ?? fallbackChart(fallbackMonths);
   const isLegacyFallback = suppliedChart === undefined;
   const today = suppliedToday ?? taipeiDate(new Date());
+  const [view, setView] = useState<'trend' | 'calendar'>(isLegacyFallback ? 'calendar' : 'trend');
   const defaultKey = () => chart.buckets.find((bucket) => bucket.key === today)?.key ?? chart.buckets.find((bucket) => bucket.key === today.slice(0, 7))?.key ?? chart.buckets.find((bucket) => bucket.key === today.slice(0, 4))?.key ?? chart.buckets.at(-1)?.key ?? null;
   const [selectedKey, setSelectedKey] = useState<string | null>(defaultKey);
+  useEffect(() => { setView(isLegacyFallback ? 'calendar' : 'trend'); }, [isLegacyFallback]);
   useEffect(() => { setSelectedKey(defaultKey()); }, [chart.range, chart.anchor, chart.periodStart, chart.periodEnd, chart.buckets.length, today]);
-  const selectedBucket = chart.buckets.find((bucket) => bucket.key === selectedKey) ?? null;
-  const dailyBuckets = chart.buckets.length > 0 && chart.buckets.every((bucket) => isDayKey(bucket.key));
-  const leadingBlanks = dailyBuckets && chart.range === 'month' && chart.buckets[0] ? mondayIndex(chart.buckets[0].key) : 0;
-  const perfect = dailyBuckets && chart.range === 'month' ? perfectWeekKeys(chart.buckets) : new Set<string>();
+  const calendarChart = { ...chart, buckets: chart.buckets.map((bucket, index) => ({ ...bucket, earnedPoints: earnedThroughToday(chart, index, today) })) };
+  const selectedBucket = calendarChart.buckets.find((bucket) => bucket.key === selectedKey) ?? null;
+  const cumulativeSelectedBucket = chart.buckets.find((bucket) => bucket.key === selectedKey) ?? null;
+  const dailyBuckets = calendarChart.buckets.length > 0 && calendarChart.buckets.every((bucket) => isDayKey(bucket.key));
+  const leadingBlanks = dailyBuckets && chart.range === 'month' && calendarChart.buckets[0] ? mondayIndex(calendarChart.buckets[0].key) : 0;
+  const perfect = dailyBuckets && chart.range === 'month' ? perfectWeekKeys(calendarChart.buckets) : new Set<string>();
   const perfectWeeks = perfect.size / 7;
+  const selectedCumulative = cumulativeSelectedBucket?.cumulativeEarnedPoints;
 
   return <View style={styles.card}>
     <View style={styles.headingRow}>
-      <Text style={styles.cardTitle}>{isLegacyFallback ? '近六個月' : '讀經日曆'}</Text>
-      <Text accessibilityLabel={`本期 ${readDays(chart)} 天${perfectWeeks > 0 ? `，完整週 ${perfectWeeks}` : ''}`} style={styles.periodTotal}>{`本期 ${readDays(chart)} 天${perfectWeeks > 0 ? ` · 完整週 ${perfectWeeks}` : ''}`}</Text>
+      <Text style={styles.cardTitle}>{isLegacyFallback ? '近六個月' : view === 'trend' ? '累積積分走勢' : '讀經日曆'}</Text>
+      <Text accessibilityLabel={`本期 ${readDays(calendarChart)} 天${perfectWeeks > 0 ? `，完整週 ${perfectWeeks}` : ''}`} style={styles.periodTotal}>{`本期 ${readDays(calendarChart)} 天${perfectWeeks > 0 ? ` · 完整週 ${perfectWeeks}` : ''}`}</Text>
     </View>
+    {!isLegacyFallback ? <View accessibilityRole="tablist" style={styles.rangeSelector}>
+      {(['trend', 'calendar'] as const).map((option) => <Pressable key={option} accessibilityRole="tab" accessibilityLabel={option === 'trend' ? '走勢' : '日曆'} accessibilityState={{ selected: view === option }} onPress={() => setView(option)} style={[styles.rangeOption, view === option && styles.rangeOptionActive]}><Text style={[styles.rangeText, view === option && styles.rangeTextActive]}>{option === 'trend' ? '走勢' : '日曆'}</Text></Pressable>)}
+    </View> : null}
     {!isLegacyFallback ? <View accessibilityRole="tablist" style={styles.rangeSelector}>
       {RANGE_OPTIONS.map((option) => <Pressable key={option.range} accessibilityRole="tab" accessibilityLabel={option.label} accessibilityState={{ selected: chart.range === option.range }} onPress={() => onChartChange?.(chartQueryForRange(chart, option.range))} style={[styles.rangeOption, chart.range === option.range && styles.rangeOptionActive]}><Text style={[styles.rangeText, chart.range === option.range && styles.rangeTextActive]}>{option.label}</Text></Pressable>)}
     </View> : null}
@@ -198,18 +289,18 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
       <Text accessibilityLabel={`目前積分期間 ${periodLabel(chart)}`} style={styles.periodLabel}>{periodLabel(chart)}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="下一個積分期間" accessibilityState={{ disabled: !chart.nextAnchor || !onChartChange }} disabled={!chart.nextAnchor || !onChartChange} onPress={() => chart.nextAnchor && onChartChange?.({ range: chart.range, anchor: chart.nextAnchor })} style={styles.navButton}><Text style={styles.navText}>›</Text></Pressable>
     </View>}
-    {chart.buckets.length === 0 ? <Text style={styles.empty}>尚無讀經紀錄</Text> : dailyBuckets ? <View>
+    {chart.buckets.length === 0 ? <Text style={styles.empty}>尚無讀經紀錄</Text> : view === 'trend' ? <CumulativeCurve chart={chart} today={today} selectedKey={selectedKey} onSelect={setSelectedKey} /> : dailyBuckets ? <View>
       <View style={styles.grid}>
-        {(chart.range === 'month' ? WEEKDAY_HEADERS : chart.buckets.map((bucket) => WEEKDAY_LABELS[new Date(`${bucket.key}T12:00:00.000Z`).getUTCDay()])).map((label, index) => <View key={`h${index}`} style={styles.slot}><Text style={styles.weekday}>{label}</Text></View>)}
+        {(chart.range === 'month' ? WEEKDAY_HEADERS : calendarChart.buckets.map((bucket) => WEEKDAY_LABELS[new Date(`${bucket.key}T12:00:00.000Z`).getUTCDay()])).map((label, index) => <View key={`h${index}`} style={styles.slot}><Text style={styles.weekday}>{label}</Text></View>)}
       </View>
       <View style={styles.grid}>
         {Array.from({ length: leadingBlanks }, (_, index) => <View key={`b${index}`} style={styles.slot}><View style={styles.cellBlank} /></View>)}
-        {chart.buckets.map((bucket) => <DayCell key={bucket.key} bucket={bucket} today={today} selected={bucket.key === selectedKey} onSelect={setSelectedKey} perfect={perfect.has(bucket.key)} />)}
+        {calendarChart.buckets.map((bucket) => <DayCell key={bucket.key} bucket={bucket} today={today} selected={bucket.key === selectedKey} onSelect={setSelectedKey} perfect={perfect.has(bucket.key)} />)}
       </View>
     </View> : <View style={styles.countGrid}>
-      {chart.buckets.map((bucket) => <CountCell key={bucket.key} bucket={bucket} today={today} label={isMonthKey(bucket.key) ? `${Number(bucket.key.slice(5, 7))}月` : `${bucket.key}年`} selected={bucket.key === selectedKey} onSelect={setSelectedKey} />)}
+      {calendarChart.buckets.map((bucket) => <CountCell key={bucket.key} bucket={bucket} today={today} label={isMonthKey(bucket.key) ? `${Number(bucket.key.slice(5, 7))}月` : `${bucket.key}年`} selected={bucket.key === selectedKey} onSelect={setSelectedKey} />)}
     </View>}
-    {selectedBucket ? <Text accessibilityLiveRegion="polite" style={styles.selectedLabel}>{selectedLabel(selectedBucket, today)}</Text> : null}
+    {selectedBucket && view === 'trend' && selectedCumulative !== undefined ? <Text accessibilityLiveRegion="polite" style={styles.selectedLabel}>{`選取：${bucketPeriodLabel(selectedBucket)}　累積 ${selectedCumulative} 分`}</Text> : view === 'calendar' && selectedBucket ? <Text accessibilityLiveRegion="polite" style={styles.selectedLabel}>{selectedLabel(selectedBucket, today)}</Text> : null}
   </View>;
 }
 
@@ -223,6 +314,10 @@ const styles = StyleSheet.create({
   rangeOptionActive: { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.primary },
   rangeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
   rangeTextActive: { color: theme.colors.primaryDeep },
+  curveControl: { minHeight: 144 },
+  trendFooter: { flexDirection: 'row', justifyContent: 'space-between' },
+  trendDate: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+  trendOpening: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   legacyPeriod: { minHeight: theme.control.tap, color: theme.colors.muted, fontSize: theme.type.body.size, fontWeight: '700', textAlign: 'center', textAlignVertical: 'center' },
   periodNav: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.xs },
   navButton: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface },

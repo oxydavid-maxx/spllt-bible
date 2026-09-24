@@ -22,13 +22,19 @@ vi.mock('react-native', () => ({
   Modal: (p: { visible: boolean; children?: React.ReactNode }) => p.visible ? React.createElement('Modal', p, p.children) : null,
   StyleSheet: { create: (x: unknown) => x, absoluteFillObject: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } },
   Linking: { openURL: vi.fn(async () => {}) }, Platform: { OS: 'android' },
+  useWindowDimensions: () => ({ width: 393, fontScale: 1 }),
   AccessibilityInfo: { isScreenReaderEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
   BackHandler: { addEventListener: (_: string, cb: () => boolean) => { native.back = cb; return { remove: () => { native.back = null; } }; } },
+  AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
 }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
+vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
+vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost: () => null }));
+vi.mock('expo-application', () => ({ nativeBuildVersion: '30' }));
+vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn(), maybeCompleteAuthSession() {} }));
 vi.mock('expo-status-bar', () => ({ StatusBar: primitive('StatusBar') }));
 vi.mock('expo-navigation-bar', () => ({ NavigationBar: Object.assign(primitive('NavigationBar'), { setHidden: vi.fn() }) }));
-vi.mock('expo-router', () => ({ router: { replace: vi.fn() }, useFocusEffect: (cb: () => void | (() => void)) => React.useEffect(cb, [cb]) }));
+vi.mock('expo-router', () => ({ router: { replace: vi.fn() }, usePathname: () => '/reader', useFocusEffect: (cb: () => void | (() => void)) => React.useEffect(cb, [cb]) }));
 vi.mock('expo-crypto', () => ({ randomUUID: () => 'test-operation' }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {} }));
 // Keep the real preload host mounted, but do not import the SDK's MMKV/native registry in Node.
@@ -38,13 +44,15 @@ vi.mock('@youversion/platform-react-native-expo-core', () => {
 });
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: primitive('AccountEntryButton') }));
 vi.mock('../../src/ui/completionFeedback', () => ({ CompletionFeedback: primitive('CompletionFeedback') }));
-vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ session: null }) }));
+vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
+vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ status: 'signed-out', session: null }), isCurrentAuthSession: () => false }));
 vi.mock('../../src/services/reminderScheduler', () => ({ createReminderScheduler: () => ({}) }));
 vi.mock('../../src/services/reminderCompletion', () => ({ syncReadingReminderForCompletion: vi.fn() }));
+vi.mock('../../src/services/useOutboxRecovery', () => ({ useOutboxRecovery: () => undefined }));
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: vi.fn() }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn(() => ({ get: () => null, save: (command: Record<string, unknown>) => command })) }));
 vi.mock('../../src/ui/routes', () => ({ buildFixtureModels: () => ({ reader: { references: ['PSA.90', 'PSA.91'] } }) }));
-vi.mock('../../src/ui/readingSession', () => ({ useReadingSession: () => ({ selectedDate: '2026-09-12', day: {}, period: 'week' }), setSelectedReadingDate: vi.fn() }));
+vi.mock('../../src/ui/readingSession', () => ({ useReadingSession: () => ({ selectedDate: '2026-09-12', planId: 'church-2026-09', day: {}, period: 'week' }), setSelectedReadingDate: vi.fn(), setPendingJournalQuote: vi.fn() }));
 vi.mock('../../src/services/youVersionAdapter', () => ({ createYouVersionAdapter: () => ({ loadReaderUi: async () => ({ status: 'READER_UI_READY', module: {
   getReaderSettings: () => ({ ...readerSettings.value }),
   getDefaultReaderSettings: () => ({ fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 }),
@@ -62,7 +70,8 @@ const press = (label: string) => act(() => {
   const n = rendered.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
   expect(n, 'Missing control: ' + label).toBeDefined(); n.props.onPress();
 });
-const canvas = (type = 'qingmu.reader.canvas.tap') => act(() => { all('BibleReader')[0].props.dom.onMessage({ nativeEvent: { data: JSON.stringify({ type, data: null }) } }); });
+const canvas = (type = 'qingmu.reader.canvas.tap', data: unknown = null) => act(() => { all('BibleReader')[0].props.dom.onMessage({ nativeEvent: { data: JSON.stringify({ type, data }) } }); });
+const restoreChromeWithReverseScroll = () => canvas('qingmu.reader.canvas.scroll', { direction: 'up', deltaY: -20 });
 const toolbar = () => rendered.root.findAll(n => n.props.accessibilityLabel === '閱讀工具列')[0];
 beforeEach(async () => {
   readerSettings.value = { fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 }; readerSettings.listeners.clear();
@@ -75,7 +84,7 @@ afterEach(() => { act(() => rendered?.unmount()); vi.restoreAllMocks(); });
 describe('Reader secondary information and controls', () => {
   it('shows version details only on demand and returns to the same chapter', () => {
     const reader = all('BibleReader')[0];
-    canvas(); press('更多閱讀工具'); press('版本資訊');
+    canvas(); expect(toolbar()).toBeUndefined(); restoreChromeWithReverseScroll(); press('更多閱讀工具'); press('版本資訊');
     expect(all('Text').map(n => String(n.props.children)).join(' ')).toContain('Hong Kong Bible Society');
     press('關閉版本資訊');
     expect(all('Text').map(n => String(n.props.children)).join(' ')).not.toContain('Hong Kong Bible Society');
@@ -89,7 +98,7 @@ describe('Reader secondary information and controls', () => {
     expect(native.audioMounts).toBe(mounts);
   });
   it('keeps the translation shown in information aligned with the official picker', async () => {
-    canvas(); press('更多閱讀工具'); press('選擇譯本');
+    canvas(); expect(toolbar()).toBeUndefined(); restoreChromeWithReverseScroll(); press('更多閱讀工具'); press('選擇譯本');
     const label = getYouVersionVersionOptions().find(option => option.versionId === 40)!.translationName;
     await act(async () => { press(label); });
     expect(all('BibleReader')[0].props.versionId).toBe(40);
@@ -100,6 +109,7 @@ describe('Reader secondary information and controls', () => {
   it('selects an assigned passage from More after browsing another book', async () => {
     press('更多閱讀工具'); press('選擇其他章節');
     await act(async () => { await all('OfficialChapterSheet')[0].props.onSelect({ book: 'GEN', chapter: '1', versionId: 46 }); });
+    press('選擇今日章節清單');
     press('前往詩91');
     expect(all('BibleReader')[0].props.book).toBe('PSA');
     expect(all('BibleReader')[0].props.chapter).toBe('91');

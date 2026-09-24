@@ -42,21 +42,25 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
   // three lines above already shows, in a 116dp card with the rest of the row empty beside it. It
   // comes back on its own the day a second reward is added.
   const shelfOffersAChoice = shelf.some((reward) => reward.rewardId !== target?.rewardId);
+  const canOpenPicker = canEditTarget && Boolean(onOpenPicker) && (target !== null || shelf.length > 0 || rewards === undefined);
+  const mainGoal = target ? <View style={styles.goal}>
+    <Text style={styles.eyebrow}>目標獎品</Text>
+    <View style={styles.goalLine}>
+      <Text style={styles.goalName} numberOfLines={1}>{target.name}</Text>
+      <Text style={styles.goalCost}>{`${Math.min(redeemableBalance, target.costPoints)}/${target.costPoints} 分`}</Text>
+    </View>
+    <GoalBar value={redeemableBalance} max={target.costPoints} />
+    {reachable ? <Text style={styles.ready}>可以兌換了 · 主日找輔導領取</Text> : null}
+    {redeemed > 0 ? <Text style={styles.muted}>{`可兌換 ${redeemableBalance} 分 · 已兌換 ${redeemed} 分`}</Text> : null}
+    {canOpenPicker ? <Text style={styles.pickerHint}>更換目標 ›</Text> : null}
+  </View> : <View style={styles.goalCopy}>
+    <Text style={styles.goalName}>選一個目標獎品</Text>
+    <Text style={styles.muted}>每天讀經得到的積分，會往你選的獎品前進。</Text>
+    {redeemed > 0 ? <Text style={styles.muted}>{`可兌換 ${redeemableBalance} 分 · 已兌換 ${redeemed} 分`}</Text> : null}
+    {canOpenPicker ? <Text style={styles.pickerHint}>選擇目標 ›</Text> : null}
+  </View>;
   return <View style={styles.card} accessibilityLabel="目標獎品">
-    {target ? <View style={styles.goal}>
-      <Text style={styles.eyebrow}>目標獎品</Text>
-      <View style={styles.goalLine}>
-        <Text style={styles.goalName} numberOfLines={1}>{target.name}</Text>
-        <Text style={styles.goalCost}>{`${Math.min(redeemableBalance, target.costPoints)}/${target.costPoints} 分`}</Text>
-      </View>
-      <GoalBar value={redeemableBalance} max={target.costPoints} />
-      {reachable ? <Text style={styles.ready}>可以兌換了 · 主日找輔導領取</Text> : null}
-      {redeemed > 0 ? <Text style={styles.muted}>{`可兌換 ${redeemableBalance} 分 · 已兌換 ${redeemed} 分`}</Text> : null}
-    </View> : <View style={styles.goalCopy}>
-      <Text style={styles.goalName}>選一個目標獎品</Text>
-      <Text style={styles.muted}>每天讀經得到的積分，會往你選的獎品前進。</Text>
-      {redeemed > 0 ? <Text style={styles.muted}>{`可兌換 ${redeemableBalance} 分 · 已兌換 ${redeemed} 分`}</Text> : null}
-    </View>}
+    {canOpenPicker ? <Pressable accessibilityRole="button" accessibilityLabel={target ? `目標獎品：${target.name} ${target.costPoints} 分，開啟獎品選擇` : '選擇目標獎品'} accessibilityHint="開啟獎品選擇" onPress={() => onOpenPicker?.()} style={styles.goalAction}>{mainGoal}</Pressable> : mainGoal}
     {shelfOffersAChoice && canEditTarget ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shelf} accessibilityLabel="獎品架">
       {shelf.map((reward) => {
         const selected = target?.rewardId === reward.rewardId;
@@ -69,7 +73,6 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
         </Pressable>;
       })}
     </ScrollView> : null}
-    {canEditTarget && onOpenPicker && shelf.length === 0 ? <Pressable accessibilityRole="button" accessibilityLabel="選擇獎品" onPress={onOpenPicker} style={styles.button}><Text style={styles.buttonText}>選擇獎品</Text></Pressable> : null}
     {displayName !== undefined ? <View style={styles.totalRow}><Text style={styles.totalName} numberOfLines={1}>{displayName}</Text><Text style={styles.totalValue}>{earnedTotal}</Text><Text style={styles.totalLabel}>總積分</Text><Text style={styles.totalBand} numberOfLines={1}>{band == null ? '滿 10 人開始分梯隊' : `第 ${band} 梯隊`}</Text></View> : null}
   </View>;
 }
@@ -89,6 +92,8 @@ const styles = StyleSheet.create({
   goalCost: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
   ready: { color: theme.colors.primaryDeep, fontSize: theme.type.label.size, fontWeight: '800' },
   muted: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  pickerHint: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  goalAction: { width: '100%', alignItems: 'stretch' },
   shelf: { gap: theme.spacing.sm },
   shelfCard: { width: 116, minHeight: theme.control.tap, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, gap: theme.spacing.xxs },
   shelfCardSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },

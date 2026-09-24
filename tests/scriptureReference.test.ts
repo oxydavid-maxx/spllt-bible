@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ZH_TW_BOOK_ABBREVIATIONS, ZH_TW_BOOK_NAMES, bookAbbreviationZhTw, formatChapterTitleZhTw, formatReferenceListZhTw, formatReferenceZhTw } from '../src/domain/scriptureReference';
+import { ZH_TW_BOOK_ABBREVIATIONS, ZH_TW_BOOK_NAMES, bookAbbreviationZhTw, formatChapterTitleZhTw, formatDailyReferenceRangeZhTw, formatReferenceListZhTw, formatReferenceZhTw } from '../src/domain/scriptureReference';
 
 // 使用者 2026-09-11: App 顯示面一律使用台灣教會慣用繁體中文簡寫。
 // 內部識別 (USFM / API / 資料庫 / 同步 / 深連結) 保持原值,只改顯示。
@@ -105,5 +105,15 @@ describe('書卷全名', () => {
   it('唸起來是一句話,不是一個代號', () => {
     expect(ZH_TW_BOOK_NAMES['1TI']).toBe('提摩太前書');
     expect(ZH_TW_BOOK_NAMES.HEB).toBe('希伯來書');
+  });
+});
+
+describe('完整今日讀經範圍', () => {
+  it('shows full book names and compresses consecutive chapters within a book', () => {
+    expect(formatDailyReferenceRangeZhTw(['TIT.1', 'PSA.99', 'PSA.100'])).toBe('提多書1・詩篇99–100');
+  });
+
+  it('keeps verse ranges and leaves unknown references visible', () => {
+    expect(formatDailyReferenceRangeZhTw(['JHN.3.16-18', 'XYZ.1'])).toBe('約翰福音3:16-18・XYZ.1');
   });
 });

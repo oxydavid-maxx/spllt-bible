@@ -16,7 +16,7 @@ export interface UseOutboxRecoveryOptions {
   getClient: () => OutboxRecoveryClient | null;
   getSession: () => OutboxRecoverySession | null;
   isCurrentAuthSession: (session: OutboxRecoverySession | null) => boolean;
-  onRecovered: () => void;
+  onRecovered: (results: import('../storage/outbox').SyncResult[]) => void;
 }
 
 /**
@@ -49,7 +49,7 @@ export function useOutboxRecovery(options: UseOutboxRecoveryOptions): void {
       getSession: () => getSessionRef.current(),
       isCurrentAuthSession: (session) => isCurrentAuthSessionRef.current(session),
       getTarget: () => ({ memberId, planId, taskDate }),
-      onRecovered: () => onRecoveredRef.current(),
+      onRecovered: (results) => onRecoveredRef.current(results),
     });
 
     if (AppState.currentState === 'active') controller.kick();

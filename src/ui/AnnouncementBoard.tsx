@@ -60,8 +60,7 @@ export function AnnouncementBoard({ announcement, stale, onOpen }: AnnouncementB
     {past.length > 0 ? <View style={styles.card} accessibilityLabel="以前的主日">
       <Text style={styles.eyebrow}>以前的主日</Text>
       {past.map((week) => <View key={week.week} style={styles.pastRow}>
-        <Text style={styles.pastWeek}>{shortWeek(week.week)}</Text>
-        <Text style={styles.pastTitle} numberOfLines={1}>{week.title ?? ''}</Text>
+        <Text style={styles.pastTitle}>{[shortWeek(week.week), week.speaker, week.title].filter(Boolean).join(' · ')}</Text>
         <LinkRow links={[['錄音', week.audio], ['投影片', week.slides], ['逐字稿', week.transcript]]} onOpen={onOpen} />
       </View>)}
     </View> : null}
@@ -90,9 +89,8 @@ const styles = StyleSheet.create({
   linkText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
   primaryButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, backgroundColor: theme.colors.primary, marginTop: theme.spacing.xs },
   primaryButtonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '800' },
-  pastRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.xxs },
-  pastWeek: { color: theme.colors.ink, fontSize: theme.type.label.size, fontWeight: '800', minWidth: 48 },
-  pastTitle: { flex: 1, minWidth: 0, color: theme.colors.muted, fontSize: theme.type.caption.size },
+  pastRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.xxs },
+  pastTitle: { flexGrow: 1, flexBasis: 140, minWidth: 140, color: theme.colors.muted, fontSize: theme.type.caption.size },
   standing: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   standingLink: { minHeight: theme.control.tap, justifyContent: 'center' },
   stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, textAlign: 'center', paddingTop: theme.spacing.xs },

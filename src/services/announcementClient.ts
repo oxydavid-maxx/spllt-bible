@@ -29,6 +29,7 @@ export interface SermonBlock {
 export interface PastWeek {
   week: string;
   title: string | null;
+  speaker: string | null;
   audio: string | null;
   slides: string | null;
   transcript: string | null;
@@ -79,6 +80,7 @@ export function parseAnnouncement(value: unknown): Announcement | null {
       if (!text(week.week)) continue;
       past.push({
         week: week.week, title: orNull(week.title),
+        speaker: typeof week.speaker === 'string' && week.speaker.trim() ? week.speaker.trim() : null,
         audio: orNull(week.audio), slides: orNull(week.slides), transcript: orNull(week.transcript),
       });
     }

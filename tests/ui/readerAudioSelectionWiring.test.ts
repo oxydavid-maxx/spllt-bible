@@ -25,24 +25,38 @@ const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknow
 });
 
 /** requests the REAL ChapterAudioControls actually issued, in order */
-const recorded = vi.hoisted(() => ({ requests: [] as { versionId: number; usfm: string }[], cancels: 0 }));
+const recorded = vi.hoisted(() => ({ requests: [] as { versionId: number; usfm: string }[], cancels: 0, audioPlayCalls: 0, audioOwnerMounts: 0, journalSaves: [] as Array<Record<string, unknown>>, completionWrites: 0 }));
+const completionController = vi.hoisted(() => ({
+  record: { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: '2026-09-12', status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' },
+  pending: false,
+  syncError: false,
+  complete: vi.fn(async () => undefined),
+  requestUndo: vi.fn(),
+  options: [] as Array<Record<string, unknown>>,
+}));
+const navigationState = vi.hoisted(() => ({ pathname: '/reader' }));
 const preferenceIO = vi.hoisted(() => {
   const data = new Map<string, string>();
   return { data, get: vi.fn(async (key: string) => data.get(key) ?? null), set: vi.fn(async (key: string, value: string) => { data.set(key, value); }),
     alerts: [] as Array<{ title: string; message?: string; buttons?: Array<{ text?: string; onPress?: () => void }> }> };
 });
-const readerAuth = vi.hoisted(() => ({ memberId: null as string | null, epoch: 0 }));
+const readerAuth = vi.hoisted(() => ({ memberId: null as string | null, epoch: 0, status: 'signed-out' as string }));
 const readerSettings = vi.hoisted(() => ({ value: { fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 },
   listeners: new Set<(next: { fontSize: number; fontFamily: string; lineSpacing: number }) => void>() }));
 
-vi.mock('expo-router', () => ({
-  router: { replace: vi.fn() },
-  // Exercise the real focus effect bodies, including cleanup; only navigation's native boundary is doubled.
-  useFocusEffect: (effect: () => void | (() => void)) => {
-    const R = require('react') as typeof React;
-    R.useEffect(effect, [effect]);
-  },
-}));
+vi.mock('expo-router', () => {
+  const R = require('react') as typeof React;
+  const Screen = (props: Record<string, unknown>) => R.createElement('Screen', props);
+  const Tabs = (props: Record<string, unknown>) => R.createElement('Tabs', props, props.children as React.ReactNode);
+  Object.assign(Tabs, { Screen });
+  return {
+    router: { replace: vi.fn() },
+    usePathname: () => navigationState.pathname,
+    // Exercise the real focus effect bodies, including cleanup; only navigation's native boundary is doubled.
+    useFocusEffect: (effect: () => void | (() => void)) => R.useEffect(effect, [effect]),
+    Tabs,
+  };
+});
 vi.mock('expo-status-bar', () => ({ StatusBar: primitive('StatusBar') }));
 vi.mock('expo-navigation-bar', () => ({ NavigationBar: Object.assign(primitive('NavigationBar'), { setHidden: vi.fn() }) }));
 vi.mock('expo-audio', () => ({
@@ -50,19 +64,28 @@ vi.mock('expo-audio', () => ({
     const R = require('react') as typeof React;
     // The real hook holds one instance across renders. Remain inert: this lane proves selection only.
     const ref = R.useRef<object | null>(null);
-    if (!ref.current) ref.current = {
-      play: () => undefined, pause: () => undefined, replace: () => undefined,
-      addListener: () => ({ remove: () => undefined }),
-      seekTo: async () => undefined, setPlaybackRate: () => undefined, remove: () => undefined,
-      currentTime: 0, duration: 0, playing: false, isLoaded: false, isBuffering: false,
-    };
+    if (!ref.current) {
+      recorded.audioOwnerMounts += 1;
+      ref.current = {
+        play: () => { recorded.audioPlayCalls += 1; }, pause: () => undefined, replace: () => undefined,
+        addListener: () => ({ remove: () => undefined }),
+        seekTo: async () => undefined, setPlaybackRate: () => undefined, remove: () => undefined,
+        currentTime: 0, duration: 0, playing: false, isLoaded: false, isBuffering: false,
+      };
+    }
     return ref.current;
   },
 }));
 vi.mock('expo-crypto', () => ({ randomUUID: vi.fn(() => 'fixture-operation') }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: (key: string) => preferenceIO.get(key), setItemAsync: (key: string, value: string) => preferenceIO.set(key, value) }));
+vi.mock('expo-application', () => ({ nativeBuildVersion: '30' }));
+vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn(), maybeCompleteAuthSession() {} }));
 vi.mock('react-native', () => ({
   ActivityIndicator: primitive('ActivityIndicator'),
+  KeyboardAvoidingView: primitive('KeyboardAvoidingView'),
+  Keyboard: { isVisible: () => false, addListener: () => ({ remove() {} }) },
+  Platform: { OS: 'android' },
+  useWindowDimensions: () => ({ width: 393, fontScale: 1 }),
   Modal: (props: { visible: boolean; children?: React.ReactNode }) => props.visible ? React.createElement('Modal', props, props.children) : null,
   BackHandler: { addEventListener: vi.fn(() => ({ remove: vi.fn() })) },
   AccessibilityInfo: {
@@ -75,14 +98,33 @@ vi.mock('react-native', () => ({
   StyleSheet: { create: (value: unknown) => value },
   Text: primitive('Text'),
   TextInput: primitive('TextInput'), View: primitive('View'),
-  Linking: { openURL: vi.fn() },
+  Linking: { openURL: vi.fn(async () => undefined) },
 }));
-vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => React.createElement('AccountEntryButton') }));
+vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => React.createElement('Pressable', { accessibilityRole: 'button', accessibilityLabel: '開啟帳戶', onPress: vi.fn() } as never) }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
+vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
+vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost: () => null }));
 vi.mock('../../src/ui/completionFeedback', () => ({ CompletionFeedback: () => React.createElement('CompletionFeedback') }));
-vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ session: readerAuth.memberId ? { memberId: readerAuth.memberId, sessionToken: 'memory-session' } : null, epoch: readerAuth.epoch }) }));
+vi.mock('../../src/ui/CompletionAwardFeedback', () => ({
+  CompletionAwardFeedback: ({ event }: { event: unknown }) => event ? React.createElement('CompletionAwardPreview', { event }) : null,
+}));
+vi.mock('../../src/services/authSession', () => ({
+  useAuthSnapshot: () => ({ status: readerAuth.status, session: readerAuth.memberId ? { memberId: readerAuth.memberId, sessionToken: 'memory-session' } : null, epoch: readerAuth.epoch }),
+  getAuthSnapshot: () => ({ status: readerAuth.status, session: readerAuth.memberId ? { memberId: readerAuth.memberId, sessionToken: 'memory-session' } : null, epoch: readerAuth.epoch, expiresAt: null }),
+  isCurrentAuthSession: (session: { memberId?: string } | null) => session?.memberId === readerAuth.memberId,
+}));
 vi.mock('../../src/services/reminderScheduler', () => ({ createReminderScheduler: () => ({}) }));
 vi.mock('../../src/services/reminderCompletion', () => ({ syncReadingReminderForCompletion: vi.fn() }));
+vi.mock('../../src/services/journalApiClient', () => ({ createJournalApiClient: () => ({ listEntries: async () => null }) }));
+vi.mock('../../src/services/useOutboxRecovery', () => ({ useOutboxRecovery: () => undefined }));
+vi.mock('../../src/services/useCompletionController', () => ({
+  useCompletionController: (options: Record<string, unknown>) => {
+    completionController.options.push(options);
+    return { record: completionController.record, pending: completionController.pending, syncError: completionController.syncError,
+      retryable: completionController.record.syncStatus === 'SAVE_FAILED',
+      complete: completionController.complete, requestUndo: completionController.requestUndo };
+  },
+}));
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: vi.fn() }));
 
 // two assigned passages for the day: this is what "第二指定段" means
@@ -109,9 +151,16 @@ vi.mock('../../src/storage/mobileDatabase', () => {
     __saved: () => state.saved,
   };
   return {
-    openQingmuRepository: vi.fn(() => ({ get: vi.fn(() => undefined), flush: vi.fn(async () => []) })),
+    openQingmuRepository: vi.fn(() => ({ get: vi.fn(() => undefined), flush: vi.fn(async () => []), saveCompletion: vi.fn((command: Record<string, unknown>) => { recorded.completionWrites += 1; return command; }) })),
     openQingmuReaderPositionStore: vi.fn(() => store),
-    openQingmuJournalStore: vi.fn(() => ({ get: () => null, save: (command: Record<string, unknown>) => command })),
+    openQingmuJournalStore: vi.fn(() => ({
+      get: (identity: { memberId: string; taskDate: string }) => {
+        const saved = recorded.journalSaves.find(command => command.memberId === identity.memberId && command.taskDate === identity.taskDate);
+        return saved ? { ...saved, revision: 1, syncStatus: 'CONFIRMED', updatedAt: 'test' } : null;
+      },
+      list: (memberId: string) => recorded.journalSaves.filter(command => command.memberId === memberId).map(command => ({ taskDate: command.taskDate, body: command.body })),
+      save: (command: Record<string, unknown>) => { recorded.journalSaves.push(command); return { ...command, revision: 1, syncStatus: 'CONFIRMED', updatedAt: 'test' }; },
+    })),
   };
 });
 
@@ -160,7 +209,7 @@ vi.mock('../../src/services/contentCapabilityClient', async (importOriginal) => 
             reason: '',
             uri: `https://cdn.test.invalid/${identity.usfm}.mp3`,
             providerExpiry: null,
-            validUntil: null,
+            validUntil: new Date('2030-01-01T00:00:00.000Z').toISOString(),
             provenance: {
               publisher: 'Biblica',
               edition: '當代譯本(繁體)',
@@ -176,6 +225,10 @@ vi.mock('../../src/services/contentCapabilityClient', async (importOriginal) => 
 });
 
 import ReaderScreen from '../../app/(tabs)/reader';
+import JournalScreen from '../../app/(tabs)/journal';
+import TabsLayout from '../../app/(tabs)/_layout';
+import { FullscreenReaderLayout } from '../../src/ui/FullscreenReaderLayout';
+import { YouVersionReader } from '../../src/ui/YouVersionReader';
 
 type Node = TestRenderer.ReactTestInstance;
 
@@ -227,14 +280,22 @@ function openMore(renderer: TestRenderer.ReactTestRenderer): void {
 }
 
 function selectAssigned(renderer: TestRenderer.ReactTestRenderer, referenceLabel: string): void {
+  pressByLabel(renderer, '選擇今日章節清單');
   pressByLabel(renderer, `前往${referenceLabel}`);
   expect(renderer.root.findAll((n: Node) => String(n.type) === 'Modal' && n.props.visible)).toHaveLength(0);
 }
 
-async function selectDateFromHome(date: string): Promise<void> {
-  // Date selection moved to Home. Exercise the shared store the real Reader subscribes to.
-  const { setSelectedReadingDate } = await import('../../src/ui/readingSession');
-  await act(async () => { setSelectedReadingDate(date); });
+function readerLayout(renderer: TestRenderer.ReactTestRenderer): Node {
+  return renderer.root.findByType(FullscreenReaderLayout);
+}
+
+async function selectDateInReader(renderer: TestRenderer.ReactTestRenderer, date: string): Promise<void> {
+  for (let step = 0; step < 40 && readerLayout(renderer).props.selectedDate !== date; step += 1) {
+    const current = String(readerLayout(renderer).props.selectedDate);
+    pressByLabel(renderer, current > date ? '上一個排定讀經日' : '下一個排定讀經日');
+    await act(async () => { await Promise.resolve(); });
+  }
+  expect(readerLayout(renderer).props.selectedDate).toBe(date);
 }
 
 function bibleReader(renderer: TestRenderer.ReactTestRenderer): Node {
@@ -252,21 +313,69 @@ async function mount(): Promise<TestRenderer.ReactTestRenderer> {
 
 const lastRequest = () => recorded.requests[recorded.requests.length - 1];
 
+async function pressTodayTabFrom(pathname = '/progress'): Promise<void> {
+  navigationState.pathname = pathname;
+  let tabsRenderer!: TestRenderer.ReactTestRenderer;
+  await act(async () => { tabsRenderer = TestRenderer.create(React.createElement(TabsLayout)); });
+  const tabs = tabsRenderer.root.findAll((node: Node) => String(node.type) === 'Tabs')[0];
+  if (!tabs) throw new Error('Tabs layout was not rendered');
+  const listeners = tabs.props.screenListeners as ((props: { route: { name: string }; navigation: object }) => { tabPress?: (event: { defaultPrevented: boolean }) => void }) | undefined;
+  const todayTabPress = listeners?.({ route: { name: 'today' }, navigation: {} }).tabPress;
+  if (!todayTabPress) throw new Error('today tabPress entry handler is not wired');
+  act(() => { todayTabPress({ defaultPrevented: false }); });
+  await act(async () => { await Promise.resolve(); });
+  await act(async () => { tabsRenderer.unmount(); });
+}
+
+const pressTodayTabFromPoints = (): Promise<void> => pressTodayTabFrom('/progress');
+
+async function configureTodayReferences(references: string[]) {
+  const calendar = await import('../../src/domain/calendar');
+  const session = await import('../../src/ui/readingSession');
+  const { taipeiDate } = await import('../../src/domain/gamificationV1');
+  const today = taipeiDate();
+  const days = [...calendar.canonicalSeptemberPlan.days.filter(day => day.date !== today), { date: today, sourceRows: [], references }]
+    .sort((left, right) => left.date.localeCompare(right.date));
+  session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, dates: days.map(day => day.date), uniqueReferences: [...new Set(days.flatMap(day => day.references))] });
+  session.setSelectedReadingDate(today);
+  return { session, today };
+}
+
 // FILE-level reset. A describe-scoped beforeEach left later suites reading the previous suite's saved
 // position and reading date, which is test pollution rather than product behaviour.
 beforeEach(async () => {
   process.env.EXPO_PUBLIC_QINGMU_FIXTURE = 'true';
-  readerAuth.memberId = null; readerAuth.epoch = 0;
+  readerAuth.memberId = null; readerAuth.epoch = 0; readerAuth.status = 'signed-out';
   preferenceIO.data.clear(); preferenceIO.alerts.length = 0;
   preferenceIO.get.mockReset().mockImplementation(async key => preferenceIO.data.get(key) ?? null);
   preferenceIO.set.mockReset().mockImplementation(async (key, value) => { preferenceIO.data.set(key, value); });
   readerSettings.value = { fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 }; readerSettings.listeners.clear();
   recorded.requests.length = 0;
   recorded.cancels = 0;
+  recorded.audioPlayCalls = 0;
+  recorded.audioOwnerMounts = 0;
+  recorded.journalSaves.length = 0;
+  completionController.record = { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: BASE_DATE, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
+  completionController.pending = false;
+  completionController.syncError = false;
+  completionController.complete.mockReset().mockResolvedValue(undefined);
+  completionController.requestUndo.mockReset();
+  completionController.options.length = 0;
+  recorded.completionWrites = 0;
+  navigationState.pathname = '/reader';
   const db = await import('../../src/storage/mobileDatabase');
   (db.openQingmuReaderPositionStore() as unknown as { __reset: () => void }).__reset();
   const rs = await import('../../src/ui/readingSession');
+  const calendar = await import('../../src/domain/calendar');
+  const days = calendar.canonicalSeptemberPlan.days.map(day => day.date === BASE_DATE
+    ? { ...day, references: ['JHN.19', 'JHN.20'] }
+    : day.date === '2026-09-03'
+      ? { ...day, references: ['PSA.88', 'PSA.89'] }
+      : day);
+  rs.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, uniqueReferences: [...new Set(days.flatMap(day => day.references))] });
   rs.setSelectedReadingDate(BASE_DATE);
+  rs.setJournalEntryDate(BASE_DATE);
+  rs.consumePendingJournalQuote();
 });
 
 describe('the chapter the audio asks for follows the ACTUAL reader selection (120 R1)', () => {
@@ -275,11 +384,452 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
   beforeAll(() => {
     console.error = (...args: unknown[]) => {
       const m = String(args[0] ?? '');
-      if (m.includes('react-test-renderer is deprecated') || m.includes('testing environment is not configured to support act')) return;
+      if (m.includes('react-test-renderer is deprecated') || m.includes('testing environment is not configured to support act') || m.includes('An update to ReaderScreen inside a test was not wrapped in act')) return;
       originalError(...args);
     };
   });
   afterAll(() => { console.error = originalError; process.env = env; });
+
+  it('keeps one Reader audio owner mounted and makes that same player controllable in Diary', async () => {
+    readerAuth.memberId = 'fixture:self';
+    readerAuth.status = 'signed-in';
+    let renderer!: TestRenderer.ReactTestRenderer;
+    const readerAndDiary = (showDiary: boolean) => React.createElement(React.Fragment, null,
+      React.createElement(ReaderScreen),
+      showDiary ? React.createElement(JournalScreen) : null,
+    );
+    await act(async () => { renderer = TestRenderer.create(readerAndDiary(false)); await Promise.resolve(); });
+    const ownerMountsBeforeDiary = recorded.audioOwnerMounts;
+
+    navigationState.pathname = '/journal';
+    await act(async () => {
+      renderer.update(readerAndDiary(true));
+      for (let step = 0; step < 8; step += 1) await Promise.resolve();
+    });
+    const diaryHost = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '日記朗讀控制')[0];
+    expect(diaryHost).toBeDefined();
+    expect(recorded.audioOwnerMounts).toBe(ownerMountsBeforeDiary);
+
+    const play = diaryHost.findAll((node: Node) => node.props?.accessibilityRole === 'button' && typeof node.props.onPress === 'function')[0];
+    expect(play).toBeDefined();
+    expect(play.props.disabled).not.toBe(true);
+    expect(recorded.completionWrites).toBe(0);
+    expect(recorded.audioOwnerMounts).toBe(ownerMountsBeforeDiary);
+    const readerChapterBeforeDiaryDate = audioChapter(renderer);
+    const nextDiaryDate = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '後一天日記')[0];
+    await act(async () => { nextDiaryDate.props.onPress(); await Promise.resolve(); });
+    expect(readerLayout(renderer).props.selectedDate).toBe(BASE_DATE);
+    expect(audioChapter(renderer)).toBe(readerChapterBeforeDiaryDate);
+    expect(recorded.audioOwnerMounts).toBe(ownerMountsBeforeDiary);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('flushes a Diary draft before changing its editor date without changing Reader taskDate', async () => {
+    readerAuth.memberId = 'fixture:self';
+    readerAuth.status = 'signed-in';
+    const session = await import('../../src/ui/readingSession');
+    session.setJournalEntryDate('2026-09-22');
+    navigationState.pathname = '/journal';
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(JournalScreen)); });
+    const input = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '靈修日記')[0];
+    expect(input).toBeDefined();
+    act(() => input.props.onChangeText('換日之前先保存這段'));
+    const nextDay = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '後一天日記')[0];
+    expect(nextDay).toBeDefined();
+    await act(async () => { nextDay.props.onPress(); await Promise.resolve(); });
+    expect(recorded.journalSaves[0]).toMatchObject({ taskDate: '2026-09-22', body: '換日之前先保存這段' });
+    expect(renderer.root.findAll((node: Node) => String(node.type) === 'Text').map(node => String(node.props.children)).join(' ')).toContain('9/23');
+    expect(session.getReadingSessionSnapshot().selectedDate).toBe(BASE_DATE);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('refreshes Diary history after the first debounced save', async () => {
+    vi.useFakeTimers();
+    readerAuth.memberId = 'fixture:self';
+    readerAuth.status = 'signed-in';
+    navigationState.pathname = '/journal';
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(JournalScreen)); await Promise.resolve(); });
+    const input = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '靈修日記')[0];
+    act(() => { input.props.onChangeText('第一篇日記'); });
+    expect(renderer.root.findAll((node: Node) => String(node.type) === 'Pressable' && node.props?.accessibilityLabel === '匯出靈修日記')).toHaveLength(0);
+    await act(async () => { vi.advanceTimersByTime(2_100); await Promise.resolve(); });
+    expect(renderer.root.findAll((node: Node) => String(node.type) === 'Pressable' && node.props?.accessibilityLabel === '匯出靈修日記')).toHaveLength(1);
+    expect(renderer.root.findAll((node: Node) => String(node.type) === 'Pressable' && typeof node.props?.accessibilityLabel === 'string'
+      && node.props.accessibilityLabel.startsWith('開啟 ') && node.props.accessibilityLabel.endsWith(' 的日記'))).toHaveLength(1);
+    await act(async () => { renderer.unmount(); });
+    vi.useRealTimers();
+  });
+
+  it('keeps chapter selection, icon-only completion, and play together in the Reader action row', async () => {
+    const { taipeiDate } = await import('../../src/domain/gamificationV1');
+    (await import('../../src/ui/readingSession')).setSelectedReadingDate(taipeiDate());
+    const renderer = await mount();
+    const bottom = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '讀經控制列')[0];
+    expect(bottom).toBeDefined();
+    const actions = bottom.findAll((node: Node) => String(node.type) === 'Pressable' && node.props.accessibilityRole === 'button');
+    expect(actions.some((node: Node) => node.props.accessibilityLabel === '選擇今日章節清單')).toBe(true);
+    expect(actions.some((node: Node) => node.props.accessibilityLabel === '靈修日記')).toBe(false);
+    const completion = actions.find((node: Node) => node.props.accessibilityState?.checked === false
+      && String(node.props.accessibilityHint).includes('長按查看完成狀態說明'));
+    expect(completion).toBeDefined();
+    expect(completion?.props.accessibilityState.disabled).toBe(false);
+    expect(completion?.findAll((node: Node) => String(node.type) === 'Text')).toHaveLength(0);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('sends the selected task identity to the shared completion controller and uses its actions', async () => {
+    const { taipeiDate } = await import('../../src/domain/gamificationV1');
+    const today = taipeiDate();
+    const session = await import('../../src/ui/readingSession');
+    session.setSelectedReadingDate(today);
+    completionController.record = { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: today, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
+    const renderer = await mount();
+    const options = completionController.options.at(-1)!;
+    expect(options).toMatchObject({ planId: 'church-2026-09', taskDate: today, canComplete: true });
+    const complete = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '完成讀經' && typeof node.props?.onPress === 'function')[0];
+    expect(complete).toBeDefined();
+    expect(complete.props.accessibilityState.disabled).toBe(false);
+    await act(async () => { complete.props.onPress(); await Promise.resolve(); });
+    expect(completionController.complete).toHaveBeenCalledOnce();
+    expect(recorded.completionWrites).toBe(0);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('forwards the confirmed award with its original date instead of relabelling it as today', async () => {
+    const { taipeiDate } = await import('../../src/domain/gamificationV1');
+    const session = await import('../../src/ui/readingSession');
+    session.setSelectedReadingDate(taipeiDate());
+    const renderer = await mount();
+    expect(renderer.root.findAll((node: Node) => String(node.type) === 'CompletionAwardPreview')).toHaveLength(0);
+    const options = completionController.options.at(-1)!;
+    const event = { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: '2026-09-23', operationId: 'award-yesterday-1', pointsDelta: 2, earnedTotal: 9 };
+    await act(async () => { (options.onAward as (value: typeof event) => void)(event); });
+    const feedback = renderer.root.findAll((node: Node) => String(node.type) === 'CompletionAwardPreview')[0];
+    expect(feedback).toBeDefined();
+    expect(feedback.props.event).toEqual(event);
+    expect(recorded.completionWrites).toBe(0);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('uses the shared controller undo action for an already completed Reader date', async () => {
+    const { taipeiDate } = await import('../../src/domain/gamificationV1');
+    const today = taipeiDate();
+    (await import('../../src/ui/readingSession')).setSelectedReadingDate(today);
+    completionController.record = { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: today, status: 'COMPLETED', revision: 1, syncStatus: 'CONFIRMED' };
+    const renderer = await mount();
+    const complete = renderer.root.findAll((node: Node) => node.props?.accessibilityRole === 'button'
+      && node.props.accessibilityState?.checked === true)[0];
+    expect(complete).toBeDefined();
+    expect(complete.props.accessibilityLabel).toBe('已完成，可撤銷完成確認');
+    expect(complete.props.accessibilityState.disabled).toBe(false);
+    await act(async () => { complete.props.onPress(); });
+    expect(completionController.requestUndo).toHaveBeenCalledOnce();
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('offers a Reader-copied verse in Diary and inserts it only after an explicit tap', async () => {
+    readerAuth.memberId = 'fixture:self';
+    readerAuth.status = 'signed-in';
+    const session = await import('../../src/ui/readingSession');
+    session.setJournalEntryDate(BASE_DATE);
+    session.setPendingJournalQuote('「主所賜的不是膽怯的心」提後 1:7');
+    navigationState.pathname = '/journal';
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(JournalScreen)); });
+    const input = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '靈修日記')[0];
+    expect(input.props.value).toBe('');
+    const offer = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '插入剛複製的經文')[0];
+    expect(offer).toBeDefined();
+    await act(async () => { offer.props.onPress(); });
+    expect(input.props.value).toContain('「主所賜的不是膽怯的心」提後 1:7');
+    expect(session.getReadingSessionSnapshot().pendingJournalQuote).toBeNull();
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('returns same-day FREE_BROWSE GEN.1 to today TIT.1 only on an explicit tabPress', async () => {
+    const calendar = await import('../../src/domain/calendar');
+    const session = await import('../../src/ui/readingSession');
+    const { taipeiDate } = await import('../../src/domain/gamificationV1');
+    const today = taipeiDate();
+    const days = [...calendar.canonicalSeptemberPlan.days.filter(day => day.date !== today), { date: today, sourceRows: [], references: ['TIT.1'] }].sort((a, b) => a.date.localeCompare(b.date));
+    session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, dates: days.map(day => day.date), uniqueReferences: [...new Set(days.flatMap(day => day.references))] });
+    session.setSelectedReadingDate(today);
+
+    const renderer = await mount();
+    expect(lastRequest()?.usfm).toBe('TIT.1');
+    const reader = bibleReader(renderer);
+    await act(async () => { await reader.props.onBookChange('GEN'); });
+    await act(async () => { await reader.props.onChapterChange('1'); });
+    await act(async () => { await Promise.resolve(); });
+    expect(lastRequest()?.usfm).toBe('GEN.1');
+    expect(await savedRow()).toMatchObject({ mode: 'FREE_BROWSE', taskDate: today, reference: 'GEN.1' });
+
+    await pressTodayTabFromPoints();
+    await act(async () => { await Promise.resolve(); });
+
+    expect(session.getReadingSessionSnapshot()).toMatchObject({ selectedDate: today });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('TIT.1');
+    expect(lastRequest()?.usfm).toBe('TIT.1');
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'TIT.1' });
+    expect(recorded.audioPlayCalls).toBe(0);
+    expect(recorded.completionWrites).toBe(0);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it.each(['/progress', '/announcements'])('resets a manually selected same-day PSA.100 to TIT.1 on explicit Today entry from %s', async sourcePath => {
+    const { today } = await configureTodayReferences(['TIT.1', 'PSA.99', 'PSA.100']);
+    const renderer = await mount();
+    selectAssigned(renderer, '詩100');
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('PSA.100');
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'PSA.100' });
+
+    await pressTodayTabFrom(sourcePath);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('TIT.1');
+    expect(lastRequest()?.usfm).toBe('TIT.1');
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'TIT.1' });
+    expect(recorded.audioPlayCalls).toBe(0);
+    expect(recorded.completionWrites).toBe(0);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('preserves EOF-advanced PSA.100 and its shared audio binding on Diary return, then resets on Points→Today', async () => {
+    readerAuth.memberId = 'fixture:self';
+    readerAuth.status = 'signed-in';
+    const { today } = await configureTodayReferences(['TIT.1', 'PSA.99', 'PSA.100']);
+    await act(async () => { for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+    const readerAndDiary = (showDiary: boolean) => React.createElement(React.Fragment, null,
+      React.createElement(ReaderScreen),
+      showDiary ? React.createElement(JournalScreen) : null,
+    );
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(readerAndDiary(false)); await Promise.resolve(); });
+    selectAssigned(renderer, '詩99');
+    const audioOwnerMountsBeforeDiary = recorded.audioOwnerMounts;
+
+    navigationState.pathname = '/journal';
+    await act(async () => { renderer.update(readerAndDiary(true)); await Promise.resolve(); });
+    const reader = renderer.root.findByType(YouVersionReader);
+    expect(reader.props.activeReferenceIndex).toBe(1);
+    // handlePlaybackEnded's real EOF branch emits this controlled-selection callback; its
+    // end-to-end emission is covered by readerAutoplayNativeFlow.test.ts.
+    await act(async () => {
+      reader.props.onActiveReferenceChange(2);
+    });
+    await act(async () => { await Promise.resolve(); });
+    const playsBeforeDiaryReturn = recorded.audioPlayCalls;
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('PSA.100');
+    expect(readerLayout(renderer).props.chapterUsfm).toBe('PSA.100');
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'PSA.100' });
+    expect(recorded.audioPlayCalls).toBe(0);
+
+    const session = await import('../../src/ui/readingSession');
+    const beforeDiaryReturnRevision = session.getReadingSessionSnapshot().todayReaderTabPressRevision;
+    let tabsRenderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { tabsRenderer = TestRenderer.create(React.createElement(TabsLayout)); });
+    const tabs = tabsRenderer.root.findAll((node: Node) => String(node.type) === 'Tabs')[0];
+    const listeners = tabs.props.screenListeners as (input: { route: { name: string } }) => { tabPress?: (event: { defaultPrevented: boolean; preventDefault?: () => void }) => void };
+    const diaryReturn = { defaultPrevented: false, preventDefault: vi.fn() };
+    act(() => { listeners({ route: { name: 'today' } }).tabPress!(diaryReturn); });
+    expect(diaryReturn.preventDefault).toHaveBeenCalledOnce();
+    await act(async () => { tabsRenderer.unmount(); });
+    navigationState.pathname = '/reader';
+    await act(async () => { renderer.update(readerAndDiary(false)); await Promise.resolve(); });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('PSA.100');
+    expect(readerLayout(renderer).props.chapterUsfm).toBe('PSA.100');
+    expect(session.getReadingSessionSnapshot().todayReaderTabPressRevision).toBe(beforeDiaryReturnRevision);
+    expect(recorded.audioPlayCalls).toBe(playsBeforeDiaryReturn);
+    expect(recorded.audioOwnerMounts).toBe(audioOwnerMountsBeforeDiary);
+
+    await pressTodayTabFrom('/progress');
+    await act(async () => { await Promise.resolve(); });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('TIT.1');
+    expect(readerLayout(renderer).props.chapterUsfm).toBe('TIT.1');
+    expect(lastRequest()?.usfm).toBe('TIT.1');
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'TIT.1' });
+    expect(recorded.audioPlayCalls).toBe(playsBeforeDiaryReturn);
+    expect(recorded.completionWrites).toBe(0);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('keeps a tabPress pending until today references hydrate', async () => {
+    const calendar = await import('../../src/domain/calendar');
+    const session = await import('../../src/ui/readingSession');
+    const { taipeiDate } = await import('../../src/domain/gamificationV1');
+    const today = taipeiDate();
+    const daysWithoutToday = calendar.canonicalSeptemberPlan.days.filter(day => day.date !== today);
+    session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days: daysWithoutToday, dates: daysWithoutToday.map(day => day.date), uniqueReferences: [...new Set(daysWithoutToday.flatMap(day => day.references))] });
+    session.setSelectedReadingDate(today);
+
+    const renderer = await mount();
+    const reader = bibleReader(renderer);
+    await act(async () => { await reader.props.onBookChange('GEN'); });
+    await act(async () => { await reader.props.onChapterChange('1'); });
+    await pressTodayTabFromPoints();
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('GEN.1');
+    expect(await savedRow()).toMatchObject({ mode: 'FREE_BROWSE', reference: 'GEN.1' });
+
+    const hydratedDays = [...daysWithoutToday, { date: today, sourceRows: [], references: ['TIT.1'] }].sort((left, right) => left.date.localeCompare(right.date));
+    await act(async () => {
+      session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days: hydratedDays, dates: hydratedDays.map(day => day.date), uniqueReferences: [...new Set(hydratedDays.flatMap(day => day.references))] });
+      await Promise.resolve();
+    });
+
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('TIT.1');
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'TIT.1' });
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('drops a no-plan Today tab intent when a date arrow moves to another scheduled day', async () => {
+    const calendar = await import('../../src/domain/calendar');
+    const session = await import('../../src/ui/readingSession');
+    const { taipeiDate } = await import('../../src/domain/gamificationV1');
+    const today = taipeiDate();
+    const days = calendar.canonicalSeptemberPlan.days.filter(day => day.date !== today);
+    session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, dates: days.map(day => day.date), uniqueReferences: [...new Set(days.flatMap(day => day.references))] });
+    session.setSelectedReadingDate(today);
+
+    const renderer = await mount();
+    expect(readerLayout(renderer).props.noPlanMessage).toBeTruthy();
+    const targetDate = (readerLayout(renderer).props.nextDate ?? readerLayout(renderer).props.previousDate) as string;
+    expect(targetDate).toBeTruthy();
+    const targetPlanId = session.getReadingPlanId(targetDate) ?? calendar.canonicalSeptemberPlan.planId;
+    const db = await import('../../src/storage/mobileDatabase');
+    (db.openQingmuReaderPositionStore() as unknown as { save: (row: Record<string, unknown>) => void }).save({
+      memberId: 'fixture:self', planId: targetPlanId, taskDate: targetDate, versionId: 46,
+      book: 'GEN', chapter: '2', reference: 'GEN.2', mode: 'FREE_BROWSE', updatedAt: 'test',
+    });
+
+    await pressTodayTabFromPoints();
+    expect(session.getReadingSessionSnapshot()).toMatchObject({ selectedDate: today });
+    const arrowLabel = readerLayout(renderer).props.nextDate ? '下一個排定讀經日' : '上一個排定讀經日';
+    pressByLabel(renderer, arrowLabel);
+    await act(async () => { await Promise.resolve(); });
+
+    expect(session.getReadingSessionSnapshot()).toMatchObject({ selectedDate: targetDate, todayReaderTabPressTargetDate: null });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('GEN.2');
+    expect(lastRequest()?.usfm).toBe('GEN.2');
+    expect(await savedRow()).toMatchObject({ taskDate: targetDate, mode: 'FREE_BROWSE', reference: 'GEN.2' });
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('waits for Reader owner readiness and drops a tabPress owned by another account', async () => {
+    const session = await import('../../src/ui/readingSession');
+    const { taipeiDate } = await import('../../src/domain/gamificationV1');
+    const calendar = await import('../../src/domain/calendar');
+    const today = taipeiDate();
+    const days = [...calendar.canonicalSeptemberPlan.days.filter(day => day.date !== today), { date: today, sourceRows: [], references: ['TIT.1'] }].sort((a, b) => a.date.localeCompare(b.date));
+    session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, dates: days.map(day => day.date), uniqueReferences: [...new Set(days.flatMap(day => day.references))] });
+    session.setSelectedReadingDate(today);
+    readerAuth.status = 'hydrating';
+    const renderer = await mount();
+    const reader = bibleReader(renderer);
+    await act(async () => { await reader.props.onBookChange('GEN'); });
+    await act(async () => { await reader.props.onChapterChange('1'); });
+    await pressTodayTabFromPoints();
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('GEN.1');
+
+    readerAuth.status = 'signed-out';
+    await act(async () => { renderer.update(React.createElement(ReaderScreen)); await Promise.resolve(); });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('TIT.1');
+    await act(async () => { renderer.unmount(); });
+
+    readerAuth.memberId = 'account-b';
+    readerAuth.epoch = 2;
+    readerAuth.status = 'signed-in';
+    const db = await import('../../src/storage/mobileDatabase');
+    (db.openQingmuReaderPositionStore() as unknown as { save: (row: Record<string, unknown>) => void }).save({
+      memberId: 'account-b', planId: calendar.canonicalSeptemberPlan.planId, taskDate: today, versionId: 46,
+      book: 'GEN', chapter: '1', reference: 'GEN.1', mode: 'FREE_BROWSE', updatedAt: 'test',
+    });
+    session.requestTodayReaderTabPress(today, 'account-a', 1);
+    const accountBRenderer = await mount();
+    expect(`${bibleReader(accountBRenderer).props.book}.${bibleReader(accountBRenderer).props.chapter}`).toBe('GEN.1');
+    expect(await savedRow()).toMatchObject({ memberId: 'account-b', mode: 'FREE_BROWSE', reference: 'GEN.1' });
+    await act(async () => { accountBRenderer.unmount(); });
+  });
+
+  it('leaves free browse alone on a scheduled rest day without replaying the pending event', async () => {
+    const calendar = await import('../../src/domain/calendar');
+    const session = await import('../../src/ui/readingSession');
+    const { taipeiDate } = await import('../../src/domain/gamificationV1');
+    const today = taipeiDate();
+    const days = [...calendar.canonicalSeptemberPlan.days.filter(day => day.date !== today), { date: today, sourceRows: [], references: [] }].sort((a, b) => a.date.localeCompare(b.date));
+    session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, dates: days.map(day => day.date), uniqueReferences: [...new Set(days.flatMap(day => day.references))] });
+    session.setSelectedReadingDate(today);
+
+    const renderer = await mount();
+    const reader = bibleReader(renderer);
+    await act(async () => { await reader.props.onBookChange('GEN'); });
+    await act(async () => { await reader.props.onChapterChange('1'); });
+    await pressTodayTabFromPoints();
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('GEN.1');
+    const tabPressRevision = session.getReadingSessionSnapshot().todayReaderTabPressRevision;
+
+    await act(async () => { session.setReadingPlan({ ...calendar.canonicalSeptemberPlan, days, dates: days.map(day => day.date), uniqueReferences: [] }); await Promise.resolve(); });
+    expect(session.getReadingSessionSnapshot().todayReaderTabPressRevision).toBe(tabPressRevision);
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('GEN.1');
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('keeps FREE_BROWSE GEN.1 after YouVersion and Diary return without a Today-entry reset', async () => {
+    const renderer = await mount();
+    const session = await import('../../src/ui/readingSession');
+    const reader = bibleReader(renderer);
+    await act(async () => { await reader.props.onBookChange('GEN'); });
+    await act(async () => { await reader.props.onChapterChange('1'); });
+    await act(async () => { await Promise.resolve(); });
+    expect(lastRequest()?.usfm).toBe('GEN.1');
+
+    await act(async () => {
+      (readerLayout(renderer).props.onOpenYouVersion as (() => void) | undefined)?.();
+      await Promise.resolve();
+    });
+    await act(async () => { renderer.update(React.createElement(ReaderScreen)); await Promise.resolve(); });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('GEN.1');
+    expect(await savedRow()).toMatchObject({ mode: 'FREE_BROWSE', reference: 'GEN.1' });
+
+    const beforeDiaryReturn = session.getReadingSessionSnapshot().todayReaderTabPressRevision;
+    navigationState.pathname = '/journal';
+    await act(async () => { renderer.update(React.createElement(ReaderScreen)); await Promise.resolve(); });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('GEN.1');
+
+    let tabsRenderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { tabsRenderer = TestRenderer.create(React.createElement(TabsLayout)); });
+    const tabs = tabsRenderer.root.findAll((node: Node) => String(node.type) === 'Tabs')[0];
+    const listeners = tabs.props.screenListeners as (input: { route: { name: string } }) => { tabPress?: (event: { defaultPrevented: boolean; preventDefault?: () => void }) => void };
+    const returnToReader = { defaultPrevented: false, preventDefault: vi.fn() };
+    act(() => listeners({ route: { name: 'today' } }).tabPress!(returnToReader));
+    expect(returnToReader.preventDefault).toHaveBeenCalledOnce();
+    await act(async () => { tabsRenderer.unmount(); });
+    navigationState.pathname = '/reader';
+    await act(async () => { renderer.update(React.createElement(ReaderScreen)); await Promise.resolve(); });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('GEN.1');
+    expect(await savedRow()).toMatchObject({ mode: 'FREE_BROWSE', reference: 'GEN.1' });
+    expect(session.getReadingSessionSnapshot().todayReaderTabPressRevision).toBe(beforeDiaryReturn);
+    expect(recorded.audioPlayCalls).toBe(0);
+    expect(recorded.completionWrites).toBe(0);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  it('does not turn a date arrow into a Reader tab reset, autoplay or completion', async () => {
+    const session = await import('../../src/ui/readingSession');
+    const renderer = await mount();
+    const tabPressRevision = session.getReadingSessionSnapshot().todayReaderTabPressRevision;
+    const nextDate = readerLayout(renderer).props.nextDate as string;
+    expect(nextDate).toBeTruthy();
+
+    pressByLabel(renderer, '下一個排定讀經日');
+    await act(async () => { await Promise.resolve(); });
+
+    expect(session.getReadingSessionSnapshot()).toMatchObject({ selectedDate: nextDate, todayReaderTabPressRevision: tabPressRevision });
+    expect(recorded.audioPlayCalls).toBe(0);
+    expect(recorded.completionWrites).toBe(0);
+    await act(async () => { renderer.unmount(); });
+  });
 
   it('starts on the FIRST assigned passage', async () => {
     const renderer = await mount();
@@ -301,6 +851,7 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
 
   it('advances to the NEXT assigned passage through persistent daily buttons', async () => {
     const renderer = await mount();
+    pressByLabel(renderer, '選擇今日章節清單');
     const entries = renderer.root.findAll((n: Node) => String(n.type) === 'Pressable'
       && String(n.props.accessibilityLabel).startsWith('前往') && isReachable(renderer, n));
     expect(entries.map((n: Node) => n.props.accessibilityLabel)).toEqual(['前往約19', '前往約20']);
@@ -320,6 +871,9 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     expect(renderer.root.findAll((n: Node) => String(n.type) === 'OfficialChapterPicker')[0].props.isOpen).toBe(false);
     await act(async () => { await Promise.resolve(); });
     expect(lastRequest()).toEqual({ versionId: 46, usfm: 'GEN.1' });
+    expect(readerLayout(renderer).props.selectionSource).toBe('FREE');
+    const controlRow = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '讀經控制列')[0];
+    expect(controlRow.findAll((node: Node) => String(node.type) === 'Text').map((node: Node) => String(node.props.children)).join(' ')).toContain('自由閱讀');
     await act(async () => { renderer.unmount(); });
   });
 
@@ -511,7 +1065,7 @@ describe('C5 — changing the reading date moves reader AND audio to that day\'s
 
   it('follows the Home date store to a day with DIFFERENT assigned passages', async () => {
     const renderer = await mount();
-    await selectDateFromHome('2026-09-03');
+    await selectDateInReader(renderer, '2026-09-03');
     await act(async () => { await Promise.resolve(); });
 
     expect(lastRequest()?.usfm).toBe('PSA.88');
@@ -522,7 +1076,7 @@ describe('C5 — changing the reading date moves reader AND audio to that day\'s
 
   it('still follows the second passage of the NEW date', async () => {
     const renderer = await mount();
-    await selectDateFromHome('2026-09-03');
+    await selectDateInReader(renderer, '2026-09-03');
     await act(async () => { await Promise.resolve(); });
     selectAssigned(renderer, '詩89');
     await act(async () => { await Promise.resolve(); });
@@ -537,7 +1091,7 @@ describe('C5 — changing the reading date moves reader AND audio to that day\'s
     await act(async () => { await Promise.resolve(); });
     expect(lastRequest()?.usfm).toBe('GEN.1');
 
-    await selectDateFromHome('2026-09-03');
+    await selectDateInReader(renderer, '2026-09-03');
     await act(async () => { await Promise.resolve(); });
     expect(lastRequest()?.usfm).toBe('PSA.88');
     await act(async () => { renderer.unmount(); });
@@ -573,7 +1127,7 @@ describe('account preference integration at the REAL Reader caller', () => {
     await act(async () => { await bibleReader(renderer).props.onVersionChange(40); });
     const db = await import('../../src/storage/mobileDatabase');
     db.openQingmuReaderPositionStore().save({ memberId: 'A', planId: 'church-2026-09', taskDate: '2026-09-03', versionId: 46, book: 'PSA', chapter: '88', reference: 'PSA.88', mode: 'FREE_BROWSE', updatedAt: 'test' });
-    await selectDateFromHome('2026-09-03');
+    await selectDateInReader(renderer, '2026-09-03');
     expect(bibleReader(renderer).props.versionId).toBe(40);
     expect(lastRequest()).toEqual({ versionId: 40, usfm: 'PSA.88' });
     selectAssigned(renderer, '詩89');
@@ -581,14 +1135,14 @@ describe('account preference integration at the REAL Reader caller', () => {
     await act(async () => { renderer.unmount(); });
   });
 
-  it('does not preload scripture/audio before a delayed preference read and still provides Back', async () => {
+  it('does not preload scripture/audio before a delayed preference read and still provides account access', async () => {
     readerAuth.memberId = 'A';
     let release!: (value: string | null) => void;
     preferenceIO.get.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     const renderer = await mount();
     expect(renderer.root.findAll(n => String(n.type) === 'BibleReader')).toHaveLength(0);
     expect(recorded.requests).toHaveLength(0);
-    expect(renderer.root.findAll(n => n.props.accessibilityLabel === '返回今日' && typeof n.props.onPress === 'function').length).toBeGreaterThan(0);
+    expect(renderer.root.findAll(n => n.props.accessibilityLabel === '開啟帳戶' && typeof n.props.onPress === 'function').length).toBeGreaterThan(0);
     await act(async () => { release(JSON.stringify({ schemaVersion: 1, owner: 'A', preferences: { versionId: 40, settings: null } })); });
     expect(bibleReader(renderer).props.versionId).toBe(40);
     expect(recorded.requests.every(request => request.versionId === 40)).toBe(true);

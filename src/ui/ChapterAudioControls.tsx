@@ -19,8 +19,9 @@
 //   R5  the surface shows chapter, publisher and edition. No internal approval terminology, and no raw
 //       HTTP status or exception text.
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, forwardRef, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAudioPlayer, type AudioStatus } from 'expo-audio';
 import { theme } from './Theme';
 import { isAuthorizedAudioEnabled, isQaTestAudioEnabled, resolveChapterAudioSession, verseAtPosition } from '../services/audioChapterResolver';
@@ -29,6 +30,7 @@ import { getAuthSnapshot, useAuthSnapshot, type AuthSession } from '../services/
 import { validateCapability } from '../domain/chapterAudioContract';
 import { createChapterBoundPlayback, type ChapterBoundPlayback } from '../services/expoAudioPlayback';
 import { createAudioSession } from '../services/audioSession';
+import { clearReaderAudioOwner, updateReaderAudioOwner, type ReaderAudioState } from '../services/readerAudioBridge';
 import { formatReferenceZhTw } from '../domain/scriptureReference';
 import type { AutoplayIntent } from '../services/readerAutoplayController';
 import type { ResolutionStatus } from '../domain/chapterAudioContract';
@@ -136,7 +138,36 @@ export function selectionKey(versionId: number | null, chapterUsfm: string): str
   return `${versionId ?? 'none'}::${chapterUsfm.trim().toUpperCase()}`;
 }
 
-export function ChapterAudioControls({
+export interface ChapterAudioControlsHandle {
+  /** Pause the currently bound source before yielding audio focus to an external reader. */
+  pause(): Promise<void>;
+}
+
+export interface ChapterAudioControlsProps {
+  chapterUsfm: string;
+  versionId: number | null;
+  /** @deprecated Attribution belongs to the Reader's More/version information. */
+  translationName?: string;
+  env?: Record<string, string | undefined>;
+  baseUrl?: string;
+  coordinator?: CapabilityCoordinator;
+  fetchImpl?: typeof fetch;
+  compact?: boolean;
+  active?: boolean;
+  bottomCell?: boolean;
+  /** Filled icon-only action used by the Reader and the Diary shared-player surface. */
+  readerAction?: boolean;
+  /** Publish this instance as the one shared Reader/Diary audio owner. */
+  sharedOwner?: boolean;
+  detailsVisible?: boolean;
+  onDetailsClose?: () => void;
+  onPlaybackStarted?: (chapterUsfm: string) => void;
+  onPlaybackPaused?: (chapterUsfm: string) => void;
+  onPlaybackEnded?: (chapterUsfm: string) => void;
+  onPlaybackError?: (chapterUsfm: string) => void;
+}
+
+export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, ChapterAudioControlsProps>(function ChapterAudioControls({
   chapterUsfm,
   versionId,
   env = BUILD_TIME_ENV,
@@ -144,42 +175,21 @@ export function ChapterAudioControls({
   coordinator,
   fetchImpl,
   active = true,
+  bottomCell = false,
+  readerAction = false,
+  sharedOwner = false,
   onPlaybackStarted,
   onPlaybackPaused,
   onPlaybackEnded,
   onPlaybackError,
-}: {
-  chapterUsfm: string;
-  versionId: number | null;
-  /** @deprecated Attribution belongs to the Reader's More/version information. */
-  translationName?: string;
-  env?: Record<string, string | undefined>;
-  baseUrl?: string;
-  /** injectable so the wiring can be proven without a network */
-  coordinator?: CapabilityCoordinator;
-  /**
-   * Transport-only seam. Injecting the FETCH keeps the real coordinator and the real client in the
-   * path, which is what makes the identity wiring falsifiable; injecting a whole coordinator does not.
-   */
-  fetchImpl?: typeof fetch;
-  /** @deprecated Both call shapes now render the same minimal control. */
-  compact?: boolean;
-  active?: boolean;
-  /** @deprecated Retained for callers only; no playback panel is rendered. */
-  detailsVisible?: boolean;
-  /** @deprecated No playback panel is rendered. */
-  onDetailsClose?: () => void;
-  /** Optional direct callbacks for isolated chapter-control hosts; the Reader uses the context below. */
-  onPlaybackStarted?: (chapterUsfm: string) => void;
-  onPlaybackPaused?: (chapterUsfm: string) => void;
-  onPlaybackEnded?: (chapterUsfm: string) => void;
-  onPlaybackError?: (chapterUsfm: string) => void;
-}) {
+}, ref) {
   const autoplay = useChapterAudioAutoplay();
   const autoplayRef = useRef(autoplay);
   autoplayRef.current = autoplay;
   const callbacksRef = useRef({ onPlaybackStarted, onPlaybackPaused, onPlaybackEnded, onPlaybackError });
   callbacksRef.current = { onPlaybackStarted, onPlaybackPaused, onPlaybackEnded, onPlaybackError };
+  const bridgeOwnerId = useRef<object>({});
+  const bridgeToggleRef = useRef<() => void>(() => {});
   const qaEnabled = isQaTestAudioEnabled(env);
   const audioAuthorized = isAuthorizedAudioEnabled(env);
   const key = selectionKey(versionId, chapterUsfm);
@@ -483,6 +493,7 @@ export function ChapterAudioControls({
     await bound.pause();
     notifyPlaybackPaused(chapterUsfm);
   };
+  useImperativeHandle(ref, () => ({ pause: pauseCurrentPlayback }));
 
   const playCurrentPlayback = async () => {
     if (!scopeIsCurrent() || !authIsCurrent() || playRequest.current) return;
@@ -555,6 +566,24 @@ export function ChapterAudioControls({
   const slotLabel = loading
     ? (!authValid ? '登入後即可使用朗讀' : '正在載入朗讀來源')
     : noAudio ? '本章沒有朗讀' : canRetry ? `重試${label}語音` : progress.playing ? `暫停${label}語音` : `播放${label}語音`;
+  bridgeToggleRef.current = () => {
+    if (!sharedOwner || !active || !scopeIsCurrent() || !authIsCurrent()) return;
+    if (canRetry) { retryPlayback(); return; }
+    if (!hasSource) return;
+    run(progress.playing ? '暫停' : '播放', () => progress.playing ? pauseCurrentPlayback() : playCurrentPlayback())();
+  };
+  useEffect(() => {
+    if (!sharedOwner) return;
+    const state: ReaderAudioState = !active ? 'inactive'
+      : loading ? 'loading'
+        : canRetry ? 'retry'
+          : noAudio ? 'unavailable'
+            : progress.playing ? 'playing' : 'paused';
+    updateReaderAudioOwner(bridgeOwnerId.current, { chapterUsfm, state }, () => bridgeToggleRef.current());
+  }, [sharedOwner, active, chapterUsfm, loading, canRetry, noAudio, progress.playing]);
+  useEffect(() => () => {
+    if (sharedOwner) clearReaderAudioOwner(bridgeOwnerId.current);
+  }, [sharedOwner]);
 
   const reportedAutoUnavailable = useRef<number | null>(null);
   const currentUnavailableStatus = current?.kind === 'unavailable' ? current.status : undefined;
@@ -574,29 +603,36 @@ export function ChapterAudioControls({
   // Expired metadata is reconfirmed in place; native errors explicitly reprepare.
   return (
     <View
-      style={styles.host}
+      style={[styles.host, bottomCell && styles.bottomHost, readerAction && styles.readerActionHost]}
       accessibilityLabel={`章節語音：${label}`}
       {...(!active ? { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const } : {})}
     >
       <View
-        style={styles.slot}
+        style={[styles.slot, bottomCell && styles.bottomSlot, readerAction && styles.readerActionSlot]}
         accessible={false}
         accessibilityLabel={slotLabel}
         accessibilityState={{ busy: loading }}
         {...(!active ? { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const } : {})}
       >
-      {active && loading ? <ActivityIndicator accessibilityLabel={slotLabel} color={theme.colors.primary} /> : null}
-      {active && noAudio ? <Text accessible accessibilityLabel={slotLabel} style={styles.icon}>⊘</Text> : null}
+      {active && loading ? <ActivityIndicator accessibilityLabel={slotLabel} color={readerAction ? theme.colors.white : theme.colors.primary} /> : null}
+      {active && noAudio ? <>
+        <MaterialCommunityIcons accessible accessibilityLabel={slotLabel} name="volume-off" size={21} color={readerAction ? theme.colors.white : theme.colors.muted} />
+        {bottomCell ? <Text style={styles.bottomLabel}>無朗讀</Text> : null}
+      </> : null}
       {active && (hasSource || canRetry) ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={canRetry ? `重試${label}語音` : progress.playing ? `暫停${label}語音` : `播放${label}語音`}
+          accessibilityLabel={bottomCell ? (canRetry ? '重試' : progress.playing ? '暫停' : '播放') : canRetry ? `重試${label}語音` : progress.playing ? `暫停${label}語音` : `播放${label}語音`}
+          accessibilityHint={bottomCell ? `${canRetry ? '重試' : progress.playing ? '暫停' : '播放'}${label}語音` : undefined}
           onPress={canRetry ? retryPlayback : run(progress.playing ? '暫停' : '播放', () => progress.playing ? pauseCurrentPlayback() : playCurrentPlayback())}
-          style={styles.button}
+          android_ripple={{ color: theme.colors.primarySoft }}
+          style={[styles.button, bottomCell && styles.bottomButton, readerAction && styles.readerActionButton]}
         >
-          <Text style={styles.icon}>{canRetry ? '↻' : progress.playing ? 'Ⅱ' : '▶'}</Text>
+          <MaterialCommunityIcons name={canRetry ? 'replay' : progress.playing ? 'pause' : 'play'} size={22} color={readerAction ? theme.colors.white : theme.colors.primary} />
+          {bottomCell ? <Text style={styles.bottomLabel}>{canRetry ? '重試' : progress.playing ? '暫停' : '播放'}</Text> : null}
         </Pressable>
       ) : null}
+      {active && loading && bottomCell ? <Text style={styles.bottomLabel}>載入</Text> : null}
       </View>
       {active && failure ? (
         <Text
@@ -610,14 +646,20 @@ export function ChapterAudioControls({
       ) : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   host: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  readerActionHost: { width: 56, height: 56 },
+  bottomHost: { width: '100%', height: theme.control.tap, flex: 1 },
   slot: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
-  // Play/pause/retry sits in a round outline so it reads as a button like its neighbours.
+  readerActionSlot: { width: 56, height: 56 },
+  bottomSlot: { width: '100%', height: theme.control.tap, flex: 1, flexDirection: 'row', gap: theme.spacing.xxs },
+  // The collapsed overlay keeps a circular boundary; the bottom action row overrides it with borderless chrome.
   button: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.pill, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, backgroundColor: theme.colors.surface },
-  icon: { color: theme.colors.primary, fontSize: 24, fontWeight: '700' },
+  bottomButton: { width: '100%', height: theme.control.tap, minHeight: theme.control.tap, flexDirection: 'row', gap: theme.spacing.xxs, borderWidth: 0, borderColor: 'transparent', borderRadius: 0, backgroundColor: 'transparent' },
+  readerActionButton: { width: 56, height: 56, minHeight: 56, flexDirection: 'row', borderRadius: 28, borderWidth: 0, borderColor: 'transparent', backgroundColor: theme.colors.primary },
+  bottomLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
   autoplayToggle: { minWidth: theme.control.tapCompact, minHeight: theme.control.tapCompact, flexShrink: 0, alignItems: 'center', justifyContent: 'center', gap: 3 },
   autoplayTrack: { width: 34, height: 18, borderRadius: 9, justifyContent: 'center' },
   autoplayTrackOn: { backgroundColor: theme.colors.primary },

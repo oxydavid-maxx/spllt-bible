@@ -236,7 +236,8 @@ describe('durable mobile completion repository', () => {
     const results = await repository.flush(async () => ({ ok: false as const, error: 'OUTSIDE_COMPLETION_WINDOW' }));
     expect(results).toMatchObject([{ ok: false, error: 'OUTSIDE_COMPLETION_WINDOW' }]);
     expect(repository.pendingCount()).toBe(0);
-    expect(repository.get(command)).toMatchObject({ status: 'COMPLETED', syncStatus: 'SAVE_FAILED' });
+    expect(repository.get(command)).toMatchObject({ status: 'COMPLETED', syncStatus: 'SAVE_FAILED', pendingStatus: 'COMPLETED', lastOperationId: command.operationId });
+    expect(repository.hasPendingCompletion(command)).toBe(false);
     node.close();
   });
 });

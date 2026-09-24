@@ -7,7 +7,7 @@ import { theme } from './Theme';
 import { formatReferenceListZhTw, formatReferenceZhTw } from '../domain/scriptureReference';
 import { buildYouVersionReaderConfig, resolveReaderContentApiHost } from './youVersionReaderConfig';
 import { getYouVersionContentMetadata } from '../config/youVersionContent';
-import { buildReaderDomBridge, readReaderUiMessage, READER_SETTINGS_MESSAGE, READER_CANVAS_TAP_MESSAGE, READER_CANVAS_SCROLL_MESSAGE } from './readerSettingsBridge';
+import { buildReaderDomBridge, readReaderUiMessage, readReaderCanvasScrollEvent, READER_SETTINGS_MESSAGE, READER_CANVAS_TAP_MESSAGE, READER_CANVAS_SCROLL_MESSAGE } from './readerSettingsBridge';
 import { useReaderPreferencesBinding, type ReaderPreferencesBinding } from './useReaderPreferencesBinding';
 import { BibleContentPreloadHost } from './BibleContentPreloadHost';
 import { ChapterAudioAutoplayContext, type ChapterAudioAutoplayContextValue } from './ChapterAudioControls';
@@ -31,7 +31,7 @@ function chapterForReference(reference: string): string | null {
   return match ? `${match[1]}.${match[2]}` : null;
 }
 
-export function YouVersionReader({ date, references, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasTap, onCanvasScroll, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied, narrationSpeed = 1 }: { date: string; references: string[]; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasTap?: () => void; onCanvasScroll?: () => void; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void; narrationSpeed?: number }) {
+export function YouVersionReader({ date, references, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasTap, onCanvasScroll, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied, narrationSpeed = 1 }: { date: string; references: string[]; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasTap?: () => void; onCanvasScroll?: (event: { direction: 'up' | 'down'; deltaY: number }) => void; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void; narrationSpeed?: number }) {
   const [readerModule, setReaderModule] = useState<YouVersionReaderUiModule | null>(null);
   const preferencesBinding = useReaderPreferencesBinding(readerModule, readerPreferences);
   const [error, setError] = useState<string | null>(null);
@@ -104,9 +104,14 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   const currentAssignedChapter = useCallback((chapterUsfm: string): AutoplayChapter | null => {
     const reference = references[activeReferenceIndex];
     const expected = reference ? chapterForReference(reference) : null;
-    if (!reference || !expected || expected !== normalizeChapter(chapterUsfm)) return null;
+    // ReaderScreen controls book/chapter in both assigned and free-browse modes. A late
+    // callback from the old assigned binding must not re-arm daily playback after the
+    // visible Reader has moved elsewhere.
+    const visibleChapter = book?.trim() && chapter?.trim() ? normalizeChapter(`${book}.${chapter}`) : null;
+    if (!reference || !expected || expected !== normalizeChapter(chapterUsfm)
+      || (visibleChapter !== null && visibleChapter !== expected)) return null;
     return { index: activeReferenceIndex, reference, usfm: expected };
-  }, [activeReferenceIndex, references.join('|')]);
+  }, [activeReferenceIndex, book, chapter, references.join('|')]);
   const handlePlaybackStarted = useCallback((chapterUsfm: string): void => {
     const current = currentAssignedChapter(chapterUsfm);
     if (!current) {
@@ -240,7 +245,10 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
       const message = readReaderUiMessage(event.nativeEvent.data);
       if (message === READER_SETTINGS_MESSAGE) overlayControls.openSettings();
       else if (fullscreen && message === READER_CANVAS_TAP_MESSAGE) onCanvasTap?.();
-      else if (fullscreen && message === READER_CANVAS_SCROLL_MESSAGE) onCanvasScroll?.();
+      else if (fullscreen && message === READER_CANVAS_SCROLL_MESSAGE) {
+        const scroll = readReaderCanvasScrollEvent(event.nativeEvent.data);
+        if (scroll) onCanvasScroll?.(scroll);
+      }
     },
   }), [fullscreen, hasVersionMetadata, onCanvasTap, onCanvasScroll, overlayControls]);
   useEffect(() => {

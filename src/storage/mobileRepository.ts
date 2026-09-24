@@ -86,6 +86,22 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
     );
   }
 
+  function hasPendingCompletion(identity: Pick<CompletionRecord, 'memberId' | 'planId' | 'taskDate'>): boolean {
+    const record = get(identity);
+    if (!record?.lastOperationId) return false;
+    const queued = database.getFirstSync<StoredOutbox>(
+      'SELECT operation_id, command_json FROM qingmu_outbox WHERE operation_id = ?',
+      record.lastOperationId,
+    );
+    if (!queued) return false;
+    try {
+      const command = JSON.parse(queued.command_json) as MobileQueuedCommand;
+      return command.memberId === identity.memberId && command.planId === identity.planId && command.taskDate === identity.taskDate;
+    } catch {
+      return false;
+    }
+  }
+
   function saveCompletion(command: MobileQueuedCommand): CompletionRecord {
     const current = get(command) ?? {
       memberId: command.memberId,
@@ -162,7 +178,7 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
         if (result.conflict && result.error === 'REVISION_CONFLICT') {
           if (result.status === command.desiredStatus) {
             confirmAuthoritative(command, result.revision, result.status);
-            results[results.length - 1] = { ok: true, revision: result.revision, status: result.status, reconciledConflict: true };
+            results[results.length - 1] = { ok: true, operationId: command.operationId, revision: result.revision, status: result.status, reconciledConflict: true };
             commandSettled = true;
             break;
           }
@@ -248,6 +264,7 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
     get,
     saveCompletion,
     flush,
+    hasPendingCompletion,
     pendingCount: () => database.getFirstSync<{ count: number }>('SELECT COUNT(*) AS count FROM qingmu_outbox')?.count ?? 0,
     key,
   };

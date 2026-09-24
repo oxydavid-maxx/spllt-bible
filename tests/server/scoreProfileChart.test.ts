@@ -38,15 +38,15 @@ describe('score profile chart aggregation', () => {
 
     expect(response.status).toBe(200);
     const weekChart = (response.body as any).chart;
-    expect(weekChart).toMatchObject({ range: 'week', anchor: '2025-12-29', periodStart: '2025-12-29', periodEnd: '2026-01-04', earnedPoints: 15, previousAnchor: '2025-12-22', nextAnchor: null });
+    expect(weekChart).toMatchObject({ range: 'week', anchor: '2025-12-29', periodStart: '2025-12-29', periodEnd: '2026-01-04', earnedPoints: 15, openingEarnedPoints: 0, previousAnchor: '2025-12-22', nextAnchor: null });
     expect(weekChart.buckets).toEqual([
-      { key: '2025-12-29', startDate: '2025-12-29', endDate: '2025-12-29', earnedPoints: 1 },
-      { key: '2025-12-30', startDate: '2025-12-30', endDate: '2025-12-30', earnedPoints: 0 },
-      { key: '2025-12-31', startDate: '2025-12-31', endDate: '2025-12-31', earnedPoints: 2 },
-      { key: '2026-01-01', startDate: '2026-01-01', endDate: '2026-01-01', earnedPoints: 3 },
-      { key: '2026-01-02', startDate: '2026-01-02', endDate: '2026-01-02', earnedPoints: 0 },
-      { key: '2026-01-03', startDate: '2026-01-03', endDate: '2026-01-03', earnedPoints: 9 },
-      { key: '2026-01-04', startDate: '2026-01-04', endDate: '2026-01-04', earnedPoints: 0 },
+      { key: '2025-12-29', startDate: '2025-12-29', endDate: '2025-12-29', earnedPoints: 1, cumulativeEarnedPoints: 1 },
+      { key: '2025-12-30', startDate: '2025-12-30', endDate: '2025-12-30', earnedPoints: 0, cumulativeEarnedPoints: 1 },
+      { key: '2025-12-31', startDate: '2025-12-31', endDate: '2025-12-31', earnedPoints: 2, cumulativeEarnedPoints: 3 },
+      { key: '2026-01-01', startDate: '2026-01-01', endDate: '2026-01-01', earnedPoints: 3, cumulativeEarnedPoints: 6 },
+      { key: '2026-01-02', startDate: '2026-01-02', endDate: '2026-01-02', earnedPoints: 0, cumulativeEarnedPoints: 6 },
+      { key: '2026-01-03', startDate: '2026-01-03', endDate: '2026-01-03', earnedPoints: 9, cumulativeEarnedPoints: 6 },
+      { key: '2026-01-04', startDate: '2026-01-04', endDate: '2026-01-04', earnedPoints: 0, cumulativeEarnedPoints: 6 },
     ]);
   });
 
@@ -76,10 +76,10 @@ describe('score profile chart aggregation', () => {
 
     const all = await api({ method: 'GET', url: '/api/points/profiles/member-chart?scope=me&anchorMonth=2026-01&chartRange=all', headers: headers('member-chart') });
     const allChart = (all.body as any).chart;
-    expect(allChart).toMatchObject({ range: 'all', anchor: null, periodStart: '2025-12-31', periodEnd: '2026-01-02', earnedPoints: 9, previousAnchor: null, nextAnchor: null });
+    expect(allChart).toMatchObject({ range: 'all', anchor: null, periodStart: '2025-12-31', periodEnd: '2026-01-02', earnedPoints: 9, openingEarnedPoints: 0, previousAnchor: null, nextAnchor: null });
     expect(allChart.buckets).toEqual([
-      { key: '2025', startDate: '2025-01-01', endDate: '2025-12-31', earnedPoints: 2 },
-      { key: '2026', startDate: '2026-01-01', endDate: '2026-12-31', earnedPoints: 7 },
+      { key: '2025', startDate: '2025-01-01', endDate: '2025-12-31', earnedPoints: 2, cumulativeEarnedPoints: 2 },
+      { key: '2026', startDate: '2026-01-01', endDate: '2026-12-31', earnedPoints: 7, cumulativeEarnedPoints: 9 },
     ]);
 
     database.db.prepare(`INSERT INTO wallet_entries (entry_id, member_id, kind, delta, task_date, redemption_id, operation_id, created_at, migration_id)
@@ -101,6 +101,48 @@ describe('score profile chart aggregation', () => {
     const legacyAfterRedemption = await legacy.api({ method: 'GET', url: '/api/points/profiles/member-chart?scope=me&anchorMonth=2026-09&chartRange=all', headers: legacy.headers('member-chart') });
     expect(legacyAfterRedemption.body).toMatchObject({ earnedTotal: 3, private: { redeemableBalance: 3 } });
     expect((legacyAfterRedemption.body as any).chart).toMatchObject({ earnedPoints: 3 });
+  });
+
+  it('projects active entitlements into a cumulative curve with carry-in, backfill, redemption, and revocation', async () => {
+    const { database, api, headers } = setup(new Date('2026-09-23T04:00:00.000Z'));
+    entitlement(database, '2026-08-31', 2);
+    entitlement(database, '2026-09-10', 1);
+    entitlement(database, '2026-09-23', 1);
+
+    const monthUrl = '/api/points/profiles/member-chart?scope=me&anchorMonth=2026-09&chartRange=month&chartAnchor=2026-09';
+    const beforeBackfill = await api({ method: 'GET', url: monthUrl, headers: headers('member-chart') });
+    const beforeChart = (beforeBackfill.body as any).chart;
+    expect(beforeChart.openingEarnedPoints).toBe(2);
+    expect(beforeChart.buckets.filter((bucket: any) => ['2026-09-10', '2026-09-20', '2026-09-23'].includes(bucket.key)).map((bucket: any) => [bucket.key, bucket.cumulativeEarnedPoints])).toEqual([
+      ['2026-09-10', 3], ['2026-09-20', 3], ['2026-09-23', 4],
+    ]);
+
+    // The late completion belongs to its task date, so all later points move with it.
+    entitlement(database, '2026-09-20', 1);
+    const afterBackfill = await api({ method: 'GET', url: monthUrl, headers: headers('member-chart') });
+    const afterChart = (afterBackfill.body as any).chart;
+    expect(afterChart.buckets.filter((bucket: any) => ['2026-09-20', '2026-09-23'].includes(bucket.key)).map((bucket: any) => [bucket.key, bucket.cumulativeEarnedPoints])).toEqual([
+      ['2026-09-20', 4], ['2026-09-23', 5],
+    ]);
+
+    // Wallet movement from redemption does not alter earned history.
+    database.db.prepare(`INSERT INTO wallet_entries (entry_id, member_id, kind, delta, task_date, redemption_id, operation_id, created_at, migration_id)
+      VALUES ('chart-opening-credit', 'member-chart', 'LEGACY_OPENING_CREDIT', 5, NULL, NULL, NULL, 1, 'chart-migration')`).run();
+    database.db.prepare(`INSERT INTO wallet_entries (entry_id, member_id, kind, delta, task_date, redemption_id, operation_id, created_at, migration_id)
+      VALUES ('chart-redemption', 'member-chart', 'REDEMPTION_DEBIT', -2, NULL, 'redemption-1', 'operation-1', 2, NULL)`).run();
+    const afterRedemption = await api({ method: 'GET', url: monthUrl, headers: headers('member-chart') });
+    expect((afterRedemption.body as any).earnedTotal).toBe(5);
+    expect((afterRedemption.body as any).private.redeemableBalance).toBe(3);
+    expect((afterRedemption.body as any).chart.buckets.find((bucket: any) => bucket.key === '2026-09-23').cumulativeEarnedPoints).toBe(5);
+
+    const august = await api({ method: 'GET', url: '/api/points/profiles/member-chart?scope=me&anchorMonth=2026-08&chartRange=month&chartAnchor=2026-08', headers: headers('member-chart') });
+    expect((august.body as any).earnedTotal).toBe(5);
+    expect((august.body as any).chart.openingEarnedPoints).toBe(0);
+    expect((august.body as any).chart.buckets.at(-1).cumulativeEarnedPoints).toBe(2);
+
+    database.db.prepare('UPDATE daily_point_entitlements SET active=0 WHERE member_id=? AND task_date=?').run('member-chart', '2026-09-20');
+    const afterRevocation = await api({ method: 'GET', url: monthUrl, headers: headers('member-chart') });
+    expect((afterRevocation.body as any).chart.buckets.find((bucket: any) => bucket.key === '2026-09-23').cumulativeEarnedPoints).toBe(4);
   });
 
   it('keeps an empty chart zero-only and strips private data for friends', async () => {

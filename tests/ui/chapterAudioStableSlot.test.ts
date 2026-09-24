@@ -8,6 +8,7 @@ vi.mock('react-native', () => ({
   TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'),
   ActivityIndicator: primitive('ActivityIndicator'), StyleSheet: { create: (value: unknown) => value },
 }));
+vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('MaterialCommunityIcons') }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }));
 const nativePlayer = vi.hoisted(() => ({ play() {}, pause() {}, seekTo: async () => {}, replace() {}, addListener: () => ({ remove() {} }), currentTime: 0, duration: 0, playing: false, isLoaded: false, isBuffering: false }));
 vi.mock('expo-audio', () => ({ useAudioPlayer: () => nativePlayer }));
@@ -31,11 +32,12 @@ beforeEach(() => {
 });
 afterEach(async () => { if (view) await act(async () => view!.unmount()); view = null; clearAuthSession(); });
 
-const mount = (active = true) => act(() => {
-  view = TestRenderer.create(React.createElement(ChapterAudioControls, {
+const mount = (active = true, bottomCell = false) => act(() => {
+  const props = {
     chapterUsfm: '1TI.1', versionId: 46, active, fetchImpl: fetchImpl as typeof fetch,
     env: { EXPO_PUBLIC_QINGMU_AUDIO_AUTHORIZED: 'true' }, baseUrl: 'https://in-memory.test',
-  }));
+  };
+  view = TestRenderer.create(React.createElement(ChapterAudioControls, { ...props, ...(bottomCell ? { bottomCell } : {}) }));
 });
 
 describe('ChapterAudioControls stable slot', () => {
@@ -59,5 +61,19 @@ describe('ChapterAudioControls stable slot', () => {
     await act(async () => release(new Response(JSON.stringify(payload(false)) )));
     const labels = view!.root.findAll(node => String(node.type) === 'Text').map((node) => node.props.accessibilityLabel).filter(Boolean);
     expect(labels).toContain('本章沒有朗讀');
+  });
+
+  it('keeps the bottom play action 48dp high and screen-reader actionable', async () => {
+    fetchImpl = vi.fn(async () => new Response(JSON.stringify(payload(true))));
+    mount(true, true);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+    const play = view!.root.findAll(node => String(node.type) === 'Pressable')
+      .find(node => node.props.accessibilityLabel === '播放');
+    expect(play).toBeDefined();
+    expect(play!.props).toMatchObject({ accessibilityRole: 'button', accessibilityLabel: '播放' });
+    expect(play!.props.accessibilityHint).toContain('語音');
+    const style = Object.assign({}, ...[play!.props.style].flat(Infinity).filter(value => value && typeof value === 'object'));
+    expect(style.minHeight).toBeGreaterThanOrEqual(48);
+    expect(play!.props.android_ripple?.color).toBeTruthy();
   });
 });

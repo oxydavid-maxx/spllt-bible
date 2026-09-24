@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 const { primitive, api, auth, ApiError, appListeners } = vi.hoisted(() => ({
   primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children),
-  api: { getCapabilities: vi.fn(async () => ({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true })), getProfile: vi.fn(async (memberId: string, scope: string = 'me') => ({ memberId, displayName: memberId === 'self' ? '自己' : '好友', earnedTotal: 4, band: 2, months: [{ month: '2026-09', earnedPoints: 4 }], permissions: { canEditTarget: memberId === 'self', canRedeem: true }, ...(scope !== 'friends' ? { private: { redeemableBalance: 4, targetReward: null } } : {}) })), getPeople: vi.fn(async () => [{ memberId: 'friend', displayName: '好友', earnedTotal: 3 }]), getRewards: vi.fn(async () => [{ rewardId: 'reward-1', name: '飲料', costPoints: 2, active: true, revision: 1 }]), getMyRedemptions: vi.fn(async () => []), getAdminRedemptions: vi.fn(async () => [{ redemptionId: 'r1', memberId: 'friend', rewardId: 'reward-1', rewardName: '飲料', costPoints: 2, status: 'COMPLETED', confirmedAt: 10 }]), getPendingOperations: vi.fn(async (): Promise<any> => ({ ownerMemberId: 'self', redemptions: [], reversals: [] })), retryPendingRedemption: vi.fn(async () => ({})), retryPendingReversal: vi.fn(async () => undefined), removeFriend: vi.fn(async () => undefined), redeem: vi.fn(async () => ({})), reverseRedemption: vi.fn(async () => undefined) },
+  api: { getCapabilities: vi.fn(async () => ({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true })), getProfile: vi.fn(async (memberId: string, scope: string = 'me') => ({ memberId, displayName: memberId === 'self' ? '自己' : '好友', earnedTotal: 4, band: 2, months: [{ month: '2026-09', earnedPoints: 4 }], permissions: { canEditTarget: memberId === 'self', canRedeem: true }, ...(scope !== 'friends' ? { private: { redeemableBalance: 4, targetReward: null } } : {}) })), getPeople: vi.fn(async () => [{ memberId: 'friend', displayName: '好友', earnedTotal: 3 }]), getRewards: vi.fn(async () => [{ rewardId: 'reward-1', name: '飲料', costPoints: 2, active: true, revision: 1 }]), setRewardTarget: vi.fn(async () => undefined), getMyRedemptions: vi.fn(async () => []), getAdminRedemptions: vi.fn(async () => [{ redemptionId: 'r1', memberId: 'friend', rewardId: 'reward-1', rewardName: '飲料', costPoints: 2, status: 'COMPLETED', confirmedAt: 10 }]), getPendingOperations: vi.fn(async (): Promise<any> => ({ ownerMemberId: 'self', redemptions: [], reversals: [] })), retryPendingRedemption: vi.fn(async () => ({})), retryPendingReversal: vi.fn(async () => undefined), removeFriend: vi.fn(async () => undefined), redeem: vi.fn(async () => ({})), reverseRedemption: vi.fn(async () => undefined) },
   auth: { status: 'signed-in', session: { memberId: 'self', sessionToken: 'token' }, profile: null, profileStatus: 'ready', epoch: 1 },
   ApiError: class extends Error { retryable = true; userMessage = 'error'; },
   appListeners: [] as Array<(state: string) => void>,
@@ -39,6 +39,26 @@ describe('progress gamification route', () => {
     await act(async () => { renderer.root.findByType('PeopleList' as any).props.onSelect(person); });
     expect(api.getProfile).toHaveBeenCalledWith('friend', 'friends', expect.stringMatching(/^\d{4}-\d{2}$/));
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.private).toBeUndefined();
+  });
+
+  it('opens the existing target picker from the profile callback and carries its selected reward through setTarget', async () => {
+    const current = { rewardId: 'reward-1', name: '飲料', costPoints: 2, active: true, revision: 1 };
+    const alternative = { rewardId: 'reward-2', name: '電影票', costPoints: 5, active: true, revision: 1 };
+    api.getProfile.mockResolvedValueOnce({ memberId: 'self', displayName: '自己', earnedTotal: 4, band: 2, months: [], private: { redeemableBalance: 3, targetReward: current }, permissions: { canEditTarget: true, canRedeem: false } } as any);
+    api.getRewards.mockResolvedValueOnce([current, alternative]).mockResolvedValueOnce([current, alternative]);
+    api.setRewardTarget.mockClear(); api.redeem.mockClear();
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
+    const profile = renderer.root.findByType('ScoreProfile' as any);
+    expect(profile.props.profile.private.targetReward.rewardId).toBe('reward-1');
+    await act(async () => { profile.props.onChooseReward(); await Promise.resolve(); await Promise.resolve(); });
+    expect(renderer.root.findByType('ActionSheet' as any).props.title).toBe('選擇目標獎品');
+    const controls = renderer.root.findByType('RewardControls' as any);
+    expect(controls.props.selectedRewardId).toBe('reward-1');
+    expect(controls.props.rewards).toEqual([current, alternative]);
+    await act(async () => { controls.props.onSelect('reward-2'); await Promise.resolve(); await Promise.resolve(); });
+    expect(api.setRewardTarget).toHaveBeenCalledWith('reward-2');
+    expect(api.redeem).not.toHaveBeenCalled();
   });
 
   it('reloads the selected profile with the requested chart period through the same scope', async () => {

@@ -17,6 +17,13 @@ vi.mock('react-native', () => ({
   } },
 }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView') }));
+vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
+vi.mock('expo-audio', () => ({ useAudioPlayer: () => ({ addListener: () => ({ remove() {} }) }) }));
+vi.mock('../../src/ui/ChapterAudioControls', () => {
+  const runtime = require('react') as typeof React;
+  return { ChapterAudioAutoplayContext: runtime.createContext(null), ChapterAudioControls: () => null, ChapterAudioAutoplayNotice: () => null, ChapterAudioAutoplayToggle: () => null };
+});
+vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost: () => null }));
 vi.mock('../../src/services/youVersionAdapter', () => ({ createYouVersionAdapter: () => ({ loadReaderUi: async () => ({ status: 'READER_UI_READY', module: {
   YouVersionProvider: primitive('OfficialProvider'),
   BibleReaderSettingsSheet: primitive('SettingsSheet'),
@@ -135,10 +142,11 @@ describe('fullscreen official reader wrapper', () => {
     await mount({ onCanvasTap: tap, onCanvasScroll: scroll });
     const dom = all('OfficialReader')[0].props.dom;
     act(() => {
-      for (const type of ['qingmu.reader.canvas.tap', 'qingmu.reader.canvas.scroll']) dom.onMessage({ nativeEvent: { data: JSON.stringify({ type, data: null }) } });
+      dom.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'qingmu.reader.canvas.tap', data: null }) } });
+      dom.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'qingmu.reader.canvas.scroll', data: { direction: 'down', deltaY: 20 } }) } });
       dom.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'qingmu.reader.canvas.tap', data: 'content' }) } });
     });
-    expect(tap).toHaveBeenCalledOnce(); expect(scroll).toHaveBeenCalledOnce();
+    expect(tap).toHaveBeenCalledOnce(); expect(scroll).toHaveBeenCalledExactlyOnceWith({ direction: 'down', deltaY: 20 });
     await act(async () => rendered.update(React.createElement(YouVersionReader, { ...props, fullscreen: false, onCanvasTap: tap })));
     expect(all('OfficialReader')[0].props.showToolbar).toBe(true);
     expect(all('Pressable').length).toBeGreaterThan(0);
@@ -151,7 +159,8 @@ describe('injected canvas gesture bridge', () => {
     const listeners = new Map<string, ((event: any) => void)[]>();
     const postMessage = vi.fn();
     let now = 1000, selection = '';
-    const document = { documentElement: { setAttribute: vi.fn() }, getElementById: () => null, head: { appendChild: vi.fn() }, createElement: () => ({}), addEventListener: (type: string, callback: (event: any) => void) => { listeners.set(type, [...(listeners.get(type) ?? []), callback]); } };
+    const scrollingElement = { scrollTop: 0 };
+    const document = { documentElement: { setAttribute: vi.fn() }, scrollingElement, getElementById: () => null, head: { appendChild: vi.fn() }, createElement: () => ({}), addEventListener: (type: string, callback: (event: any) => void) => { listeners.set(type, [...(listeners.get(type) ?? []), callback]); } };
     const window = { ReactNativeWebView: { postMessage }, getSelection: () => ({ toString: () => selection }) };
     runInNewContext(all('OfficialReader')[0].props.dom.injectedJavaScript, { document, window, Date: { now: () => now } });
     expect(listeners.has('pointerdown')).toBe(true);
@@ -174,6 +183,8 @@ describe('injected canvas gesture bridge', () => {
     const cancelled = event(); dispatch('pointerdown', cancelled); dispatch('pointercancel', cancelled); dispatch('click', cancelled); expect(cancelled.preventDefault).not.toHaveBeenCalled();
     const double = { ...event(), detail: 2 }; quickTap(double); expect(double.preventDefault).not.toHaveBeenCalled();
     dispatch('scroll', event());
-    expect(JSON.parse(postMessage.mock.calls.at(-1)![0])).toEqual({ type: 'qingmu.reader.canvas.scroll', data: null });
+    scrollingElement.scrollTop = 20; now += 120;
+    dispatch('scroll', event());
+    expect(JSON.parse(postMessage.mock.calls.at(-1)![0])).toEqual({ type: 'qingmu.reader.canvas.scroll', data: { direction: 'down', deltaY: 20 } });
   });
 });
