@@ -53,6 +53,8 @@ vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice
 import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
 import { NavigationBar } from 'expo-navigation-bar';
 import type { ReaderOverlayControls } from '../../src/ui/YouVersionReader';
+import { formatReadingDateHeader } from '../../src/ui/ReadingDateNavigator';
+import { taipeiDate } from '../../src/domain/gamificationV1';
 
 let chrome: ReturnType<typeof useReaderChrome>;
 let renderer: TestRenderer.ReactTestRenderer | null;
@@ -150,7 +152,7 @@ describe('fullscreen reader layout and chrome', () => {
     vi.useRealTimers();
   });
 
-  it('centers date and chapter together, with adjacent-date controls at the sides and More at the right', async () => {
+  it('keeps date arrows and selected weekday in row one, with the full range and More in row two', async () => {
     await mount();
     const root = all('View')[0];
     expect(styleOf(root)).toMatchObject({ flex: 1, backgroundColor: '#FFFFFF' });
@@ -165,23 +167,28 @@ describe('fullscreen reader layout and chrome', () => {
     expect(toolbar.props.accessibilityElementsHidden).not.toBe(true);
     const siblings = root.children.filter(child => typeof child !== 'string');
     expect(siblings.indexOf(toolbar)).toBeLessThan(siblings.indexOf(reader.parent!));
-    const topRow = all('View').find(node => styleOf(node).flexWrap === 'nowrap'
-      && ['上一個排定讀經日', '選擇今日章節', '下一個排定讀經日', '更多閱讀工具'].every(label => node.findAll(child => child.props.accessibilityLabel === label).length === 1))!;
-    expect(topRow).toBeDefined();
-    expect(styleOf(topRow).flexWrap).not.toBe('wrap');
-    expect(topRow.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual([
-      '上一個排定讀經日', '選擇今日章節', '下一個排定讀經日', '更多閱讀工具',
+    const dateRow = all('View').find(node => node.props.accessibilityLabel === '閱讀日期工具列')!;
+    const rangeRow = all('View').find(node => node.props.accessibilityLabel === '今日讀經範圍')!;
+    expect(dateRow).toBeDefined();
+    expect(rangeRow).toBeDefined();
+    expect(styleOf(dateRow)).toMatchObject({ minHeight: 48 });
+    expect(styleOf(rangeRow)).toMatchObject({ minHeight: 48 });
+    expect(styleOf(dateRow).flexWrap).not.toBe('wrap');
+    expect(dateRow.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual([
+      '上一個排定讀經日', '下一個排定讀經日',
     ]);
+    expect(dateRow.findAll(node => String(node.type) === 'Text').map(node => node.props.children)).toContain(formatReadingDateHeader(selectedDate, taipeiDate()));
+    expect(rangeRow.findAll(node => String(node.type) === 'Text').map(node => node.props.children)).toContain('詩篇90–91');
+    expect(rangeRow.findAll(node => node.props.accessibilityLabel === '更多閱讀工具')).toHaveLength(1);
+    expect(dateRow.findAll(node => node.props.accessibilityLabel === '更多閱讀工具')).toHaveLength(0);
     expect(styleOf(button('上一個排定讀經日'))).toMatchObject({ minWidth: 48, minHeight: 48 });
-    expect(styleOf(button('選擇今日章節')).minHeight).toBeGreaterThanOrEqual(48);
     expect(styleOf(button('下一個排定讀經日'))).toMatchObject({ minWidth: 48, minHeight: 48 });
     expect(styleOf(button('更多閱讀工具')).minHeight).toBeGreaterThanOrEqual(48);
     expect(styleOf(button('更多閱讀工具')).minWidth).toBeGreaterThanOrEqual(48);
-    for (const label of ['上一個排定讀經日', '選擇今日章節', '下一個排定讀經日', '更多閱讀工具']) {
+    for (const label of ['上一個排定讀經日', '下一個排定讀經日', '更多閱讀工具']) {
       expect(button(label).props.accessibilityRole).toBe('button');
     }
-    expect(button('選擇今日章節').findAll(node => String(node.type) === 'Text')[0].props.children).toBe('9/23·詩90');
-    expect(button('選擇今日章節').props.accessibilityHint).toContain('9/23·詩90');
+    expect(button('選擇今日章節清單').props.accessibilityHint).toContain('詩篇 90');
     expect(all('Text').some(node => node.props.children === '9/22')).toBe(true);
     expect(all('Text').some(node => node.props.children === '9/24')).toBe(true);
     expect(all('Pressable').some(node => String(node.props.accessibilityLabel).startsWith('前往'))).toBe(false);
@@ -189,6 +196,37 @@ describe('fullscreen reader layout and chrome', () => {
     expect(text()).not.toContain('測試版權文字');
     expect(text()).not.toContain('我已完成讀經');
     expect(text()).not.toContain('ProgressCard');
+  });
+
+  it('shows the entire daily reference range above while the lower capsule names the selected chapter', async () => {
+    selectedDate = '2026-09-24';
+    assignedReferences = ['TIT.1', 'PSA.99', 'PSA.100'];
+    currentChapter = 'TIT.1';
+    await mount();
+    const dateTitle = all('View').find(node => node.props.accessibilityLabel === '閱讀日期工具列')!
+      .findAll(node => node.props.accessibilityRole === 'header')[0];
+    expect(dateTitle.props.children).toBe('今天·9/24（四）');
+    const dailyRange = all('View').find(node => node.props.accessibilityLabel === '今日讀經範圍')!
+      .findAll(node => String(node.type) === 'Text')[0];
+    expect(dailyRange.props.children).toBe('提多書1・詩篇99–100');
+    const capsuleTitle = button('選擇今日章節清單').findAll(node => String(node.type) === 'Text')[0];
+    expect(capsuleTitle.props.children).toBe('提多書 1');
+  });
+
+  it('uses a weekday date row and a separate full-reference row with More at the far edge', async () => {
+    selectedDate = '2026-09-24';
+    assignedReferences = ['TIT.1', 'PSA.99', 'PSA.100'];
+    currentChapter = 'TIT.1';
+    await mount();
+    const dateRow = all('View').find(node => node.props.accessibilityLabel === '閱讀日期工具列');
+    expect(dateRow).toBeDefined();
+    expect(dateRow!.findAll(node => String(node.type) === 'Text').map(node => String(node.props.children))).toContain('今天·9/24（四）');
+    const rangeRow = all('View').find(node => node.props.accessibilityLabel === '今日讀經範圍');
+    expect(rangeRow).toBeDefined();
+    expect(rangeRow!.findAll(node => String(node.type) === 'Text').map(node => String(node.props.children))).toContain('提多書1・詩篇99–100');
+    expect(rangeRow!.findAll(node => node.props.accessibilityLabel === '更多閱讀工具')).toHaveLength(1);
+    expect(dateRow!.findAll(node => node.props.accessibilityLabel === '更多閱讀工具')).toHaveLength(0);
+    expect(button('選擇今日章節清單').findAll(node => String(node.type) === 'Text')[0].props.children).toBe('提多書 1');
   });
 
   it('keeps date arrows disabled and inert at the schedule boundaries', async () => {
@@ -203,7 +241,7 @@ describe('fullscreen reader layout and chrome', () => {
     expect(onSelectDate).not.toHaveBeenCalled();
   });
 
-  it('keeps the centered label and caret intact at 320dp with large text', async () => {
+  it('keeps the selected weekday and current-chapter capsule intact at 320dp with large text', async () => {
     native.window = { width: 320, fontScale: 1 };
     await mount();
     expect(all('Text').some(node => node.props.children === '9/22')).toBe(true);
@@ -213,24 +251,27 @@ describe('fullscreen reader layout and chrome', () => {
 
     native.window = { width: 320, fontScale: 2 };
     await mount();
-    const chapter = button('選擇今日章節');
+    const dateRow = all('View').find(node => node.props.accessibilityLabel === '閱讀日期工具列')!;
+    const dateTitle = dateRow.findAll(node => String(node.type) === 'Text')[0];
     expect(all('Text').some(node => node.props.children === '9/22')).toBe(false);
     expect(all('Text').some(node => node.props.children === '9/24')).toBe(false);
-    expect(chapter.props.accessibilityHint).toContain('9/23·詩90');
-    const chapterChildren = chapter.children.filter((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string');
-    expect(chapterChildren).toHaveLength(2);
-    expect(String(chapterChildren[0].type)).toBe('Text');
-    expect(String(chapterChildren[1].type)).toContain('MaterialCommunityIcons');
+    expect(dateTitle.props.children).toBe(formatReadingDateHeader(selectedDate, taipeiDate()));
+    const chapter = button('選擇今日章節清單');
+    const capsuleChildren = chapter.children.filter((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string');
+    expect(capsuleChildren).toHaveLength(2);
+    expect(String(capsuleChildren[0].type)).toBe('Text');
+    expect(capsuleChildren[0].props.children).toBe('詩篇 90');
+    expect(capsuleChildren[1].findAll(node => String(node.type) === 'MaterialCommunityIcons')).toHaveLength(1);
     expect(button('上一個排定讀經日').props.accessibilityHint).toBe('前往9/22');
     expect(button('下一個排定讀經日').props.accessibilityHint).toBe('前往9/24');
     expect(chapter.props.accessibilityRole).toBe('button');
-    expect(styleOf(chapter).minHeight).toBeGreaterThanOrEqual(48);
+    expect(styleOf(chapter).height).toBeGreaterThanOrEqual(48);
   });
 
   it('opens the assigned passage list from the chapter title without keeping chips on screen', async () => {
     await mount();
     expect(text()).not.toContain('前往詩90');
-    act(() => { button('選擇今日章節').props.onPress(); });
+    act(() => { button('選擇今日章節清單').props.onPress(); });
     expect(button('前往詩90').props.accessibilityState).toMatchObject({ selected: true });
     expect(button('前往詩91').props.accessibilityState).toMatchObject({ selected: false });
     act(() => { button('前往詩91').props.onPress(); });
@@ -246,7 +287,9 @@ describe('fullscreen reader layout and chrome', () => {
       && node.findAll(child => child.props.accessibilityLabel === '選擇今日章節清單').length > 0)!;
     expect(styleOf(bottomRow)).toMatchObject({ flexDirection: 'row' });
     expect(bottomRow.children.filter(child => typeof child !== 'string')).toHaveLength(3);
+    expect(styleOf(bottomRow)).toMatchObject({ alignItems: 'center', gap: 12 });
     expect(styleOf(capsule)).toMatchObject({ flex: 1, height: 48 });
+    expect(styleOf(bottomRow.findAll(node => styleOf(node).elevation === 2)[0])).toMatchObject({ height: 56, borderRadius: 28, elevation: 2 });
     expect(styleOf(finish)).toMatchObject({ width: 56, height: 56 });
     expect(finish.findAll(node => String(node.type) === 'Text')).toHaveLength(0);
     expect(bottomRow.findAll(node => String(node.type) === 'Pressable').some(node => node.props.accessibilityLabel === '靈修日記')).toBe(false);
@@ -300,10 +343,9 @@ describe('fullscreen reader layout and chrome', () => {
   it.each([['PSA.90'], ['1TI.1']] as const)('shows the current book/chapter in the title for %s', async (chapter) => {
     currentChapter = chapter;
     await mount();
-    const title = button('選擇今日章節').findAll(node => node.props.accessibilityRole === 'header')[0];
+    const title = button('選擇今日章節清單').findAll(node => String(node.type) === 'Text')[0];
     expect(title).toBeDefined();
-    // Exactly one visible title node for the chapter — not duplicated in the chrome.
-    expect(all('Text').filter(node => node.props.accessibilityRole === 'header' && node.props.children === title.props.children)).toHaveLength(1);
+    expect(title.props.children).toBe(chapter === 'PSA.90' ? '詩篇 90' : '提摩太前書 1');
   });
 
   it('keeps play/pause actionable after downward scroll and restores the other tools on reverse scroll', async () => {
@@ -438,7 +480,7 @@ describe('fullscreen reader layout and chrome', () => {
   it('keeps the audio owner mounted when a daily passage is selected', async () => {
     await mount();
     const audio = all('ChapterAudioControls')[0];
-    act(() => { button('選擇今日章節').props.onPress(); });
+    act(() => { button('選擇今日章節清單').props.onPress(); });
     act(() => { button('前往詩91').props.onPress(); });
     expect(onSelectReference).toHaveBeenCalledWith(1);
     currentChapter = 'PSA.91';
@@ -453,7 +495,7 @@ describe('fullscreen reader layout and chrome', () => {
     assignedReferences = ['1TI.1', 'PSA.90-91', 'PSA.92'];
     currentChapter = 'PSA.91';
     await mount();
-    act(() => { button('選擇今日章節').props.onPress(); });
+    act(() => { button('選擇今日章節清單').props.onPress(); });
     expect(button('前往詩90-91').props.accessibilityState).toMatchObject({ selected: true });
     expect(button('前往詩92').props.accessibilityState).toMatchObject({ selected: false });
     for (const chapter of ['PSA.9', 'ZZZ.91', 'GEN.91']) {
@@ -471,7 +513,7 @@ describe('fullscreen reader layout and chrome', () => {
     assignedReferences = ['PSA.90-GEN.92', 'PSA.92-90', 'ZZZ.90-91'];
     currentChapter = 'PSA.91';
     await mount();
-    act(() => { button('選擇今日章節').props.onPress(); });
+    act(() => { button('選擇今日章節清單').props.onPress(); });
     expect(all('Pressable').filter(node => node.props.accessibilityState?.selected)).toHaveLength(0);
   });
 
@@ -483,14 +525,14 @@ describe('fullscreen reader layout and chrome', () => {
     expect(chrome.toolsVisible).toBe(enabled);
     if (enabled) {
       expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeDefined();
-      expect(button('選擇今日章節')).toBeDefined();
+      expect(button('選擇今日章節清單')).toBeDefined();
       expect(button('播放詩篇 90')).toBeDefined();
     } else {
       expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeUndefined();
       expect(button('播放詩篇 90')).toBeDefined();
       act(() => { chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }); });
     }
-    act(() => { button('選擇今日章節').props.onPress(); });
+    act(() => { button('選擇今日章節清單').props.onPress(); });
     expect(button('前往詩90').props.accessibilityRole).toBe('button');
   });
 
@@ -652,7 +694,7 @@ describe('fullscreen reader layout and chrome', () => {
     await mount();
     act(() => { button('上一個排定讀經日').props.onPress(); });
     expect(onSelectDate).toHaveBeenCalledWith(previousDate);
-    act(() => { button('選擇今日章節').props.onPress(); });
+    act(() => { button('選擇今日章節清單').props.onPress(); });
     act(() => { button('前往詩91').props.onPress(); });
     expect(onSelectReference).toHaveBeenCalledWith(1);
     act(() => { chrome.openMore(); });

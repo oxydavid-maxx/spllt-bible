@@ -6,12 +6,13 @@ import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationBar } from 'expo-navigation-bar';
 import { ChapterAudioAutoplayNotice, ChapterAudioAutoplayToggle, ChapterAudioControls, type ChapterAudioControlsHandle } from './ChapterAudioControls';
-import { bookAbbreviationZhTw, formatChapterTitleZhTw, formatReferenceListZhTw } from '../domain/scriptureReference';
+import { bookAbbreviationZhTw, formatChapterTitleZhTw, formatDailyReferenceRangeZhTw, formatReferenceListZhTw } from '../domain/scriptureReference';
 import { theme } from './Theme';
-import { formatReadingDateLabel } from './ReadingDateNavigator';
+import { formatReadingDateHeader, formatReadingDateLabel } from './ReadingDateNavigator';
 import { setReaderImmersed } from './readerImmersionState';
 import type { ReaderOverlayControls } from './YouVersionReader';
 import { READER_SPEEDS } from '../services/readerSpeedPreference';
+import { taipeiDate } from '../domain/gamificationV1';
 
 export function useReaderChrome() {
   const [focused, setFocused] = useState(false);
@@ -135,8 +136,8 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
     void audioControlRef.current.pause().then(launch).catch(() => Alert.alert('朗讀', '暫停朗讀失敗，請再試一次。'));
   };
   const chapterTitle = formatChapterTitleZhTw(chapterUsfm) || '選擇章節';
-  const chapterSummary = formatReferenceListZhTw([chapterUsfm]) || chapterTitle;
-  const chapterHeader = `${formatReadingDateLabel(selectedDate)}·${chapterSummary}`;
+  const dailyRangeSummary = formatDailyReferenceRangeZhTw(references) || chapterTitle;
+  const selectedDateHeader = formatReadingDateHeader(selectedDate, taipeiDate());
   const widestAdjacentDate = Math.max(formatReadingDateLabel(previousDate ?? '').length, formatReadingDateLabel(nextDate ?? '').length);
   const adjacentDateTextWidth = widestAdjacentDate * theme.type.caption.size * fontScale * 0.56;
   const nextDateControlWidth = Math.max(theme.control.tap, adjacentDateTextWidth + 18 + theme.spacing.xxs * 2);
@@ -167,26 +168,28 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
     <View style={styles.root}>
       {chrome.focused && <><StatusBar hidden style="dark" /><NavigationBar hidden style="dark" /></>}
       {chrome.toolsVisible ? <SafeAreaView edges={['top', 'left', 'right']} accessibilityLabel="閱讀工具列" style={styles.toolbarSurface}>
-        <View style={styles.topRow} onTouchStart={chrome.showTools}>
+        <View style={styles.toolbarRows}>
+        <View accessibilityLabel="閱讀日期工具列" style={styles.topRow} onTouchStart={chrome.showTools}>
           <View style={styles.headerSide}>
             <Pressable accessibilityRole="button" accessibilityLabel="上一個排定讀經日" accessibilityHint={previousDate ? `前往${formatReadingDateLabel(previousDate)}` : undefined} disabled={!previousDate} onPress={() => previousDate && onSelectDate(previousDate)} style={[styles.dateStep, !previousDate && styles.disabled]}>
               <MaterialCommunityIcons name="chevron-left" size={18} color={previousDate ? theme.colors.primary : theme.colors.muted} />
               {previousDate && showAdjacentDateLabels ? <Text numberOfLines={1} style={styles.sideDateText}>{formatReadingDateLabel(previousDate)}</Text> : null}
             </Pressable>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="選擇今日章節" accessibilityHint={`目前${chapterHeader}，開啟今日章節清單`} onPress={openDailyChapterPicker} style={styles.chapterButton}>
-            <Text accessibilityRole="header" numberOfLines={1} ellipsizeMode="tail" style={styles.titleText}>{chapterHeader}</Text>
-            <MaterialCommunityIcons name="chevron-down" size={18} color={theme.colors.primary} />
-          </Pressable>
+          <Text accessibilityRole="header" accessibilityLabel={`目前閱讀日期${selectedDateHeader}`} numberOfLines={1} ellipsizeMode="tail" style={styles.selectedDateTitle}>{selectedDateHeader}</Text>
           <View style={[styles.headerSide, styles.trailingSide]}>
             <Pressable accessibilityRole="button" accessibilityLabel="下一個排定讀經日" accessibilityHint={nextDate ? `前往${formatReadingDateLabel(nextDate)}` : undefined} disabled={!nextDate} onPress={() => nextDate && onSelectDate(nextDate)} style={[styles.dateStep, styles.nextDateStep, !nextDate && styles.disabled]}>
               {nextDate && showAdjacentDateLabels ? <Text numberOfLines={1} style={styles.sideDateText}>{formatReadingDateLabel(nextDate)}</Text> : null}
               <MaterialCommunityIcons name="chevron-right" size={18} color={nextDate ? theme.colors.primary : theme.colors.muted} />
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} android_ripple={{ color: theme.colors.primarySoft }} style={styles.iconButton}>
-              <MaterialCommunityIcons name="dots-horizontal" size={24} color={theme.colors.ink} />
-            </Pressable>
           </View>
+        </View>
+        <View accessibilityLabel="今日讀經範圍" style={styles.rangeRow} onTouchStart={chrome.showTools}>
+          <Text accessibilityRole="header" accessibilityLabel={`今日讀經範圍：${dailyRangeSummary}`} numberOfLines={1} ellipsizeMode="tail" style={styles.rangeTitle}>{dailyRangeSummary}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} android_ripple={{ color: theme.colors.primarySoft }} style={styles.iconButton}>
+            <MaterialCommunityIcons name="dots-horizontal" size={24} color={theme.colors.ink} />
+          </Pressable>
+        </View>
         </View>
       </SafeAreaView> : null}
       {noPlanMessage ? <Text accessibilityRole="text" style={styles.statusBanner}>{noPlanMessage}</Text> : null}
@@ -372,18 +375,20 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.colors.surface },
   reader: { flex: 1 },
   toolbarSurface: { backgroundColor: theme.colors.surface, flexShrink: 0 },
-  topRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
+  toolbarRows: { flexDirection: 'column', flexShrink: 0 },
+  topRow: { minHeight: 48, flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
+  selectedDateTitle: { flex: 1, minWidth: 0, color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800', textAlign: 'center' },
+  rangeRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.xs },
+  rangeTitle: { flex: 1, minWidth: 0, color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700' },
   headerSide: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' },
   trailingSide: { justifyContent: 'flex-end' },
   dateStep: { minWidth: 48, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
   nextDateStep: { justifyContent: 'flex-end' },
   sideDateText: { color: theme.colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
-  chapterButton: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
-  titleText: { flexShrink: 1, minWidth: 0, color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700', textAlign: 'center' },
   iconButton: { minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center' },
   playerBarSurface: { backgroundColor: theme.colors.surface, flexShrink: 0, borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.border },
-  playerBar: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm, minHeight: 64, paddingVertical: theme.spacing.xs },
-  chapterCapsule: { flex: 1, minWidth: 0, height: 56, flexDirection: 'row', alignItems: 'center', borderRadius: 28, backgroundColor: theme.colors.white },
+  playerBar: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingHorizontal: theme.spacing.sm, minHeight: 64, paddingVertical: theme.spacing.xs },
+  chapterCapsule: { flex: 1, minWidth: 0, height: 56, flexDirection: 'row', alignItems: 'center', borderRadius: 28, borderWidth: theme.control.hairline, borderColor: theme.colors.border, backgroundColor: theme.colors.white, elevation: 2, shadowColor: '#1B3B33', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 3 },
   capsuleArrow: { width: 48, height: 48, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: 24 },
   capsuleSelection: { flex: 1, minWidth: 0, height: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xxs },
   capsuleTitle: { maxWidth: '100%', color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700', textAlign: 'center' },
@@ -394,7 +399,7 @@ const styles = StyleSheet.create({
   completionActionComplete: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
   bottomAudioCell: { width: 56, height: 56, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
   bottomAudioPlaceholder: { width: 56, height: 56, flexShrink: 0 },
-  audioOverlay: { position: 'absolute', height: 56, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm, zIndex: 2 },
+  audioOverlay: { position: 'absolute', height: 56, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingHorizontal: theme.spacing.sm, zIndex: 2 },
   audioLeadingSpacer: { flex: 1, minWidth: 0, height: 56 },
   audioCompletionSpacer: { width: 56, height: 56, flexShrink: 0 },
   audioHiddenSpacer: { width: 0, height: 56, flexShrink: 0 },

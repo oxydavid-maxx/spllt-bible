@@ -96,6 +96,46 @@ export function formatReferenceListZhTw(references: readonly string[]): string {
   return references.map(formatReferenceZhTw).join('、');
 }
 
+/** Full-name compact range for the Reader's secondary daily-reference row. */
+export function formatDailyReferenceRangeZhTw(references: readonly string[]): string {
+  if (!references || references.length === 0) return '';
+  type ChapterGroup = { book: string; start: number; end: number };
+  const parts: Array<ChapterGroup | string> = [];
+  for (const reference of references) {
+    const value = reference.trim().toUpperCase();
+    const chapterRange = value.match(/^([0-9A-Z]{3})\.(\d+)(?:-(?:([0-9A-Z]{3})\.)?(\d+))?$/);
+    if (chapterRange && (!chapterRange[3] || chapterRange[3] === chapterRange[1])) {
+      const book = chapterRange[1];
+      const start = Number(chapterRange[2]);
+      const end = Number(chapterRange[4] ?? chapterRange[2]);
+      if (ZH_TW_BOOK_NAMES[book] && Number.isSafeInteger(start) && Number.isSafeInteger(end) && start > 0 && start <= end) {
+        const previous = parts[parts.length - 1];
+        if (typeof previous !== 'string' && previous?.book === book && previous.end + 1 === start) {
+          previous.end = end;
+        } else {
+          parts.push({ book, start, end });
+        }
+        continue;
+      }
+    }
+
+    const verseReference = value.match(/^([0-9A-Z]{3})\.(\d+)\.(\d+(?:-\d+)?)$/);
+    if (verseReference && ZH_TW_BOOK_NAMES[verseReference[1]]) {
+      parts.push(`${ZH_TW_BOOK_NAMES[verseReference[1]]}${verseReference[2]}:${verseReference[3]}`);
+      continue;
+    }
+    const book = value.match(/^([0-9A-Z]{3})$/);
+    parts.push(book && ZH_TW_BOOK_NAMES[book[1]] ? ZH_TW_BOOK_NAMES[book[1]] : formatReferenceZhTw(reference));
+  }
+
+  return parts.map(part => {
+    if (typeof part === 'string') return part;
+    const name = ZH_TW_BOOK_NAMES[part.book];
+    const chapters = part.start === part.end ? `${part.start}` : `${part.start}–${part.end}`;
+    return `${name}${chapters}`;
+  }).join('・');
+}
+
 /**
  * 閱讀器頂部單一書卷/章節標題,如「提摩太後書 2」。
  *

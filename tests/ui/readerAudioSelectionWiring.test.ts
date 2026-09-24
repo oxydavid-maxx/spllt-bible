@@ -279,7 +279,7 @@ function openMore(renderer: TestRenderer.ReactTestRenderer): void {
 }
 
 function selectAssigned(renderer: TestRenderer.ReactTestRenderer, referenceLabel: string): void {
-  pressByLabel(renderer, '選擇今日章節');
+  pressByLabel(renderer, '選擇今日章節清單');
   pressByLabel(renderer, `前往${referenceLabel}`);
   expect(renderer.root.findAll((n: Node) => String(n.type) === 'Modal' && n.props.visible)).toHaveLength(0);
 }
@@ -573,7 +573,7 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     session.setSelectedReadingDate(today);
 
     const renderer = await mount();
-    pressByLabel(renderer, '選擇今日章節');
+    pressByLabel(renderer, '選擇今日章節清單');
     const options = renderer.root.findAll((node: Node) => String(node.type) === 'Pressable'
       && String(node.props.accessibilityLabel).startsWith('前往') && isReachable(renderer, node));
     expect(options).toHaveLength(2);
@@ -788,7 +788,7 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
 
   it('advances to the NEXT assigned passage through persistent daily buttons', async () => {
     const renderer = await mount();
-    pressByLabel(renderer, '選擇今日章節');
+    pressByLabel(renderer, '選擇今日章節清單');
     const entries = renderer.root.findAll((n: Node) => String(n.type) === 'Pressable'
       && String(n.props.accessibilityLabel).startsWith('前往') && isReachable(renderer, n));
     expect(entries.map((n: Node) => n.props.accessibilityLabel)).toEqual(['前往約19', '前往約20']);
