@@ -233,14 +233,14 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
         accessibilityLabel={chrome.toolsVisible ? '讀經播放控制' : '沉浸播放控制'}
         accessible={false}
         pointerEvents="box-none"
-        style={[styles.audioOverlay, { left: insets.left, right: insets.right, bottom: insets.bottom + (chrome.toolsVisible ? 0 : 8) }]}
+        style={[styles.audioOverlay, { left: insets.left, right: insets.right, bottom: insets.bottom + (chrome.toolsVisible ? theme.spacing.xs : 8) }]}
       >
         <View accessible={false} pointerEvents="none" style={chrome.toolsVisible ? styles.audioLeadingSpacer : styles.audioOverlaySide} />
         <View accessible={false} pointerEvents="none" style={chrome.toolsVisible ? styles.audioCompletionSpacer : styles.audioHiddenSpacer} />
         <View accessible={false} style={styles.bottomAudioCell}>
           <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={false} readerAction active={audioOwnerActive} sharedOwner />
         </View>
-        <View accessible={false} pointerEvents="none" style={chrome.toolsVisible ? styles.audioTrailingSpacer : styles.audioOverlaySide} />
+        {!chrome.toolsVisible ? <View accessible={false} pointerEvents="none" style={styles.audioOverlaySide} /> : null}
       </View>
       {completionFeedback}
       <Modal transparent animationType="fade" visible={chapterPickerOpen} onRequestClose={() => { setChapterPickerOpen(false); chrome.showTools(); }}>
@@ -403,7 +403,6 @@ const styles = StyleSheet.create({
   audioLeadingSpacer: { flex: 1, minWidth: 0, height: 56 },
   audioCompletionSpacer: { width: 56, height: 56, flexShrink: 0 },
   audioHiddenSpacer: { width: 0, height: 56, flexShrink: 0 },
-  audioTrailingSpacer: { width: 0, height: 56, flexShrink: 0 },
   audioOverlaySide: { flex: 1, minWidth: 0, height: 56 },
   statusBanner: { color: theme.colors.muted, backgroundColor: theme.colors.surfaceMuted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs },
   dailyReferenceOption: { minHeight: 48, justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderBottomWidth: theme.control.hairline, borderBottomColor: theme.colors.border },

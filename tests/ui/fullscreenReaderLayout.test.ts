@@ -427,6 +427,45 @@ describe('fullscreen reader layout and chrome', () => {
     expect(all('Pressable').some(node => node.props.accessibilityRole === 'switch' && node.props.accessibilityLabel === '連讀')).toBe(true);
   });
 
+  it('aligns the visible play slot with the row and keeps a 12dp gap between 56dp actions', async () => {
+    native.safeInsets = { top: 0, bottom: 18, left: 8, right: 4 };
+    await mount();
+    const playerBarSurface = all('SafeAreaView').find(node => node.props.accessibilityLabel === '讀經控制列')!;
+    const playerBar = playerBarSurface.findAll(node => String(node.type) === 'View' && styleOf(node).minHeight === 64)[0];
+    const barSlots = playerBar.children.filter(child => typeof child !== 'string') as TestRenderer.ReactTestInstance[];
+    const overlay = all('View').find(node => node.props.accessibilityLabel === '讀經播放控制')!;
+    const overlayStyle = styleOf(overlay);
+    const overlaySlots = overlay.children.filter(child => typeof child !== 'string') as TestRenderer.ReactTestInstance[];
+
+    const barStyle = styleOf(playerBar);
+    expect(barStyle).toMatchObject({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, paddingVertical: 4, minHeight: 64 });
+    expect(barSlots).toHaveLength(3);
+    expect(styleOf(barSlots[0])).toMatchObject({ flex: 1, minWidth: 0 });
+    expect(styleOf(barSlots[1])).toMatchObject({ width: 56, height: 56 });
+    expect(styleOf(barSlots[2])).toMatchObject({ width: 56, height: 56 });
+
+    expect(overlaySlots).toHaveLength(3);
+    expect(overlayStyle).toMatchObject({ position: 'absolute', left: 8, right: 4, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, height: 56, bottom: native.safeInsets.bottom + 4 });
+    expect(styleOf(overlaySlots[0])).toMatchObject({ flex: 1, minWidth: 0, height: 56 });
+    expect(styleOf(overlaySlots[1])).toMatchObject({ width: 56, height: 56 });
+    expect(styleOf(overlaySlots[2])).toMatchObject({ width: 56, height: 56 });
+    expect(styleOf(button('播放詩篇 90'))).toMatchObject({ width: 56, height: 56, minHeight: 56 });
+    expect(overlayStyle.gap).toBe(barStyle.gap);
+    expect(overlayStyle.paddingHorizontal).toBe(barStyle.paddingHorizontal);
+    const contentWidth = native.window.width - native.safeInsets.left - native.safeInsets.right;
+    const sharedFlexWidth = contentWidth - 2 * barStyle.paddingHorizontal - 2 * 56 - 2 * barStyle.gap;
+    const barCompletionLeft = native.safeInsets.left + barStyle.paddingHorizontal + sharedFlexWidth + barStyle.gap;
+    const overlayCompletionLeft = native.safeInsets.left + overlayStyle.paddingHorizontal + sharedFlexWidth + overlayStyle.gap;
+    const barPlayLeft = barCompletionLeft + 56 + barStyle.gap;
+    const overlayPlayLeft = overlayCompletionLeft + 56 + overlayStyle.gap;
+    expect(overlayCompletionLeft).toBe(barCompletionLeft);
+    expect(overlayPlayLeft).toBe(barPlayLeft);
+    expect(barPlayLeft - barCompletionLeft - 56).toBe(12);
+    const barCenterFromBottom = barStyle.paddingVertical + styleOf(barSlots[1]).height / 2;
+    const overlayCenterFromSafeBottom = overlayStyle.bottom - native.safeInsets.bottom + overlayStyle.height / 2;
+    expect(overlayCenterFromSafeBottom).toBe(barCenterFromBottom);
+  });
+
   it('collapses tools on effective downward scroll and keeps the same audio owner mounted', async () => {
     await mount();
     const audio = all('ChapterAudioControls')[0];
