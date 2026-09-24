@@ -5,24 +5,28 @@ import { theme } from './Theme';
 export interface CompletionTodayButtonProps {
   record: CompletionRecord;
   pending: boolean;
+  retryable: boolean;
   canComplete: boolean;
   onComplete: () => void;
   onUndo: () => void;
 }
 
-export function buildCompletionTodayButtonModel(input: Pick<CompletionTodayButtonProps, 'record' | 'pending' | 'canComplete'>) {
-  const retry = input.record.syncStatus === 'SAVE_FAILED';
+export function buildCompletionTodayButtonModel(input: Pick<CompletionTodayButtonProps, 'record' | 'pending' | 'retryable' | 'canComplete'>) {
+  const retry = input.record.syncStatus === 'SAVE_FAILED' && input.retryable;
+  const terminalFailure = input.record.syncStatus === 'SAVE_FAILED' && !input.retryable;
   const completed = input.record.status === 'COMPLETED';
-  const disabled = input.pending || (!completed && !retry && !input.canComplete);
+  const disabled = input.pending || terminalFailure || (!completed && !retry && !input.canComplete);
   const label = input.pending
     ? '已記錄，等待同步'
-    : retry
-      ? '重試同步完成記錄'
-      : completed
-        ? '今日讀經已完成'
-        : input.canComplete
-          ? '完成今日讀經'
-          : '今天沒有可完成的讀經';
+    : terminalFailure
+      ? '完成記錄未同步，無法重試'
+      : retry
+        ? '重試同步完成記錄'
+        : completed
+          ? '今日讀經已完成'
+          : input.canComplete
+            ? '完成今日讀經'
+            : '今天沒有可完成的讀經';
   return { disabled, label, completed, retry } as const;
 }
 

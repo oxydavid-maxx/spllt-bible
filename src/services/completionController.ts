@@ -10,6 +10,16 @@ export interface CompletionAwardEvent extends Readonly<CompletionIdentity> {
   readonly redeemableBalance?: number;
 }
 
+export interface CompletionSyncEvent extends Readonly<CompletionIdentity> {
+  readonly operationId: string;
+  readonly status: CompletionRecord['status'];
+  readonly pointsDelta?: number;
+  readonly earnedTotal?: number;
+  readonly redeemableBalance?: number;
+}
+
+export const COMPLETION_EVENT_BRIDGE_TTL_MS = 5_000;
+
 export interface CompletionControllerDependencies {
   identity: CompletionIdentity;
   authEpoch: number;
@@ -17,11 +27,13 @@ export interface CompletionControllerDependencies {
   isCurrent: () => boolean;
   isSessionCurrent: () => boolean;
   isVisible: () => boolean;
+  hasPendingCompletion: () => boolean;
   getRecord: () => CompletionRecord | undefined;
   saveCompletion: (command: CompletionCommand) => CompletionRecord;
   flush: () => Promise<SyncResult[]>;
   onRecord: (record: CompletionRecord) => void;
   onSyncError: (failed: boolean) => void;
+  onCommandSaved?: (command: CompletionCommand) => void | Promise<void>;
   confirmUndo: (message: string, onConfirm: () => void) => void;
   generateOperationId: () => string;
 }
@@ -43,19 +55,29 @@ interface AwardSurface {
   identity: CompletionIdentity;
   authEpoch: number;
   isVisible: () => boolean;
-  onAward: (event: CompletionAwardEvent) => void;
+  onAward?: (event: CompletionAwardEvent) => void;
+  onConfirmed?: (event: CompletionSyncEvent) => void;
 }
 
 interface PendingAward {
   event: CompletionAwardEvent;
   authEpoch: number;
+  expiresAt: number;
+}
+
+interface PendingCompletionSync {
+  event: CompletionSyncEvent;
+  authEpoch: number;
+  expiresAt: number;
 }
 
 const actionFlights = new Map<string, Promise<void>>();
 const trackedOperations = new Map<string, TrackedOperation>();
 const awardSurfaces = new Set<AwardSurface>();
 const pendingAwards = new Map<string, PendingAward>();
+const pendingCompletionSync = new Map<string, PendingCompletionSync>();
 const deliveredOperations = new Set<string>();
+const deliveredSyncOperations = new Set<string>();
 
 function identityKey(identity: CompletionIdentity): string {
   return `${identity.memberId}\u0000${identity.planId}\u0000${identity.taskDate}`;
@@ -67,28 +89,50 @@ function sameAwardScope(left: AwardSurface | { identity: CompletionIdentity; aut
     && left.identity.planId === right.identity.planId;
 }
 
+function sameSessionScope(left: AwardSurface | { identity: CompletionIdentity; authEpoch: number }, right: { identity: CompletionIdentity; authEpoch: number }): boolean {
+  return left.authEpoch === right.authEpoch && left.identity.memberId === right.identity.memberId;
+}
+
 function deliverAward(event: CompletionAwardEvent, authEpoch: number): void {
+  const now = Date.now();
   if (deliveredOperations.has(event.operationId)) return;
   const visible = [...awardSurfaces].filter((surface) => {
     try { return surface.isVisible(); } catch { return false; }
   });
   if (visible.length === 0) {
-    if (!pendingAwards.has(event.operationId)) pendingAwards.set(event.operationId, { event, authEpoch });
+    if (!pendingAwards.has(event.operationId)) pendingAwards.set(event.operationId, { event, authEpoch, expiresAt: now + COMPLETION_EVENT_BRIDGE_TTL_MS });
     return;
   }
-  const surface = visible.find((candidate) => sameAwardScope(candidate, {
+  const surface = visible.find((candidate) => candidate.onAward && sameAwardScope(candidate, {
     identity: event,
     authEpoch,
   }));
   if (!surface) return;
   deliveredOperations.add(event.operationId);
   pendingAwards.delete(event.operationId);
-  try { surface.onAward(event); } catch { /* A visual observer cannot change a confirmed save. */ }
+  try { surface.onAward?.(event); } catch { /* A visual observer cannot change a confirmed save. */ }
+}
+
+function deliverCompletionSync(event: CompletionSyncEvent, authEpoch: number): void {
+  const now = Date.now();
+  if (deliveredSyncOperations.has(event.operationId)) return;
+  const visible = [...awardSurfaces].filter((surface) => {
+    try { return surface.isVisible(); } catch { return false; }
+  });
+  if (visible.length === 0) {
+    if (!pendingCompletionSync.has(event.operationId)) pendingCompletionSync.set(event.operationId, { event, authEpoch, expiresAt: now + COMPLETION_EVENT_BRIDGE_TTL_MS });
+    return;
+  }
+  const surface = visible.find((candidate) => candidate.onConfirmed && sameSessionScope(candidate, { identity: event, authEpoch }));
+  if (!surface) return;
+  deliveredSyncOperations.add(event.operationId);
+  pendingCompletionSync.delete(event.operationId);
+  try { surface.onConfirmed?.(event); } catch { /* Refresh observers cannot change a confirmed save. */ }
 }
 
 function activateSurface(surface: AwardSurface): void {
   for (const [operationId, pending] of pendingAwards) {
-    if (!sameAwardScope(surface, { identity: pending.event, authEpoch: pending.authEpoch })) {
+    if (pending.expiresAt <= Date.now() || !sameAwardScope(surface, { identity: pending.event, authEpoch: pending.authEpoch })) {
       pendingAwards.delete(operationId);
       continue;
     }
@@ -99,9 +143,26 @@ function activateSurface(surface: AwardSurface): void {
       pendingAwards.delete(operationId);
       continue;
     }
+    if (!surface.onAward) continue;
     deliveredOperations.add(operationId);
     pendingAwards.delete(operationId);
     try { surface.onAward(pending.event); } catch { /* Ignore rendering failures after the result is consumed. */ }
+  }
+  for (const [operationId, pending] of pendingCompletionSync) {
+    if (pending.expiresAt <= Date.now() || !sameSessionScope(surface, { identity: pending.event, authEpoch: pending.authEpoch })) {
+      pendingCompletionSync.delete(operationId);
+      continue;
+    }
+    let visible = false;
+    try { visible = surface.isVisible(); } catch { /* A surface being torn down is not visible. */ }
+    if (!visible || !surface.onConfirmed) continue;
+    if (deliveredSyncOperations.has(operationId)) {
+      pendingCompletionSync.delete(operationId);
+      continue;
+    }
+    deliveredSyncOperations.add(operationId);
+    pendingCompletionSync.delete(operationId);
+    try { surface.onConfirmed(pending.event); } catch { /* Ignore refresh failures after the result is consumed. */ }
   }
 }
 
@@ -109,13 +170,17 @@ export function subscribeCompletionAwardSurface(
   identity: CompletionIdentity,
   authEpoch: number,
   isVisible: () => boolean,
-  onAward: (event: CompletionAwardEvent) => void,
+  onAward?: (event: CompletionAwardEvent) => void,
+  onConfirmed?: (event: CompletionSyncEvent) => void,
 ): () => void {
-  const surface: AwardSurface = { identity, authEpoch, isVisible, onAward };
+  const surface: AwardSurface = { identity, authEpoch, isVisible, onAward, onConfirmed };
   // A pending event is scoped to the original account and plan. A later account or plan must not
   // revive it; taskDate may change within the same plan because the event carries its own date.
   for (const [operationId, pending] of pendingAwards) {
-    if (!sameAwardScope(surface, { identity: pending.event, authEpoch: pending.authEpoch })) pendingAwards.delete(operationId);
+    if (pending.expiresAt <= Date.now() || !sameAwardScope(surface, { identity: pending.event, authEpoch: pending.authEpoch })) pendingAwards.delete(operationId);
+  }
+  for (const [operationId, pending] of pendingCompletionSync) {
+    if (pending.expiresAt <= Date.now() || !sameSessionScope(surface, { identity: pending.event, authEpoch: pending.authEpoch })) pendingCompletionSync.delete(operationId);
   }
   awardSurfaces.add(surface);
   activateSurface(surface);
@@ -123,8 +188,8 @@ export function subscribeCompletionAwardSurface(
 }
 
 export function activateCompletionAwardSurface(identity: CompletionIdentity, authEpoch: number): void {
-  const surface = [...awardSurfaces].find((candidate) => sameAwardScope(candidate, { identity, authEpoch }));
-  if (surface) activateSurface(surface);
+  const surfaces = [...awardSurfaces].filter((candidate) => sameSessionScope(candidate, { identity, authEpoch }));
+  for (const surface of surfaces) activateSurface(surface);
 }
 
 function observeFlushResults(results: SyncResult[]): void {
@@ -137,9 +202,19 @@ function observeFlushResults(results: SyncResult[]): void {
     trackedOperations.delete(operationId);
     if (!tracked.isSessionCurrent()) {
       pendingAwards.delete(operationId);
+      pendingCompletionSync.delete(operationId);
       continue;
     }
-    if (!result.ok || result.reconciledConflict || tracked.desiredStatus !== 'COMPLETED'
+    if (!result.ok || result.reconciledConflict) continue;
+    deliverCompletionSync(Object.freeze({
+      ...tracked.identity,
+      operationId,
+      status: result.status,
+      ...(Number.isSafeInteger(result.pointsDelta) ? { pointsDelta: result.pointsDelta } : {}),
+      ...(Number.isSafeInteger(result.earnedTotal) ? { earnedTotal: result.earnedTotal } : {}),
+      ...(Number.isSafeInteger(result.redeemableBalance) ? { redeemableBalance: result.redeemableBalance } : {}),
+    }), tracked.authEpoch);
+    if (tracked.desiredStatus !== 'COMPLETED'
       || result.status !== 'COMPLETED' || !Number.isSafeInteger(result.pointsDelta) || (result.pointsDelta ?? 0) <= 0) continue;
     deliverAward(Object.freeze({
       ...tracked.identity,
@@ -181,6 +256,7 @@ export function createCompletionController(getDependencies: () => CompletionCont
     const current = dependencies.getRecord() ?? emptyRecord(identity);
     if (current.syncStatus === 'PENDING_SAVE') return;
     if (current.syncStatus === 'SAVE_FAILED') {
+      if (!dependencies.hasPendingCompletion()) return;
       await flushExisting(dependencies);
       return;
     }
@@ -213,6 +289,7 @@ export function createCompletionController(getDependencies: () => CompletionCont
       return;
     }
     dependencies.onRecord(pending);
+    try { void Promise.resolve(dependencies.onCommandSaved?.(command)).catch(() => undefined); } catch { /* Reminder reconciliation must not cancel a saved completion. */ }
     await flushExisting(dependencies);
     // A duplicate result may arrive from a recovery controller after this awaited flush. The shared
     // operation map and result observer make that a no-op, while this final read refreshes the tapper.

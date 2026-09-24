@@ -2,15 +2,18 @@ import { randomUUID } from 'expo-crypto';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { fixtureProfile } from '../ui/fixtureProfile';
 import type { CompletionRecord } from '../domain/completion';
 import { isWithinCompletionWindow, taipeiDate } from '../domain/gamificationV1';
 import { createApiClient } from './apiClient';
 import { getAuthSnapshot, isCurrentAuthSession, useAuthSnapshot, type AuthSession } from './authSession';
-import { activateCompletionAwardSurface, createCompletionController, subscribeCompletionAwardSurface, type CompletionAwardEvent, type CompletionController, type CompletionControllerDependencies } from './completionController';
+import { activateCompletionAwardSurface, createCompletionController, subscribeCompletionAwardSurface, type CompletionAwardEvent, type CompletionController, type CompletionControllerDependencies, type CompletionSyncEvent } from './completionController';
 import { openQingmuRepository } from '../storage/mobileDatabase';
 import type { SyncResult } from '../storage/outbox';
 import { useOutboxRecovery } from './useOutboxRecovery';
+import { createReminderScheduler } from './reminderScheduler';
+import { syncReadingReminderForCompletion } from './reminderCompletion';
 
 export interface UseCompletionControllerOptions {
   planId: string;
@@ -18,12 +21,14 @@ export interface UseCompletionControllerOptions {
   /** Whether this scheduled day is eligible for a new completion. Undo and saved retries remain available. */
   canComplete: boolean;
   onAward?: (event: CompletionAwardEvent) => void;
+  onConfirmed?: (event: CompletionSyncEvent) => void;
 }
 
 export interface UseCompletionControllerValue {
   record: CompletionRecord;
   pending: boolean;
   syncError: boolean;
+  retryable: boolean;
   complete: () => Promise<void>;
   requestUndo: () => void;
 }
@@ -70,9 +75,12 @@ export function useCompletionController(options: UseCompletionControllerOptions)
     }
   });
   const [syncError, setSyncError] = useState(false);
+  const [reminderScheduler] = useState(() => createReminderScheduler());
   const focusedRef = useRef(false);
   const awardCallbackRef = useRef(options.onAward);
   awardCallbackRef.current = options.onAward;
+  const confirmedCallbackRef = useRef(options.onConfirmed);
+  confirmedCallbackRef.current = options.onConfirmed;
   const awardSubscriptionRef = useRef<(() => void) | null>(null);
   const controllerRef = useRef<CompletionController | null>(null);
 
@@ -122,6 +130,7 @@ export function useCompletionController(options: UseCompletionControllerOptions)
     isCurrent,
     isSessionCurrent,
     isVisible: () => focusedRef.current && AppState.currentState === 'active' && isCurrent(),
+    hasPendingCompletion: () => getRepository()?.hasPendingCompletion(identity) ?? false,
     getRecord: () => getRepository()?.get(identity),
     saveCompletion: (command) => {
       const repository = getRepository();
@@ -136,6 +145,14 @@ export function useCompletionController(options: UseCompletionControllerOptions)
     },
     onRecord: setRecord,
     onSyncError: setSyncError,
+    onCommandSaved: (command) => syncReadingReminderForCompletion({
+      memberId: command.memberId,
+      planId: command.planId,
+      taskDate: command.taskDate,
+      status: command.desiredStatus,
+      scheduler: reminderScheduler,
+      store: SecureStore,
+    }),
     confirmUndo: (message, onConfirm) => Alert.alert('撤銷完成', message, [
       { text: '取消', style: 'cancel' },
       { text: '撤銷', style: 'destructive', onPress: onConfirm },
@@ -153,6 +170,9 @@ export function useCompletionController(options: UseCompletionControllerOptions)
       () => focusedRef.current && AppState.currentState === 'active' && isCurrent(),
       (event) => {
         if (isCurrent()) awardCallbackRef.current?.(event);
+      },
+      (event) => {
+        if (isCurrent()) confirmedCallbackRef.current?.(event);
       },
     );
     awardSubscriptionRef.current = subscription;
@@ -211,10 +231,12 @@ export function useCompletionController(options: UseCompletionControllerOptions)
   const matchingRecord = record.memberId === identity.memberId && record.planId === identity.planId && record.taskDate === identity.taskDate
     ? record
     : blankRecord(identity.memberId, identity.planId, identity.taskDate);
+  const retryable = matchingRecord.syncStatus === 'SAVE_FAILED' && (getRepository()?.hasPendingCompletion(identity) ?? false);
   return {
     record: matchingRecord,
     pending: matchingRecord.syncStatus === 'PENDING_SAVE',
     syncError: record.memberId === identity.memberId && record.planId === identity.planId && record.taskDate === identity.taskDate && syncError,
+    retryable,
     complete: () => controller.complete(),
     requestUndo: () => controller.requestUndo(),
   };

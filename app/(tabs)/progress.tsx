@@ -20,7 +20,8 @@ import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { theme } from '../../src/ui/Theme';
 import { createApiClient } from '../../src/services/apiClient';
 import { useCompletionController } from '../../src/services/useCompletionController';
-import type { CompletionAwardEvent } from '../../src/services/completionController';
+import type { CompletionAwardEvent, CompletionSyncEvent } from '../../src/services/completionController';
+import { applyCompletionSyncToProfile } from '../../src/ui/completionProfileSync';
 import { CompletionTodayButton } from '../../src/ui/CompletionTodayButton';
 import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
 import { getReadingPlanId } from '../../src/ui/readingSession';
@@ -432,22 +433,26 @@ export default function ProgressScreen() {
   const todayCanComplete = todaySchedule?.taskDate === today
     ? todaySchedule.canComplete
     : Boolean(localTodayPlanId && isWithinCompletionWindow(today, today));
-  const onCompletionAward = useCallback((event: CompletionAwardEvent) => {
-    setCompletionAward(event);
-    if (event.memberId !== session?.memberId) return;
-    setProfile((current) => {
-      if (!current || current.memberId !== event.memberId) return current;
-      return {
-        ...current,
-        ...(event.earnedTotal === undefined ? {} : { earnedTotal: event.earnedTotal }),
-        ...(current.private && event.redeemableBalance !== undefined
-          ? { private: { ...current.private, redeemableBalance: event.redeemableBalance } }
-          : {}),
-      };
-    });
+  const refreshedCompletionOperations = useRef(new Set<string>());
+  const refreshCompletionProfile = useCallback((event: CompletionSyncEvent | CompletionAwardEvent) => {
+    if (event.memberId !== session?.memberId || refreshedCompletionOperations.current.has(event.operationId)) return;
+    if (refreshedCompletionOperations.current.size >= 64) {
+      const oldestOperation = refreshedCompletionOperations.current.values().next().value;
+      if (oldestOperation) refreshedCompletionOperations.current.delete(oldestOperation);
+    }
+    refreshedCompletionOperations.current.add(event.operationId);
+    setProfile((current) => applyCompletionSyncToProfile(current, event));
     awardRefreshRef.current(event.memberId);
   }, [session?.memberId]);
-  const completion = useCompletionController({ planId: todayPlanId, taskDate: today, canComplete: todayCanComplete, onAward: onCompletionAward });
+  const onCompletionAward = useCallback((event: CompletionAwardEvent) => {
+    setCompletionAward(event);
+    refreshCompletionProfile(event);
+  }, [refreshCompletionProfile]);
+  const onCompletionConfirmed = useCallback((event: CompletionSyncEvent) => {
+    // The event carries its original taskDate; a cross-month backfill still refreshes this member's profile.
+    refreshCompletionProfile(event);
+  }, [refreshCompletionProfile]);
+  const completion = useCompletionController({ planId: todayPlanId, taskDate: today, canComplete: todayCanComplete, onAward: onCompletionAward, onConfirmed: onCompletionConfirmed });
 
   if (!session) return <View style={styles.screen}><Text style={styles.title}>積分</Text><Text style={styles.note}>請先登入以查看積分。</Text></View>;
   const ownProfile = profile?.memberId === session.memberId ? profile : null;
@@ -462,11 +467,12 @@ export default function ProgressScreen() {
       <CompletionTodayButton
         record={completion.record}
         pending={completion.pending}
+        retryable={completion.retryable}
         canComplete={todayCanComplete}
         onComplete={() => { void completion.complete(); }}
         onUndo={completion.requestUndo}
       />
-      {completion.syncError ? <Text accessibilityRole="alert" style={styles.stale}>同步遇到問題，完成狀態已保留，連線後會重試。</Text> : null}
+      {completion.syncError ? <Text accessibilityRole="alert" style={styles.stale}>{completion.record.syncStatus === 'SAVE_FAILED' && !completion.retryable ? '完成記錄無法同步，本機完成狀態仍保留。' : '同步遇到問題，完成狀態已保留，連線後會重試。'}</Text> : null}
     </View> : null}
     {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
     {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { requestGeneration.current += 1; stopPrefetch(); activeMember.current = null; setBusy(false); setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}

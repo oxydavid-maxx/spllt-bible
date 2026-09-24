@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CompletionCommand, CompletionRecord } from '../../src/domain/completion';
 import {
+  activateCompletionAwardSurface,
   createCompletionController,
   subscribeCompletionAwardSurface,
   type CompletionAwardEvent,
@@ -18,6 +19,7 @@ function makeHarness(options: {
   canComplete?: () => boolean;
   isCurrent?: () => boolean;
   isSessionCurrent?: () => boolean;
+  hasPendingCompletion?: () => boolean;
   operationId?: string;
   identity?: typeof identity;
 } = {}) {
@@ -39,6 +41,7 @@ function makeHarness(options: {
     isCurrent: options.isCurrent ?? (() => true),
     isSessionCurrent: options.isSessionCurrent ?? (() => true),
     isVisible: () => true,
+    hasPendingCompletion: options.hasPendingCompletion ?? (() => false),
     getRecord: () => record,
     saveCompletion: (command) => {
       commands.push(command);
@@ -203,5 +206,99 @@ describe('shared completion controller and award handoff', () => {
     harness.controller.observeFlushResults(response);
     expect(events).toHaveLength(1);
     stop();
+  });
+
+  it('notifies the visible Points surface of every confirmed server state, without animating undo or legacy no-delta completion', async () => {
+    const undoIdentity = { ...identity, memberId: `member-controller-test-${nextMember + 1}` };
+    const undoId = `controller-operation-${nextOperation + 1}`;
+    const undo = makeHarness({
+      identity: undoIdentity,
+      startingRecord: { ...undoIdentity, status: 'COMPLETED', revision: 1, syncStatus: 'CONFIRMED' },
+      operationId: undoId,
+      flush: async () => [{ ok: true, operationId: undoId, revision: 2, status: 'NOT_COMPLETED', pointsDelta: -1, earnedTotal: 11, redeemableBalance: 0 }],
+    });
+    const awardEvents: unknown[] = [];
+    const syncedEvents: unknown[] = [];
+    const otherMonth = { ...undoIdentity, planId: 'church-2026-10', taskDate: '2026-10-02' };
+    const stopUndo = subscribeCompletionAwardSurface(otherMonth, 4, () => true, (event) => awardEvents.push(event), (event) => syncedEvents.push(event));
+    undo.controller.requestUndo();
+    await vi.waitFor(() => expect(syncedEvents).toHaveLength(1));
+    expect(syncedEvents[0]).toMatchObject({ ...undoIdentity, operationId: undoId, status: 'NOT_COMPLETED', pointsDelta: -1, earnedTotal: 11, redeemableBalance: 0 });
+    expect(awardEvents).toEqual([]);
+    stopUndo();
+
+    const legacyIdentity = { ...identity, memberId: `member-controller-test-${nextMember + 1}` };
+    const legacyId = `controller-operation-${nextOperation + 1}`;
+    const legacy = makeHarness({
+      identity: legacyIdentity,
+      operationId: legacyId,
+      flush: async () => [{ ok: true, operationId: legacyId, revision: 1, status: 'COMPLETED', earnedTotal: 12, redeemableBalance: 1 }],
+    });
+    const legacyAwards: unknown[] = [];
+    const legacySyncs: unknown[] = [];
+    const stopLegacy = subscribeCompletionAwardSurface({ ...legacyIdentity, planId: 'church-2026-10' }, 4, () => true, (event) => legacyAwards.push(event), (event) => legacySyncs.push(event));
+    await legacy.controller.complete();
+    expect(legacySyncs).toHaveLength(1);
+    expect(legacySyncs[0]).toMatchObject({ ...legacyIdentity, operationId: legacyId, status: 'COMPLETED', earnedTotal: 12, redeemableBalance: 1 });
+    expect(legacyAwards).toEqual([]);
+    stopLegacy();
+  });
+
+  it('calls the shared completion side effect exactly once at the save boundary for complete and undo', async () => {
+    const complete = makeHarness({ flush: async () => [success(`controller-operation-${nextOperation + 1}`, 1)] });
+    const completeSideEffect = vi.fn();
+    Object.assign(complete.deps, { onCommandSaved: completeSideEffect });
+    await complete.controller.complete();
+    expect(completeSideEffect).toHaveBeenCalledOnce();
+    expect(completeSideEffect).toHaveBeenCalledWith(expect.objectContaining({ desiredStatus: 'COMPLETED', taskDate: complete.identity.taskDate }));
+
+    const undoIdentity = { ...identity, memberId: `member-controller-test-${nextMember + 1}` };
+    const undoId = `controller-operation-${nextOperation + 1}`;
+    const undo = makeHarness({
+      identity: undoIdentity,
+      startingRecord: { ...undoIdentity, status: 'COMPLETED', revision: 1, syncStatus: 'CONFIRMED' },
+      operationId: undoId,
+      flush: async () => [success(undoId, -1, 'NOT_COMPLETED')],
+    });
+    const undoSideEffect = vi.fn();
+    Object.assign(undo.deps, { onCommandSaved: undoSideEffect });
+    undo.controller.requestUndo();
+    await vi.waitFor(() => expect(undoSideEffect).toHaveBeenCalledOnce());
+    expect(undoSideEffect).toHaveBeenCalledWith(expect.objectContaining({ desiredStatus: 'NOT_COMPLETED', taskDate: undo.identity.taskDate }));
+  });
+
+  it('does not flush an empty outbox for terminal SAVE_FAILED while retaining the local completion', async () => {
+    const failedIdentity = { ...identity, memberId: `member-controller-test-${nextMember + 1}` };
+    const terminalRecord: CompletionRecord = {
+      ...failedIdentity, status: 'COMPLETED', revision: 1, syncStatus: 'SAVE_FAILED',
+      pendingStatus: 'COMPLETED', lastOperationId: 'terminal-op',
+    };
+    const flush = vi.fn(async () => [] as SyncResult[]);
+    const terminal = makeHarness({ identity: failedIdentity, startingRecord: terminalRecord, flush });
+    Object.assign(terminal.deps, { hasPendingCompletion: () => false });
+    await terminal.controller.complete();
+    expect(flush).not.toHaveBeenCalled();
+    expect(terminal.getRecord()).toMatchObject({ status: 'COMPLETED', syncStatus: 'SAVE_FAILED', pendingStatus: 'COMPLETED' });
+  });
+
+  it('does not replay a queued award after its short route-transition lifetime expires', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-24T00:00:00.000Z'));
+    try {
+      const operationId = `controller-operation-${nextOperation + 1}`;
+      const harness = makeHarness({ operationId, flush: async () => [success(operationId, 1)] });
+      let foreground = false;
+      const events: unknown[] = [];
+      const stop = subscribeCompletionAwardSurface(harness.identity, 4, () => foreground, (event) => events.push(event));
+      await harness.controller.complete();
+      expect(events).toEqual([]);
+      foreground = true;
+      vi.setSystemTime(new Date(Date.now() + 5_001));
+      activateCompletionAwardSurface(harness.identity, 4);
+      expect(events).toEqual([]);
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
