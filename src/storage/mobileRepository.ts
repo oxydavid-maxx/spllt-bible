@@ -162,7 +162,7 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
         if (result.conflict && result.error === 'REVISION_CONFLICT') {
           if (result.status === command.desiredStatus) {
             confirmAuthoritative(command, result.revision, result.status);
-            results[results.length - 1] = { ok: true, revision: result.revision, status: result.status, reconciledConflict: true };
+            results[results.length - 1] = { ok: true, operationId: command.operationId, revision: result.revision, status: result.status, reconciledConflict: true };
             commandSettled = true;
             break;
           }

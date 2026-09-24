@@ -22,6 +22,28 @@ const headers = {
 };
 
 describe('completion API', () => {
+  it('returns the real wallet delta for award, replay, reversal, and a no-op', async () => {
+    const api = setup();
+    const request = (operationId: string, expectedRevision: number, status: 'COMPLETED' | 'NOT_COMPLETED') => ({
+      method: 'PUT',
+      url: '/api/me/completions/church-2026-09/2026-09-08',
+      headers,
+      body: JSON.stringify({ operation_id: operationId, expected_revision: expectedRevision, status }),
+    });
+
+    const awarded = await api(request('delta-award', 0, 'COMPLETED'));
+    const awardReplay = await api(request('delta-award', 0, 'COMPLETED'));
+    const reversed = await api(request('delta-reverse', 1, 'NOT_COMPLETED'));
+    const reversalReplay = await api(request('delta-reverse', 1, 'NOT_COMPLETED'));
+    const noChange = await api(request('delta-noop', 2, 'NOT_COMPLETED'));
+
+    expect(awarded.body).toMatchObject({ pointsDelta: 1, redeemableBalance: 1 });
+    expect(awardReplay.body).toEqual(awarded.body);
+    expect(reversed.body).toMatchObject({ pointsDelta: -1, redeemableBalance: 0 });
+    expect(reversalReplay.body).toEqual(reversed.body);
+    expect(noChange.body).toMatchObject({ pointsDelta: 0, redeemableBalance: 0 });
+  });
+
   it('accepts a completion and replays the same operation without duplicate points', async () => {
     const api = setup();
     const request = {

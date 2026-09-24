@@ -68,6 +68,7 @@ export interface CompletionMutationResult {
   revision: number;
   syncStatus: 'CONFIRMED';
   operationId: string;
+  pointsDelta: number;
   earnedTotal: number;
   redeemableBalance: number;
   points: number;
@@ -755,7 +756,7 @@ function completionFingerprint(input: CompletionMutationInput): string {
   return digest({ memberId: input.memberId, planId: input.planId, taskDate: input.taskDate, status: input.status });
 }
 
-function completionResponse(db: DatabaseSync, input: CompletionMutationInput, revision: number, policyAmount: number, policyVersion: string): CompletionMutationResult {
+function completionResponse(db: DatabaseSync, input: CompletionMutationInput, revision: number, policyAmount: number, policyVersion: string, pointsDelta: number): CompletionMutationResult {
   const earnedTotal = totalEarned(db, input.memberId);
   const redeemableBalance = walletBalance(db, input.memberId);
   return {
@@ -766,6 +767,7 @@ function completionResponse(db: DatabaseSync, input: CompletionMutationInput, re
     revision,
     syncStatus: 'CONFIRMED',
     operationId: input.operationId,
+    pointsDelta,
     earnedTotal,
     redeemableBalance,
     points: earnedTotal,
@@ -830,7 +832,12 @@ export function mutateCompletion(db: DatabaseSync, input: CompletionMutationInpu
     }
     // Keep the legacy event table populated for old clients/reporting. New totals use the immutable entitlement and wallet tables above.
     if (policyAmount > 0) db.prepare('INSERT OR IGNORE INTO point_events(event_id, member_id, completion_key, status, policy_version) VALUES(?,?,?,?,?)').run(input.operationId, input.memberId, `${input.memberId}:${input.planId}:${input.taskDate}`, input.status === 'COMPLETED' ? 'COMPLETED' : 'NOT_COMPLETED', policyVersion);
-    const response = completionResponse(db, input, revision, policyAmount, policyVersion);
+    const pointsDelta = becomesCompleted && !bool(entitlement?.active)
+      ? amount
+      : leavesCompleted && bool(entitlement?.active)
+        ? -amount
+        : 0;
+    const response = completionResponse(db, input, revision, policyAmount, policyVersion, pointsDelta);
     db.prepare('INSERT INTO operations(operation_id, response_json, command_fingerprint) VALUES(?,?,?)').run(input.operationId, JSON.stringify(response), fingerprint);
     return response;
   });

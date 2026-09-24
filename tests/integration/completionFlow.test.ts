@@ -43,9 +43,17 @@ describe('completion to API to progress integration', () => {
         body: JSON.stringify({ operation_id: queued.operationId, expected_revision: queued.expectedRevision, status: queued.desiredStatus }),
       });
       if (response.status === 409) return { ok: false as const, conflict: true as const, revision: Number(response.body.revision), status: response.body.status as 'COMPLETED' };
-      return { ok: true as const, revision: Number(response.body.revision), status: response.body.status as 'COMPLETED' };
+      return {
+        ok: true as const,
+        operationId: String(response.body.operationId),
+        pointsDelta: Number(response.body.pointsDelta),
+        earnedTotal: Number(response.body.earnedTotal),
+        redeemableBalance: Number(response.body.redeemableBalance),
+        revision: Number(response.body.revision),
+        status: response.body.status as 'COMPLETED',
+      };
     });
-    expect(results[0]).toMatchObject({ ok: true, revision: 1 });
+    expect(results[0]).toMatchObject({ ok: true, operationId: 'integration-op-1', pointsDelta: 1, redeemableBalance: 1, revision: 1 });
 
     const progress = await api({
       method: 'GET',

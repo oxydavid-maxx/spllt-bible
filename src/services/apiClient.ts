@@ -223,10 +223,26 @@ export function createApiClient(options: ApiClientOptions) {
       ) {
         return { ok: false, error: 'INVALID_API_RESPONSE' };
       }
+      const optionalSafeInteger = (value: unknown, allowNegative = false): number | undefined | null => {
+        if (value === undefined) return undefined;
+        return typeof value === 'number'
+          && Number.isSafeInteger(value)
+          && (allowNegative || value >= 0)
+          ? value
+          : null;
+      };
+      const pointsDelta = optionalSafeInteger(body.pointsDelta, true);
+      const earnedTotal = optionalSafeInteger(body.earnedTotal);
+      const redeemableBalance = optionalSafeInteger(body.redeemableBalance);
+      if (pointsDelta === null || earnedTotal === null || redeemableBalance === null) return { ok: false, error: 'INVALID_API_RESPONSE' };
       return {
         ok: true,
+        operationId: command.operationId,
         revision: body.revision,
         status: body.status,
+        ...(pointsDelta === undefined ? {} : { pointsDelta }),
+        ...(earnedTotal === undefined ? {} : { earnedTotal }),
+        ...(redeemableBalance === undefined ? {} : { redeemableBalance }),
       };
     },
     async getProgress(date: string, period?: { start: string; end: string }): Promise<ProgressSnapshot | null> {

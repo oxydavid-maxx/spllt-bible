@@ -3,10 +3,17 @@ import type { CompletionStatus } from '../domain/types';
 
 export type QueuedCompletion = CompletionCommand;
 
+interface CompletionSyncMetadata {
+  operationId?: string;
+  pointsDelta?: number;
+  earnedTotal?: number;
+  redeemableBalance?: number;
+}
+
 export type SyncResult =
-  | { ok: true; revision: number; status: 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED'; reconciledConflict?: true }
-  | { ok: false; conflict: true; error?: 'REVISION_CONFLICT' | 'OPERATION_REPLAY_STALE'; revision: number; status: CompletionStatus; reconciledConflict?: true }
-  | { ok: false; conflict?: false; error: string };
+  | ({ ok: true; revision: number; status: 'UNREPORTED' | 'NOT_COMPLETED' | 'COMPLETED'; reconciledConflict?: true } & CompletionSyncMetadata)
+  | ({ ok: false; conflict: true; error?: 'REVISION_CONFLICT' | 'OPERATION_REPLAY_STALE'; revision: number; status: CompletionStatus; reconciledConflict?: true } & CompletionSyncMetadata)
+  | ({ ok: false; conflict?: false; error: string } & CompletionSyncMetadata);
 
 export class Outbox {
   private readonly queue: QueuedCompletion[] = [];

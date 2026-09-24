@@ -22,6 +22,30 @@ describe('session onboarding client', () => {
     })).resolves.toMatchObject({ ok: false, conflict: true, error: 'REVISION_CONFLICT', revision: 5, status: 'COMPLETED' });
   });
 
+  it('preserves pointsDelta and wallet totals from a confirmed completion response', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      memberId: 'google:self', planId: 'church-2026-09', taskDate: '2026-09-08', operationId: 'op-award',
+      status: 'COMPLETED', revision: 3, syncStatus: 'CONFIRMED', pointsDelta: 2, earnedTotal: 14, redeemableBalance: 9,
+    }), { status: 200 }));
+    const client = createApiClient({ baseUrl: 'https://api.example.test', token: 'token', memberId: 'google:self', fetchImpl });
+    await expect(client.saveCompletion({
+      memberId: 'google:self', planId: 'church-2026-09', taskDate: '2026-09-08', desiredStatus: 'COMPLETED', operationId: 'op-award', expectedRevision: 2, syncStatus: 'PENDING_SAVE',
+    })).resolves.toMatchObject({ ok: true, operationId: 'op-award', pointsDelta: 2, earnedTotal: 14, redeemableBalance: 9 });
+  });
+
+  it('accepts an old successful completion response without guessing a points delta', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      memberId: 'google:self', planId: 'church-2026-09', taskDate: '2026-09-08', operationId: 'op-old-server',
+      status: 'COMPLETED', revision: 1, syncStatus: 'CONFIRMED', earnedTotal: 10, redeemableBalance: 10,
+    }), { status: 200 }));
+    const client = createApiClient({ baseUrl: 'https://api.example.test', token: 'token', memberId: 'google:self', fetchImpl });
+    const result = await client.saveCompletion({
+      memberId: 'google:self', planId: 'church-2026-09', taskDate: '2026-09-08', desiredStatus: 'COMPLETED', operationId: 'op-old-server', expectedRevision: 0, syncStatus: 'PENDING_SAVE',
+    });
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) expect(result).not.toHaveProperty('pointsDelta');
+  });
+
   it('classifies an authoritative stale operation replay so the repository may rotate it explicitly', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'OPERATION_REPLAY_STALE', revision: 5, status: 'NOT_COMPLETED' }), { status: 409 }));
     const client = createApiClient({ baseUrl: 'https://api.example.test', token: 'token', memberId: 'google:self', fetchImpl });

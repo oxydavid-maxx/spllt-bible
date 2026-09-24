@@ -65,6 +65,27 @@ describe('outboxRecovery controller', () => {
     expect(saveCompletion).toHaveBeenCalledTimes(1);
   });
 
+  it('passes exact flush responses to the shared completion result observer', async () => {
+    const repository = makeRepository();
+    const response: SyncResult = { ok: true, operationId: OPERATION_ID, revision: 1, status: 'COMPLETED', pointsDelta: 1, earnedTotal: 1, redeemableBalance: 1 };
+    const saveCompletion = vi.fn<(command: unknown) => Promise<SyncResult>>().mockResolvedValue(response);
+    const onRecovered = vi.fn<(results: SyncResult[]) => void>();
+    const session: OutboxRecoverySession = { memberId: 'member-1', sessionToken: 'tok' };
+    const controller = createOutboxRecoveryController({
+      getRepository: () => repository,
+      getClient: () => ({ saveCompletion }),
+      getSession: () => session,
+      isCurrentAuthSession: () => true,
+      getTarget: () => TARGET,
+      onRecovered,
+    });
+
+    controller.kick();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(onRecovered).toHaveBeenCalledWith([response]);
+  });
+
   it('retries with doubling backoff (10s, 20s, 40s) until send succeeds, then stops', async () => {
     const repository = makeRepository();
     const saveCompletion = vi.fn<(command: unknown) => Promise<SyncResult>>()

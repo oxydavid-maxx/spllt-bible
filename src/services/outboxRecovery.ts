@@ -28,7 +28,7 @@ export interface OutboxRecoveryControllerOptions {
   isCurrentAuthSession: (session: OutboxRecoverySession | null) => boolean;
   getTarget: () => OutboxRecoveryTarget | null;
   /** Invoked after every flush attempt (success or failure) while the session guard still holds. */
-  onRecovered: () => void;
+  onRecovered: (results: SyncResult[]) => void;
   /** Initial retry delay in ms once a flush attempt leaves the record PENDING_SAVE. Default 10s. */
   minDelayMs?: number;
   /** Ceiling for the doubling backoff. Default 60s. */
@@ -99,8 +99,9 @@ export function createOutboxRecoveryController(options: OutboxRecoveryController
     const target = options.getTarget();
     if (!repository || !client || !target) return;
     inFlight = true;
+    let results: SyncResult[] = [];
     try {
-      await repository.flush((command) => client.saveCompletion(command), target.memberId);
+      results = await repository.flush((command) => client.saveCompletion(command), target.memberId);
     } catch {
       // transport errors leave the record PENDING_SAVE; scheduleRetry below re-arms the backoff.
     } finally {
@@ -108,7 +109,7 @@ export function createOutboxRecoveryController(options: OutboxRecoveryController
     }
     if (stopped) return;
     if (!options.isCurrentAuthSession(options.getSession())) return;
-    options.onRecovered();
+    options.onRecovered(results);
     scheduleRetry();
   }
 
