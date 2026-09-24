@@ -28,6 +28,9 @@ let todayReaderTabPressMemberId: string | null = null;
 let todayReaderTabPressAuthEpoch = 0;
 let todayReaderTabPressSameDate = false;
 let todayReaderTabPressTargetDate: string | null = null;
+let journalEntryDate: string | null = null;
+let journalEntryRevision = 0;
+let pendingJournalQuote: string | null = null;
 
 export function setSelectedReadingDate(date: string): void {
   if (!validDateOnly(date) || date === selectedDate) return;
@@ -45,6 +48,27 @@ export function requestTodayReaderTabPress(date: string, memberId: string | null
   todayReaderTabPressMemberId = memberId;
   todayReaderTabPressAuthEpoch = authEpoch;
   todayReaderTabPressTargetDate = date;
+  publish();
+}
+
+/** A journal tab entry borrows the current Reader task date without changing Reader selection. */
+export function setJournalEntryDate(date: string): void {
+  if (!validDateOnly(date)) return;
+  journalEntryDate = date;
+  journalEntryRevision += 1;
+  publish();
+}
+
+export function setPendingJournalQuote(quote: string): void {
+  const next = quote.trim();
+  if (!next || next === pendingJournalQuote) return;
+  pendingJournalQuote = next;
+  publish();
+}
+
+export function consumePendingJournalQuote(): void {
+  if (pendingJournalQuote === null) return;
+  pendingJournalQuote = null;
   publish();
 }
 
@@ -98,7 +122,7 @@ export function getReadingSessionSnapshot() {
   const day = getReadingDay(activePlan, selectedDate);
   const period = getPeriodForDate(activePlan, selectedDate);
   const adjacent = getAdjacentScheduledDates(activePlan, selectedDate);
-  return { selectedDate, planId: planIdByDate.get(selectedDate) ?? activePlan.planId, day, period, previousDate: adjacent.previous, nextDate: adjacent.next, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate };
+  return { selectedDate, planId: planIdByDate.get(selectedDate) ?? activePlan.planId, day, period, previousDate: adjacent.previous, nextDate: adjacent.next, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, journalEntryDate, journalEntryRevision, pendingJournalQuote };
 }
 
 export function getReadingPlanId(taskDate: string): string | null {

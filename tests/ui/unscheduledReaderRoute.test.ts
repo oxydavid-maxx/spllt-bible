@@ -22,7 +22,9 @@ vi.mock('react-native', () => ({
   Modal: (props: { visible: boolean; children?: React.ReactNode }) => props.visible ? React.createElement('Modal', props, props.children) : null,
   StyleSheet: { create: (x: unknown) => x, absoluteFill: {} }, Alert: { alert: boundary.alert }, Linking: { openURL: boundary.openURL },
   BackHandler: { addEventListener: () => ({ remove() {} }) },
+  AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
   KeyboardAvoidingView: primitive('KeyboardAvoidingView'), Platform: { OS: 'android' },
+  useWindowDimensions: () => ({ width: 393, fontScale: 1 }),
   Keyboard: { isVisible: () => false, addListener: () => ({ remove() {} }) },
   AccessibilityInfo: { addEventListener: () => ({ remove() {} }), isScreenReaderEnabled: async () => false },
 }));
@@ -30,7 +32,7 @@ vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 24, left: 0, right: 0 }) }));
 vi.mock('expo-application', () => ({ nativeBuildVersion: '30' }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn(), maybeCompleteAuthSession() {} }));
-vi.mock('expo-router', () => ({ router: { replace: vi.fn() }, useFocusEffect: (callback: () => any) => React.useEffect(() => {
+vi.mock('expo-router', () => ({ router: { replace: vi.fn() }, usePathname: () => '/reader', useFocusEffect: (callback: () => any) => React.useEffect(() => {
   const cleanup = callback();
   boundary.focusEffects.set(callback, cleanup);
   return () => { if (typeof cleanup === 'function') cleanup(); boundary.focusEffects.delete(callback); };
@@ -40,17 +42,22 @@ vi.mock('expo-status-bar', () => ({ StatusBar: primitive('StatusBar') }));
 vi.mock('expo-navigation-bar', () => ({ NavigationBar: Object.assign(primitive('NavigationBar'), { setHidden: vi.fn() }) }));
 vi.mock('expo-audio', () => ({ useAudioPlayer: () => React.useMemo(() => ({ pause() {}, play() {}, replace() {}, seekTo: async () => {}, setPlaybackRate() {}, remove() {}, addListener: () => ({ remove() {} }), currentTime: 0, duration: 0, playing: false, isLoaded: false, isBuffering: false }), []) }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async (key: string) => boundary.preferences.get(key) ?? null, setItemAsync: async (key: string, value: string) => { boundary.preferences.set(key, value); } }));
-vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ status: 'signed-in', session: boundary.session, epoch: 1, expiresAt: null }), getAuthSnapshot: () => ({ status: 'signed-in', session: boundary.session, epoch: 1, expiresAt: null }), isCurrentAuthSession: (session: unknown) => session === boundary.session }));
+vi.mock('../../src/services/authSession', () => ({
+  useAuthSnapshot: () => ({ status: 'signed-in', session: boundary.session, epoch: 1, expiresAt: null }),
+  getAuthSnapshot: () => ({ status: 'signed-in', session: boundary.session, epoch: 1, expiresAt: null }),
+  isCurrentAuthSession: (session: { memberId?: string; sessionToken?: string } | null) => session?.memberId === boundary.session.memberId && session?.sessionToken === boundary.session.sessionToken,
+}));
 vi.mock('../../src/services/reminderScheduler', () => ({ createReminderScheduler: () => ({}) }));
 vi.mock('../../src/services/reminderCompletion', () => ({ syncReadingReminderForCompletion: vi.fn() }));
 vi.mock('../../src/services/useOutboxRecovery', () => ({ useOutboxRecovery: () => undefined }));
+vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
 vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost: () => null }));
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ saveCompletion: boundary.completions, getProgress: async () => undefined }) }));
 vi.mock('../../src/storage/mobileDatabase', () => ({
   openQingmuRepository: () => ({ get: (identity: { memberId: string; planId: string; taskDate: string }) => {
     const record = boundary.completionRecord;
     return record && record.memberId === identity.memberId && record.planId === identity.planId && record.taskDate === identity.taskDate ? record : undefined;
-  }, flush: boundary.flush, saveCompletion: boundary.completions }),
+  }, hasPendingCompletion: () => boundary.completionRecord?.syncStatus === 'SAVE_FAILED', flush: boundary.flush, saveCompletion: boundary.completions }),
   openQingmuJournalStore: () => ({ get: () => null, save: (command: Record<string, unknown>) => command }),
   openQingmuReaderPositionStore: () => ({
     get: (memberId: string, _plan: string, date: string) => boundary.positions.get(`${memberId}:${date}`),
@@ -159,10 +166,6 @@ describe('real unscheduled-day route initializes a free Bible reader', () => {
     await simulateReaderRefocus();
     expect(reader().props).toMatchObject({ book: 'PSA', chapter: '98', versionId: 46 });
     expect(layout().props.selectedDate).toBe('2026-09-13');
-    act(() => layout().props.chrome.openJournal());
-    expect(layout().props.chrome.journalOpen).toBe(true);
-    act(() => layout().props.chrome.closeJournal());
-    expect(layout().props.chrome.journalOpen).toBe(false);
     expect(reader().props).toMatchObject({ book: 'PSA', chapter: '98', versionId: 46 });
     expect(layout().props.selectedDate).toBe('2026-09-13');
     expect(boundary.completions).not.toHaveBeenCalled();
@@ -195,9 +198,9 @@ describe('real unscheduled-day route initializes a free Bible reader', () => {
     setSelectedReadingDate('2026-09-22');
     boundary.completionRecord = { memberId: 'A', planId: 'church-2026-09', taskDate: '2026-09-22', status: 'COMPLETED', revision: 1, syncStatus: 'CONFIRMED' };
     await mount();
-    act(() => { button('已完成').props.onPress(); });
+    act(() => { button('已完成，可撤銷完成確認').props.onPress(); });
     expect(boundary.completions).not.toHaveBeenCalled();
-    expect(boundary.alert).toHaveBeenCalledWith('確定撤銷9/22的完成？', '這一天的積分會一併撤回。', expect.any(Array));
+    expect(boundary.alert).toHaveBeenCalledWith('撤銷完成', '確定撤銷 2026-09-22 的完成？這一天的積分會一併撤回。', expect.any(Array));
     const confirmation = boundary.alert.mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
     await act(async () => { confirmation.find(item => item.text === '撤銷')?.onPress?.(); await Promise.resolve(); });
     expect(boundary.completions).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
@@ -220,6 +223,6 @@ describe('real unscheduled-day route initializes a free Bible reader', () => {
     expect(boundary.completions).not.toHaveBeenCalled();
     expect(boundary.completionRecord.syncStatus).toBe('CONFIRMED');
     expect(layout().props).toMatchObject({ completed: true, completionFailed: false, completionPending: false });
-    expect(button('已完成')).toBeDefined();
+    expect(button('已完成，可撤銷完成確認')).toBeDefined();
   });
 });

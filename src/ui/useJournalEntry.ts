@@ -73,16 +73,20 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
   const [record, setRecord] = useState<JournalRecord | null>(null);
   const [draft, setDraft] = useState('');
   const draftRef = useRef('');
+  const persistedDraftRef = useRef<{ owner: typeof owner; body: string } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const persist = useCallback(() => {
+  const persist = useCallback((force = false) => {
     if (!memberId) return;
+    const body = draftRef.current;
+    if (!force && persistedDraftRef.current?.owner === owner && persistedDraftRef.current.body === body) return;
     const saved = latest.current.openStore().save({
-      memberId, planId, taskDate, body: draftRef.current, operationId: latest.current.newOperationId(), expectedRevision: 0,
+      memberId, planId, taskDate, body, operationId: latest.current.newOperationId(), expectedRevision: 0,
     });
+    persistedDraftRef.current = { owner, body };
     if (owns()) setRecord(saved);
     // After the local store has it, never before: the mirror is a copy of something already safe.
-    try { latest.current.mirror?.(taskDate, draftRef.current); } catch { /* a copy failing is not a save failing */ }
+    try { latest.current.mirror?.(taskDate, body); } catch { /* a copy failing is not a save failing */ }
   }, [memberId, planId, taskDate, owner]);
 
   const cancelPending = () => {
@@ -92,18 +96,22 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
   // Load whenever the day or the member changes, and write out whatever was typed for the day we
   // are leaving. The cleanup runs before the next load, so the flush always belongs to the old day.
   useEffect(() => {
-    if (!memberId) { setRecord(null); setDraft(''); draftRef.current = ''; return undefined; }
+    if (!memberId) { setRecord(null); setDraft(''); draftRef.current = ''; persistedDraftRef.current = { owner, body: '' }; return undefined; }
     const store = latest.current.openStore();
     const stored = store.get({ memberId, taskDate }) ?? blank(memberId, planId, taskDate);
     setRecord(stored);
     setDraft(stored.body);
     draftRef.current = stored.body;
+    persistedDraftRef.current = { owner, body: stored.body };
     return () => {
       cancelPending();
       // Leaving with unsaved keystrokes is exactly how a debounce loses a day's writing.
-      if (draftRef.current !== stored.body) {
-        store.save({ memberId, planId, taskDate, body: draftRef.current, operationId: latest.current.newOperationId(), expectedRevision: 0 });
-        try { latest.current.mirror?.(taskDate, draftRef.current); } catch { /* see above */ }
+      const lastSaved = persistedDraftRef.current?.owner === owner ? persistedDraftRef.current.body : stored.body;
+      if (draftRef.current !== lastSaved) {
+        const body = draftRef.current;
+        store.save({ memberId, planId, taskDate, body, operationId: latest.current.newOperationId(), expectedRevision: 0 });
+        persistedDraftRef.current = { owner, body };
+        try { latest.current.mirror?.(taskDate, body); } catch { /* see above */ }
       }
     };
   }, [memberId, planId, taskDate]);
@@ -121,7 +129,7 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
   }, [setBody]);
 
   const flushNow = useCallback(() => { cancelPending(); persist(); }, [persist]);
-  const resolveConflict = useCallback(() => { cancelPending(); persist(); }, [persist]);
+  const resolveConflict = useCallback(() => { cancelPending(); persist(true); }, [persist]);
 
   // A record whose key does not match the current selection is stale by definition: render blank.
   const visible = record && memberId && record.memberId === memberId && record.taskDate === taskDate

@@ -34,6 +34,7 @@ describe('focused Reader route composition', () => {
     expect(reader?.props.options).toMatchObject({ headerShown: false, tabBarAccessibilityLabel: '讀經閱讀器' });
     expect(reader?.props.options.tabBarStyle).not.toMatchObject({ display: 'none' });
     expect(reader?.props.options.href).toBeNull();
+    expect(reader?.props.options.freezeOnBlur).toBe(false);
     expect(reader?.props.options.headerRight).toBeUndefined();
     expect(tabs.props.screenOptions.headerRight().type).toBeTypeOf('function');
     renderer.unmount();

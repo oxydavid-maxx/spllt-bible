@@ -20,7 +20,6 @@ export function useReaderChrome() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [journalOpen, setJournalOpen] = useState(false);
   useEffect(() => {
     let active = true;
     let latestEvent: boolean | null = null;
@@ -50,42 +49,42 @@ export function useReaderChrome() {
       setMoreOpen(false);
       setAudioOpen(false);
       setInfoOpen(false);
-      setJournalOpen(false);
     };
   }, []));
 
   const showTools = useCallback(() => { setToolsVisible(true); setReaderImmersed(false); }, []);
   const hideTools = useCallback(() => {
-    if (screenReaderEnabled || moreOpen || audioOpen || infoOpen || journalOpen) return;
+    if (screenReaderEnabled || moreOpen || audioOpen || infoOpen) return;
     setToolsVisible(false);
     setReaderImmersed(true);
-  }, [screenReaderEnabled, moreOpen, audioOpen, infoOpen, journalOpen]);
+  }, [screenReaderEnabled, moreOpen, audioOpen, infoOpen]);
   const toggleTools = useCallback(() => {
-    if (screenReaderEnabled || moreOpen || audioOpen || infoOpen || journalOpen) return;
+    if (screenReaderEnabled || moreOpen || audioOpen || infoOpen) return;
     setToolsVisible(value => !value);
     setReaderImmersed(toolsVisible);
-  }, [screenReaderEnabled, moreOpen, audioOpen, infoOpen, journalOpen, toolsVisible]);
+  }, [screenReaderEnabled, moreOpen, audioOpen, infoOpen, toolsVisible]);
   const handleCanvasScroll = useCallback(({ direction, deltaY }: { direction: 'up' | 'down'; deltaY: number }) => {
-    if (!focused || screenReaderEnabled || moreOpen || audioOpen || infoOpen || journalOpen || Math.abs(deltaY) < 12) return;
+    if (!focused || screenReaderEnabled || moreOpen || audioOpen || infoOpen || Math.abs(deltaY) < 12) return;
     const show = direction === 'up';
     setToolsVisible(show);
     setReaderImmersed(!show);
-  }, [focused, screenReaderEnabled, moreOpen, audioOpen, infoOpen, journalOpen]);
+  }, [focused, screenReaderEnabled, moreOpen, audioOpen, infoOpen]);
   const openMore = useCallback(() => { setMoreOpen(true); setAudioOpen(false); setInfoOpen(false); showTools(); }, [showTools]);
   const closeMore = useCallback(() => { setMoreOpen(false); showTools(); }, [showTools]);
   const openAudio = useCallback(() => { setAudioOpen(true); setMoreOpen(false); setInfoOpen(false); showTools(); }, [showTools]);
   const closeAudio = useCallback(() => { setAudioOpen(false); showTools(); }, [showTools]);
   const openInfo = useCallback(() => { setInfoOpen(true); setMoreOpen(false); setAudioOpen(false); showTools(); }, [showTools]);
   const closeInfo = useCallback(() => { setInfoOpen(false); showTools(); }, [showTools]);
-  const openJournal = useCallback(() => { setJournalOpen(true); setMoreOpen(false); setAudioOpen(false); setInfoOpen(false); showTools(); }, [showTools]);
-  const closeJournal = useCallback(() => { setJournalOpen(false); showTools(); }, [showTools]);
-  return { focused, toolsVisible: focused && toolsVisible, screenReaderEnabled, moreOpen, audioOpen, infoOpen, journalOpen, toggleTools, hideTools, showTools, handleCanvasScroll,
-    openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo, openJournal, closeJournal };
+  return { focused, toolsVisible: focused && toolsVisible, screenReaderEnabled, moreOpen, audioOpen, infoOpen, toggleTools, hideTools, showTools, handleCanvasScroll,
+    openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo };
 }
 export interface FullscreenReaderLayoutProps {
   reader: ReactNode;
   controls: ReaderOverlayControls;
   chrome: ReturnType<typeof useReaderChrome>;
+  audioOwnerActive?: boolean;
+  selectionSource?: 'ASSIGNED' | 'FREE';
+  activeReferenceIndex?: number;
   chapterUsfm: string;
   versionId: number | null;
   references: string[];
@@ -99,6 +98,7 @@ export interface FullscreenReaderLayoutProps {
   completionPending?: boolean;
   completionFailed?: boolean;
   completionLabel?: string;
+  completionFeedback?: ReactNode;
   onComplete?: () => void;
   onUndo?: () => void;
   noPlanMessage?: string;
@@ -108,15 +108,13 @@ export interface FullscreenReaderLayoutProps {
   versionOptions?: Array<{ versionId: number; translationName: string; languageTag: string }>;
   onSelectVersion?: (versionId: number) => void | Promise<void>;
   metadata: { translationName: string; publisher: string; copyrightNotice: string; officialUrl: string; audioAttribution?: string } | null;
-  /** Rendered beside the reader, never above it, so typing does not repaint the chapter. */
-  journal?: ReactNode;
   accountEntry?: ReactNode;
   loginGate?: ReactNode;
   updateBanner?: ReactNode;
   narrationSpeed?: number;
   onSelectNarrationSpeed?: (speed: number) => void;
 }
-export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, versionId, references, onSelectReference, selectedDate, previousDate, nextDate, onSelectDate, completed = false, completionDisabled = false, completionPending = false, completionFailed = false, completionLabel, onComplete, onUndo, noPlanMessage, statusMessage, canOpenYouVersion = false, onOpenYouVersion, versionOptions, onSelectVersion, metadata, journal, accountEntry, loginGate, updateBanner, narrationSpeed = 1, onSelectNarrationSpeed }: FullscreenReaderLayoutProps) {
+export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerActive = chrome.focused, selectionSource = 'ASSIGNED', activeReferenceIndex = 0, chapterUsfm, versionId, references, onSelectReference, selectedDate, previousDate, nextDate, onSelectDate, completed = false, completionDisabled = false, completionPending = false, completionFailed = false, completionLabel, completionFeedback, onComplete, onUndo, noPlanMessage, statusMessage, canOpenYouVersion = false, onOpenYouVersion, versionOptions, onSelectVersion, metadata, accountEntry, loginGate, updateBanner, narrationSpeed = 1, onSelectNarrationSpeed }: FullscreenReaderLayoutProps) {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, fontScale } = useWindowDimensions();
   const [versionPageOpen, setVersionPageOpen] = useState(false);
@@ -144,14 +142,26 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
   const nextDateControlWidth = Math.max(theme.control.tap, adjacentDateTextWidth + 18 + theme.spacing.xxs * 2);
   const headerColumnWidth = (windowWidth - insets.left - insets.right - theme.spacing.xxs * 4) / 3;
   const showAdjacentDateLabels = headerColumnWidth >= theme.control.tap + nextDateControlWidth;
-  const completeLabel = completionPending ? '同步中' : completionFailed ? '重試同步' : completed ? '已完成' : completionLabel ?? '完成讀經';
-  const visibleCompletionLabel = !completionPending && !completionFailed && !completed && !completionDisabled ? '完成' : completeLabel;
-  const completionAccessibilityLabel = completionFailed ? '同步失敗，重試同步' : completionPending ? '同步中' : completed ? '已完成，可撤銷完成確認' : completionLabel ?? '完成讀經';
+  const completionAccessibilityLabel = completionFailed ? '同步失敗，重試同步' : completionPending ? '同步中' : completed ? '已完成，可撤銷完成確認' : completionDisabled ? completionLabel ?? '目前無法完成' : '完成讀經';
   const completionActionDisabled = completionDisabled || completionPending;
+  const selectedReferenceIndex = selectionSource === 'ASSIGNED' && references.length > 0
+    ? Math.max(0, Math.min(activeReferenceIndex, references.length - 1))
+    : -1;
+  const chapterPositionLabel = selectionSource === 'FREE'
+    ? '自由閱讀'
+    : references.length > 0 ? `${selectedReferenceIndex + 1}/${references.length}` : '自由閱讀';
+  const chapterCapsuleLabel = selectionSource === 'FREE'
+    ? `${chapterTitle}，自由閱讀`
+    : `第${selectedReferenceIndex + 1}項，共${references.length}項，${chapterTitle}`;
   const openDailyChapterPicker = () => {
     chrome.showTools();
     if (references.length > 0) setChapterPickerOpen(true);
     else openOfficial(controls.openChapterPicker);
+  };
+  const moveReference = (delta: number) => {
+    if (selectionSource !== 'ASSIGNED' || references.length === 0) return;
+    const target = selectedReferenceIndex + delta;
+    if (target >= 0 && target < references.length) onSelectReference(target);
   };
   return (
     <View style={styles.root}>
@@ -182,23 +192,38 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
       {noPlanMessage ? <Text accessibilityRole="text" style={styles.statusBanner}>{noPlanMessage}</Text> : null}
       <ChapterAudioAutoplayNotice active={chrome.focused} />
       <View style={[styles.reader, { paddingTop: chrome.toolsVisible ? 0 : insets.top, paddingBottom: chrome.toolsVisible ? insets.bottom : insets.bottom + 56, paddingLeft: insets.left, paddingRight: insets.right }]} onTouchEnd={controls.ready ? undefined : chrome.toggleTools}>{reader}</View>
-      {journal}
       {chrome.toolsVisible ? <SafeAreaView edges={['bottom', 'left', 'right']} accessibilityLabel="讀經控制列" style={styles.playerBarSurface}>
         {statusMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.statusBanner}>{statusMessage}</Text> : null}
         <View style={styles.playerBar}>
-          <View style={styles.bottomActionSlot}>
-            <Pressable accessibilityRole="button" accessibilityLabel="靈修日記" onPress={chrome.openJournal} android_ripple={{ color: theme.colors.primarySoft }} style={styles.bottomAction}>
-              <MaterialCommunityIcons name="notebook-edit-outline" size={21} color={theme.colors.ink} />
-              <Text style={styles.bottomActionLabel}>日記</Text>
+          <View style={styles.chapterCapsule}>
+            <Pressable accessibilityRole="button" accessibilityLabel="上一個讀經章節" accessibilityState={{ disabled: selectedReferenceIndex <= 0 }} disabled={selectedReferenceIndex <= 0} onPress={() => moveReference(-1)} android_ripple={{ color: theme.colors.primarySoft }} style={styles.capsuleArrow}>
+              <MaterialCommunityIcons name="chevron-left" size={24} color={selectedReferenceIndex > 0 ? theme.colors.primary : theme.colors.muted} />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="選擇今日章節清單" accessibilityHint={`目前${chapterCapsuleLabel}，開啟當日讀經清單`} onPress={openDailyChapterPicker} android_ripple={{ color: theme.colors.primarySoft }} style={styles.capsuleSelection}>
+              <Text numberOfLines={1} style={styles.capsuleTitle}>{chapterTitle}</Text>
+              <View style={styles.capsuleMeta}>
+                <Text numberOfLines={1} style={selectionSource === 'FREE' ? styles.freeBrowseLabel : styles.capsulePosition}>{chapterPositionLabel}</Text>
+                <MaterialCommunityIcons name="chevron-down" size={16} color={theme.colors.ink} />
+              </View>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="下一個讀經章節" accessibilityState={{ disabled: selectedReferenceIndex < 0 || selectedReferenceIndex >= references.length - 1 }} disabled={selectedReferenceIndex < 0 || selectedReferenceIndex >= references.length - 1} onPress={() => moveReference(1)} android_ripple={{ color: theme.colors.primarySoft }} style={styles.capsuleArrow}>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={selectedReferenceIndex >= 0 && selectedReferenceIndex < references.length - 1 ? theme.colors.primary : theme.colors.muted} />
             </Pressable>
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={completionAccessibilityLabel}
+            accessibilityHint={completed ? '長按查看說明；點按可撤銷所選日期的完成確認' : '長按查看完成狀態說明'}
+            accessibilityState={{ disabled: completionActionDisabled, busy: completionPending, checked: completed }}
+            disabled={completionActionDisabled}
+            onPress={completionFailed ? onComplete : completed ? onUndo : onComplete}
+            onLongPress={() => Alert.alert('讀經完成狀態', completed ? '已完成所選日期的讀經。點按可依確認流程撤銷。' : completionPending ? '完成記錄正在同步。同步成功前不會顯示加分。' : completionDisabled ? completionLabel ?? '目前無法完成此日期。' : '點按圓圈完成所選日期的讀經。')}
+            android_ripple={{ color: theme.colors.primarySoft }}
+            style={[styles.completionAction, completed && styles.completionActionComplete, completionActionDisabled && styles.disabled]}
+          >
+            <MaterialCommunityIcons name={completionPending ? 'clock-outline' : completionFailed ? 'sync-alert' : completed ? 'check' : 'checkbox-blank-circle-outline'} size={28} color={completed ? theme.colors.white : completionActionDisabled ? theme.colors.muted : theme.colors.primary} />
+          </Pressable>
           <View accessible={false} style={styles.bottomAudioPlaceholder} />
-          <View style={styles.bottomActionSlot}>
-            <Pressable accessibilityRole="button" accessibilityLabel={completionAccessibilityLabel} accessibilityHint={completed ? '點按撤銷所選日期的完成確認' : undefined} accessibilityState={{ disabled: completionActionDisabled, busy: completionPending }} disabled={completionActionDisabled} onPress={completionFailed ? onComplete : completed ? onUndo : onComplete} android_ripple={{ color: theme.colors.primarySoft }} style={[styles.bottomAction, completionActionDisabled && styles.disabled]}>
-              <MaterialCommunityIcons name={completed ? 'check-circle' : completionFailed ? 'sync-alert' : 'check-circle-outline'} size={21} color={completed ? theme.colors.primary : theme.colors.ink} />
-              <Text numberOfLines={1} style={[styles.bottomActionLabel, completed && styles.completedLabel]}>{visibleCompletionLabel}</Text>
-            </Pressable>
-          </View>
         </View>
       </SafeAreaView> : statusMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.statusBanner}>{statusMessage}</Text> : null}
       <View
@@ -207,12 +232,14 @@ export function FullscreenReaderLayout({ reader, controls, chrome, chapterUsfm, 
         pointerEvents="box-none"
         style={[styles.audioOverlay, { left: insets.left, right: insets.right, bottom: insets.bottom + (chrome.toolsVisible ? 0 : 8) }]}
       >
-        <View accessible={false} pointerEvents="none" style={styles.audioOverlaySide} />
-        <View accessible={false} style={[styles.bottomAudioCell, !chrome.toolsVisible && styles.collapsedAudioCenter]}>
-          <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={chrome.toolsVisible} active={chrome.focused} />
+        <View accessible={false} pointerEvents="none" style={chrome.toolsVisible ? styles.audioLeadingSpacer : styles.audioOverlaySide} />
+        <View accessible={false} pointerEvents="none" style={chrome.toolsVisible ? styles.audioCompletionSpacer : styles.audioHiddenSpacer} />
+        <View accessible={false} style={styles.bottomAudioCell}>
+          <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={false} readerAction active={audioOwnerActive} sharedOwner />
         </View>
-        <View accessible={false} pointerEvents="none" style={styles.audioOverlaySide} />
+        <View accessible={false} pointerEvents="none" style={chrome.toolsVisible ? styles.audioTrailingSpacer : styles.audioOverlaySide} />
       </View>
+      {completionFeedback}
       <Modal transparent animationType="fade" visible={chapterPickerOpen} onRequestClose={() => { setChapterPickerOpen(false); chrome.showTools(); }}>
         {chapterPickerOpen && <Pressable accessibilityRole="button" accessibilityLabel="關閉今日章節選單" onPress={() => { setChapterPickerOpen(false); chrome.showTools(); }} style={styles.scrim}><Pressable onPress={() => undefined} style={styles.sheetHost}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
           <View style={styles.sheetHeader}><Text accessibilityRole="header" style={styles.heading}>今日讀經章節</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={() => { setChapterPickerOpen(false); chrome.showTools(); }} style={styles.iconButton}><Text style={styles.close}>關閉</Text></Pressable></View>
@@ -355,16 +382,24 @@ const styles = StyleSheet.create({
   titleText: { flexShrink: 1, minWidth: 0, color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700', textAlign: 'center' },
   iconButton: { minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center' },
   playerBarSurface: { backgroundColor: theme.colors.surface, flexShrink: 0, borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.border },
-  playerBar: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm, minHeight: 48 },
-  bottomActionSlot: { flex: 1, minWidth: 0 },
-  bottomAction: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs, backgroundColor: 'transparent' },
-  bottomActionLabel: { flexShrink: 1, minWidth: 0, color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
-  completedLabel: { color: theme.colors.primary },
-  bottomAudioCell: { flex: 1, minWidth: 0, minHeight: 48, alignItems: 'stretch', justifyContent: 'center' },
-  bottomAudioPlaceholder: { flex: 1, minWidth: 0, minHeight: 48 },
-  audioOverlay: { position: 'absolute', height: 48, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm, zIndex: 2 },
-  audioOverlaySide: { flex: 1, minWidth: 0, minHeight: 48 },
-  collapsedAudioCenter: { alignItems: 'center' },
+  playerBar: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm, minHeight: 64, paddingVertical: theme.spacing.xs },
+  chapterCapsule: { flex: 1, minWidth: 0, height: 56, flexDirection: 'row', alignItems: 'center', borderRadius: 28, backgroundColor: theme.colors.white },
+  capsuleArrow: { width: 48, height: 48, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: 24 },
+  capsuleSelection: { flex: 1, minWidth: 0, height: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.xxs },
+  capsuleTitle: { maxWidth: '100%', color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700', textAlign: 'center' },
+  capsuleMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2 },
+  capsulePosition: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '600' },
+  freeBrowseLabel: { color: theme.colors.primary, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '800' },
+  completionAction: { width: 56, height: 56, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: 28, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.surface },
+  completionActionComplete: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
+  bottomAudioCell: { width: 56, height: 56, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
+  bottomAudioPlaceholder: { width: 56, height: 56, flexShrink: 0 },
+  audioOverlay: { position: 'absolute', height: 56, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.sm, zIndex: 2 },
+  audioLeadingSpacer: { flex: 1, minWidth: 0, height: 56 },
+  audioCompletionSpacer: { width: 56, height: 56, flexShrink: 0 },
+  audioHiddenSpacer: { width: 0, height: 56, flexShrink: 0 },
+  audioTrailingSpacer: { width: 0, height: 56, flexShrink: 0 },
+  audioOverlaySide: { flex: 1, minWidth: 0, height: 56 },
   statusBanner: { color: theme.colors.muted, backgroundColor: theme.colors.surfaceMuted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs },
   dailyReferenceOption: { minHeight: 48, justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderBottomWidth: theme.control.hairline, borderBottomColor: theme.colors.border },
   dailyReferenceSelected: { backgroundColor: theme.colors.primarySoft },

@@ -104,9 +104,14 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   const currentAssignedChapter = useCallback((chapterUsfm: string): AutoplayChapter | null => {
     const reference = references[activeReferenceIndex];
     const expected = reference ? chapterForReference(reference) : null;
-    if (!reference || !expected || expected !== normalizeChapter(chapterUsfm)) return null;
+    // ReaderScreen controls book/chapter in both assigned and free-browse modes. A late
+    // callback from the old assigned binding must not re-arm daily playback after the
+    // visible Reader has moved elsewhere.
+    const visibleChapter = book?.trim() && chapter?.trim() ? normalizeChapter(`${book}.${chapter}`) : null;
+    if (!reference || !expected || expected !== normalizeChapter(chapterUsfm)
+      || (visibleChapter !== null && visibleChapter !== expected)) return null;
     return { index: activeReferenceIndex, reference, usfm: expected };
-  }, [activeReferenceIndex, references.join('|')]);
+  }, [activeReferenceIndex, book, chapter, references.join('|')]);
   const handlePlaybackStarted = useCallback((chapterUsfm: string): void => {
     const current = currentAssignedChapter(chapterUsfm);
     if (!current) {

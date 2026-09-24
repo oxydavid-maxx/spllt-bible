@@ -1,48 +1,45 @@
-import { useFocusEffect } from 'expo-router';
-import { randomUUID } from 'expo-crypto';
+import { usePathname } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, Linking, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { buildFixtureModels } from '../../src/ui/routes';
 import { YouVersionReader } from '../../src/ui/YouVersionReader';
 import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
-import { JournalPanel } from '../../src/ui/JournalPanel';
 import { createJournalFolderMirror } from '../../src/services/journalFolderMirror';
 import { createReaderSpeedStore, DEFAULT_READER_SPEED, isReaderSpeed, type ReaderSpeed } from '../../src/services/readerSpeedPreference';
 import { formatReadingDateLabel } from '../../src/ui/ReadingDateNavigator';
-import { openQingmuReaderPositionStore, openQingmuRepository } from '../../src/storage/mobileDatabase';
+import { openQingmuReaderPositionStore } from '../../src/storage/mobileDatabase';
 import type { ReaderPosition } from '../../src/storage/readerPosition';
 import { fixtureProfile } from '../../src/ui/fixtureProfile';
-import type { CompletionRecord } from '../../src/domain/completion';
 import { getYouVersionContentMetadata, getYouVersionVersionOptions } from '../../src/config/youVersionContent';
 import { buildYouVersionChapterUrl } from '../../src/ui/youVersionReaderConfig';
 import { createNativeReaderPreferencesStore } from '../../src/services/nativeReaderPreferences';
 import { createReaderAutoplayPreferencesStore } from '../../src/services/readerAutoplayPreferences';
 import type { ReaderPreferencesPatch } from '../../src/services/readerPreferences';
 import { useReaderPreferences } from '../../src/ui/useReaderPreferences';
-import { setSelectedReadingDate, useReadingSession } from '../../src/ui/readingSession';
-import { createApiClient } from '../../src/services/apiClient';
-import { isCurrentAuthSession, useAuthSnapshot } from '../../src/services/authSession';
+import { setPendingJournalQuote, setSelectedReadingDate, useReadingSession } from '../../src/ui/readingSession';
+import { useAuthSnapshot } from '../../src/services/authSession';
 import * as SecureStore from 'expo-secure-store';
-import { createReminderScheduler } from '../../src/services/reminderScheduler';
-import { syncReadingReminderForCompletion } from '../../src/services/reminderCompletion';
 import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
 import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
 import { TodayAuthGate } from '../../src/ui/TodayAuthGate';
 import { UpdateBanner } from '../../src/ui/UpdateBanner';
 import { runtimeConfig } from '../../src/config/runtime';
-import { useOutboxRecovery } from '../../src/services/useOutboxRecovery';
+import { useCompletionController } from '../../src/services/useCompletionController';
+import type { CompletionAwardEvent } from '../../src/services/completionController';
+import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
 
 let handledTodayReaderTabPressRevision = 0;
 
 export default function ReaderScreen() {
   const chrome = useReaderChrome();
+  const pathname = usePathname();
+  // The Reader tab route remains mounted underneath Diary so the one native player and its queue
+  // survive that tab transition. Other tabs still release the audio binding as before.
+  const sharedAudioActive = chrome.focused || pathname === '/journal';
   const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate } = useReadingSession();
-  // Set when a verse is copied while the journal is open, cleared once the panel has taken it.
-  const [pendingQuote, setPendingQuote] = useState<string | null>(null);
   const auth = useAuthSnapshot();
   const session = auth.session;
-  const [reminderScheduler] = useState(() => createReminderScheduler());
   const memberId = session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
   const model = buildFixtureModels(selectedDate);
   const references = day?.references ?? model.reader.references;
@@ -122,12 +119,8 @@ export default function ReaderScreen() {
     ]);
   }, [preferences.ready, preferences.readError, preferences.saveError, owner, preferencesStore, memberId]);
   const contentMetadata = getYouVersionContentMetadata(selectedVersionId);
-  const repositoryRef = useRef<ReturnType<typeof openQingmuRepository> | null>(null);
-  const clientRef = useRef<ReturnType<typeof createApiClient> | null>(null);
   const positionStoreRef = useRef<ReturnType<typeof openQingmuReaderPositionStore> | null>(null);
   const [readerPosition, setReaderPosition] = useState<ReaderPosition | null>(null);
-  const [syncError, setSyncError] = useState(false);
-  const authToken = session?.sessionToken ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? process.env.EXPO_PUBLIC_QINGMU_DEV_TOKEN?.trim() ?? null : null);
   const saveReaderPosition = (next: ReaderPosition): void => {
     if (!ownsReader() || next.memberId !== memberId) return;
     const store = positionStoreRef.current ?? openQingmuReaderPositionStore();
@@ -203,39 +196,15 @@ export default function ReaderScreen() {
     freePositionRef.current = null;
     setSelection({ source: 'ASSIGNED', index: 0 });
   };
-  const [record, setRecord] = useState<CompletionRecord>(() => {
-    const initialMemberId = memberId ?? 'signed-out';
-    if (!memberId) return { memberId: initialMemberId, planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
-    try {
-      const repository = openQingmuRepository();
-      repositoryRef.current = repository;
-      return repository.get({ memberId, planId, taskDate: selectedDate }) ?? {
-        memberId, planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED',
-      };
-    } catch {
-      return { memberId: initialMemberId, planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
-    }
+  const [awardEvent, setAwardEvent] = useState<CompletionAwardEvent | null>(null);
+  const completion = useCompletionController({
+    planId,
+    taskDate: selectedDate,
+    canComplete: Boolean(memberId && day),
+    onAward: (event) => setAwardEvent(event),
   });
-  const completionBusy = useRef(false);
-  useFocusEffect(useCallback(() => {
-    let active = true;
-    if (!memberId) {
-      setRecord({ memberId: 'signed-out', planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' });
-      return () => { active = false; };
-    }
-    const repository = repositoryRef.current ?? openQingmuRepository();
-    repositoryRef.current = repository;
-    setRecord(repository.get({ memberId, planId, taskDate: selectedDate }) ?? {
-      memberId, planId, taskDate: selectedDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED',
-    });
-    if (clientRef.current) {
-      void repository.flush((command) => clientRef.current!.saveCompletion(command), memberId).then(() => {
-        const recovered = repository.get({ memberId, planId, taskDate: selectedDate });
-        if (active && recovered) setRecord(recovered);
-      }).catch(() => { if (active) setSyncError(true); });
-    }
-    return () => { active = false; };
-  }, [memberId, planId, selectedDate]));
+  const record = completion.record;
+  const syncError = completion.syncError;
   useEffect(() => {
     if (!ownsReader()) return;
     selectionOwner.current = owner;
@@ -259,121 +228,6 @@ export default function ReaderScreen() {
         ? { source: 'FREE', book: saved.book, chapter: saved.chapter }
         : initialSelection());
   }, [memberId, planId, selectedDate, owner, references.join('|')]);
-  useEffect(() => {
-    if (!memberId) {
-      clientRef.current = null;
-      setSyncError(false);
-    }
-  }, [memberId]);
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      const token = authToken;
-      const activeMemberId = memberId;
-      if (!token || !activeMemberId) return;
-      clientRef.current = createApiClient({
-        baseUrl: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL?.trim() || 'http://127.0.0.1:8787',
-        token,
-        memberId: activeMemberId,
-      });
-      if (repositoryRef.current) {
-        await repositoryRef.current.flush((command) => clientRef.current!.saveCompletion(command), activeMemberId);
-        const recovered = repositoryRef.current.get({ memberId: activeMemberId, planId, taskDate: selectedDate });
-        if (active && recovered) setRecord(recovered);
-      }
-      if (active) setSyncError(false);
-    })().catch(() => {
-      if (active) setSyncError(true);
-    });
-    return () => { active = false; };
-  }, [authToken, memberId, planId, selectedDate]);
-  useOutboxRecovery({
-    memberId,
-    sessionToken: session?.sessionToken ?? null,
-    planId,
-    taskDate: selectedDate,
-    getRepository: () => repositoryRef.current,
-    getClient: () => clientRef.current,
-    getSession: () => session,
-    isCurrentAuthSession,
-    onRecovered: () => {
-      const repository = repositoryRef.current;
-      if (!repository || !memberId || !isCurrentAuthSession(session)) return;
-      const recovered = repository.get({ memberId, planId, taskDate: selectedDate });
-      if (!recovered) return;
-      setRecord(recovered);
-      if (recovered.syncStatus === 'CONFIRMED') setSyncError(false);
-      else if (recovered.syncStatus === 'SAVE_FAILED') setSyncError(true);
-    },
-  });
-  const saveCompletionStatus = async (desiredStatus: 'COMPLETED' | 'NOT_COMPLETED') => {
-    const repository = repositoryRef.current;
-    if (!repository || !memberId || !ownsReader() || completionBusy.current) return;
-    const identity = { memberId, planId, taskDate: selectedDate };
-    const current = repository.get(identity) ?? record;
-    if (current.syncStatus === 'PENDING_SAVE') return;
-    if (current.syncStatus !== 'SAVE_FAILED' && desiredStatus === 'COMPLETED' && (!day || !isWithinCompletionWindow(selectedDate, taipeiDate()))) return;
-    if (current.syncStatus !== 'SAVE_FAILED' && desiredStatus === 'COMPLETED' && current.status === 'COMPLETED') return;
-    if (current.syncStatus !== 'SAVE_FAILED' && desiredStatus === 'NOT_COMPLETED' && current.status !== 'COMPLETED') return;
-    completionBusy.current = true;
-    setSyncError(false);
-    if (current.syncStatus === 'SAVE_FAILED') {
-      try {
-        const results = await repository.flush((command) => clientRef.current!.saveCompletion(command), memberId);
-        if (!ownsReader()) return;
-        const recovered = repository.get(identity);
-        if (recovered) {
-          setRecord(recovered);
-          setSyncError(recovered.syncStatus !== 'CONFIRMED');
-        } else if (results.at(-1)?.ok === false) setSyncError(true);
-      } catch {
-        if (ownsReader()) {
-          const failed = repository.get(identity);
-          if (failed) setRecord(failed);
-          setSyncError(true);
-        }
-      } finally { completionBusy.current = false; }
-      return;
-    }
-    const next = repository.saveCompletion({
-      memberId,
-      planId,
-      taskDate: selectedDate,
-      desiredStatus,
-      operationId: randomUUID(),
-      expectedRevision: current.revision,
-      syncStatus: 'PENDING_SAVE',
-    });
-    void syncReadingReminderForCompletion({ memberId, planId, taskDate: selectedDate, status: desiredStatus, scheduler: reminderScheduler, store: SecureStore });
-    setRecord(next);
-    try {
-      if (clientRef.current) {
-        const results = await repository.flush((command) => clientRef.current!.saveCompletion(command), memberId);
-        if (ownsReader()) {
-          const confirmed = repository.get(next);
-          if (confirmed) {
-            setRecord(confirmed);
-            setSyncError(confirmed.syncStatus !== 'CONFIRMED');
-          } else if (results.at(-1)?.ok === false) setSyncError(true);
-        }
-      }
-    } catch {
-      if (ownsReader()) {
-        const failed = repository.get(identity);
-        if (failed) setRecord(failed);
-        setSyncError(true);
-      }
-    }
-    finally { completionBusy.current = false; }
-  };
-  const requestUndo = () => {
-    const dateLabel = selectedDate === taipeiDate() ? '今天' : formatReadingDateLabel(selectedDate);
-    Alert.alert(`確定撤銷${dateLabel}的完成？`, '這一天的積分會一併撤回。', [
-      { text: '取消', style: 'cancel' },
-      { text: '撤銷', style: 'destructive', onPress: () => { void saveCompletionStatus('NOT_COMPLETED'); } },
-    ]);
-  };
-  const onComplete = () => saveCompletionStatus('COMPLETED');
   const selectAssigned = (index: number) => {
     if (!ownsReader()) return;
     freePositionRef.current = null;
@@ -423,11 +277,13 @@ export default function ReaderScreen() {
     ? record
     : { memberId: memberId ?? 'signed-out', planId, taskDate: selectedDate, status: 'UNREPORTED' as const, revision: 0, syncStatus: 'CONFIRMED' as const };
   const completed = visibleRecord.status === 'COMPLETED';
-  const completionPending = visibleRecord.syncStatus === 'PENDING_SAVE';
-  const completionFailed = visibleRecord.syncStatus === 'SAVE_FAILED';
+  const completionPending = completion.pending;
+  const completionFailed = completion.syncError || completion.retryable;
   const withinCompletionWindow = isWithinCompletionWindow(selectedDate, taipeiDate());
   const completionLabel = !memberId ? '登入後完成' : !day ? '無排定讀經' : !withinCompletionWindow ? '超過補登期限' : '完成讀經';
   const completionDisabled = completionPending || (!completed && !completionFailed && (!memberId || !day || !withinCompletionWindow));
+  const onComplete = () => { void completion.complete(); };
+  const requestUndo = completion.requestUndo;
   const youVersionChapterUrl = buildYouVersionChapterUrl(selectedVersionId, currentUsfm);
   const openYouVersionChapter = () => {
     if (!youVersionChapterUrl || !ownsReader()) return;
@@ -472,13 +328,16 @@ export default function ReaderScreen() {
       onCanvasScroll={chrome.handleCanvasScroll}
       // Held whether or not the journal is open: the panel covers the reader, so a verse is always
       // copied with it closed. The panel offers it on the next open rather than inserting it.
-      onVerseCopied={(quote) => setPendingQuote(quote)}
+      onVerseCopied={setPendingJournalQuote}
       narrationSpeed={narrationSpeed}
       renderScreen={(reader, controls) => (
         <FullscreenReaderLayout
           reader={reader}
           controls={controls}
           chrome={chrome}
+          audioOwnerActive={sharedAudioActive}
+          selectionSource={selection.source}
+          activeReferenceIndex={assignedIndex}
           chapterUsfm={currentUsfm}
           versionId={selectedVersionId}
           references={references}
@@ -495,7 +354,11 @@ export default function ReaderScreen() {
           onComplete={onComplete}
           onUndo={requestUndo}
           noPlanMessage={!day ? `這一天沒有排定讀經。${formatReadingDateLabel(selectedDate)}仍可自由閱讀。` : undefined}
-          statusMessage={syncError ? '同步遇到問題，完成狀態已保留；連線後會重試。' : undefined}
+          statusMessage={syncError ? '同步遇到問題，完成狀態已保留；連線後會重試。' : completionPending ? '已記錄，等待同步。同步成功後才會顯示加分。' : undefined}
+          completionFeedback={<CompletionAwardFeedback
+            event={awardEvent}
+            onFinished={(operationId) => setAwardEvent(current => current?.operationId === operationId ? null : current)}
+          />}
           canOpenYouVersion={youVersionChapterUrl !== null}
           onOpenYouVersion={openYouVersionChapter}
           versionOptions={versionOptions}
@@ -505,18 +368,6 @@ export default function ReaderScreen() {
           updateBanner={<UpdateBanner />}
           narrationSpeed={narrationSpeed}
           onSelectNarrationSpeed={(speed) => { if (isReaderSpeed(speed)) { setNarrationSpeed(speed); void speedStore.update(memberId, speed); } }}
-          journal={<JournalPanel
-            visible={chrome.journalOpen}
-            memberId={memberId}
-            planId={planId}
-            taskDate={selectedDate}
-            dateLabel={formatReadingDateLabel(selectedDate)}
-            newOperationId={randomUUID}
-            onClose={chrome.closeJournal}
-            pendingQuote={pendingQuote}
-            onQuoteConsumed={() => setPendingQuote(null)}
-            mirror={(taskDate, body) => { void journalMirror.write(memberId, taskDate, body); }}
-          />}
           metadata={contentMetadata}
         />
       )}
