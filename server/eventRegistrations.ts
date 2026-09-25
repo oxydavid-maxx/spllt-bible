@@ -38,6 +38,34 @@ export function formRegistrationKeyMatches(provided: string | undefined, expecte
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
+/**
+ * Instead of a key, the Apps Script can send the Google identity token it runs with
+ * (ScriptApp.getIdentityToken), so nothing secret has to be pasted anywhere. Google signs it for
+ * the script project's own OAuth client (the audience). A token is accepted only for an admin's
+ * account and only for one audience: the configured one, or else the first one accepted, which is
+ * then kept, so a token another app obtained for the same account is refused.
+ */
+export interface FormSyncIdentity {
+  /** Checks Google's signature, issuer and expiry, whatever the audience. */
+  verify: (idToken: string) => Promise<{ subject: string; audience: string }>;
+  ownerSubjects: string[];
+  audience?: string;
+}
+
+export async function formSyncIdentityMatches(db: DatabaseSync, identity: FormSyncIdentity, idToken: string, now: Date): Promise<boolean> {
+  let claims: { subject: string; audience: string };
+  try {
+    claims = await identity.verify(idToken);
+  } catch {
+    return false;
+  }
+  if (!identity.ownerSubjects.includes(claims.subject)) return false;
+  if (identity.audience) return claims.audience === identity.audience;
+  db.prepare('INSERT OR IGNORE INTO form_sync_audience(id, audience, pinned_at) VALUES(1, ?, ?)').run(claims.audience, now.toISOString());
+  const pinned = db.prepare('SELECT audience FROM form_sync_audience WHERE id = 1').get() as { audience: string };
+  return pinned.audience === claims.audience;
+}
+
 export function ensureEventRegistrationSchema(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS event_registrations (
@@ -50,6 +78,11 @@ export function ensureEventRegistrationSchema(db: DatabaseSync): void {
       event_date TEXT PRIMARY KEY,
       total INTEGER NOT NULL,
       synced_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS form_sync_audience (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      audience TEXT NOT NULL,
+      pinned_at TEXT NOT NULL
     );
   `);
 }

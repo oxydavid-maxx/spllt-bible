@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from 'jose';
 
 const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
 const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
@@ -42,4 +42,16 @@ export async function verifyGoogleIdToken(
     audience: options.audience,
   });
   return validateGoogleClaims(result.payload as GoogleClaims, options);
+}
+
+/** Signature, issuer and expiry only: for a caller that decides for itself which audience it trusts. */
+export async function verifyGoogleIdTokenAnyAudience(
+  idToken: string,
+  options: { jwks?: JWTVerifyGetKey; nowSeconds?: number } = {},
+): Promise<{ subject: string; audience: string }> {
+  const result = await jwtVerify(idToken, options.jwks ?? GOOGLE_JWKS, { issuer: GOOGLE_ISSUERS });
+  const claims = result.payload as GoogleClaims;
+  if (typeof claims.aud !== 'string' || !claims.aud) throw new Error('GOOGLE_AUDIENCE_INVALID');
+  const identity = validateGoogleClaims(claims, { audience: claims.aud, nowSeconds: options.nowSeconds });
+  return { subject: identity.subject, audience: claims.aud };
 }
