@@ -496,6 +496,12 @@ describe('fullscreen reader layout and chrome', () => {
     expect(all('NavigationBar')[0].props.hidden).toBe(true);
     act(() => { chrome.openInfo(); });
     expect(all('StatusBar')[0].props.hidden).toBe(false);
+    expect(all('NavigationBar')[0].props.hidden).toBe(false);
+    // A selected verse's action sheet sits at the bottom: the system navigation steps aside for it.
+    act(() => { chrome.closeInfo(); chrome.handleVerseSelection(true); });
+    expect(all('StatusBar')[0].props.hidden).toBe(false);
+    expect(all('NavigationBar')[0].props.hidden).toBe(true);
+    act(() => { chrome.clearVerseSelection(); chrome.openInfo(); });
     act(() => { native.blur?.(); });
     expect(chrome).toMatchObject({ focused: false, toolsVisible: false, collapsed: false, moreOpen: false, audioOpen: false, infoOpen: false });
     expect(all('StatusBar')).toHaveLength(0);

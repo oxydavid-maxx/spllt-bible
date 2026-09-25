@@ -36,6 +36,9 @@ export function useReaderChrome() {
   const [focused, setFocused] = useState(false);
   const [toolsVisible, setToolsVisible] = useState(true);
   const [atChapterEnd, setAtChapterEnd] = useState(false);
+  // A selected verse opens the reader's own action sheet at the bottom of the scripture.
+  const [verseSelected, setVerseSelected] = useState(false);
+  const [verseClearSignal, setVerseClearSignal] = useState(0);
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
@@ -55,16 +58,17 @@ export function useReaderChrome() {
   // The reader's messages arrive through stable callbacks; they read the latest guards from here.
   const guards = useRef({ focused, screenReaderEnabled, popupOpen: false });
   guards.current = { focused, screenReaderEnabled, popupOpen: moreOpen || audioOpen || infoOpen };
+  // The tabs and the system navigation step aside while collapsed and while a verse's action sheet is
+  // open: the tab bar floats over the scripture, so it would otherwise cover the sheet's buttons.
+  const barsHidden = focused && (!toolsVisible || verseSelected);
+  useEffect(() => { setReaderImmersed(barsHidden); }, [barsHidden]);
   useEffect(() => {
     let active = true;
     let latestEvent: boolean | null = null;
     const applyScreenReaderState = (enabled: boolean) => {
       if (!active) return;
       setScreenReaderEnabled(enabled);
-      if (enabled) {
-        setToolsVisible(true);
-        setReaderImmersed(false);
-      }
+      if (enabled) setToolsVisible(true);
     };
     const subscription = AccessibilityInfo.addEventListener('screenReaderChanged', enabled => {
       latestEvent = enabled;
@@ -87,12 +91,11 @@ export function useReaderChrome() {
     };
   }, []));
 
-  const showTools = useCallback(() => { setToolsVisible(true); setReaderImmersed(false); }, []);
+  const showTools = useCallback(() => { setToolsVisible(true); }, []);
   const hideTools = useCallback(() => {
     const { focused: isFocused, screenReaderEnabled: talkBack, popupOpen } = guards.current;
     if (!isFocused || talkBack || popupOpen) return;
     setToolsVisible(false);
-    setReaderImmersed(true);
   }, []);
   const revealTools = useCallback((_reason?: ReaderRevealReason) => showTools(), [showTools]);
   const handleCanvasScroll = useCallback(({ direction, deltaY }: { direction: 'up' | 'down'; deltaY: number }) => {
@@ -101,20 +104,27 @@ export function useReaderChrome() {
     else showTools();
   }, [hideTools, showTools]);
   const handleCanvasEdge = useCallback(({ atEnd }: { atEnd: boolean }) => setAtChapterEnd(atEnd), []);
-  // Collapsed, Back brings the tools back and stays on the page (YouVersion). Visible, Back is untouched.
+  const handleVerseSelection = useCallback((selected: boolean) => setVerseSelected(selected), []);
+  const clearVerseSelection = useCallback(() => { setVerseSelected(false); setVerseClearSignal(value => value + 1); }, []);
+  // Back first closes a verse's action sheet, then brings collapsed tools back, and stays on the page
+  // either way (YouVersion). With the tools visible and nothing selected, Back is untouched.
   useEffect(() => {
-    if (!collapsed) return;
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => { showTools(); return true; });
+    if (!focused || (!collapsed && !verseSelected)) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (verseSelected) clearVerseSelection();
+      else showTools();
+      return true;
+    });
     return () => subscription.remove();
-  }, [collapsed, showTools]);
+  }, [focused, collapsed, verseSelected, clearVerseSelection, showTools]);
   const openMore = useCallback(() => { setMoreOpen(true); setAudioOpen(false); setInfoOpen(false); showTools(); }, [showTools]);
   const closeMore = useCallback(() => { setMoreOpen(false); showTools(); }, [showTools]);
   const openAudio = useCallback(() => { setAudioOpen(true); setMoreOpen(false); setInfoOpen(false); showTools(); }, [showTools]);
   const closeAudio = useCallback(() => { setAudioOpen(false); showTools(); }, [showTools]);
   const openInfo = useCallback(() => { setInfoOpen(true); setMoreOpen(false); setAudioOpen(false); showTools(); }, [showTools]);
   const closeInfo = useCallback(() => { setInfoOpen(false); showTools(); }, [showTools]);
-  return { focused, toolsVisible: focused && toolsVisible, collapsed, atChapterEnd, settledInsets: settled.current, screenReaderEnabled, moreOpen, audioOpen, infoOpen,
-    hideTools, showTools, revealTools, handleCanvasScroll, handleCanvasEdge, openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo };
+  return { focused, toolsVisible: focused && toolsVisible, collapsed, barsHidden, atChapterEnd, verseSelected, verseClearSignal, settledInsets: settled.current, screenReaderEnabled, moreOpen, audioOpen, infoOpen,
+    hideTools, showTools, revealTools, handleCanvasScroll, handleCanvasEdge, handleVerseSelection, clearVerseSelection, openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo };
 }
 export interface FullscreenReaderLayoutProps {
   reader: ReactNode;
@@ -158,14 +168,20 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   const [versionPageOpen, setVersionPageOpen] = useState(false);
   const audioControlRef = useRef<ChapterAudioControlsHandle | null>(null);
   const curatedVersions = versionOptions !== undefined && onSelectVersion !== undefined;
-  const { handleCanvasEdge } = chrome;
+  const { handleCanvasEdge, clearVerseSelection } = chrome;
+  const verseSelected = useRef(chrome.verseSelected);
+  verseSelected.current = chrome.verseSelected;
   useEffect(() => { if (!chrome.moreOpen) setVersionPageOpen(false); }, [chrome.moreOpen]);
   useEffect(() => {
     if (!chrome.focused) return;
     return () => NavigationBar.setHidden(false);
   }, [chrome.focused]);
-  // A new chapter starts away from its end; the reader reports the end again once its text is laid out.
-  useEffect(() => { handleCanvasEdge({ atEnd: false }); }, [chapterUsfm, handleCanvasEdge]);
+  // A new chapter starts away from its end (the reader reports the end again once its text is laid
+  // out), and a verse selected in the old chapter no longer applies, so its sheet closes.
+  useEffect(() => {
+    handleCanvasEdge({ atEnd: false });
+    if (verseSelected.current) clearVerseSelection();
+  }, [chapterUsfm, handleCanvasEdge, clearVerseSelection]);
   const closeVersionPage = () => { setVersionPageOpen(false); chrome.closeMore(); };
   const openOfficial = (open: () => void) => { chrome.closeMore(); open(); };
   const openYouVersion = () => {
@@ -204,7 +220,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   const feedback = isValidElement<{ bottomOffset?: number }>(completionFeedback) ? cloneElement(completionFeedback, { bottomOffset: aboveActions }) : completionFeedback;
   return (
     <View style={styles.root}>
-      {chrome.focused && <><StatusBar hidden={chrome.collapsed} style="dark" /><NavigationBar hidden={chrome.collapsed} style="dark" /></>}
+      {chrome.focused && <><StatusBar hidden={chrome.collapsed} style="dark" /><NavigationBar hidden={chrome.barsHidden} style="dark" /></>}
       <View accessibilityLabel="經文" style={[styles.surface, { paddingLeft: insets.left, paddingRight: insets.right }, !controls.ready && { paddingTop: insets.top + ROW * 2, paddingBottom: aboveActions }]}>{reader}</View>
       {chrome.collapsed ? <Pressable
         accessibilityRole="button"
@@ -258,14 +274,15 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           </Pressable>
         </View>
       </SafeAreaView>}
-      <View pointerEvents="box-none" style={[styles.aboveActions, { left: theme.spacing.lg + insets.left, right: theme.spacing.lg + insets.right, bottom: aboveActions }]}>
+      {/* A selected verse's action sheet takes the bottom; these step aside but stay mounted (▶ owns the audio). */}
+      <View pointerEvents="box-none" style={[styles.aboveActions, { left: theme.spacing.lg + insets.left, right: theme.spacing.lg + insets.right, bottom: aboveActions }, chrome.verseSelected && styles.stepAside]}>
         <ChapterAudioAutoplayNotice active={chrome.focused} />
         {statusMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.statusBanner}>{statusMessage}</Text> : null}
         {nextReference ? <Pressable accessibilityRole="button" accessibilityLabel={`繼續讀 ${formatChapterTitleZhTw(nextReference)}`} onPress={continueReading} android_ripple={{ color: theme.colors.primarySoft }} style={styles.nextCard}>
           <Text numberOfLines={1} style={styles.nextCardText}>{`繼續讀 ${formatReferenceZhTw(nextReference)} ›`}</Text>
         </Pressable> : null}
       </View>
-      <View accessibilityLabel="讀經動作" accessible={false} pointerEvents="box-none" style={[styles.actionRow, { right: theme.spacing.sm + insets.right, bottom: actionBottom }]}>
+      <View accessibilityLabel="讀經動作" accessible={false} pointerEvents="box-none" style={[styles.actionRow, { right: theme.spacing.sm + insets.right, bottom: actionBottom }, chrome.verseSelected && styles.stepAside]}>
         {chrome.collapsed ? null : <Pressable
           accessibilityRole="button"
           accessibilityLabel={completionAccessibilityLabel}
@@ -437,6 +454,7 @@ const styles = StyleSheet.create({
   completionExpandedText: { color: theme.colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '700' },
   audioCell: { width: ACTION, height: ACTION, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: ACTION / 2, backgroundColor: theme.colors.primary, ...floating },
   disabled: { opacity: 0.4 },
+  stepAside: { display: 'none' },
   speedRow: { flexDirection: 'row', gap: theme.spacing.sm },
   speedChoice: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong },
   speedChoiceSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },

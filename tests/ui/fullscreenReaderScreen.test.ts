@@ -122,6 +122,15 @@ describe('approved fullscreen Reader assembled entry', () => {
     expect(script()).toBe(initial);
     expect(native.mounts).toBe(1);
   });
+  it('closes a selected verse sheet with Back before anything else, through the official clear signal', async () => {
+    const reader = () => all('BibleReader')[0];
+    const signal = reader().props.clearSelectionSignal as number;
+    await act(async () => { await reader().props.onVerseSelect({ verses: [3], reference: '詩篇 90:3' }); });
+    act(() => { expect(native.back?.()).toBe(true); });
+    expect(reader().props.clearSelectionSignal).toBe(signal + 1);
+    expect(toolbar()).toBeDefined();
+    expect(native.mounts).toBe(1);
+  });
   it('routes official chapter selection to both scripture and audio through the same owner', async () => {
     press('更多閱讀工具'); press('選擇其他章節');
     await act(async () => { await all('OfficialChapterSheet')[0].props.onSelect({ book: 'GEN', chapter: '1', versionId: 46 }); });

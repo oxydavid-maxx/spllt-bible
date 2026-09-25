@@ -137,6 +137,15 @@ describe('fullscreen official reader wrapper', () => {
     expect(all('OfficialReader')[0].props.dom.injectedJavaScript).not.toContain('main > footer');
     expect(native.mounts).toBe(1);
   });
+  it('reports whether a verse is selected and hands the clear signal to the official reader', async () => {
+    const selection = vi.fn();
+    await mount({ onVerseSelectionChange: selection, clearVerseSelectionSignal: 3 });
+    const reader = all('OfficialReader')[0];
+    expect(reader.props.clearSelectionSignal).toBe(3);
+    await act(async () => { await reader.props.onVerseSelect({ verses: [10], reference: '提多書 2:10' }); });
+    await act(async () => { await reader.props.onVerseSelect({ verses: [], reference: '' }); });
+    expect(selection.mock.calls).toEqual([[true], [false]]);
+  });
   it('forwards only valid local canvas messages and keeps legacy mode untouched', async () => {
     const reveal = vi.fn(), scroll = vi.fn(), edge = vi.fn();
     await mount({ onCanvasReveal: reveal, onCanvasScroll: scroll, onCanvasEdge: edge });

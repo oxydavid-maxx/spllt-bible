@@ -200,6 +200,45 @@ describe('reader layout A', () => {
     expect(texts()).not.toContain('完成今日讀經');
   });
 
+  it('gives a selected verse\'s action sheet the bottom, and Back closes that sheet before anything else', async () => {
+    const { getReaderImmersionSnapshot } = await import('../../src/ui/readerImmersionState');
+    await mount();
+    const play = pressable('播放');
+    act(() => { chrome.handleVerseSelection(true); });
+    // ○ ▶ step aside without unmounting the audio owner; the floating tab bar steps aside too.
+    expect(styleOf(actionRow()).display).toBe('none');
+    expect(pressable('播放')).toBe(play);
+    expect(getReaderImmersionSnapshot()).toBe(true);
+    expect(header()).toBeDefined();
+    expect(all('StatusBar')[0].props.hidden).toBe(false);
+    expect(native.backHandlers).toHaveLength(1);
+    let consumed = false;
+    act(() => { consumed = native.backHandlers[0](); });
+    expect(consumed).toBe(true);
+    expect(chrome).toMatchObject({ verseSelected: false, verseClearSignal: 1 });
+    expect(styleOf(actionRow()).display).toBeUndefined();
+    expect(getReaderImmersionSnapshot()).toBe(false);
+    expect(native.backHandlers).toHaveLength(0);
+
+    // Collapsed with a verse selected: the first Back closes the sheet, the second brings the tools back.
+    collapse();
+    act(() => { chrome.handleVerseSelection(true); });
+    act(() => { native.backHandlers.at(-1)!(); });
+    expect(chrome).toMatchObject({ verseSelected: false, verseClearSignal: 2 });
+    expect(header()).toBeUndefined();
+    act(() => { native.backHandlers.at(-1)!(); });
+    expect(header()).toBeDefined();
+  });
+
+  it('closes a selected verse\'s sheet when the chapter changes', async () => {
+    await mount();
+    act(() => { chrome.handleVerseSelection(true); });
+    activeReferenceIndex = 1; currentChapter = 'PSA.99';
+    await rerender();
+    expect(chrome).toMatchObject({ verseSelected: false, verseClearSignal: 1 });
+    expect(styleOf(actionRow()).display).toBeUndefined();
+  });
+
   it('keeps the scripture surface identical between normal and collapsed, and reserves room under the overlays', async () => {
     await mount();
     const normal = styleOf(readerSurface());

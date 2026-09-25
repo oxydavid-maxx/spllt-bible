@@ -348,6 +348,8 @@ export default function ReaderScreen() {
       onCanvasScroll={chrome.handleCanvasScroll}
       onCanvasReveal={chrome.revealTools}
       onCanvasEdge={chrome.handleCanvasEdge}
+      onVerseSelectionChange={chrome.handleVerseSelection}
+      clearVerseSelectionSignal={chrome.verseClearSignal}
       canvasInsets={readerCanvasInsets(chrome.settledInsets)}
       // Held whether or not the journal is open: the panel covers the reader, so a verse is always
       // copied with it closed. The panel offers it on the next open rather than inserting it.
