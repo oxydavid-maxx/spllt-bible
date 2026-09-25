@@ -7,6 +7,7 @@
 - `evidence-index.md`：已保存proof與local archive位置。
 - `acceptance-status.md`：已驗證、有限證據、尚未完成。
 - 完整核准spec：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md)。
+- 閱讀頁需求、已定案決策與待決定方案：[../design/reader-page.md](../design/reader-page.md)（討論閱讀頁前先讀）。
 - 清理後原thread文字：`../../.handoff/session-history.md`/`.json`。
 - rollback/evidence manifest：`../../.handoff/archive/rollback-manifest.json`。
 
