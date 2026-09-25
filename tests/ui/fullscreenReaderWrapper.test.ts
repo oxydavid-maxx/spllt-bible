@@ -143,6 +143,7 @@ describe('fullscreen official reader wrapper', () => {
     const dom = all('OfficialReader')[0].props.dom;
     const send = (message: unknown) => dom.onMessage({ nativeEvent: { data: JSON.stringify(message) } });
     act(() => {
+      send({ type: 'qingmu.reader.canvas.reveal', data: { reason: 'top' } });
       send({ type: 'qingmu.reader.canvas.reveal', data: { reason: 'tap' } });
       send({ type: 'qingmu.reader.canvas.reveal', data: { reason: 'sideways' } });
       send({ type: 'qingmu.reader.canvas.scroll', data: { direction: 'down', deltaY: 20 } });
@@ -150,7 +151,7 @@ describe('fullscreen official reader wrapper', () => {
       send({ type: 'qingmu.reader.canvas.edge', data: { atEnd: 'yes' } });
       send({ type: 'qingmu.reader.canvas.tap', data: null });
     });
-    expect(reveal).toHaveBeenCalledExactlyOnceWith('tap');
+    expect(reveal).toHaveBeenCalledExactlyOnceWith('top');
     expect(scroll).toHaveBeenCalledExactlyOnceWith({ direction: 'down', deltaY: 20 });
     expect(edge).toHaveBeenCalledExactlyOnceWith({ atEnd: true });
     await act(async () => rendered.update(React.createElement(YouVersionReader, { ...props, fullscreen: false, onCanvasReveal: reveal })));
@@ -160,50 +161,38 @@ describe('fullscreen official reader wrapper', () => {
 });
 
 describe('injected canvas gesture bridge', () => {
-  it('consumes a quick plain-scripture tap only while collapsed and never controls, footnotes, selections, long presses or drags', async () => {
+  it('asks to collapse again on a new downward gesture after a pause and never intercepts a scripture tap', async () => {
     await mount();
     const listeners = new Map<string, ((event: any) => void)[]>();
     const postMessage = vi.fn();
-    let now = 1000, selection = '';
+    let now = 1000;
     const document = {
       documentElement: { setAttribute: vi.fn() }, getElementById: () => null, head: { appendChild: vi.fn() }, createElement: () => ({}),
       querySelector: () => null, querySelectorAll: () => [], body: {},
       addEventListener: (type: string, callback: (event: any) => void) => { listeners.set(type, [...(listeners.get(type) ?? []), callback]); },
     };
-    const window = { ReactNativeWebView: { postMessage }, getSelection: () => ({ toString: () => selection }) };
+    const window = { ReactNativeWebView: { postMessage } };
     class MutationObserver { observe() { /* layout pass is covered by the Chromium test */ } }
     runInNewContext(all('OfficialReader')[0].props.dom.injectedJavaScript, { document, window, Date: { now: () => now }, MutationObserver, Node: { DOCUMENT_POSITION_PRECEDING: 2 }, setTimeout: () => 0 });
-    expect(listeners.has('pointerdown')).toBe(true);
-    const dispatch = (name: string, e: any) => {
-      for (const listener of listeners.get(name) ?? []) {
-        listener(e);
-        if (e.stopImmediatePropagation?.mock.calls.length) break;
-      }
-    };
-    const target = (interactive = false) => ({ closest: (selector: string) => selector.includes('aria-label="設定"') ? null : selector.includes('button,a,') ? (interactive ? {} : null) : {} });
-    const event = (t = target()) => ({ target: t, button: 0, isPrimary: true, clientX: 10, clientY: 10, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() });
-    const quickTap = (e: ReturnType<typeof event>, delay = 80) => { dispatch('pointerdown', e); now += delay; dispatch('click', e); };
+    expect(listeners.has('pointerdown')).toBe(false);
+    const dispatch = (name: string, e: any) => { for (const listener of listeners.get(name) ?? []) listener(e); };
     let scrollTop = 0;
     const container = { closest: () => ({}), get scrollTop() { return scrollTop; }, clientHeight: 600, scrollHeight: 6000 };
-    const collapse = () => { scrollTop += 200; dispatch('scroll', { target: container }); };
+    const scrollBy = (dy: number, after = 16) => { now += after; scrollTop += dy; dispatch('scroll', { target: container }); };
     const messages = () => postMessage.mock.calls.map(([raw]) => JSON.parse(raw)).filter(m => m.type !== 'qingmu.reader.canvas.edge');
+    const down = (deltaY: number) => ({ type: 'qingmu.reader.canvas.scroll', data: { direction: 'down', deltaY } });
 
-    const visibleTap = event(); quickTap(visibleTap);
-    expect(visibleTap.preventDefault).not.toHaveBeenCalled();
-    expect(messages()).toEqual([]);
+    scrollBy(200); scrollBy(100); scrollBy(100);
+    expect(messages()).toEqual([down(200)]);
+    // Native revealed on its own (Back or the collapsed bar); the next gesture after a pause collapses again.
+    scrollBy(100, 900);
+    expect(messages()).toEqual([down(200), down(100)]);
 
-    collapse();
-    expect(messages()).toEqual([{ type: 'qingmu.reader.canvas.scroll', data: { direction: 'down', deltaY: 200 } }]);
-    const button = event(target(true)); quickTap(button); expect(button.preventDefault).not.toHaveBeenCalled();
-    const long = event(); quickTap(long, 700); expect(long.preventDefault).not.toHaveBeenCalled();
-    selection = 'selected verse'; const selected = event(); quickTap(selected); expect(selected.preventDefault).not.toHaveBeenCalled(); selection = '';
-    const drag = event(); dispatch('pointerdown', drag); dispatch('pointermove', { ...drag, clientY: 50 }); now += 80; dispatch('click', drag); expect(drag.preventDefault).not.toHaveBeenCalled();
-    const cancelled = event(); dispatch('pointerdown', cancelled); dispatch('pointercancel', cancelled); dispatch('click', cancelled); expect(cancelled.preventDefault).not.toHaveBeenCalled();
-    const double = { ...event(), detail: 2 }; quickTap(double); expect(double.preventDefault).not.toHaveBeenCalled();
-    expect(messages()).toHaveLength(1);
-
-    const collapsedTap = event(); quickTap(collapsedTap);
-    expect(collapsedTap.stopImmediatePropagation).toHaveBeenCalledOnce();
-    expect(messages().at(-1)).toEqual({ type: 'qingmu.reader.canvas.reveal', data: { reason: 'tap' } });
+    const verse = { closest: (selector: string) => (selector.includes('aria-label="設定"') ? null : {}) };
+    const tap = { target: verse, button: 0, detail: 1, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() };
+    dispatch('click', tap);
+    expect(tap.preventDefault).not.toHaveBeenCalled();
+    expect(tap.stopImmediatePropagation).not.toHaveBeenCalled();
+    expect(messages()).toHaveLength(2);
   });
 });

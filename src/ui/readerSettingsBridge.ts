@@ -3,7 +3,7 @@ export const READER_CANVAS_SCROLL_MESSAGE = 'qingmu.reader.canvas.scroll';
 export const READER_CANVAS_REVEAL_MESSAGE = 'qingmu.reader.canvas.reveal';
 export const READER_CANVAS_EDGE_MESSAGE = 'qingmu.reader.canvas.edge';
 
-export type ReaderRevealReason = 'up' | 'top' | 'end' | 'tap';
+export type ReaderRevealReason = 'up' | 'top' | 'end';
 export interface ReaderCanvasInsets { top: number; bottom: number }
 
 // Bound to platform-react-ui 2.12.0's official settings labels. Expo handles its
@@ -28,86 +28,76 @@ export const READER_SETTINGS_BRIDGE = `
 true;
 `;
 
-// Immersion is decided inside the WebView, where the real scroll container lives (YouVersion rules):
-// reading down collapses; a real reverse scroll, the chapter top, the chapter end, or a tap while
-// collapsed reveals. While the tools are visible a tap is left to the SDK (verse selection).
+// Immersion events come from inside the WebView, where the real scroll container lives (YouVersion
+// rules): a new downward gesture asks to collapse; a real reverse scroll, arriving at the chapter top
+// or arriving at the chapter end asks to reveal. Each is sent once per gesture or arrival. Native owns
+// the state and ignores repeats, so a reveal made natively (Back, the collapsed bar) needs no reply
+// and the next downward gesture collapses again. Taps are never intercepted: tapping scripture
+// selects a verse.
 const READER_CANVAS_BRIDGE = `
 (function () {
   if (window.__qingmuReaderCanvasBridge || !window.ReactNativeWebView) return;
   window.__qingmuReaderCanvasBridge = true;
-  var HIDE_MIN_TOP = 48, REVEAL_UP = 120, EDGE = 24, STEP = 12;
-  var gesture = null, hidden = false, anchor = null, upAccum = 0, atEnd = null;
+  var HIDE_MIN_TOP = 48, REVEAL_UP = 120, EDGE = 24, STEP = 12, NEW_GESTURE_MS = 400;
+  var anchor = null, run = null, sentInRun = false, upAccum = 0, lastScroll = 0, atTop = null, atEnd = null;
   var canvasSelector = '[data-slot="yv-bible-renderer"], [data-yv-sdk] > main';
-  var interactiveSelector = 'button,a,input,textarea,select,option,label,[role="button"],[role="link"],[contenteditable="true"],[data-footnote],[data-slot*="footnote"],sup';
   function closest(target, selector) {
     return target && typeof target.closest === 'function' ? target.closest(selector) : null;
-  }
-  function hasSelection() {
-    var selection = window.getSelection && window.getSelection();
-    return !!(selection && selection.toString());
-  }
-  function isPlainCanvas(target) {
-    return !!closest(target, canvasSelector) && !closest(target, interactiveSelector);
   }
   function send(type, data) {
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, data: data === undefined ? null : data }));
   }
-  function reveal(reason) {
-    if (!hidden) return;
-    hidden = false;
-    upAccum = 0;
-    send('qingmu.reader.canvas.reveal', { reason: reason });
-  }
-  function reportEdge(container) {
-    if (!container) return false;
+  function reportEdges(container) {
+    var top = container.scrollTop <= EDGE;
     var end = container.scrollTop + container.clientHeight >= container.scrollHeight - EDGE;
-    if (end !== atEnd) { atEnd = end; send('qingmu.reader.canvas.edge', { atEnd: end }); }
+    if (end !== atEnd) {
+      var arrivedAtEnd = end && atEnd === false;
+      atEnd = end;
+      send('qingmu.reader.canvas.edge', { atEnd: end });
+      if (arrivedAtEnd) send('qingmu.reader.canvas.reveal', { reason: 'end' });
+    }
+    if (top !== atTop) {
+      var arrivedAtTop = top && atTop === false;
+      atTop = top;
+      if (arrivedAtTop) send('qingmu.reader.canvas.reveal', { reason: 'top' });
+    }
     return end;
   }
+  // New chapter content: report the end state again even if it did not change, because native
+  // forgets it when the chapter changes (a short chapter can fit without any scroll).
   window.__qingmuReportEdge = function () {
     var container = document.querySelector('[data-yv-sdk] > main');
-    if (container && anchor === null) anchor = container.scrollTop;
-    reportEdge(container);
+    if (!container) return;
+    if (anchor === null) anchor = container.scrollTop;
+    atEnd = null;
+    reportEdges(container);
   };
-  document.addEventListener('pointerdown', function (event) {
-    gesture = event.isPrimary !== false && event.button === 0 && isPlainCanvas(event.target) && !hasSelection()
-      ? { x: event.clientX, y: event.clientY, time: Date.now(), dragged: false } : null;
-  }, true);
-  document.addEventListener('pointermove', function (event) {
-    if (gesture && (Math.abs(event.clientX - gesture.x) > 10 || Math.abs(event.clientY - gesture.y) > 10)) gesture.dragged = true;
-  }, true);
-  document.addEventListener('pointercancel', function () { gesture = null; }, true);
-  document.addEventListener('click', function (event) {
-    var tap = gesture;
-    gesture = null;
-    if (!hidden || !tap || tap.dragged || event.detail > 1 || Date.now() - tap.time > 350 || Math.abs(event.clientX - tap.x) > 10 || Math.abs(event.clientY - tap.y) > 10 || !isPlainCanvas(event.target) || hasSelection()) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    reveal('tap');
-  }, true);
   document.addEventListener('scroll', function (event) {
-    gesture = null;
     var target = event.target;
     if (!closest(target, canvasSelector) || typeof target.scrollTop !== 'number') return;
+    var now = Date.now();
+    if (now - lastScroll > NEW_GESTURE_MS) run = null;
+    lastScroll = now;
     var top = target.scrollTop;
-    var end = reportEdge(target);
+    var end = reportEdges(target);
     if (anchor === null) anchor = 0;
     var delta = top - anchor;
-    if (Math.abs(delta) >= STEP) {
-      anchor = top;
-      if (delta > 0) {
-        upAccum = 0;
-        if (!hidden && top > HIDE_MIN_TOP && !end) {
-          hidden = true;
-          send('qingmu.reader.canvas.scroll', { direction: 'down', deltaY: delta });
-        }
-      } else {
-        upAccum -= delta;
-        if (upAccum >= REVEAL_UP) reveal('up');
+    if (Math.abs(delta) < STEP) return;
+    anchor = top;
+    var direction = delta > 0 ? 'down' : 'up';
+    if (direction !== run) { run = direction; sentInRun = false; upAccum = 0; }
+    if (direction === 'down') {
+      if (!sentInRun && top > HIDE_MIN_TOP && !end) {
+        sentInRun = true;
+        send('qingmu.reader.canvas.scroll', { direction: 'down', deltaY: delta });
       }
+      return;
     }
-    if (top <= EDGE) reveal('top');
-    if (end) reveal('end');
+    upAccum -= delta;
+    if (!sentInRun && upAccum >= REVEAL_UP) {
+      sentInRun = true;
+      send('qingmu.reader.canvas.reveal', { reason: 'up' });
+    }
   }, true);
 })();
 true;
@@ -194,7 +184,7 @@ export function readReaderCanvasRevealEvent(data: string): ReaderRevealReason | 
   try {
     const message = JSON.parse(data);
     const reason = message?.data?.reason;
-    return message?.type === READER_CANVAS_REVEAL_MESSAGE && ['up', 'top', 'end', 'tap'].includes(reason) ? reason : null;
+    return message?.type === READER_CANVAS_REVEAL_MESSAGE && ['up', 'top', 'end'].includes(reason) ? reason : null;
   } catch { return null; }
 }
 

@@ -61,6 +61,7 @@ function tapVerse() {
   target.dispatchEvent(click);
   return click.defaultPrevented;
 }
+// 'pause' stands for the reader stopping for a while (native may reveal meanwhile, e.g. Back).
 var steps = [
   function () { mark('start'); },
   function () { scrollTo(200); },
@@ -68,26 +69,30 @@ var steps = [
   function () { mark('up80'); scrollTo(60); },
   function () { mark('down-again'); scrollTo(100); },
   function () { mark('to-top'); scrollTo(20); },
-  function () { mark('hide-for-tap'); scrollTo(400); },
-  function () { mark('tap-hidden'); window.__tapHiddenPrevented = tapVerse(); },
-  function () { mark('tap-visible'); window.__tapVisiblePrevented = tapVerse(); },
-  function () { mark('hide-for-end'); scrollTo(700); },
+  function () { mark('down-before-tap'); scrollTo(400); },
+  function () { mark('same-gesture'); scrollTo(500); },
+  function () { mark('tap'); window.__tapPrevented = tapVerse(); },
+  'pause',
+  function () { mark('after-pause'); scrollTo(700); },
   function () { mark('to-end'); scrollTo(main.scrollHeight); },
 ];
 var i = 0;
 function next() {
-  if (i < steps.length) { steps[i++](); setTimeout(next, 60); return; }
+  if (i < steps.length) {
+    var step = steps[i++];
+    if (step === 'pause') { setTimeout(next, 600); return; }
+    step(); setTimeout(next, 60); return;
+  }
   var label = document.querySelector('.chapter > :first-child'), vlbl = document.querySelector('.yv-vlbl'), heading = document.querySelector('.s1');
   var style = getComputedStyle(main);
-  parent.postMessage({ index: __INDEX__, msgs: msgs, sdkClicks: sdkClicks,
-    tapHiddenPrevented: window.__tapHiddenPrevented, tapVisiblePrevented: window.__tapVisiblePrevented,
+  parent.postMessage({ index: __INDEX__, msgs: msgs, sdkClicks: sdkClicks, tapPrevented: window.__tapPrevented,
     labelDisplay: getComputedStyle(label).display, verseLabelDisplay: getComputedStyle(vlbl).display,
     headingWeight: getComputedStyle(heading).fontWeight, padTop: style.paddingTop, padBottom: style.paddingBottom }, '*');
 }
 setTimeout(next, 80);
 `;
 
-it('collapses on reading down, ignores small reverse scrolls, and reveals on a real reverse, the chapter top, the chapter end or a tap while collapsed', () => {
+it('asks to collapse once per downward gesture, ignores small reverse scrolls, asks to reveal on a real reverse, the chapter top or the chapter end, and leaves taps to verse selection', () => {
   const { css, mainClass } = sdkStyles();
   expect(css).toContain('tailwindcss');
   expect(mainClass).toContain('yv:overflow-y-auto');
@@ -111,7 +116,7 @@ it('collapses on reading down, ignores small reverse scrolls, and reveals on a r
     ], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     const raw = output.match(/<pre id="result">([^<]+)<\/pre>/)?.[1];
     expect(raw, 'Chromium must run every bridge fixture').toBeDefined();
-    const measured = JSON.parse(raw!) as Array<{ msgs: Array<{ type: string; data: any }>; sdkClicks: number; tapHiddenPrevented: boolean; tapVisiblePrevented: boolean;
+    const measured = JSON.parse(raw!) as Array<{ msgs: Array<{ type: string; data: any }>; sdkClicks: number; tapPrevented: boolean;
       labelDisplay: string; verseLabelDisplay: string; headingWeight: string; padTop: string; padBottom: string }>;
     expect(measured).toHaveLength(cases.length);
     for (const run of measured) {
@@ -124,14 +129,13 @@ it('collapses on reading down, ignores small reverse scrolls, and reveals on a r
       expect(between('up60', 'up80')).toEqual([]);
       expect(between('up80', 'down-again')).toEqual(['reveal:up']);
       expect(between('down-again', 'to-top')).toEqual(['down']);
-      expect(between('to-top', 'hide-for-tap')).toEqual(['reveal:top']);
-      expect(between('hide-for-tap', 'tap-hidden')).toEqual(['down']);
-      expect(between('tap-hidden', 'tap-visible')).toEqual(['reveal:tap']);
-      expect(run.tapHiddenPrevented).toBe(true);
-      expect(between('tap-visible', 'hide-for-end')).toEqual([]);
-      expect(run.tapVisiblePrevented).toBe(false);
+      expect(between('to-top', 'down-before-tap')).toEqual(['reveal:top']);
+      expect(between('down-before-tap', 'same-gesture')).toEqual(['down']);
+      expect(between('same-gesture', 'tap')).toEqual([]);
+      expect(between('tap', 'after-pause')).toEqual([]);
+      expect(run.tapPrevented).toBe(false);
       expect(run.sdkClicks).toBe(1);
-      expect(between('hide-for-end', 'to-end')).toEqual(['down']);
+      expect(between('after-pause', 'to-end')).toEqual(['down']);
       expect(between('to-end')).toEqual(['edge:true', 'reveal:end']);
       expect(run.labelDisplay).toBe('none');
       expect(run.verseLabelDisplay).not.toBe('none');
