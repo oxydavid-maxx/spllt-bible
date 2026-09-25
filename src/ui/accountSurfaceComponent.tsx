@@ -42,7 +42,7 @@ export function AccountSurface() {
         <Text style={styles.body}>{model.mode === 'loading' ? '身份已確認，正在取得個人資料；若網路不穩，請重試。' : '身份已確認，可以重新載入個人資料。'}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="重試載入帳戶資料" disabled={profileRetrying} onPress={() => { setProfileRetrying(true); void retryAuthProfile().catch(() => undefined).finally(() => setProfileRetrying(false)); }} style={styles.secondary}><Text style={styles.secondaryText}>{profileRetrying ? '載入中…' : '重試載入'}</Text></Pressable>
       </> : <>
-        <Text style={styles.title}>{model.mode === 'reauthenticate' ? '登入狀態已過期' : '青牧青年帳戶'}</Text>
+        <Text style={styles.title}>{model.mode === 'reauthenticate' ? '登入狀態已過期' : '竹科聖經帳戶'}</Text>
         <GoogleLoginCard baseUrl={runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl} />
       </>}
     </View>

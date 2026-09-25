@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "青牧青年",
+    "name": "竹科聖經",
     "slug": "qingmu-youth",
-    "version": "0.5.10",
+    "version": "0.5.11",
     "orientation": "portrait",
     "scheme": "org.qingmu.youth",
     "userInterfaceStyle": "automatic",
@@ -30,7 +30,7 @@
     ],
     "android": {
       "package": "org.qingmu.youth",
-      "versionCode": 31,
+      "versionCode": 32,
       "adaptiveIcon": {
         "backgroundColor": "#1E5C4B"
       }
