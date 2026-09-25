@@ -70,8 +70,8 @@ const press = (label: string) => act(() => {
   const n = rendered.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
   expect(n, 'Missing control: ' + label).toBeDefined(); n.props.onPress();
 });
-const canvas = (type = 'qingmu.reader.canvas.tap', data: unknown = null) => act(() => { all('BibleReader')[0].props.dom.onMessage({ nativeEvent: { data: JSON.stringify({ type, data }) } }); });
-const restoreChromeWithReverseScroll = () => canvas('qingmu.reader.canvas.scroll', { direction: 'up', deltaY: -20 });
+const canvas = (type = 'qingmu.reader.canvas.scroll', data: unknown = { direction: 'down', deltaY: 40 }) => act(() => { all('BibleReader')[0].props.dom.onMessage({ nativeEvent: { data: JSON.stringify({ type, data }) } }); });
+const restoreChromeWithReverseScroll = () => canvas('qingmu.reader.canvas.reveal', { reason: 'up' });
 const toolbar = () => rendered.root.findAll(n => n.props.accessibilityLabel === '閱讀工具列')[0];
 beforeEach(async () => {
   readerSettings.value = { fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 }; readerSettings.listeners.clear();
@@ -109,8 +109,7 @@ describe('Reader secondary information and controls', () => {
   it('selects an assigned passage from More after browsing another book', async () => {
     press('更多閱讀工具'); press('選擇其他章節');
     await act(async () => { await all('OfficialChapterSheet')[0].props.onSelect({ book: 'GEN', chapter: '1', versionId: 46 }); });
-    press('選擇今日章節清單');
-    press('前往詩91');
+    press('詩篇 91，今日第2段，共2段');
     expect(all('BibleReader')[0].props.book).toBe('PSA');
     expect(all('BibleReader')[0].props.chapter).toBe('91');
     expect(all('ChapterAudioControls')[0].props.chapterUsfm).toBe('PSA.91');

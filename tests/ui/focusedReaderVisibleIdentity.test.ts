@@ -23,6 +23,7 @@ vi.mock('react-native', () => ({
   Linking: { openURL: vi.fn(async () => {}) }, Platform: { OS: 'android' },
   AccessibilityInfo: { isScreenReaderEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
   BackHandler: { addEventListener: (_: string, cb: () => boolean) => { native.back = cb; return { remove: () => { native.back = null; } }; } },
+  useWindowDimensions: () => ({ width: 393, fontScale: 1 }), AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
 }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
@@ -31,11 +32,11 @@ vi.mock('expo-application', () => ({ nativeBuildVersion: '30' }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn(), maybeCompleteAuthSession() {} }));
 vi.mock('expo-status-bar', () => ({ StatusBar: primitive('StatusBar') }));
 vi.mock('expo-navigation-bar', () => ({ NavigationBar: Object.assign(primitive('NavigationBar'), { setHidden: vi.fn() }) }));
-vi.mock('expo-router', () => ({ router: { replace: vi.fn() }, useFocusEffect: (cb: () => void | (() => void)) => React.useEffect(() => { const cleanup = cb(); if (cleanup) native.cleanups.push(cleanup); return cleanup; }, [cb]) }));
+vi.mock('expo-router', () => ({ router: { replace: vi.fn() }, usePathname: () => '/reader', useFocusEffect: (cb: () => void | (() => void)) => React.useEffect(() => { const cleanup = cb(); if (cleanup) native.cleanups.push(cleanup); return cleanup; }, [cb]) }));
 vi.mock('expo-crypto', () => ({ randomUUID: () => 'test-operation' }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {} }));
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: primitive('AccountEntryButton') }));
-vi.mock('../../src/ui/ReadingDateNavigator', () => ({ ReadingDateNavigator: primitive('ReadingDateNavigator'), formatReadingDateLabel: (date: string) => date.slice(5).replace('-', '/') }));
+vi.mock('../../src/ui/ReadingDateNavigator', () => ({ ReadingDateNavigator: primitive('ReadingDateNavigator'), formatReadingDateLabel: (date: string) => date.slice(5).replace('-', '/'), formatReadingDateHeader: (date: string) => date }));
 vi.mock('../../src/ui/completionFeedback', () => ({ CompletionFeedback: primitive('CompletionFeedback') }));
 vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ status: 'signed-out', session: null }), isCurrentAuthSession: () => false }));
 vi.mock('../../src/services/reminderScheduler', () => ({ createReminderScheduler: () => ({}) }));
@@ -44,7 +45,10 @@ vi.mock('../../src/services/useOutboxRecovery', () => ({ useOutboxRecovery: () =
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: vi.fn() }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn(() => ({ get: () => null, save: (command: Record<string, unknown>) => command })) }));
 vi.mock('../../src/ui/routes', () => ({ buildFixtureModels: () => ({ reader: { references: ['PSA.90', 'PSA.91'] } }) }));
-vi.mock('../../src/ui/readingSession', () => ({ useReadingSession: () => ({ selectedDate: '2026-09-12', day: {}, period: 'week' }), setSelectedReadingDate: vi.fn() }));
+vi.mock('../../src/ui/readingSession', () => ({ useReadingSession: () => ({ selectedDate: '2026-09-12', planId: 'church-2026-09', day: {}, period: 'week' }), setSelectedReadingDate: vi.fn(), setPendingJournalQuote: vi.fn() }));
+vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
+// Keep the real preload host out of Node: the SDK core imports its native registry.
+vi.mock('@youversion/platform-react-native-expo-core', () => ({ useYouVersion: () => ({ fetchBibleContent: vi.fn(async () => ({ content: '' })) }) }));
 vi.mock('../../src/services/youVersionAdapter', () => ({ createYouVersionAdapter: () => ({ loadReaderUi: async () => ({ status: 'READER_UI_READY', module: {
   getReaderSettings: () => ({ ...readerSettings.value }),
   getDefaultReaderSettings: () => ({ fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 }),
@@ -62,7 +66,7 @@ const press = (label: string) => act(() => {
   const n = rendered.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function')[0];
   expect(n, 'Missing control: ' + label).toBeDefined(); n.props.onPress();
 });
-const canvas = (type = 'qingmu.reader.canvas.tap') => act(() => { all('BibleReader')[0].props.dom.onMessage({ nativeEvent: { data: JSON.stringify({ type, data: null }) } }); });
+const canvas = (type = 'qingmu.reader.canvas.scroll', data: unknown = { direction: 'down', deltaY: 40 }) => act(() => { all('BibleReader')[0].props.dom.onMessage({ nativeEvent: { data: JSON.stringify({ type, data }) } }); });
 const toolbar = () => rendered.root.findAll(n => n.props.accessibilityLabel === '閱讀工具列')[0];
 beforeEach(async () => {
   readerSettings.value = { fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 }; readerSettings.listeners.clear();

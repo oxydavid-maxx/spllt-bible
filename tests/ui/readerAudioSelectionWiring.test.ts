@@ -263,14 +263,12 @@ function isReachable(renderer: TestRenderer.ReactTestRenderer, node: Node): bool
 }
 
 function revealReaderTools(renderer: TestRenderer.ReactTestRenderer): void {
-  const toolbar = renderer.root.findAll((n: Node) => n.props?.accessibilityLabel === '閱讀工具列')[0];
-  expect(toolbar).toBeDefined();
-  if (!isReachable(renderer, toolbar)) {
+  const reachableToolbar = () => renderer.root.findAll((n: Node) => n.props?.accessibilityLabel === '閱讀工具列' && isReachable(renderer, n));
+  if (reachableToolbar().length === 0) {
     const reader = bibleReader(renderer);
-    act(() => { reader.props.dom.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'qingmu.reader.canvas.tap', data: null }) } }); });
+    act(() => { reader.props.dom.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'qingmu.reader.canvas.reveal', data: { reason: 'up' } }) } }); });
   }
-  expect(renderer.root.findAll((n: Node) => n.props?.accessibilityLabel === '閱讀工具列'
-    && isReachable(renderer, n)).length).toBeGreaterThan(0);
+  expect(reachableToolbar().length).toBeGreaterThan(0);
 }
 
 function openMore(renderer: TestRenderer.ReactTestRenderer): void {
@@ -279,9 +277,17 @@ function openMore(renderer: TestRenderer.ReactTestRenderer): void {
   expect(renderer.root.findAll((n: Node) => String(n.type) === 'Modal' && n.props.visible)).toHaveLength(1);
 }
 
+// Today's chapters are chips in the Reader header: short text on screen, full name for TalkBack.
+function dailyChips(renderer: TestRenderer.ReactTestRenderer): Node[] {
+  return renderer.root.findAll((n: Node) => String(n.type) === 'Pressable' && typeof n.props.onPress === 'function'
+    && n.props.accessibilityState !== undefined && 'selected' in n.props.accessibilityState && isReachable(renderer, n));
+}
+const chipText = (chip: Node) => chip.findAll((n: Node) => String(n.type) === 'Text').map((n: Node) => String(n.props.children)).join('');
+
 function selectAssigned(renderer: TestRenderer.ReactTestRenderer, referenceLabel: string): void {
-  pressByLabel(renderer, '選擇今日章節清單');
-  pressByLabel(renderer, `前往${referenceLabel}`);
+  const chip = dailyChips(renderer).find((n: Node) => chipText(n) === referenceLabel);
+  if (!chip) throw new Error(`no reachable daily chip ${referenceLabel}`);
+  act(() => { chip.props.onPress(); });
   expect(renderer.root.findAll((n: Node) => String(n.type) === 'Modal' && n.props.visible)).toHaveLength(0);
 }
 
@@ -462,14 +468,15 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     vi.useRealTimers();
   });
 
-  it('keeps chapter selection, icon-only completion, and play together in the Reader action row', async () => {
+  it('keeps the daily chapter chips in the header and icon-only completion with play in the Reader action row', async () => {
     const { taipeiDate } = await import('../../src/domain/gamificationV1');
     (await import('../../src/ui/readingSession')).setSelectedReadingDate(taipeiDate());
     const renderer = await mount();
-    const bottom = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '讀經控制列')[0];
+    const header = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '今日讀經章節')[0];
+    expect(header.findAll((node: Node) => dailyChips(renderer).includes(node)).length).toBeGreaterThan(0);
+    const bottom = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '讀經動作')[0];
     expect(bottom).toBeDefined();
     const actions = bottom.findAll((node: Node) => String(node.type) === 'Pressable' && node.props.accessibilityRole === 'button');
-    expect(actions.some((node: Node) => node.props.accessibilityLabel === '選擇今日章節清單')).toBe(true);
     expect(actions.some((node: Node) => node.props.accessibilityLabel === '靈修日記')).toBe(false);
     const completion = actions.find((node: Node) => node.props.accessibilityState?.checked === false
       && String(node.props.accessibilityHint).includes('長按查看完成狀態說明'));
@@ -851,11 +858,8 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
 
   it('advances to the NEXT assigned passage through persistent daily buttons', async () => {
     const renderer = await mount();
-    pressByLabel(renderer, '選擇今日章節清單');
-    const entries = renderer.root.findAll((n: Node) => String(n.type) === 'Pressable'
-      && String(n.props.accessibilityLabel).startsWith('前往') && isReachable(renderer, n));
-    expect(entries.map((n: Node) => n.props.accessibilityLabel)).toEqual(['前往約19', '前往約20']);
-    pressByLabel(renderer, '前往約20');
+    expect(dailyChips(renderer).map(chipText)).toEqual(['約19', '約20']);
+    selectAssigned(renderer, '約20');
     await act(async () => { await Promise.resolve(); });
     expect(lastRequest()?.usfm).toBe('JHN.20');
     await act(async () => { renderer.unmount(); });
@@ -872,8 +876,9 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     await act(async () => { await Promise.resolve(); });
     expect(lastRequest()).toEqual({ versionId: 46, usfm: 'GEN.1' });
     expect(readerLayout(renderer).props.selectionSource).toBe('FREE');
-    const controlRow = renderer.root.findAll((node: Node) => node.props?.accessibilityLabel === '讀經控制列')[0];
-    expect(controlRow.findAll((node: Node) => String(node.type) === 'Text').map((node: Node) => String(node.props.children)).join(' ')).toContain('自由閱讀');
+    const freeChip = dailyChips(renderer).find((n: Node) => n.props.accessibilityState.selected === true);
+    expect(freeChip && chipText(freeChip)).toBe('自由 創1');
+    expect(freeChip?.props.accessibilityLabel).toContain('自由閱讀');
     await act(async () => { renderer.unmount(); });
   });
 

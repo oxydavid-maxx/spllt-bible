@@ -32,7 +32,7 @@ describe('focused Reader route composition', () => {
     expect(tabs).toBeDefined();
     expect(reader).toBeDefined();
     expect(reader?.props.options).toMatchObject({ headerShown: false, tabBarAccessibilityLabel: '讀經閱讀器' });
-    expect(reader?.props.options.tabBarStyle).not.toMatchObject({ display: 'none' });
+    expect(reader?.props.options.tabBarStyle).toEqual({ position: 'absolute' });
     expect(reader?.props.options.href).toBeNull();
     expect(reader?.props.options.freezeOnBlur).toBe(false);
     expect(reader?.props.options.headerRight).toBeUndefined();
@@ -40,16 +40,19 @@ describe('focused Reader route composition', () => {
     renderer.unmount();
   });
 
-  it('hides the main tab bar only while Reader immersion is active, then restores it', async () => {
+  it('floats the tab bar over Reader and hides it only while Reader immersion is active, leaving other tabs untouched', async () => {
     const { setReaderImmersed } = await import('../../src/ui/readerImmersionState');
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => { renderer = TestRenderer.create(React.createElement(TabsLayout)); });
-    const tabs = renderer.root.findAll((node) => String(node.type) === 'Tabs')[0];
-    expect(tabs.props.screenOptions.tabBarStyle).toBeUndefined();
-    act(() => { setReaderImmersed(true); });
-    expect(renderer.root.findAll((node) => String(node.type) === 'Tabs')[0].props.screenOptions.tabBarStyle).toMatchObject({ display: 'none' });
-    act(() => { setReaderImmersed(false); });
+    const readerStyle = () => renderer.root.findAll((node) => String(node.type) === 'Screen').find((node) => node.props.name === 'reader')?.props.options.tabBarStyle;
+    const otherStyles = () => renderer.root.findAll((node) => String(node.type) === 'Screen').filter((node) => node.props.name !== 'reader').map((node) => node.props.options.tabBarStyle);
     expect(renderer.root.findAll((node) => String(node.type) === 'Tabs')[0].props.screenOptions.tabBarStyle).toBeUndefined();
+    expect(readerStyle()).toEqual({ position: 'absolute' });
+    act(() => { setReaderImmersed(true); });
+    expect(readerStyle()).toEqual({ display: 'none' });
+    expect(otherStyles().every((style) => style === undefined)).toBe(true);
+    act(() => { setReaderImmersed(false); });
+    expect(readerStyle()).toEqual({ position: 'absolute' });
     renderer.unmount();
   });
 

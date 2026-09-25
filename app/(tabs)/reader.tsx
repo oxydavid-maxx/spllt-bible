@@ -4,7 +4,7 @@ import { Alert, Linking, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { buildFixtureModels } from '../../src/ui/routes';
 import { YouVersionReader } from '../../src/ui/YouVersionReader';
-import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
+import { FullscreenReaderLayout, readerCanvasInsets, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
 import { createJournalFolderMirror } from '../../src/services/journalFolderMirror';
 import { createReaderSpeedStore, DEFAULT_READER_SPEED, isReaderSpeed, type ReaderSpeed } from '../../src/services/readerSpeedPreference';
 import { formatReadingDateLabel } from '../../src/ui/ReadingDateNavigator';
@@ -345,8 +345,12 @@ export default function ReaderScreen() {
       onContinuousPlaybackChange={enabled => { void updateAutoplayPreference(enabled); }}
       allowTechnicalProbe={process.env.EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE === 'true'}
       fullscreen
-      onCanvasTap={chrome.toggleTools}
       onCanvasScroll={chrome.handleCanvasScroll}
+      onCanvasReveal={chrome.revealTools}
+      onCanvasEdge={chrome.handleCanvasEdge}
+      onVerseSelectionChange={chrome.handleVerseSelection}
+      clearVerseSelectionSignal={chrome.verseClearSignal}
+      canvasInsets={readerCanvasInsets(chrome.settledInsets)}
       // Held whether or not the journal is open: the panel covers the reader, so a verse is always
       // copied with it closed. The panel offers it on the next open rather than inserting it.
       onVerseCopied={setPendingJournalQuote}

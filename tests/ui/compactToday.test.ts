@@ -62,7 +62,7 @@ describe('reading tab entry', () => {
     expect(all(renderer, 'Tabs')[0].props.initialRouteName).toBe('today');
     const reader = screens.find(node => node.props.name === 'reader');
     expect(reader?.props.options.href).toBeNull();
-    expect(reader?.props.options.tabBarStyle).toBeUndefined();
+    expect(reader?.props.options.tabBarStyle).toEqual({ position: 'absolute' });
     act(() => renderer.unmount());
   });
 
