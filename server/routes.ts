@@ -10,6 +10,7 @@ import { parseCapabilityQuery } from './contentCapabilities';
 import { createChapterAudioResolver, prewarmChapterAudio } from './genericChapterAudio';
 import { getMemberGroupProfile } from './groups';
 import { ensureJournalSchema, getJournalEntry, listJournalEntries, saveJournalEntry } from './journal';
+import { ensureEventRegistrationSchema, formRegistrationKeyMatches, getEventRegistrationView, readFormRegistrationPush, replaceEventRegistrations } from './eventRegistrations';
 import { getCommunityProgress } from './communityProgress';
 import { closeRound, createNomination, decideNomination, ensureNominationSchema, listNominationHistory, listNominations, listNominationsForAdmin, openRound, resolveSuggestion, setVote, withdrawNomination, type NominationDecision } from './rewardNominations';
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
@@ -75,6 +76,8 @@ export interface ApiHandlerOptions {
   adminGoogleSubjects?: string[];
   autoProvisionGoogleMembers?: boolean;
   disableMeetingReminders?: boolean;
+  /** Key the owner's Apps Script sends with sign-up pushes; the push route is absent without it. */
+  formRegistrationKey?: string;
   now?: () => Date;
 }
 
@@ -282,6 +285,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
   ensureGamificationSchema(options.db.db);
   ensureJournalSchema(options.db.db);
   ensureNominationSchema(options.db.db);
+  ensureEventRegistrationSchema(options.db.db);
   if (options.scheduleDates && options.scheduleDates.length > 0) {
     // Existing tests and local deployments can narrow the aggregate period without
     // replacing the canonical reading-day source. Dates already present retain their
@@ -386,7 +390,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
           const existing = options.db.db.prepare('SELECT member_id FROM identity_bindings WHERE provider = ? AND subject = ?').get(identity.provider, identity.subject) as { member_id: string } | undefined;
           if (existing) memberId = existing.member_id;
           else {
-            options.db.db.prepare('INSERT INTO members(id, display_name, group_id) VALUES(?,?,?)').run(memberId, identity.displayName?.trim() || '青牧會員', `unassigned:${memberId}`);
+            options.db.db.prepare('INSERT INTO members(id, display_name, group_id) VALUES(?,?,?)').run(memberId, identity.displayName?.trim() || '竹科聖經會員', `unassigned:${memberId}`);
             options.db.db.prepare('INSERT INTO identity_bindings(provider, subject, member_id, created_at) VALUES(?,?,?,?)').run(identity.provider, identity.subject, memberId, Date.now());
           }
           options.db.db.exec('COMMIT');
@@ -434,6 +438,14 @@ export function createApiHandler(options: ApiHandlerOptions) {
     if (request.method === 'POST' && url.pathname === '/api/session/revoke' && options.sessionSecret) {
       const token = (request.headers.authorization ?? request.headers.Authorization)?.match(/^Bearer\s+(.+)$/i)?.[1];
       return token && revokeSession(options.db.db, token, options.sessionSecret) ? json(200, { revoked: true }) : json(401, { error: 'AUTH_INVALID' });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/integrations/form-registrations' && options.formRegistrationKey) {
+      const provided = request.headers['x-qingmu-registration-key'] ?? request.headers['X-Qingmu-Registration-Key'];
+      if (!formRegistrationKeyMatches(typeof provided === 'string' ? provided : undefined, options.formRegistrationKey)) return json(401, { error: 'AUTH_INVALID' });
+      let push: ReturnType<typeof readFormRegistrationPush>;
+      try { push = readFormRegistrationPush(parseBody(request.body)); } catch { return json(400, { error: 'INVALID_JSON' }); }
+      if (!push) return json(400, { error: 'INVALID_REGISTRATIONS' });
+      return json(200, { ok: true, events: replaceEventRegistrations(options.db.db, push, now()) });
     }
     const auth = options.productionGoogleAuth && options.sessionSecret
       ? await authenticateSessionOrGoogle(request.headers, options.productionGoogleAuth, options.sessionSecret, sessions)
@@ -495,6 +507,11 @@ export function createApiHandler(options: ApiHandlerOptions) {
       }
       // The journal family takes no member parameter, by design: there is no shape of request
       // that names someone else, so there is no access rule to get wrong. See server/journal.ts.
+      if (url.pathname === '/api/me/event-registrations' && request.method === 'GET') {
+        const date = url.searchParams.get('date') ?? '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(400, { error: 'INVALID_DATE' });
+        return json(200, { ...getEventRegistrationView(options.db.db, auth.memberId, date) });
+      }
       if (url.pathname === '/api/me/journal' && request.method === 'GET') {
         const entries = listJournalEntries(options.db.db, auth.memberId, url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '');
         return isGamificationError(entries) ? gamificationError(entries) : gamificationJson(200, entries);

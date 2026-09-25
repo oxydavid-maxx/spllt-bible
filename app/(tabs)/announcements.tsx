@@ -6,6 +6,9 @@ import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { createAnnouncementClient, type Announcement } from '../../src/services/announcementClient';
 import { AnnouncementBoard } from '../../src/ui/AnnouncementBoard';
+import { useAuthSnapshot } from '../../src/services/authSession';
+import { runtimeConfig } from '../../src/config/runtime';
+import { eventDateFromLabel, fetchEventRegistrations, type EventRegistrationSummary } from '../../src/services/eventRegistrationClient';
 import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
 import { theme } from '../../src/ui/Theme';
 
@@ -53,6 +56,23 @@ export default function AnnouncementsScreen() {
   // Coming back to the tab re-checks. Nothing polls: this changes twice a week.
   useFocusEffect(load);
 
+  // Sign-ups need the backend and a signed-in member; without either the card simply has no status line.
+  const auth = useAuthSnapshot();
+  const session = auth.status === 'signed-in' ? auth.session : null;
+  const nextDate = announcement?.next?.date ? eventDateFromLabel(announcement.next.date) : null;
+  const [registration, setRegistration] = useState<EventRegistrationSummary | null>(null);
+  const loadRegistration = useCallback(() => {
+    if (!session || !nextDate) { setRegistration(null); return; }
+    let active = true;
+    void fetchEventRegistrations({
+      baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl,
+      token: session.sessionToken,
+      memberId: session.memberId,
+    }, nextDate).then((result) => { if (active) setRegistration(result); });
+    return () => { active = false; };
+  }, [session?.sessionToken, session?.memberId, nextDate]);
+  useFocusEffect(loadRegistration);
+
   return <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
     <View style={styles.toolbar}>
       <Text accessibilityRole="header" style={styles.title}>公告</Text>
@@ -63,6 +83,7 @@ export default function AnnouncementsScreen() {
           announcement={announcement}
           stale={stale}
           onOpen={(url) => { void WebBrowser.openBrowserAsync(url); }}
+          registration={registration && registration.date === nextDate ? registration : null}
         />
       : <Text style={styles.empty}>{loaded ? '還沒有本週公告。' : '載入中…'}</Text>}
   </SafeAreaView>;

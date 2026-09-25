@@ -15,6 +15,7 @@ import { createClaudeCli } from './claudeCli';
 import { createNominationAssistWorker } from './nominationAssist';
 import type { MeetingSender } from './remoteReminders';
 import { createOfficialBibleAdapter } from './officialBibleAdapter';
+import { deriveFormRegistrationKey } from './eventRegistrations';
 
 async function readBody(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
@@ -129,6 +130,8 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
             },
           },
           sessionSecret,
+          // The owner's Apps Script pushes sign-up names with this key; derived, so no new secret to configure.
+          formRegistrationKey: process.env.QINGMU_FORM_REGISTRATION_KEY?.trim() || (sessionSecret ? deriveFormRegistrationKey(sessionSecret) : undefined),
         }
       : { fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token' }),
   });

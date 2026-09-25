@@ -30,10 +30,10 @@ const FULL: Announcement = {
   past: [{ week: '2026-09-13', title: null, speaker: '中亮', audio: null, slides: 'https://docs.google.com/presentation/d/1Bf/preview', transcript: null }],
 };
 
-function render(announcement: Announcement, stale = false) {
+function render(announcement: Announcement, stale = false, registration: Parameters<typeof AnnouncementBoard>[0]['registration'] = undefined) {
   const onOpen = vi.fn();
   let tree!: ReturnType<typeof create>;
-  act(() => { tree = create(React.createElement(AnnouncementBoard, { announcement, stale, onOpen })); });
+  act(() => { tree = create(React.createElement(AnnouncementBoard, { announcement, stale, onOpen, registration })); });
   return {
     onOpen,
     text: () => JSON.stringify(tree.toJSON()),
@@ -50,6 +50,19 @@ describe('the notice board', () => {
     expect(board.text()).toContain('豚汁定食');
     act(() => { board.byLabel('報名').props.onPress(); });
     expect(board.onOpen).toHaveBeenCalledWith('https://forms.gle/Z7Ev');
+  });
+
+  it('shows how many signed up and which friends, under the sign-up button', () => {
+    const { text, byLabel } = render(FULL, false, { date: '2026-09-27', total: 12, registered: true, friends: ['陳小華', '大同'] });
+    const status = byLabel('報名狀況');
+    expect(status).toBeDefined();
+    expect(text()).toContain('已有 12 人報名，包括你');
+    expect(text()).toContain('朋友：陳小華、大同');
+    const quiet = render(FULL, false, { date: '2026-09-27', total: 3, registered: false, friends: [] });
+    expect(quiet.text()).toContain('已有 3 人報名');
+    expect(quiet.text()).not.toContain('朋友：');
+    expect(render(FULL, false, { date: '2026-09-27', total: 0, registered: false, friends: [] }).byLabel('報名狀況')).toBeUndefined();
+    expect(render(FULL).byLabel('報名狀況')).toBeUndefined();
   });
 
   it('gives the sermon its speaker and passage on one line', () => {
