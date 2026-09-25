@@ -10,7 +10,7 @@ import { parseCapabilityQuery } from './contentCapabilities';
 import { createChapterAudioResolver, prewarmChapterAudio } from './genericChapterAudio';
 import { getMemberGroupProfile } from './groups';
 import { ensureJournalSchema, getJournalEntry, listJournalEntries, saveJournalEntry } from './journal';
-import { ensureEventRegistrationSchema, formRegistrationKeyMatches, getEventRegistrationView, readFormRegistrationPush, replaceEventRegistrations } from './eventRegistrations';
+import { ensureEventRegistrationSchema, formRegistrationKeyMatches, formSyncIdentityMatches, getEventRegistrationView, readFormRegistrationPush, replaceEventRegistrations, type FormSyncIdentity } from './eventRegistrations';
 import { getCommunityProgress } from './communityProgress';
 import { closeRound, createNomination, decideNomination, ensureNominationSchema, listNominationHistory, listNominations, listNominationsForAdmin, openRound, resolveSuggestion, setVote, withdrawNomination, type NominationDecision } from './rewardNominations';
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
@@ -76,8 +76,10 @@ export interface ApiHandlerOptions {
   adminGoogleSubjects?: string[];
   autoProvisionGoogleMembers?: boolean;
   disableMeetingReminders?: boolean;
-  /** Key the owner's Apps Script sends with sign-up pushes; the push route is absent without it. */
+  /** Key the owner's Apps Script sends with sign-up pushes. */
   formRegistrationKey?: string;
+  /** Or the script sends its Google identity token; the push route is absent without either. */
+  formSyncIdentity?: FormSyncIdentity;
   now?: () => Date;
 }
 
@@ -439,9 +441,12 @@ export function createApiHandler(options: ApiHandlerOptions) {
       const token = (request.headers.authorization ?? request.headers.Authorization)?.match(/^Bearer\s+(.+)$/i)?.[1];
       return token && revokeSession(options.db.db, token, options.sessionSecret) ? json(200, { revoked: true }) : json(401, { error: 'AUTH_INVALID' });
     }
-    if (request.method === 'POST' && url.pathname === '/api/integrations/form-registrations' && options.formRegistrationKey) {
+    if (request.method === 'POST' && url.pathname === '/api/integrations/form-registrations' && (options.formRegistrationKey || options.formSyncIdentity)) {
       const provided = request.headers['x-qingmu-registration-key'] ?? request.headers['X-Qingmu-Registration-Key'];
-      if (!formRegistrationKeyMatches(typeof provided === 'string' ? provided : undefined, options.formRegistrationKey)) return json(401, { error: 'AUTH_INVALID' });
+      const idToken = (request.headers.authorization ?? request.headers.Authorization)?.match(/^Bearer\s+(.+)$/i)?.[1];
+      const authorized = (options.formRegistrationKey !== undefined && formRegistrationKeyMatches(typeof provided === 'string' ? provided : undefined, options.formRegistrationKey))
+        || (options.formSyncIdentity !== undefined && idToken !== undefined && await formSyncIdentityMatches(options.db.db, options.formSyncIdentity, idToken, now()));
+      if (!authorized) return json(401, { error: 'AUTH_INVALID' });
       let push: ReturnType<typeof readFormRegistrationPush>;
       try { push = readFormRegistrationPush(parseBody(request.body)); } catch { return json(400, { error: 'INVALID_JSON' }); }
       if (!push) return json(400, { error: 'INVALID_REGISTRATIONS' });

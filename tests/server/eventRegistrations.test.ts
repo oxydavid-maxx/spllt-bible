@@ -97,3 +97,56 @@ describe('friends who signed up for the next gathering', () => {
     expect(deriveFormRegistrationKey('secret-a')).not.toBe(deriveFormRegistrationKey('secret-b'));
   });
 });
+
+// Instead of a pasted key, the Apps Script can send the Google identity token it runs with. Google
+// signs it; the server accepts it only for an admin's account and only from one script project
+// (the token's audience), pinned by the first accepted push unless it was configured up front.
+describe('sign-up pushes signed by the owner\'s Google account', () => {
+  const tokens: Record<string, { subject: string; audience: string }> = {
+    'owner-script': { subject: 'owner-sub', audience: 'script-client.apps.googleusercontent.com' },
+    'owner-other-app': { subject: 'owner-sub', audience: 'other-app.apps.googleusercontent.com' },
+    'member-script': { subject: 'member-sub', audience: 'script-client.apps.googleusercontent.com' },
+  };
+  const verify = async (idToken: string) => {
+    const claims = tokens[idToken];
+    if (!claims) throw new Error('GOOGLE_SIGNATURE_INVALID');
+    return claims;
+  };
+
+  function identitySetup(audience?: string) {
+    const database = createDatabase({ members: [{ id: 'member-self', displayName: '光佑', groupId: 'g1' }] });
+    databases.push(database);
+    const api = createApiHandler({
+      db: database,
+      fixtureToken: 'test-token',
+      formSyncIdentity: { verify, ownerSubjects: ['owner-sub'], ...(audience ? { audience } : {}) },
+      now: () => new Date('2026-09-25T04:00:00.000Z'),
+    });
+    const push = (idToken: string) => api({ method: 'POST', url: '/api/integrations/form-registrations', headers: { authorization: `Bearer ${idToken}` }, body: JSON.stringify({ responses: [{ name: '林光佑', dates: ['9/27'] }] }) });
+    const stored = () => database.db.prepare('SELECT count(*) AS n FROM event_registration_totals').get();
+    return { push, stored };
+  }
+
+  it('accepts the owner\'s script without any key and then refuses the same account from another app', async () => {
+    const { push } = identitySetup();
+    expect((await push('owner-script')).body).toEqual({ ok: true, events: [{ date: '2026-09-27', total: 1, matched: 1 }] });
+    expect((await push('owner-other-app')).status).toBe(401);
+    expect((await push('owner-script')).status).toBe(200);
+  });
+
+  it('refuses a token for anyone but an admin, or one Google did not sign, and keeps nothing', async () => {
+    const { push, stored } = identitySetup();
+    expect((await push('member-script')).status).toBe(401);
+    expect((await push('forged')).status).toBe(401);
+    expect(stored()).toEqual({ n: 0 });
+    // Refused pushes pin nothing: the owner's script is still accepted afterwards.
+    expect((await push('owner-script')).status).toBe(200);
+  });
+
+  it('accepts only the configured script when the audience is set up front', async () => {
+    const { push, stored } = identitySetup('other-app.apps.googleusercontent.com');
+    expect((await push('owner-script')).status).toBe(401);
+    expect(stored()).toEqual({ n: 0 });
+    expect((await push('owner-other-app')).status).toBe(200);
+  });
+});

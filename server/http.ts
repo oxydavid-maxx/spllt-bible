@@ -4,7 +4,7 @@ import { createDatabase, type ServerDatabase } from './db';
 import { createApiHandler } from './routes';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { verifyGoogleIdToken } from './googleVerifier';
+import { verifyGoogleIdToken, verifyGoogleIdTokenAnyAudience } from './googleVerifier';
 import { canonicalSeptemberPlan } from '../src/domain/calendar';
 import { seedMemberInvite, type MemberInviteSeed } from './membership';
 import type { PointPolicy } from '../src/domain/points';
@@ -75,6 +75,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   }
   const googleAudience = config.googleServerClientId;
   const sessionSecret = process.env.QINGMU_SESSION_SECRET;
+  const adminGoogleSubjects = process.env.QINGMU_ADMIN_GOOGLE_SUBJECTS?.split(',').map((value) => value.trim()).filter(Boolean);
   if ((googleAudience && !sessionSecret) || (!googleAudience && sessionSecret)) {
     throw new Error('GOOGLE_SERVER_AUTH_CONFIG_INCOMPLETE');
   }
@@ -114,7 +115,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     autoProvisionGoogleMembers: Boolean(googleAudience && !options.fixtureToken),
     disableMeetingReminders,
     adminMemberIds: process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean),
-    adminGoogleSubjects: process.env.QINGMU_ADMIN_GOOGLE_SUBJECTS?.split(',').map((value) => value.trim()).filter(Boolean),
+    adminGoogleSubjects,
     ...(fixtureRoster
       ? {
           weeklyDates: ['2026-09-07', '2026-09-08'],
@@ -132,6 +133,16 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
           sessionSecret,
           // The owner's Apps Script pushes sign-up names with this key; derived, so no new secret to configure.
           formRegistrationKey: process.env.QINGMU_FORM_REGISTRATION_KEY?.trim() || (sessionSecret ? deriveFormRegistrationKey(sessionSecret) : undefined),
+          // Or it sends its Google identity token: accepted for an admin's account, from one script project.
+          ...(adminGoogleSubjects?.length
+            ? {
+                formSyncIdentity: {
+                  verify: (idToken: string) => verifyGoogleIdTokenAnyAudience(idToken),
+                  ownerSubjects: adminGoogleSubjects,
+                  ...(process.env.QINGMU_FORM_SYNC_AUDIENCE?.trim() ? { audience: process.env.QINGMU_FORM_SYNC_AUDIENCE.trim() } : {}),
+                },
+              }
+            : {}),
         }
       : { fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token' }),
   });

@@ -1,21 +1,41 @@
 /**
  * 竹科聖經：團契報名表單 → App 公告頁「已報名人數、哪些朋友報名」
  *
- * 在光佑的 Google 帳號裡執行（script.google.com 新增專案，貼上本檔）。每 15 分鐘把最近
- * 120 天內修改過、標題含「報名」的表單回覆送到 App 後端。只讀「姓名」與「日期」兩題；
+ * 在光佑的 Google 帳號裡執行（script.google.com 新增專案，貼上本檔與 appsscript.json）。每 15 分鐘把
+ * 最近 120 天內修改過、標題含「報名」的表單回覆送到 App 後端。只讀「姓名」與「日期」兩題；
  * LINE ID、年級／年齡等其他題目不讀也不送。後端只保存對得上 App 成員的人與總人數。
  *
- * KEY 由後端的 session secret 衍生（server/eventRegistrations.ts deriveFormRegistrationKey），
- * 不寫進 git；本機 .handoff/registrations-20260925/ 有填好 KEY 的版本可直接貼上。
- * 第一次執行 install() 並按「允許」，之後自動每 15 分鐘同步。
+ * 不放任何金鑰：每次送出都附上 Google 簽發的身分權杖（ScriptApp.getIdentityToken）。後端驗證簽章，
+ * 確認權杖屬於管理者的 Google 帳號、而且來自這個專案（aud），才會接受。
+ * 第一次：執行 showIdentity() 並按「允許」，把記錄裡的 aud 設進後端（QINGMU_FORM_SYNC_AUDIENCE）；
+ * 再執行 install()，之後自動每 15 分鐘同步。
  */
 const ENDPOINT = 'https://api.luminexhealthbiohack.com/api/integrations/form-registrations';
-const KEY = 'PASTE_KEY_HERE';
 
 function install() {
   ScriptApp.getProjectTriggers().forEach((trigger) => ScriptApp.deleteTrigger(trigger));
   ScriptApp.newTrigger('syncRegistrations').timeBased().everyMinutes(15).create();
   syncRegistrations();
+}
+
+/** 印出本專案的 aud，以及帳號 ID 雜湊的前 16 碼（讓後端核對管理者，不印出帳號 ID 本身）。 */
+function showIdentity() {
+  const claims = identityClaims();
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, claims.sub, Utilities.Charset.UTF_8);
+  const hex = digest.map((byte) => ((byte + 256) % 256).toString(16).padStart(2, '0')).join('');
+  console.log(`aud=${claims.aud} sub16=${hex.slice(0, 16)}`);
+}
+
+function identityToken() {
+  const token = ScriptApp.getIdentityToken();
+  if (!token) throw new Error('拿不到身分權杖：appsscript.json 的 oauthScopes 要有 "openid"');
+  return token;
+}
+
+function identityClaims() {
+  const part = identityToken().split('.')[1];
+  const padded = part + '='.repeat((4 - (part.length % 4)) % 4);
+  return JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(padded)).getDataAsString());
 }
 
 function syncRegistrations() {
@@ -44,7 +64,7 @@ function syncRegistrations() {
     method: 'post',
     contentType: 'application/json',
     muteHttpExceptions: true,
-    headers: { 'x-qingmu-registration-key': KEY },
+    headers: { Authorization: `Bearer ${identityToken()}` },
     payload: JSON.stringify({ responses }),
   });
   console.log(result.getResponseCode(), result.getContentText().slice(0, 300));
