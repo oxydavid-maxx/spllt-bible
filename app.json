@@ -4,6 +4,7 @@
     "slug": "qingmu-youth",
     "version": "0.5.11",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "scheme": "org.qingmu.youth",
     "userInterfaceStyle": "automatic",
     "plugins": [
@@ -16,7 +17,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "允許青牧掃描好友 QR",
+          "cameraPermission": "允許竹科聖經掃描好友 QR 碼",
           "recordAudioAndroid": false
         }
       ],
@@ -32,7 +33,8 @@
       "package": "org.qingmu.youth",
       "versionCode": 32,
       "adaptiveIcon": {
-        "backgroundColor": "#1E5C4B"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#8A0042"
       }
     },
     "ios": {
