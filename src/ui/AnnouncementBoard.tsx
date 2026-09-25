@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { Announcement } from '../services/announcementClient';
+import type { EventRegistrationSummary } from '../services/eventRegistrationClient';
 import { theme } from './Theme';
 
 /**
@@ -16,6 +17,8 @@ export interface AnnouncementBoardProps {
   /** Shown only when the device copy is being used because the fetch failed. */
   stale?: boolean;
   onOpen: (url: string) => void;
+  /** Sign-ups for the next gathering: a count, whether you signed up, and which friends did. */
+  registration?: EventRegistrationSummary | null;
 }
 
 function LinkRow({ links, onOpen }: { links: Array<[string, string | null]>; onOpen: (url: string) => void }) {
@@ -34,7 +37,7 @@ function shortWeek(week: string): string {
   return `${Number(month)}/${Number(day)}`;
 }
 
-export function AnnouncementBoard({ announcement, stale, onOpen }: AnnouncementBoardProps) {
+export function AnnouncementBoard({ announcement, stale, onOpen, registration }: AnnouncementBoardProps) {
   const { sermon, next, standing, past } = announcement;
   return <ScrollView contentContainerStyle={styles.page}>
     {next ? <View style={styles.card} accessibilityLabel="下次聚會">
@@ -45,6 +48,10 @@ export function AnnouncementBoard({ announcement, stale, onOpen }: AnnouncementB
         accessibilityRole="button" accessibilityLabel="報名"
         onPress={() => onOpen(next.signup!)} style={styles.primaryButton}
       ><Text style={styles.primaryButtonText}>報名</Text></Pressable> : null}
+      {registration && registration.total > 0 ? <View accessibilityLabel="報名狀況" style={styles.signups}>
+        <Text style={styles.muted}>{`已有 ${registration.total} 人報名${registration.registered ? '，包括你' : ''}`}</Text>
+        {registration.friends.length > 0 ? <Text style={styles.friends}>{`朋友：${registration.friends.join('、')}`}</Text> : null}
+      </View> : null}
     </View> : null}
 
     {sermon ? <View style={styles.card} accessibilityLabel="上次講道">
@@ -89,6 +96,8 @@ const styles = StyleSheet.create({
   linkText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
   primaryButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, backgroundColor: theme.colors.primary, marginTop: theme.spacing.xs },
   primaryButtonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '800' },
+  signups: { gap: 2, paddingTop: theme.spacing.xs },
+  friends: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
   pastRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.xxs },
   pastTitle: { flexGrow: 1, flexBasis: 140, minWidth: 140, color: theme.colors.muted, fontSize: theme.type.caption.size },
   standing: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
