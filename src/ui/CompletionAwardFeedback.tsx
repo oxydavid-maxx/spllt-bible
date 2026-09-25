@@ -11,7 +11,8 @@ export function buildCompletionAwardMessage(event: CompletionAwardEvent, today =
   return `+${event.pointsDelta} 分　完成${dateLabel}讀經了！`;
 }
 
-export function CompletionAwardFeedback({ event, onFinished }: { event: CompletionAwardEvent | null; onFinished: (operationId: string) => void }) {
+/** `bottomOffset` floats the award up from just above a bottom action (the Reader's ○) instead of under the header. */
+export function CompletionAwardFeedback({ event, onFinished, bottomOffset }: { event: CompletionAwardEvent | null; onFinished: (operationId: string) => void; bottomOffset?: number }) {
   const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
@@ -42,12 +43,13 @@ export function CompletionAwardFeedback({ event, onFinished }: { event: Completi
   }, [event?.operationId, reduceMotion, opacity, translateY]);
 
   if (!event || reduceMotion === null) return null;
-  return <Animated.View pointerEvents="none" accessibilityLiveRegion="polite" style={[styles.container, { opacity, transform: [{ translateY }] }]}>
+  return <Animated.View pointerEvents="none" accessibilityLiveRegion="polite" style={[styles.container, bottomOffset !== undefined && [styles.aboveAction, { bottom: bottomOffset }], { opacity, transform: [{ translateY }] }]}>
     <Text style={styles.label}>{buildCompletionAwardMessage(event)}</Text>
   </Animated.View>;
 }
 
 const styles = StyleSheet.create({
   container: { position: 'absolute', top: 82, left: theme.spacing.lg, right: theme.spacing.lg, alignItems: 'center', zIndex: 20 },
+  aboveAction: { top: undefined, right: theme.spacing.sm, alignItems: 'flex-end' },
   label: { color: theme.colors.white, backgroundColor: theme.colors.ink, borderRadius: theme.radius.chip, overflow: 'hidden', paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.sm, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
 });

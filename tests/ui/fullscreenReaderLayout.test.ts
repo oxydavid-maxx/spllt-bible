@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const native = vi.hoisted(() => ({
   focus: null as null | (() => void), blur: null as null | (() => void),
   screenReader: false, screenReaderChanged: null as null | ((enabled: boolean) => void),
+  backHandlers: [] as Array<() => boolean>,
   audioMounts: 0, audioUnmounts: 0,
   setNavigationHidden: vi.fn(),
   setNavigationStyle: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('react-native', () => ({
   Appearance: { getColorScheme: () => 'light' }, useColorScheme: () => 'light',
   useWindowDimensions: () => native.window,
   Linking: { openURL: vi.fn(async () => undefined) },
+  BackHandler: { addEventListener: (_name: string, handler: () => boolean) => { native.backHandlers.push(handler); return { remove: () => { native.backHandlers = native.backHandlers.filter(h => h !== handler); } }; } },
   AccessibilityInfo: {
     isScreenReaderEnabled: async () => native.screenReader,
     addEventListener: (_name: string, listener: (enabled: boolean) => void) => {
@@ -41,7 +43,7 @@ vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => void | (() => v
   }, [callback]);
 } }));
 // Audio implementation belongs to a separate lane; assert only its mounting/lifecycle contract
-// (and, for the 2026-09-23 layout change, where in the chrome it is placed).
+// and where in the chrome it is placed.
 vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice: () => null, ChapterAudioAutoplayToggle: (props: any) => React.createElement('Pressable', { accessibilityRole: 'switch', accessibilityLabel: '連讀', ...props }), ChapterAudioControls: React.forwardRef((props: any, ref: any) => {
   React.useEffect(() => { native.audioMounts++; return () => { native.audioUnmounts++; }; }, []);
   React.useImperativeHandle(ref, () => ({ pause: native.pauseAudio }));
@@ -61,6 +63,8 @@ let renderer: TestRenderer.ReactTestRenderer | null;
 let controls: ReaderOverlayControls;
 let currentChapter = 'PSA.90';
 let assignedReferences = ['PSA.90', 'PSA.91'];
+let selectionSource: 'ASSIGNED' | 'FREE' = 'ASSIGNED';
+let activeReferenceIndex = 0;
 let chosenVersion = 139;
 let versionOptions: Array<{ versionId: number; translationName: string; languageTag: string }> | undefined;
 let onSelectVersion: ((versionId: number) => void | Promise<void>) | undefined;
@@ -84,13 +88,12 @@ let accountNode: React.ReactNode | undefined;
 let loginGateNode: React.ReactNode | undefined;
 let updateNode: React.ReactNode | undefined;
 let onOpenYouVersion: (() => void) | undefined;
-const onExit = vi.fn();
 const onSelectReference = vi.fn();
 function Harness() {
   chrome = useReaderChrome();
   return React.createElement(FullscreenReaderLayout, {
     reader: React.createElement('BibleReader'), controls, chrome,
-    chapterUsfm: currentChapter, versionId: chosenVersion, references: assignedReferences,
+    chapterUsfm: currentChapter, versionId: chosenVersion, references: assignedReferences, selectionSource, activeReferenceIndex,
     selectedDate, previousDate, nextDate, onSelectDate,
     completed, completionDisabled, completionPending, completionFailed, completionLabel, onComplete, onUndo, onSelectReference,
     noPlanMessage, statusMessage, canOpenYouVersion, accountEntry: accountNode, loginGate: loginGateNode, updateBanner: updateNode,
@@ -101,8 +104,12 @@ function Harness() {
 }
 const all = (type: string) => renderer!.root.findAll(node => String(node.type) === type || (type === 'NavigationBar' && node.type === NavigationBar));
 const button = (label: string) => { const node = all('Pressable').find(node => node.props.accessibilityLabel === label); expect(node, label).toBeDefined(); return node!; };
+const chip = (text: string) => { const node = all('Pressable').find(node => node.props.accessibilityState && 'selected' in node.props.accessibilityState && node.findAll(child => String(child.type) === 'Text').map(t => t.props.children).join('') === text); expect(node, text).toBeDefined(); return node!; };
 const styleOf = (node: TestRenderer.ReactTestInstance) => { expect(node).toBeDefined(); return Object.assign({}, ...[node.props.style].flat(Infinity).filter(Boolean)); };
 const text = () => JSON.stringify(renderer!.toJSON());
+const toolbar = () => all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列');
+const actionRow = () => all('View').find(node => node.props.accessibilityLabel === '讀經動作')!;
+const surface = () => all('BibleReader')[0].parent!;
 async function mount() { await act(async () => { renderer = TestRenderer.create(React.createElement(Harness)); }); }
 
 describe('fullscreen reader layout and chrome', () => {
@@ -116,11 +123,13 @@ describe('fullscreen reader layout and chrome', () => {
   });
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-23T04:00:00Z'));
     NavigationBar.setHidden(false);
     native.setNavigationHidden.mockClear();
     NavigationBar.setStyle('light');
     native.setNavigationStyle.mockClear();
     native.screenReader = false;
+    native.backHandlers = [];
     native.audioMounts = 0;
     native.audioUnmounts = 0;
     native.pauseAudio.mockClear();
@@ -128,6 +137,8 @@ describe('fullscreen reader layout and chrome', () => {
     native.window = { width: 393, fontScale: 1 };
     currentChapter = 'PSA.90';
     assignedReferences = ['PSA.90', 'PSA.91'];
+    selectionSource = 'ASSIGNED';
+    activeReferenceIndex = 0;
     chosenVersion = 139;
     versionOptions = undefined;
     onSelectVersion = undefined;
@@ -137,6 +148,7 @@ describe('fullscreen reader layout and chrome', () => {
     completed = false; completionDisabled = false; completionPending = false; completionFailed = false; completionLabel = undefined; onComplete = undefined; onUndo = undefined;
     onSelectDate = vi.fn(); noPlanMessage = undefined; statusMessage = undefined; canOpenYouVersion = false;
     accountNode = undefined; loginGateNode = undefined; updateNode = undefined; onOpenYouVersion = undefined;
+    onSelectReference.mockClear();
     controls = { ready: true, openChapterPicker: vi.fn(), openVersionPicker: vi.fn(), openSettings: vi.fn() };
     vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       const message = String(args[0]);
@@ -152,35 +164,32 @@ describe('fullscreen reader layout and chrome', () => {
     vi.useRealTimers();
   });
 
-  it('keeps date arrows and selected weekday in row one, with the full range and More in row two', async () => {
+  it('keeps date arrows and the weekday in row one and today\'s chapter chips with More in row two, floating over the scripture', async () => {
     await mount();
     const root = all('View')[0];
     expect(styleOf(root)).toMatchObject({ flex: 1, backgroundColor: '#FFFFFF' });
     expect(styleOf(root).padding).toBeUndefined();
-    const reader = all('BibleReader')[0];
-    expect(reader.parent?.type).toBe('View');
-    expect(styleOf(reader.parent!)).toEqual({ flex: 1, paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 });
-    const toolbar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')!;
-    expect(styleOf(toolbar).position).not.toBe('absolute');
-    expect(styleOf(toolbar).height).toBeUndefined();
-    expect(toolbar.props.pointerEvents).not.toBe('none');
-    expect(toolbar.props.accessibilityElementsHidden).not.toBe(true);
+    expect(surface().props.accessibilityLabel).toBe('經文');
+    expect(styleOf(surface())).toEqual({ flex: 1, paddingLeft: 0, paddingRight: 0 });
+    const header = toolbar()!;
+    expect(styleOf(header)).toMatchObject({ position: 'absolute', top: 0, left: 0, right: 0 });
+    expect(header.props.edges).toContain('top');
     const siblings = root.children.filter(child => typeof child !== 'string');
-    expect(siblings.indexOf(toolbar)).toBeLessThan(siblings.indexOf(reader.parent!));
+    expect(siblings.indexOf(surface())).toBeLessThan(siblings.indexOf(header));
     const dateRow = all('View').find(node => node.props.accessibilityLabel === '閱讀日期工具列')!;
-    const rangeRow = all('View').find(node => node.props.accessibilityLabel === '今日讀經範圍')!;
-    expect(dateRow).toBeDefined();
-    expect(rangeRow).toBeDefined();
+    const chipsRow = all('View').find(node => node.props.accessibilityLabel === '今日讀經章節')!;
     expect(styleOf(dateRow)).toMatchObject({ minHeight: 48 });
-    expect(styleOf(rangeRow)).toMatchObject({ minHeight: 48 });
+    expect(styleOf(chipsRow)).toMatchObject({ minHeight: 48 });
     expect(styleOf(dateRow).flexWrap).not.toBe('wrap');
     expect(dateRow.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual([
       '上一個排定讀經日', '下一個排定讀經日',
     ]);
     expect(dateRow.findAll(node => String(node.type) === 'Text').map(node => node.props.children)).toContain(formatReadingDateHeader(selectedDate, taipeiDate()));
-    expect(rangeRow.findAll(node => String(node.type) === 'Text').map(node => node.props.children)).toContain('詩篇90–91');
-    expect(rangeRow.findAll(node => node.props.accessibilityLabel === '更多閱讀工具')).toHaveLength(1);
+    expect(chipsRow.findAll(node => node.props.accessibilityLabel === '更多閱讀工具')).toHaveLength(1);
     expect(dateRow.findAll(node => node.props.accessibilityLabel === '更多閱讀工具')).toHaveLength(0);
+    expect(chipsRow.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityState?.selected !== undefined)
+      .map(node => node.findAll(child => String(child.type) === 'Text').map(t => t.props.children).join(''))).toEqual(['詩90', '詩91']);
+    expect(chip('詩90').props.accessibilityLabel).toBe('詩篇 90，今日第1段，共2段');
     expect(styleOf(button('上一個排定讀經日'))).toMatchObject({ minWidth: 48, minHeight: 48 });
     expect(styleOf(button('下一個排定讀經日'))).toMatchObject({ minWidth: 48, minHeight: 48 });
     expect(styleOf(button('更多閱讀工具')).minHeight).toBeGreaterThanOrEqual(48);
@@ -188,45 +197,15 @@ describe('fullscreen reader layout and chrome', () => {
     for (const label of ['上一個排定讀經日', '下一個排定讀經日', '更多閱讀工具']) {
       expect(button(label).props.accessibilityRole).toBe('button');
     }
-    expect(button('選擇今日章節清單').props.accessibilityHint).toContain('詩篇 90');
     expect(all('Text').some(node => node.props.children === '9/22')).toBe(true);
     expect(all('Text').some(node => node.props.children === '9/24')).toBe(true);
-    expect(all('Pressable').some(node => String(node.props.accessibilityLabel).startsWith('前往'))).toBe(false);
+    // The book name appears once per screen: only the chips carry the chapter (no range row, no capsule).
+    expect(text()).not.toContain('詩篇90–91');
+    expect(all('Pressable').some(node => ['選擇今日章節清單', '上一個讀經章節', '下一個讀經章節'].includes(node.props.accessibilityLabel))).toBe(false);
     expect(all('Pressable').some(node => ['選擇譯本', '調整字體', '選擇章節'].includes(node.props.accessibilityLabel))).toBe(false);
     expect(text()).not.toContain('測試版權文字');
     expect(text()).not.toContain('我已完成讀經');
     expect(text()).not.toContain('ProgressCard');
-  });
-
-  it('shows the entire daily reference range above while the lower capsule names the selected chapter', async () => {
-    selectedDate = '2026-09-24';
-    assignedReferences = ['TIT.1', 'PSA.99', 'PSA.100'];
-    currentChapter = 'TIT.1';
-    await mount();
-    const dateTitle = all('View').find(node => node.props.accessibilityLabel === '閱讀日期工具列')!
-      .findAll(node => node.props.accessibilityRole === 'header')[0];
-    expect(dateTitle.props.children).toBe('今天·9/24（四）');
-    const dailyRange = all('View').find(node => node.props.accessibilityLabel === '今日讀經範圍')!
-      .findAll(node => String(node.type) === 'Text')[0];
-    expect(dailyRange.props.children).toBe('提多書1・詩篇99–100');
-    const capsuleTitle = button('選擇今日章節清單').findAll(node => String(node.type) === 'Text')[0];
-    expect(capsuleTitle.props.children).toBe('提多書 1');
-  });
-
-  it('uses a weekday date row and a separate full-reference row with More at the far edge', async () => {
-    selectedDate = '2026-09-24';
-    assignedReferences = ['TIT.1', 'PSA.99', 'PSA.100'];
-    currentChapter = 'TIT.1';
-    await mount();
-    const dateRow = all('View').find(node => node.props.accessibilityLabel === '閱讀日期工具列');
-    expect(dateRow).toBeDefined();
-    expect(dateRow!.findAll(node => String(node.type) === 'Text').map(node => String(node.props.children))).toContain('今天·9/24（四）');
-    const rangeRow = all('View').find(node => node.props.accessibilityLabel === '今日讀經範圍');
-    expect(rangeRow).toBeDefined();
-    expect(rangeRow!.findAll(node => String(node.type) === 'Text').map(node => String(node.props.children))).toContain('提多書1・詩篇99–100');
-    expect(rangeRow!.findAll(node => node.props.accessibilityLabel === '更多閱讀工具')).toHaveLength(1);
-    expect(dateRow!.findAll(node => node.props.accessibilityLabel === '更多閱讀工具')).toHaveLength(0);
-    expect(button('選擇今日章節清單').findAll(node => String(node.type) === 'Text')[0].props.children).toBe('提多書 1');
   });
 
   it('keeps date arrows disabled and inert at the schedule boundaries', async () => {
@@ -241,7 +220,7 @@ describe('fullscreen reader layout and chrome', () => {
     expect(onSelectDate).not.toHaveBeenCalled();
   });
 
-  it('keeps the selected weekday and current-chapter capsule intact at 320dp with large text', async () => {
+  it('keeps the selected weekday and the current chapter chip intact at 320dp with large text', async () => {
     native.window = { width: 320, fontScale: 1 };
     await mount();
     expect(all('Text').some(node => node.props.children === '9/22')).toBe(true);
@@ -256,52 +235,34 @@ describe('fullscreen reader layout and chrome', () => {
     expect(all('Text').some(node => node.props.children === '9/22')).toBe(false);
     expect(all('Text').some(node => node.props.children === '9/24')).toBe(false);
     expect(dateTitle.props.children).toBe(formatReadingDateHeader(selectedDate, taipeiDate()));
-    const chapter = button('選擇今日章節清單');
-    const capsuleChildren = chapter.children.filter((child): child is TestRenderer.ReactTestInstance => typeof child !== 'string');
-    expect(capsuleChildren).toHaveLength(2);
-    expect(String(capsuleChildren[0].type)).toBe('Text');
-    expect(capsuleChildren[0].props.children).toBe('詩篇 90');
-    expect(capsuleChildren[1].findAll(node => String(node.type) === 'MaterialCommunityIcons')).toHaveLength(1);
     expect(button('上一個排定讀經日').props.accessibilityHint).toBe('前往9/22');
     expect(button('下一個排定讀經日').props.accessibilityHint).toBe('前往9/24');
-    expect(chapter.props.accessibilityRole).toBe('button');
-    expect(styleOf(chapter).height).toBeGreaterThanOrEqual(48);
+    const current = chip('詩90');
+    expect(current.props.accessibilityRole).toBe('button');
+    expect(current.props.accessibilityState).toMatchObject({ selected: true });
+    expect(styleOf(current).minHeight).toBeGreaterThanOrEqual(48);
+    // Chips scroll sideways instead of wrapping or truncating when text is large.
+    expect(all('ScrollView').some(node => node.props.horizontal && node.findAll(child => child === current).length === 1)).toBe(true);
   });
 
-  it('opens the assigned passage list from the chapter title without keeping chips on screen', async () => {
+  it('keeps icon-only completion and the audio owner as the two 56dp actions', async () => {
     await mount();
-    expect(text()).not.toContain('前往詩90');
-    act(() => { button('選擇今日章節清單').props.onPress(); });
-    expect(button('前往詩90').props.accessibilityState).toMatchObject({ selected: true });
-    expect(button('前往詩91').props.accessibilityState).toMatchObject({ selected: false });
-    act(() => { button('前往詩91').props.onPress(); });
-    expect(onSelectReference).toHaveBeenCalledWith(1);
-    expect(text()).not.toContain('前往詩90');
-  });
-
-  it('keeps chapter selection, icon-only completion and the last-cell audio owner in the action row', async () => {
-    await mount();
-    const capsule = button('選擇今日章節清單');
+    const row = actionRow();
     const finish = button('完成讀經');
-    const bottomRow = all('View').find(node => styleOf(node).flexDirection === 'row'
-      && node.findAll(child => child.props.accessibilityLabel === '選擇今日章節清單').length > 0)!;
-    expect(styleOf(bottomRow)).toMatchObject({ flexDirection: 'row' });
-    expect(bottomRow.children.filter(child => typeof child !== 'string')).toHaveLength(3);
-    expect(styleOf(bottomRow)).toMatchObject({ alignItems: 'center', gap: 12 });
-    expect(styleOf(capsule)).toMatchObject({ flex: 1, height: 48 });
-    expect(styleOf(bottomRow.findAll(node => styleOf(node).elevation === 2)[0])).toMatchObject({ height: 56, borderRadius: 28, elevation: 2 });
+    expect(styleOf(row)).toMatchObject({ position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 12 });
+    expect(row.children.filter(child => typeof child !== 'string')).toHaveLength(2);
     expect(styleOf(finish)).toMatchObject({ width: 56, height: 56 });
     expect(finish.findAll(node => String(node.type) === 'Text')).toHaveLength(0);
-    expect(bottomRow.findAll(node => String(node.type) === 'Pressable').some(node => node.props.accessibilityLabel === '靈修日記')).toBe(false);
-    expect(capsule.props.accessibilityRole).toBe('button');
     expect(finish.props.accessibilityRole).toBe('button');
+    expect(row.findAll(node => String(node.type) === 'Pressable').some(node => node.props.accessibilityLabel === '靈修日記')).toBe(false);
     expect(styleOf(button('播放詩篇 90'))).toMatchObject({ width: 56, height: 56, minHeight: 56 });
-    expect(bottomRow.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual(['上一個讀經章節', '選擇今日章節清單', '下一個讀經章節', '完成讀經']);
-    expect(all('View').find(node => node.props.accessibilityLabel === '讀經播放控制')?.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(1);
+    expect(row.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(1);
+    expect(all('ChapterAudioControls')[0].props).toMatchObject({ bottomCell: false, readerAction: true, active: true });
   });
 
   it('keeps no-plan and sync-error states visible while disabling completion', async () => {
     assignedReferences = [];
+    selectionSource = 'FREE';
     noPlanMessage = '這一天沒有排定讀經。';
     statusMessage = '同步遇到問題';
     completionDisabled = true;
@@ -310,7 +271,7 @@ describe('fullscreen reader layout and chrome', () => {
     expect(text()).toContain('這一天沒有排定讀經。');
     expect(text()).toContain('同步遇到問題');
     expect(button('無排定讀經').props.disabled).toBe(true);
-    expect(button('選擇今日章節清單')).toBeDefined();
+    expect(chip('自由 詩90').props.accessibilityState).toMatchObject({ selected: true });
   });
 
   it('announces pending completion and keeps the completed action clearly reversible', async () => {
@@ -340,55 +301,28 @@ describe('fullscreen reader layout and chrome', () => {
     expect(onComplete).not.toHaveBeenCalled();
   });
 
-  it.each([['PSA.90'], ['1TI.1']] as const)('shows the current book/chapter in the title for %s', async (chapter) => {
+  it.each([['PSA.90', '詩90', '詩篇 90'], ['1TI.1', '提前1', '提摩太前書 1']] as const)('names free reading of %s with a short chip and a full spoken label', async (chapter, short, full) => {
     currentChapter = chapter;
+    selectionSource = 'FREE';
+    activeReferenceIndex = -1;
     await mount();
-    const title = button('選擇今日章節清單').findAll(node => String(node.type) === 'Text')[0];
-    expect(title).toBeDefined();
-    expect(title.props.children).toBe(chapter === 'PSA.90' ? '詩篇 90' : '提摩太前書 1');
+    const free = chip(`自由 ${short}`);
+    expect(free.props.accessibilityLabel).toBe(`自由閱讀：${full}`);
+    act(() => { free.props.onPress(); });
+    expect(controls.openChapterPicker).toHaveBeenCalledOnce();
+    expect(all('Pressable').filter(node => node.props.accessibilityState?.selected === true)).toHaveLength(1);
   });
 
   it('keeps play/pause actionable after downward scroll and restores the other tools on reverse scroll', async () => {
     await mount();
     act(() => chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }));
     expect(chrome.toolsVisible).toBe(false);
-    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeUndefined();
+    expect(toolbar()).toBeUndefined();
     expect(all('ChapterAudioControls')).toHaveLength(1);
     expect(button('播放詩篇 90')).toBeDefined();
     act(() => chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }));
     expect(chrome.toolsVisible).toBe(true);
     expect(button('更多閱讀工具')).toBeDefined();
-  });
-
-  it('removes both flow rows while immersed and keeps the audio owner in a centered overlay', async () => {
-    native.safeInsets = { top: 24, bottom: 24, left: 0, right: 0 };
-    await mount();
-    const audio = all('ChapterAudioControls')[0];
-    const reader = all('BibleReader')[0];
-    act(() => chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }));
-    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeUndefined();
-    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '讀經控制列')).toBeUndefined();
-    const overlay = all('View').find(node => node.props.accessibilityLabel === '沉浸播放控制');
-    expect(overlay).toBeDefined();
-    expect(styleOf(overlay!)).toMatchObject({ position: 'absolute', left: 0, right: 0, height: 56, alignItems: 'center' });
-    expect(styleOf(reader.parent!)).toMatchObject({ paddingTop: 24, paddingBottom: 80 });
-    expect(overlay!.children).toHaveLength(4);
-    const slots = overlay!.children.filter(child => typeof child !== 'string') as TestRenderer.ReactTestInstance[];
-    expect(slots.map(styleOf)).toEqual([
-      expect.objectContaining({ flex: 1, height: 56 }),
-      expect.objectContaining({ width: 0, height: 56 }),
-      expect.objectContaining({ width: 56, height: 56 }),
-      expect.objectContaining({ flex: 1, height: 56 }),
-    ]);
-    expect(all('ChapterAudioControls')[0].props.bottomCell).toBe(false);
-    expect(all('ChapterAudioControls')[0].props.readerAction).toBe(true);
-    expect(styleOf(button('播放詩篇 90'))).toMatchObject({ width: 56, height: 56, minHeight: 56 });
-    expect(all('ChapterAudioControls')[0]).toBe(audio);
-    act(() => chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }));
-    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeDefined();
-    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '讀經控制列')).toBeDefined();
-    expect(styleOf(reader.parent!)).toMatchObject({ paddingTop: 0, paddingBottom: 24 });
-    expect(all('ChapterAudioControls')[0]).toBe(audio);
   });
 
   it('clears shared tab immersion when Reader loses focus', async () => {
@@ -403,67 +337,31 @@ describe('fullscreen reader layout and chrome', () => {
     expect(getReaderImmersionSnapshot()).toBe(false);
   });
 
-  it('renders chapter/complete actions after the reader and keeps 連讀 in More', async () => {
+  it('draws the tools over the scripture and keeps 連讀 in More', async () => {
     await mount();
     const root = all('View')[0];
-    const reader = all('BibleReader')[0];
-    const toolbar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')!;
-    const playerBar = all('SafeAreaView').find(node => node.props.accessibilityLabel === '讀經控制列')!;
-    expect(playerBar).toBeDefined();
-    expect(styleOf(playerBar).position).not.toBe('absolute');
     const siblings = root.children.filter(child => typeof child !== 'string');
-    expect(siblings.indexOf(toolbar)).toBeLessThan(siblings.indexOf(reader.parent!));
-    expect(siblings.indexOf(reader.parent!)).toBeLessThan(siblings.indexOf(playerBar));
-    expect(playerBar.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(0);
-    expect(all('View').find(node => node.props.accessibilityLabel === '讀經播放控制')?.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(1);
-    expect(playerBar.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(0);
-    expect(playerBar.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual([
-      '上一個讀經章節', '選擇今日章節清單', '下一個讀經章節', '完成讀經',
-    ]);
-    expect(all('ChapterAudioControls')[0].props).toMatchObject({ bottomCell: false, readerAction: true });
-    expect(toolbar.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(0);
-    expect(toolbar.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(0);
+    for (const overlay of [toolbar()!, actionRow()]) expect(siblings.indexOf(surface())).toBeLessThan(siblings.indexOf(overlay));
+    expect(toolbar()!.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(0);
+    expect(all('Pressable').some(node => node.props.accessibilityLabel === '連讀')).toBe(false);
     act(() => button('更多閱讀工具').props.onPress());
     expect(all('Pressable').some(node => node.props.accessibilityRole === 'switch' && node.props.accessibilityLabel === '連讀')).toBe(true);
   });
 
-  it('aligns the visible play slot with the row and keeps a 12dp gap between 56dp actions', async () => {
+  it('places ○ ▶ above the tab bar from the system insets, 12dp apart, and keeps ▶ there while collapsed', async () => {
     native.safeInsets = { top: 0, bottom: 18, left: 8, right: 4 };
     await mount();
-    const playerBarSurface = all('SafeAreaView').find(node => node.props.accessibilityLabel === '讀經控制列')!;
-    const playerBar = playerBarSurface.findAll(node => String(node.type) === 'View' && styleOf(node).minHeight === 64)[0];
-    const barSlots = playerBar.children.filter(child => typeof child !== 'string') as TestRenderer.ReactTestInstance[];
-    const overlay = all('View').find(node => node.props.accessibilityLabel === '讀經播放控制')!;
-    const overlayStyle = styleOf(overlay);
-    const overlaySlots = overlay.children.filter(child => typeof child !== 'string') as TestRenderer.ReactTestInstance[];
-
-    const barStyle = styleOf(playerBar);
-    expect(barStyle).toMatchObject({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, paddingVertical: 4, minHeight: 64 });
-    expect(barSlots).toHaveLength(3);
-    expect(styleOf(barSlots[0])).toMatchObject({ flex: 1, minWidth: 0 });
-    expect(styleOf(barSlots[1])).toMatchObject({ width: 56, height: 56 });
-    expect(styleOf(barSlots[2])).toMatchObject({ width: 56, height: 56 });
-
-    expect(overlaySlots).toHaveLength(3);
-    expect(overlayStyle).toMatchObject({ position: 'absolute', left: 8, right: 4, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, height: 56, bottom: native.safeInsets.bottom + 4 });
-    expect(styleOf(overlaySlots[0])).toMatchObject({ flex: 1, minWidth: 0, height: 56 });
-    expect(styleOf(overlaySlots[1])).toMatchObject({ width: 56, height: 56 });
-    expect(styleOf(overlaySlots[2])).toMatchObject({ width: 56, height: 56 });
-    expect(styleOf(button('播放詩篇 90'))).toMatchObject({ width: 56, height: 56, minHeight: 56 });
-    expect(overlayStyle.gap).toBe(barStyle.gap);
-    expect(overlayStyle.paddingHorizontal).toBe(barStyle.paddingHorizontal);
-    const contentWidth = native.window.width - native.safeInsets.left - native.safeInsets.right;
-    const sharedFlexWidth = contentWidth - 2 * barStyle.paddingHorizontal - 2 * 56 - 2 * barStyle.gap;
-    const barCompletionLeft = native.safeInsets.left + barStyle.paddingHorizontal + sharedFlexWidth + barStyle.gap;
-    const overlayCompletionLeft = native.safeInsets.left + overlayStyle.paddingHorizontal + sharedFlexWidth + overlayStyle.gap;
-    const barPlayLeft = barCompletionLeft + 56 + barStyle.gap;
-    const overlayPlayLeft = overlayCompletionLeft + 56 + overlayStyle.gap;
-    expect(overlayCompletionLeft).toBe(barCompletionLeft);
-    expect(overlayPlayLeft).toBe(barPlayLeft);
-    expect(barPlayLeft - barCompletionLeft - 56).toBe(12);
-    const barCenterFromBottom = barStyle.paddingVertical + styleOf(barSlots[1]).height / 2;
-    const overlayCenterFromSafeBottom = overlayStyle.bottom - native.safeInsets.bottom + overlayStyle.height / 2;
-    expect(overlayCenterFromSafeBottom).toBe(barCenterFromBottom);
+    const expected = { right: 8 + 4, bottom: 49 + 18 + 12 };
+    expect(styleOf(actionRow())).toMatchObject({ ...expected, gap: 12, alignItems: 'center' });
+    const slots = actionRow().children.filter(child => typeof child !== 'string') as TestRenderer.ReactTestInstance[];
+    expect(slots.map(slot => [styleOf(slot).width, styleOf(slot).height])).toEqual([[56, 56], [56, 56]]);
+    act(() => chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }));
+    // The system bars hide while collapsed and the live insets drop to zero; ▶ must not move.
+    native.safeInsets = { top: 0, bottom: 0, left: 8, right: 4 };
+    act(() => { renderer!.update(React.createElement(Harness)); });
+    expect(styleOf(actionRow())).toMatchObject(expected);
+    expect(actionRow().children.filter(child => typeof child !== 'string')).toHaveLength(1);
+    expect(button('播放詩篇 90')).toBeDefined();
   });
 
   it('collapses tools on effective downward scroll and keeps the same audio owner mounted', async () => {
@@ -488,22 +386,16 @@ describe('fullscreen reader layout and chrome', () => {
     expect(native.audioUnmounts).toBe(0);
   });
 
-  it('protects the reader using only current cutout/system insets and removes clearance when they become zero', async () => {
+  it('keeps the scripture full height and only pads side cutouts, whatever the top and bottom insets are', async () => {
     native.safeInsets = { top: 31, bottom: 18, left: 0, right: 0 };
     await mount();
     const reader = all('BibleReader')[0];
-    expect(styleOf(reader.parent!)).toMatchObject({ flex: 1, paddingTop: 0, paddingBottom: 18, paddingLeft: 0, paddingRight: 0 });
-    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')?.props.edges).toContain('top');
-    native.safeInsets = { top: 0, bottom: 0, left: 0, right: 0 };
+    expect(styleOf(surface())).toEqual({ flex: 1, paddingLeft: 0, paddingRight: 0 });
+    expect(toolbar()?.props.edges).toContain('top');
+    native.safeInsets = { top: 0, bottom: 0, left: 44, right: 12 };
     act(() => { renderer!.update(React.createElement(Harness)); });
     expect(all('BibleReader')[0]).toBe(reader);
-    expect(styleOf(reader.parent!)).toMatchObject({ paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 });
-  });
-
-  it('applies landscape side cutouts without inventing a top status-bar gap', async () => {
-    native.safeInsets = { top: 0, bottom: 0, left: 44, right: 12 };
-    await mount();
-    expect(styleOf(all('BibleReader')[0].parent!)).toMatchObject({ paddingTop: 0, paddingBottom: 0, paddingLeft: 44, paddingRight: 12 });
+    expect(styleOf(surface())).toEqual({ flex: 1, paddingLeft: 44, paddingRight: 12 });
   });
 
   it.each(['More', 'Audio', 'Info'] as const)('keeps tools persistent across the compatible %s API', async popup => {
@@ -519,41 +411,30 @@ describe('fullscreen reader layout and chrome', () => {
   it('keeps the audio owner mounted when a daily passage is selected', async () => {
     await mount();
     const audio = all('ChapterAudioControls')[0];
-    act(() => { button('選擇今日章節清單').props.onPress(); });
-    act(() => { button('前往詩91').props.onPress(); });
+    act(() => { chip('詩91').props.onPress(); });
     expect(onSelectReference).toHaveBeenCalledWith(1);
     currentChapter = 'PSA.91';
+    activeReferenceIndex = 1;
     act(() => { renderer!.update(React.createElement(Harness)); });
     expect(all('ChapterAudioControls')[0]).toBe(audio);
     expect(audio.props.chapterUsfm).toBe('PSA.91');
+    expect(chip('詩91').props.accessibilityState).toMatchObject({ selected: true });
     expect(native.audioMounts).toBe(1);
     expect(native.audioUnmounts).toBe(0);
   });
 
-  it('marks an assigned chapter range by membership and clears selection on unrelated browsing or date changes', async () => {
-    assignedReferences = ['1TI.1', 'PSA.90-91', 'PSA.92'];
-    currentChapter = 'PSA.91';
+  it('forgets the chapter end when the chapter changes, so the next chapter does not open with its end actions', async () => {
     await mount();
-    act(() => { button('選擇今日章節清單').props.onPress(); });
-    expect(button('前往詩90-91').props.accessibilityState).toMatchObject({ selected: true });
-    expect(button('前往詩92').props.accessibilityState).toMatchObject({ selected: false });
-    for (const chapter of ['PSA.9', 'ZZZ.91', 'GEN.91']) {
-      currentChapter = chapter;
-      act(() => { renderer!.update(React.createElement(Harness)); });
-      expect(all('Pressable').filter(node => node.props.accessibilityState?.selected)).toHaveLength(0);
-    }
+    act(() => { chrome.handleCanvasEdge({ atEnd: true }); });
+    expect(text()).toContain('繼續讀 詩91 ›');
     currentChapter = 'PSA.91';
-    assignedReferences = ['GEN.1', 'GEN.2'];
+    activeReferenceIndex = 1;
     act(() => { renderer!.update(React.createElement(Harness)); });
-    expect(all('Pressable').filter(node => node.props.accessibilityState?.selected)).toHaveLength(0);
-  });
-
-  it('does not highlight unknown, reversed or cross-book assigned ranges', async () => {
-    assignedReferences = ['PSA.90-GEN.92', 'PSA.92-90', 'ZZZ.90-91'];
-    currentChapter = 'PSA.91';
-    await mount();
-    act(() => { button('選擇今日章節清單').props.onPress(); });
-    expect(all('Pressable').filter(node => node.props.accessibilityState?.selected)).toHaveLength(0);
+    expect(chrome.atChapterEnd).toBe(false);
+    expect(text()).not.toContain('完成今日讀經');
+    act(() => { chrome.handleCanvasEdge({ atEnd: true }); });
+    expect(text()).toContain('完成今日讀經');
+    expect(text()).not.toContain('繼續讀');
   });
 
   it.each([false, true])('keeps common controls accessibility-visible with TalkBack=%s', async enabled => {
@@ -563,16 +444,15 @@ describe('fullscreen reader layout and chrome', () => {
     act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); vi.advanceTimersByTime(10000); });
     expect(chrome.toolsVisible).toBe(enabled);
     if (enabled) {
-      expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeDefined();
-      expect(button('選擇今日章節清單')).toBeDefined();
+      expect(toolbar()).toBeDefined();
+      expect(chip('詩90')).toBeDefined();
       expect(button('播放詩篇 90')).toBeDefined();
     } else {
-      expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeUndefined();
+      expect(toolbar()).toBeUndefined();
       expect(button('播放詩篇 90')).toBeDefined();
-      act(() => { chrome.handleCanvasScroll({ direction: 'up', deltaY: -20 }); });
+      act(() => { chrome.revealTools('up'); });
     }
-    act(() => { button('選擇今日章節清單').props.onPress(); });
-    expect(button('前往詩90').props.accessibilityRole).toBe('button');
+    expect(chip('詩91').props.accessibilityRole).toBe('button');
   });
 
   it('restores the full controls immediately when TalkBack turns on while immersed', async () => {
@@ -580,23 +460,26 @@ describe('fullscreen reader layout and chrome', () => {
     await mount();
     act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); });
     expect(chrome.toolsVisible).toBe(false);
-    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeUndefined();
+    expect(toolbar()).toBeUndefined();
     act(() => { native.screenReaderChanged?.(true); });
     expect(chrome.toolsVisible).toBe(true);
     expect(getReaderImmersionSnapshot()).toBe(false);
-    expect(all('SafeAreaView').find(node => node.props.accessibilityLabel === '閱讀工具列')).toBeDefined();
+    expect(toolbar()).toBeDefined();
     expect(button('播放詩篇 90')).toBeDefined();
   });
 
-  it('mounts system-bar overrides only while focused and closes every popup on blur', async () => {
+  it('mounts system-bar overrides only while focused, hides them only while collapsed, and closes every popup on blur', async () => {
     await mount();
     expect(all('StatusBar')).toHaveLength(1);
+    expect(all('StatusBar')[0].props.hidden).toBe(false);
+    expect(all('NavigationBar')[0].props.hidden).toBe(false);
+    act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); });
     expect(all('StatusBar')[0].props.hidden).toBe(true);
     expect(all('NavigationBar')[0].props.hidden).toBe(true);
     act(() => { chrome.openInfo(); });
-    expect(all('StatusBar')[0].props.hidden).toBe(true);
+    expect(all('StatusBar')[0].props.hidden).toBe(false);
     act(() => { native.blur?.(); });
-    expect(chrome).toMatchObject({ focused: false, toolsVisible: false, moreOpen: false, audioOpen: false, infoOpen: false });
+    expect(chrome).toMatchObject({ focused: false, toolsVisible: false, collapsed: false, moreOpen: false, audioOpen: false, infoOpen: false });
     expect(all('StatusBar')).toHaveLength(0);
     expect(all('NavigationBar')).toHaveLength(0);
     expect(all('ChapterAudioControls')[0].props.active).toBe(false);
@@ -605,14 +488,20 @@ describe('fullscreen reader layout and chrome', () => {
     expect(chrome.toolsVisible).toBe(true);
   });
 
-  it('restores actual Expo navigation visibility after blur and can re-enter fullscreen', async () => {
+  it('shows the actual Expo navigation bar normally, hides it only while collapsed, and restores it after blur', async () => {
     await mount();
+    act(() => { vi.advanceTimersByTime(0); });
+    expect(native.setNavigationHidden).not.toHaveBeenCalledWith(true);
+    act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); });
     act(() => { vi.advanceTimersByTime(0); });
     expect(native.setNavigationHidden).toHaveBeenLastCalledWith(true);
     act(() => { native.blur?.(); });
     act(() => { vi.advanceTimersByTime(0); });
     expect(native.setNavigationHidden).toHaveBeenLastCalledWith(false);
     act(() => { native.focus?.(); });
+    act(() => { vi.advanceTimersByTime(0); });
+    expect(native.setNavigationHidden).toHaveBeenLastCalledWith(false);
+    act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); });
     act(() => { vi.advanceTimersByTime(0); });
     expect(native.setNavigationHidden).toHaveBeenLastCalledWith(true);
   });
@@ -622,12 +511,12 @@ describe('fullscreen reader layout and chrome', () => {
     act(() => { vi.advanceTimersByTime(0); });
     act(() => { chrome.showTools(); });
     act(() => { vi.advanceTimersByTime(0); });
-    expect(native.setNavigationHidden).toHaveBeenLastCalledWith(true);
     expect(native.setNavigationStyle).toHaveBeenLastCalledWith('dark');
   });
 
-  it('restores actual Expo navigation visibility when a focused reader unmounts', async () => {
+  it('restores actual Expo navigation visibility when a collapsed reader unmounts', async () => {
     await mount();
+    act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); });
     act(() => { vi.advanceTimersByTime(0); });
     expect(native.setNavigationHidden).toHaveBeenLastCalledWith(true);
     act(() => { renderer!.unmount(); });
@@ -665,7 +554,7 @@ describe('fullscreen reader layout and chrome', () => {
     expect(styleOf(sheet).maxHeight).toBeUndefined();
     expect(styleOf(sheet)).toMatchObject({ flexShrink: 1, minHeight: 0 });
     expect(sheet.props.edges).toContain('bottom');
-    const scroll = all('ScrollView')[0];
+    const scroll = sheet.findAll(node => String(node.type) === 'ScrollView')[0];
     expect(styleOf(scroll)).toMatchObject({ flexShrink: 1, minHeight: 0 });
     expect(scroll.props.scrollEnabled).not.toBe(false);
     const header = sheet.findAll(node => String(node.type) === 'View' && styleOf(node).flexDirection === 'row')[0];
@@ -729,21 +618,24 @@ describe('fullscreen reader layout and chrome', () => {
     expect(text()).not.toContain('測試版權文字');
   });
 
-  it('keeps date, chapter, and More controls actionable without intercepting the ready reader surface', async () => {
+  it('keeps date, chapter, and More controls actionable without intercepting the reader surface', async () => {
     await mount();
     act(() => { button('上一個排定讀經日').props.onPress(); });
     expect(onSelectDate).toHaveBeenCalledWith(previousDate);
-    act(() => { button('選擇今日章節清單').props.onPress(); });
-    act(() => { button('前往詩91').props.onPress(); });
+    act(() => { chip('詩91').props.onPress(); });
     expect(onSelectReference).toHaveBeenCalledWith(1);
+    act(() => { chip('詩90').props.onPress(); });
+    expect(controls.openChapterPicker).toHaveBeenCalledOnce();
     act(() => { chrome.openMore(); });
     act(() => { button('選擇其他章節').props.onPress(); });
-    expect(controls.openChapterPicker).toHaveBeenCalledOnce();
-    expect(all('BibleReader')[0].parent?.props.onTouchEnd).toBeUndefined();
+    expect(controls.openChapterPicker).toHaveBeenCalledTimes(2);
+    expect(surface().props.onTouchEnd).toBeUndefined();
+    // Before the reader is ready its own messages sit between the header and ○ ▶, never under them.
+    native.safeInsets = { top: 24, bottom: 16, left: 0, right: 0 };
     controls.ready = false;
-    act(() => { chrome.hideTools(); renderer!.update(React.createElement(Harness)); });
-    act(() => { all('BibleReader')[0].parent?.props.onTouchEnd(); });
-    expect(chrome.toolsVisible).toBe(true);
+    act(() => { renderer!.update(React.createElement(Harness)); });
+    expect(surface().props.onTouchEnd).toBeUndefined();
+    expect(styleOf(surface())).toMatchObject({ paddingTop: 24 + 96, paddingBottom: 49 + 16 + 12 + 56 + 12 });
     expect(button('下一個排定讀經日').props.disabled).not.toBe(true);
     act(() => { chrome.openMore(); });
     expect(button('選擇其他章節').props.disabled).toBe(true);
