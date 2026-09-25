@@ -14,6 +14,8 @@
 
 連續播放預設ON並記住設定：按播放後依序走完今日剩餘章節，自動換頁/音訊，最後停止；遇到沒有音訊的章節必須停下提示，不能略過。OFF停止後續自動前進，不中斷目前播放；播放中重新ON只重新arm下一個EOF，不seek/restart；idle ON不自動播放。
 
+閱讀頁版面、沉浸、完成與待決定方案，以[reader-page.md](../design/reader-page.md)為準。
+
 Bible cache按exact SDK request key保存30分鐘；首頁可見後只preload目前版本/今日內容，concurrency2、dedup，舊response不能改UI。Native content store必須走相同fetch adapter；不批量offline audio。
 
 ## Points、charts與social
