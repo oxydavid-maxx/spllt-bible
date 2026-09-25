@@ -8,6 +8,9 @@ import { theme } from './Theme';
 import { ReminderSettings } from './ReminderSettings';
 import { getReminderRuntimeOwner, useReminderRuntimeSnapshot } from '../services/reminderRuntime';
 
+/** Web resource for requesting deletion of the account and its data (Google Play account deletion policy). */
+export const ACCOUNT_DELETION_URL = `https://github.com/oxydavid-maxx/spllt-bible/blob/main/docs/play/privacy-policy.md#${encodeURIComponent('刪除帳號與資料')}`;
+
 export function AccountSurface() {
   const auth = useAuthSnapshot();
   const session = auth.session;
@@ -37,6 +40,7 @@ export function AccountSurface() {
           onOpenSettings={() => { void Linking.openSettings(); }}
           showMeeting={false}
         />
+        <Pressable accessibilityRole="link" accessibilityLabel="申請刪除帳號與資料" onPress={() => { void Linking.openURL(ACCOUNT_DELETION_URL).catch(() => undefined); }} style={styles.quiet}><Text style={styles.quietText}>申請刪除帳號與資料</Text></Pressable>
       </> : model.mode === 'loading' || model.mode === 'error' || model.mode === 'empty' ? <>
         <Text style={styles.title}>{model.mode === 'error' ? '暫時無法載入帳戶資料' : model.mode === 'empty' ? '尚未取得帳戶資料' : '正在載入帳戶資料'}</Text>
         <Text style={styles.body}>{model.mode === 'loading' ? '身份已確認，正在取得個人資料；若網路不穩，請重試。' : '身份已確認，可以重新載入個人資料。'}</Text>
@@ -59,4 +63,6 @@ const styles = StyleSheet.create({
   body: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   secondary: { minHeight: theme.control.tap, borderColor: theme.colors.primary, borderWidth: theme.control.hairline, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center' },
   secondaryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
+  quiet: { minHeight: theme.control.tap, alignSelf: 'flex-start', justifyContent: 'center' },
+  quietText: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, textDecorationLine: 'underline' },
 });
