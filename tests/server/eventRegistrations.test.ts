@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createDatabase } from '../../server/db';
 import { createApiHandler } from '../../server/routes';
-import { deriveFormRegistrationKey } from '../../server/eventRegistrations';
+import { deriveFormRegistrationKey, parseEventDates } from '../../server/eventRegistrations';
 
 // The sign-up form lives in 光佑's Google Drive. His Apps Script sends only each respondent's name
 // and chosen dates (never the LINE ID or age columns). The server keeps only who matched a member
@@ -90,6 +90,10 @@ describe('friends who signed up for the next gathering', () => {
     await push({ formTitle: 'x', responses: [{ name: '林光佑', dates: ['9/27'] }] });
     const self = await api({ method: 'GET', url: '/api/me/event-registrations?date=2026-09-27', headers: member('member-self') });
     expect(self.body).toMatchObject({ total: 1, registered: false });
+  });
+
+  it('reads the date the way the real form writes its grid rows', () => {
+    expect(parseEventDates('9月27日 (週日)', new Date('2026-09-25T04:00:00.000Z'))).toEqual(['2026-09-27']);
   });
 
   it('derives the push key from the session secret so no new secret has to be configured', () => {

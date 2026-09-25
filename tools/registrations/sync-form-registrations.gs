@@ -38,6 +38,19 @@ function identityClaims() {
   return JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(padded)).getDataAsString());
 }
 
+/**
+ * 表格題（青崇報名表的「參加日期」：每列是一個日期，欄是用餐／不用餐）的日期在列標題，
+ * 那一列有作答就算報名那天；其他題型的答案本身就是日期。
+ */
+function chosenDates(item, answer) {
+  const type = item.getType();
+  if (type === FormApp.ItemType.GRID || type === FormApp.ItemType.CHECKBOX_GRID) {
+    const rows = type === FormApp.ItemType.GRID ? item.asGridItem().getRows() : item.asCheckboxGridItem().getRows();
+    return rows.filter((row, index) => (Array.isArray(answer[index]) ? answer[index].length > 0 : Boolean(answer[index])));
+  }
+  return (Array.isArray(answer) ? answer : [answer]).filter(Boolean);
+}
+
 function syncRegistrations() {
   const since = new Date(Date.now() - 120 * 24 * 3600 * 1000).toISOString();
   const files = DriveApp.searchFiles(
@@ -53,10 +66,11 @@ function syncRegistrations() {
       const name = response.getResponseForItem(nameItem);
       const dates = response.getResponseForItem(dateItem);
       if (!name || !dates) continue;
-      const value = dates.getResponse();
+      const chosen = chosenDates(dateItem, dates.getResponse());
+      if (chosen.length === 0) continue;
       responses.push({
         name: String(name.getResponse()).slice(0, 80),
-        dates: (Array.isArray(value) ? value : [value]).map((label) => String(label).slice(0, 200)),
+        dates: chosen.map((label) => String(label).slice(0, 200)),
       });
     }
   }
