@@ -47,7 +47,6 @@ export default function TabsLayout() {
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.muted,
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
-        tabBarStyle: readerImmersed ? { display: 'none' } : undefined,
       }}
     >
       <Tabs.Screen name="announcements" options={{ title: '公告', headerShown: false, tabBarAccessibilityLabel: '公告', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="bullhorn-outline" color={color} size={size} /> }} />
@@ -72,7 +71,8 @@ export default function TabsLayout() {
       }} />
       <Tabs.Screen name="progress" options={{ title: '積分', tabBarAccessibilityLabel: '積分', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="chart-line" color={color} size={size} /> }} />
       <Tabs.Screen name="journal" options={{ title: '日記', headerShown: false, tabBarAccessibilityLabel: '靈修日記', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="notebook-outline" color={color} size={size} /> }} />
-      <Tabs.Screen name="reader" options={{ href: null, title: '讀經閱讀器', headerShown: false, tabBarAccessibilityLabel: '讀經閱讀器', freezeOnBlur: false }} />
+      {/* Over Reader the tab bar floats, so hiding it while immersed never resizes the scripture (a resize can jump it to the chapter top). */}
+      <Tabs.Screen name="reader" options={{ href: null, title: '讀經閱讀器', headerShown: false, tabBarAccessibilityLabel: '讀經閱讀器', freezeOnBlur: false, tabBarStyle: readerImmersed ? { display: 'none' } : { position: 'absolute' } }} />
       <Tabs.Screen name="groups" options={{ href: null, title: '讀經', headerShown: false }} />
     </Tabs>
   );

@@ -4,7 +4,7 @@
 
 **Goal:** 讀經頁照 `docs/design/reader-page.md` 定案的 A 版面與沉浸規則上線，沉浸永遠退得出來，播放、日記、完成、積分不退步。
 
-**Architecture:** 工具列改成「疊在經文上」的 overlay：WebView 閱讀區在一般與沉浸之間**不改尺寸**（之前切換時閱讀區重排，是跳回章首與閃爍的高風險來源）。沉浸的收合、叫回時機由既有 DOM bridge 在 WebView 內判斷（捲動方向累積、章首、章尾、沉浸中點經文），RN 端只收訊息改狀態；返回鍵、點收合細條在 RN 端處理。
+**Architecture:** 工具列改成「疊在經文上」的 overlay：WebView 閱讀區在一般與沉浸之間**不改尺寸**（之前切換時閱讀區重排，是跳回章首與閃爍的高風險來源）。收合、叫回的**事件**由既有 DOM bridge 在 WebView 內偵測（每次往下的新手勢、往上累積、到章首、到章尾），**狀態**只由 RN 持有（重複訊息忽略）；返回鍵、點收合細條在 RN 端叫回，WebView 不需要回報，下一次往下的新手勢就會再收合。點經文一律交給 SDK 選取經節（§3）。
 
 **Tech Stack:** Expo Router／React Native、`@youversion/platform-react-native-expo-ui` DOM component（WebView）、vitest＋react-test-renderer、headless Chromium（既有 `fullscreenReaderPadding` 測試架構）。
 
@@ -39,18 +39,18 @@
 - Produces：`READER_CANVAS_REVEAL_MESSAGE = 'qingmu.reader.canvas.reveal'`（data `{ reason: 'up' | 'top' | 'end' | 'tap' }`）、`READER_CANVAS_EDGE_MESSAGE = 'qingmu.reader.canvas.edge'`（data `{ atEnd: boolean }`）、`readReaderCanvasRevealEvent(data): RevealReason | null`、`readReaderCanvasEdgeEvent(data): { atEnd: boolean } | null`、`buildReaderDomBridge(fullscreen, hasVersionMetadata, insets?: { top: number; bottom: number })`。
 - `YouVersionReader` props：新增 `onCanvasReveal?(reason)`、`onCanvasEdge?(event)`、`canvasInsets?`；移除 `onCanvasTap`。
 
-Bridge 規則（常數寫在 bridge 內，單位 CSS px＝dp）：`HIDE_MIN_TOP = 48`、`REVEAL_UP = 120`、`EDGE = 24`。
-- 往下捲（Δ ≥ 12 且 scrollTop > 48）且未收合 → 送既有 `scroll{direction:'down'}`，本地 `hidden = true`，`upAccum = 0`。
-- 往上捲累積 ≥ 120 且已收合 → `reveal{up}`，`hidden = false`；往下捲時 `upAccum` 歸零。
-- scrollTop ≤ 24 且已收合 → `reveal{top}`。
-- `scrollTop + clientHeight ≥ scrollHeight − 24` 變化時送 `edge{atEnd}`；到章尾且已收合 → `reveal{end}`。
-- 快速點經文：已收合 → 攔下（preventDefault＋stopImmediatePropagation）並送 `reveal{tap}`；未收合 → **不攔**，交給 SDK（選取經節）。
+Bridge 規則（常數寫在 bridge 內，單位 CSS px＝dp）：`HIDE_MIN_TOP = 48`、`REVEAL_UP = 120`、`EDGE = 24`、`NEW_GESTURE_MS = 400`。
+- 一次往下的手勢（Δ ≥ 12 且 scrollTop > 48、不在章尾）送一次既有 `scroll{direction:'down'}`；停 ≥ 400ms 或轉向後算新手勢，會再送（RN 若已由返回鍵叫回，就再收合）。
+- 一次往上的手勢累積 ≥ 120 → 送一次 `reveal{up}`；小滑不送。
+- 進入章首（scrollTop ≤ 24）→ `reveal{top}`；進入章尾（`scrollTop + clientHeight ≥ scrollHeight − 24`）→ `edge{atEnd:true}`＋`reveal{end}`；離開章尾 → `edge{atEnd:false}`。換章後內容重排時重送一次 `edge`（短章不用捲就到底）。
+- 不攔任何點擊：點經文交給 SDK 選取經節（§3「點經文不是切換工具列」）。
 - CSS：`main` padding `top/16px/bottom/16px` 用傳入值；`.s1` 字重 600；隱藏「第一個經節之前、整段只有數字、且不含經節/節號」的區塊（MutationObserver 於換章後重套）。
 
 - [ ] **Step 1（RED）：** 新增 `tests/ui/readerImmersionBridge.test.ts`，沿用 padding 測試的 iframe＋`--dump-dom` 架構，fixture 為真實 SDK CSS＋`<main>`＋`[data-slot=yv-bible-renderer]` 內 `<div class="c">1</div><div class="s"><span class="yv-h">問候</span></div><div class="p"><span class="yv-v" v="1"><span class="yv-vlbl">1</span>神的僕人…</span>…</div>`（另一例把章號放 `.label`）。腳本依序設定 `main.scrollTop` 並記錄 `postMessage`。斷言：
   - 下捲到 200 → 一次 `scroll down`；上捲 60 → 無 reveal；再上捲 80（累積 140）→ `reveal up`；
   - 再下捲收合後捲到 0 → `reveal top`；下捲到底 → `edge atEnd:true` 且 `reveal end`；
-  - 收合時點經文 → `reveal tap` 且 `defaultPrevented`；未收合點經文 → 沒有訊息、SDK 的 click handler 收到事件；
+  - 同一手勢繼續下捲 → 不重送；停頓後新的下捲手勢 → 再送一次 `scroll down`；
+  - 點經文 → 沒有訊息、不 `defaultPrevented`、SDK 的 click handler 收到事件；
   - 章號區塊 `display:none`、節號 `1` 仍顯示、`.s1` computed `font-weight` 600、`main` padding-top/bottom 等於傳入值。
   Run: `npx vitest run tests/ui/readerImmersionBridge.test.ts` → FAIL（新常數與行為不存在）。
 - [ ] **Step 2：** 實作 bridge（上列規則），`readReaderUiMessage` 接受新型別；`YouVersionReader` 轉送新 callbacks、傳 `canvasInsets`。
@@ -59,7 +59,7 @@ Bridge 規則（常數寫在 bridge 內，單位 CSS px＝dp）：`HIDE_MIN_TOP 
 
 ### Task 2：Chrome 狀態、overlay 版面、收合細條、右下 ○ ▶、下一章卡
 
-**Files:** Modify `src/ui/FullscreenReaderLayout.tsx`、`src/ui/CompletionAwardFeedback.tsx`；Test `tests/ui/fullscreenReaderLayout.test.ts`（改寫舊版面斷言、新增 A 版面斷言）、`tests/ui/readerLayoutContract.test.ts`、`tests/ui/fullscreenReaderScreen.test.ts`。
+**Files:** Modify `src/ui/FullscreenReaderLayout.tsx`、`src/ui/CompletionAwardFeedback.tsx`；Test `tests/ui/readerLayoutA.test.ts`（新，A 版面）、`tests/ui/fullscreenReaderLayout.test.ts`（改寫舊版面斷言）、`tests/ui/readerLayoutContract.test.ts`、`tests/ui/fullscreenReaderScreen.test.ts`（main 上收集階段就壞：mock 落後於 app；對齊可用的 harness 後改成新規則）、`tests/ui/focusedReaderVisibleIdentity.test.ts`（同樣 mock 落後，補齊）。
 
 **Interfaces:**
 - Consumes：Task 1 的 `RevealReason`。
@@ -99,7 +99,7 @@ Bridge 規則（常數寫在 bridge 內，單位 CSS px＝dp）：`HIDE_MIN_TOP 
   1. 一般狀態截圖：狀態列可見、日期（星期）、章節籤（多1 實心）、孤立「1」消失、小標加粗、○ ▶ 右下 56/12/同高、tab 列位置與公告頁相同；
   2. 往下捲 → 收合細條在上、▶ 同位置、tab/系統列隱藏；小幅上滑不叫回；大幅上滑叫回；
   3. 回章首叫回；捲到章尾叫回＋「繼續讀 詩99」；點卡片換到詩99；
-  4. 沉浸中按返回鍵 → 叫回、不離開；沉浸中點經文 → 叫回；
+  4. 沉浸中按返回鍵 → 叫回、不離開；之後再往下捲 → 再收合；沉浸中點經文 → 選取經節（不叫回、不切換）；點頂端細條 → 叫回；
   5. 章節籤切到詩100 並捲到底 → ○ 展開「完成今日讀經」（不按，避免改積分）；
   6. 沉浸中播放/暫停可按，位置不變；
   7. 錄 60 秒反覆下捲/上捲 10 次，確認沒有跳回章首；
