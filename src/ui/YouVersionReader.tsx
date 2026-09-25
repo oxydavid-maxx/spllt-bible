@@ -7,7 +7,7 @@ import { theme } from './Theme';
 import { formatReferenceListZhTw, formatReferenceZhTw } from '../domain/scriptureReference';
 import { buildYouVersionReaderConfig, resolveReaderContentApiHost } from './youVersionReaderConfig';
 import { getYouVersionContentMetadata } from '../config/youVersionContent';
-import { buildReaderDomBridge, readReaderUiMessage, readReaderCanvasScrollEvent, READER_SETTINGS_MESSAGE, READER_CANVAS_TAP_MESSAGE, READER_CANVAS_SCROLL_MESSAGE } from './readerSettingsBridge';
+import { buildReaderDomBridge, readReaderUiMessage, readReaderCanvasScrollEvent, readReaderCanvasRevealEvent, readReaderCanvasEdgeEvent, READER_SETTINGS_MESSAGE, READER_CANVAS_SCROLL_MESSAGE, READER_CANVAS_REVEAL_MESSAGE, READER_CANVAS_EDGE_MESSAGE, type ReaderCanvasInsets, type ReaderRevealReason } from './readerSettingsBridge';
 import { useReaderPreferencesBinding, type ReaderPreferencesBinding } from './useReaderPreferencesBinding';
 import { BibleContentPreloadHost } from './BibleContentPreloadHost';
 import { ChapterAudioAutoplayContext, type ChapterAudioAutoplayContextValue } from './ChapterAudioControls';
@@ -31,7 +31,7 @@ function chapterForReference(reference: string): string | null {
   return match ? `${match[1]}.${match[2]}` : null;
 }
 
-export function YouVersionReader({ date, references, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasTap, onCanvasScroll, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied, narrationSpeed = 1 }: { date: string; references: string[]; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasTap?: () => void; onCanvasScroll?: (event: { direction: 'up' | 'down'; deltaY: number }) => void; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void; narrationSpeed?: number }) {
+export function YouVersionReader({ date, references, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasReveal, onCanvasScroll, onCanvasEdge, canvasInsets, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied, narrationSpeed = 1 }: { date: string; references: string[]; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasReveal?: (reason: ReaderRevealReason) => void; onCanvasScroll?: (event: { direction: 'up' | 'down'; deltaY: number }) => void; onCanvasEdge?: (event: { atEnd: boolean }) => void; canvasInsets?: ReaderCanvasInsets; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void; narrationSpeed?: number }) {
   const [readerModule, setReaderModule] = useState<YouVersionReaderUiModule | null>(null);
   const preferencesBinding = useReaderPreferencesBinding(readerModule, readerPreferences);
   const [error, setError] = useState<string | null>(null);
@@ -239,18 +239,26 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
     openChapterPicker: () => { if (ready) setOverlay('chapter'); },
     openVersionPicker: () => { if (ready) setOverlay('version'); },
   }), [ready]);
+  const insetTop = canvasInsets?.top, insetBottom = canvasInsets?.bottom;
   const readerDom = useMemo(() => ({
-    injectedJavaScript: buildReaderDomBridge(fullscreen, hasVersionMetadata),
+    injectedJavaScript: buildReaderDomBridge(fullscreen, hasVersionMetadata, insetTop === undefined || insetBottom === undefined ? undefined : { top: insetTop, bottom: insetBottom }),
     onMessage: (event: { nativeEvent: { data: string } }) => {
-      const message = readReaderUiMessage(event.nativeEvent.data);
+      const data = event.nativeEvent.data;
+      const message = readReaderUiMessage(data);
       if (message === READER_SETTINGS_MESSAGE) overlayControls.openSettings();
-      else if (fullscreen && message === READER_CANVAS_TAP_MESSAGE) onCanvasTap?.();
-      else if (fullscreen && message === READER_CANVAS_SCROLL_MESSAGE) {
-        const scroll = readReaderCanvasScrollEvent(event.nativeEvent.data);
+      else if (!fullscreen) return;
+      else if (message === READER_CANVAS_SCROLL_MESSAGE) {
+        const scroll = readReaderCanvasScrollEvent(data);
         if (scroll) onCanvasScroll?.(scroll);
+      } else if (message === READER_CANVAS_REVEAL_MESSAGE) {
+        const reason = readReaderCanvasRevealEvent(data);
+        if (reason) onCanvasReveal?.(reason);
+      } else if (message === READER_CANVAS_EDGE_MESSAGE) {
+        const edge = readReaderCanvasEdgeEvent(data);
+        if (edge) onCanvasEdge?.(edge);
       }
     },
-  }), [fullscreen, hasVersionMetadata, onCanvasTap, onCanvasScroll, overlayControls]);
+  }), [fullscreen, hasVersionMetadata, insetTop, insetBottom, onCanvasReveal, onCanvasScroll, onCanvasEdge, overlayControls]);
   useEffect(() => {
     if (!overlay) return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {

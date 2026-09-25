@@ -138,31 +138,41 @@ describe('fullscreen official reader wrapper', () => {
     expect(native.mounts).toBe(1);
   });
   it('forwards only valid local canvas messages and keeps legacy mode untouched', async () => {
-    const tap = vi.fn(), scroll = vi.fn();
-    await mount({ onCanvasTap: tap, onCanvasScroll: scroll });
+    const reveal = vi.fn(), scroll = vi.fn(), edge = vi.fn();
+    await mount({ onCanvasReveal: reveal, onCanvasScroll: scroll, onCanvasEdge: edge });
     const dom = all('OfficialReader')[0].props.dom;
+    const send = (message: unknown) => dom.onMessage({ nativeEvent: { data: JSON.stringify(message) } });
     act(() => {
-      dom.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'qingmu.reader.canvas.tap', data: null }) } });
-      dom.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'qingmu.reader.canvas.scroll', data: { direction: 'down', deltaY: 20 } }) } });
-      dom.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'qingmu.reader.canvas.tap', data: 'content' }) } });
+      send({ type: 'qingmu.reader.canvas.reveal', data: { reason: 'tap' } });
+      send({ type: 'qingmu.reader.canvas.reveal', data: { reason: 'sideways' } });
+      send({ type: 'qingmu.reader.canvas.scroll', data: { direction: 'down', deltaY: 20 } });
+      send({ type: 'qingmu.reader.canvas.edge', data: { atEnd: true } });
+      send({ type: 'qingmu.reader.canvas.edge', data: { atEnd: 'yes' } });
+      send({ type: 'qingmu.reader.canvas.tap', data: null });
     });
-    expect(tap).toHaveBeenCalledOnce(); expect(scroll).toHaveBeenCalledExactlyOnceWith({ direction: 'down', deltaY: 20 });
-    await act(async () => rendered.update(React.createElement(YouVersionReader, { ...props, fullscreen: false, onCanvasTap: tap })));
+    expect(reveal).toHaveBeenCalledExactlyOnceWith('tap');
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ direction: 'down', deltaY: 20 });
+    expect(edge).toHaveBeenCalledExactlyOnceWith({ atEnd: true });
+    await act(async () => rendered.update(React.createElement(YouVersionReader, { ...props, fullscreen: false, onCanvasReveal: reveal })));
     expect(all('OfficialReader')[0].props.showToolbar).toBe(true);
     expect(all('Pressable').length).toBeGreaterThan(0);
   });
 });
 
 describe('injected canvas gesture bridge', () => {
-  it('consumes a quick plain-scripture tap but preserves controls, footnotes, selections, long presses and scroll drags', async () => {
+  it('consumes a quick plain-scripture tap only while collapsed and never controls, footnotes, selections, long presses or drags', async () => {
     await mount();
     const listeners = new Map<string, ((event: any) => void)[]>();
     const postMessage = vi.fn();
     let now = 1000, selection = '';
-    const scrollingElement = { scrollTop: 0 };
-    const document = { documentElement: { setAttribute: vi.fn() }, scrollingElement, getElementById: () => null, head: { appendChild: vi.fn() }, createElement: () => ({}), addEventListener: (type: string, callback: (event: any) => void) => { listeners.set(type, [...(listeners.get(type) ?? []), callback]); } };
+    const document = {
+      documentElement: { setAttribute: vi.fn() }, getElementById: () => null, head: { appendChild: vi.fn() }, createElement: () => ({}),
+      querySelector: () => null, querySelectorAll: () => [], body: {},
+      addEventListener: (type: string, callback: (event: any) => void) => { listeners.set(type, [...(listeners.get(type) ?? []), callback]); },
+    };
     const window = { ReactNativeWebView: { postMessage }, getSelection: () => ({ toString: () => selection }) };
-    runInNewContext(all('OfficialReader')[0].props.dom.injectedJavaScript, { document, window, Date: { now: () => now } });
+    class MutationObserver { observe() { /* layout pass is covered by the Chromium test */ } }
+    runInNewContext(all('OfficialReader')[0].props.dom.injectedJavaScript, { document, window, Date: { now: () => now }, MutationObserver, Node: { DOCUMENT_POSITION_PRECEDING: 2 }, setTimeout: () => 0 });
     expect(listeners.has('pointerdown')).toBe(true);
     const dispatch = (name: string, e: any) => {
       for (const listener of listeners.get(name) ?? []) {
@@ -173,18 +183,27 @@ describe('injected canvas gesture bridge', () => {
     const target = (interactive = false) => ({ closest: (selector: string) => selector.includes('aria-label="設定"') ? null : selector.includes('button,a,') ? (interactive ? {} : null) : {} });
     const event = (t = target()) => ({ target: t, button: 0, isPrimary: true, clientX: 10, clientY: 10, preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() });
     const quickTap = (e: ReturnType<typeof event>, delay = 80) => { dispatch('pointerdown', e); now += delay; dispatch('click', e); };
-    const tap = event(); quickTap(tap);
-    expect(tap.stopImmediatePropagation).toHaveBeenCalledOnce();
-    expect(postMessage.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([{ type: 'qingmu.reader.canvas.tap', data: null }]);
+    let scrollTop = 0;
+    const container = { closest: () => ({}), get scrollTop() { return scrollTop; }, clientHeight: 600, scrollHeight: 6000 };
+    const collapse = () => { scrollTop += 200; dispatch('scroll', { target: container }); };
+    const messages = () => postMessage.mock.calls.map(([raw]) => JSON.parse(raw)).filter(m => m.type !== 'qingmu.reader.canvas.edge');
+
+    const visibleTap = event(); quickTap(visibleTap);
+    expect(visibleTap.preventDefault).not.toHaveBeenCalled();
+    expect(messages()).toEqual([]);
+
+    collapse();
+    expect(messages()).toEqual([{ type: 'qingmu.reader.canvas.scroll', data: { direction: 'down', deltaY: 200 } }]);
     const button = event(target(true)); quickTap(button); expect(button.preventDefault).not.toHaveBeenCalled();
     const long = event(); quickTap(long, 700); expect(long.preventDefault).not.toHaveBeenCalled();
     selection = 'selected verse'; const selected = event(); quickTap(selected); expect(selected.preventDefault).not.toHaveBeenCalled(); selection = '';
     const drag = event(); dispatch('pointerdown', drag); dispatch('pointermove', { ...drag, clientY: 50 }); now += 80; dispatch('click', drag); expect(drag.preventDefault).not.toHaveBeenCalled();
     const cancelled = event(); dispatch('pointerdown', cancelled); dispatch('pointercancel', cancelled); dispatch('click', cancelled); expect(cancelled.preventDefault).not.toHaveBeenCalled();
     const double = { ...event(), detail: 2 }; quickTap(double); expect(double.preventDefault).not.toHaveBeenCalled();
-    dispatch('scroll', event());
-    scrollingElement.scrollTop = 20; now += 120;
-    dispatch('scroll', event());
-    expect(JSON.parse(postMessage.mock.calls.at(-1)![0])).toEqual({ type: 'qingmu.reader.canvas.scroll', data: { direction: 'down', deltaY: 20 } });
+    expect(messages()).toHaveLength(1);
+
+    const collapsedTap = event(); quickTap(collapsedTap);
+    expect(collapsedTap.stopImmediatePropagation).toHaveBeenCalledOnce();
+    expect(messages().at(-1)).toEqual({ type: 'qingmu.reader.canvas.reveal', data: { reason: 'tap' } });
   });
 });
