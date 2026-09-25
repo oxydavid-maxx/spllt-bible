@@ -41,10 +41,17 @@ export function useReaderChrome() {
   const [audioOpen, setAudioOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const collapsed = focused && !toolsVisible;
-  // Hiding the system bars while collapsed changes the live insets; ▶ and the scripture keep the
-  // insets they had with the bars showing, so nothing moves or re-lays out.
+  // Hiding the system bars while collapsed shrinks the live insets, and they grow back a few frames
+  // after the tools reappear. ▶ and the scripture keep the largest insets seen with the tools showing
+  // (the app is portrait-only): a smaller inset would move ▶, and a changed canvas inset changes the
+  // reader page script, which makes the WebView reload the page back to the chapter top.
   const settled = useRef(liveInsets);
-  if (!collapsed) settled.current = liveInsets;
+  if (!collapsed) {
+    const kept = settled.current;
+    if (liveInsets.top > kept.top || liveInsets.bottom > kept.bottom || liveInsets.left > kept.left || liveInsets.right > kept.right) {
+      settled.current = { top: Math.max(kept.top, liveInsets.top), bottom: Math.max(kept.bottom, liveInsets.bottom), left: Math.max(kept.left, liveInsets.left), right: Math.max(kept.right, liveInsets.right) };
+    }
+  }
   // The reader's messages arrive through stable callbacks; they read the latest guards from here.
   const guards = useRef({ focused, screenReaderEnabled, popupOpen: false });
   guards.current = { focused, screenReaderEnabled, popupOpen: moreOpen || audioOpen || infoOpen };

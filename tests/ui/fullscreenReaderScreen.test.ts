@@ -27,7 +27,8 @@ vi.mock('react-native', () => ({
   BackHandler: { addEventListener: (_: string, cb: () => boolean) => { native.back = cb; return { remove: () => { native.back = null; } }; } },
   AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
 }));
-vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
+const safeArea = vi.hoisted(() => ({ value: { top: 24, right: 0, bottom: 16, left: 0 } }));
+vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ ...safeArea.value }) }));
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
 vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost: () => null }));
 vi.mock('expo-application', () => ({ nativeBuildVersion: '30' }));
@@ -74,7 +75,7 @@ const toolbar = () => rendered.root.findAll(n => n.props.accessibilityLabel === 
 const collapsedBar = () => rendered.root.findAll(n => n.props.accessibilityLabel === '展開閱讀工具' && typeof n.props.onPress === 'function')[0];
 beforeEach(async () => {
   readerSettings.value = { fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 }; readerSettings.listeners.clear();
-  native.back = null; native.mounts = 0; native.audioMounts = 0;
+  native.back = null; native.mounts = 0; native.audioMounts = 0; safeArea.value = { top: 24, right: 0, bottom: 16, left: 0 };
   vi.spyOn(console, 'error').mockImplementation(() => {});
   await act(async () => { rendered = TestRenderer.create(React.createElement(ReaderScreen)); });
 });
@@ -103,7 +104,23 @@ describe('approved fullscreen Reader assembled entry', () => {
   });
   it('passes the overlay room to the reader canvas', () => {
     const script = all('BibleReader')[0].props.dom.injectedJavaScript as string;
-    expect(script).toContain('padding: 108px 16px 193px !important');
+    expect(script).toContain('padding: 132px 16px 209px !important');
+  });
+  it('never changes the reader page script across collapse and reveal, even while the system bars come back', () => {
+    // The DOM WebView reloads the whole page (back to the chapter top) whenever this script changes.
+    const script = () => all('BibleReader')[0].props.dom.injectedJavaScript as string;
+    const initial = script();
+    canvas('qingmu.reader.canvas.scroll', { direction: 'down', deltaY: 40 });
+    safeArea.value = { top: 24, right: 0, bottom: 0, left: 0 };
+    canvas('qingmu.reader.canvas.edge', { atEnd: false });
+    expect(script()).toBe(initial);
+    canvas('qingmu.reader.canvas.reveal', { reason: 'up' });
+    expect(toolbar()).toBeDefined();
+    expect(script()).toBe(initial);
+    safeArea.value = { top: 24, right: 0, bottom: 16, left: 0 };
+    canvas('qingmu.reader.canvas.edge', { atEnd: true });
+    expect(script()).toBe(initial);
+    expect(native.mounts).toBe(1);
   });
   it('routes official chapter selection to both scripture and audio through the same owner', async () => {
     press('更多閱讀工具'); press('選擇其他章節');

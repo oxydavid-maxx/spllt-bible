@@ -364,6 +364,24 @@ describe('fullscreen reader layout and chrome', () => {
     expect(button('播放詩篇 90')).toBeDefined();
   });
 
+  it('keeps ▶ and the canvas room when the tools come back a few frames before the system bars do', async () => {
+    native.safeInsets = { top: 30, bottom: 18, left: 0, right: 0 };
+    await mount();
+    const expected = { right: 8, bottom: 49 + 18 + 12 };
+    act(() => chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }));
+    native.safeInsets = { top: 30, bottom: 0, left: 0, right: 0 };
+    act(() => { renderer!.update(React.createElement(Harness)); });
+    // Revealing renders while the bars are still hidden; a smaller inset here would move ▶ and change
+    // the reader page script, and the WebView reloads the page (back to the chapter top) on that.
+    act(() => { chrome.revealTools('up'); });
+    expect(styleOf(actionRow())).toMatchObject(expected);
+    expect(chrome.settledInsets).toMatchObject({ top: 30, bottom: 18 });
+    native.safeInsets = { top: 30, bottom: 18, left: 0, right: 0 };
+    act(() => { renderer!.update(React.createElement(Harness)); });
+    expect(styleOf(actionRow())).toMatchObject(expected);
+    expect(chrome.settledInsets).toMatchObject({ top: 30, bottom: 18 });
+  });
+
   it('collapses tools on effective downward scroll and keeps the same audio owner mounted', async () => {
     await mount();
     const audio = all('ChapterAudioControls')[0];
