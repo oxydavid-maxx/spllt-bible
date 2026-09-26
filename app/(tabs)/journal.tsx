@@ -17,6 +17,7 @@ import { formatReadingDateFull, formatReadingDateLabel } from '../../src/ui/Read
 import { consumePendingJournalQuote, getReadingPlanId, useReadingSession } from '../../src/ui/readingSession';
 import { taipeiDate } from '../../src/domain/gamificationV1';
 import { useJournalEntry } from '../../src/ui/useJournalEntry';
+import { JournalSaveBar } from '../../src/ui/JournalSaveBar';
 import { useAndroidKeyboardVisible } from '../../src/ui/useAndroidKeyboardVisible';
 import { theme } from '../../src/ui/Theme';
 
@@ -193,6 +194,7 @@ export default function JournalScreen() {
           style={styles.editor}
           textAlignVertical="top"
         />
+        {memberId !== null ? <JournalSaveBar status={entry.saveStatus} savedAt={entry.savedAt} onSave={entry.saveNow} /> : null}
         {pendingQuote ? <Pressable accessibilityRole="button" accessibilityLabel="插入剛複製的經文" onPress={() => { entry.appendQuote(pendingQuote); consumePendingJournalQuote(); }} style={styles.quoteOffer}>
           <Text numberOfLines={2} style={styles.quoteOfferText}>{`插入剛複製的經文：${pendingQuote}`}</Text>
         </Pressable> : null}

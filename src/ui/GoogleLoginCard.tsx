@@ -8,7 +8,8 @@ import { beginAuthSessionAttempt, finishAuthSessionAttempt, configureAuthSession
 
 WebBrowser.maybeCompleteAuthSession();
 
-export function GoogleLoginCard({ baseUrl, onSignedIn }: { baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void }) {
+/** `welcome` is the sign-in screen's one large button; `card` is the framed card used everywhere else. */
+export function GoogleLoginCard({ baseUrl, onSignedIn, variant = 'card' }: { baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void; variant?: 'card' | 'welcome' }) {
   const clientId = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID)?.trim();
   const fixture = process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true';
   if (fixture) {
@@ -17,10 +18,10 @@ export function GoogleLoginCard({ baseUrl, onSignedIn }: { baseUrl: string; onSi
   if (!clientId) {
     return <View style={styles.card}><Text style={styles.title}>正式登入尚未連接</Text><Text style={styles.body}>正式Google登入完成後，才會切換到真實身份。</Text></View>;
   }
-  return <ConfiguredGoogleLogin clientId={clientId} baseUrl={baseUrl} onSignedIn={onSignedIn} />;
+  return <ConfiguredGoogleLogin clientId={clientId} baseUrl={baseUrl} onSignedIn={onSignedIn} variant={variant} />;
 }
 
-function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn }: { clientId: string; baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void }) {
+function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { clientId: string; baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void; variant: 'card' | 'welcome' }) {
   const [state, setState] = useState<'idle' | 'exchanging' | 'needs-invite' | 'claiming-invite' | 'signed-in' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
@@ -88,16 +89,30 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn }: { clientId: st
     } finally { finishAuthSessionAttempt(attempt); }
   }, [baseUrl, completeSession, googleIdToken, inviteCode]);
   const alert = state === 'error' || state === 'needs-invite';
+  const inviting = state === 'needs-invite' || state === 'claiming-invite';
+  const inviteForm = <>
+    <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="一次性啟用碼" autoCapitalize="none" autoCorrect={false} style={styles.input} accessibilityLabel="一次性啟用碼" />
+    <Pressable accessibilityRole="button" accessibilityLabel="送出啟用碼" disabled={state === 'claiming-invite' || !inviteCode.trim()} style={[styles.button, (state === 'claiming-invite' || !inviteCode.trim()) && styles.disabled]} onPress={() => { void claimInvite(); }}>
+      <Text style={styles.buttonText}>{state === 'claiming-invite' ? '確認中…' : '完成帳戶啟用'}</Text>
+    </Pressable>
+  </>;
+  if (variant === 'welcome') {
+    const message = state === 'exchanging' ? '正在登入…' : inviting ? errorMessage ?? '請輸入同工提供的一次性啟用碼。' : state === 'error' ? errorMessage ?? '登入失敗，請稍後重試。' : null;
+    return (
+      <View style={styles.welcome}>
+        {message ? <Text style={[styles.body, styles.welcomeMessage, alert && styles.bodyAlert]}>{message}</Text> : null}
+        {inviting ? inviteForm : <Pressable accessibilityRole="button" accessibilityLabel="使用Google登入" disabled={state === 'exchanging' || state === 'signed-in'} style={[styles.welcomeButton, (state === 'exchanging' || state === 'signed-in') && styles.disabled]} onPress={() => { void signIn(); }}>
+          <View style={styles.googleMark}><Text style={styles.googleMarkText}>G</Text></View>
+          <Text style={styles.welcomeButtonText}>用 Google 登入</Text>
+        </Pressable>}
+      </View>
+    );
+  }
   return (
     <View style={[styles.card, alert && styles.cardAlert]}>
       <Text style={styles.title}>Google身份</Text>
       <Text style={[styles.body, alert && styles.bodyAlert]}>{state === 'signed-in' ? '已登入，可以保存你的讀經進度。' : state === 'exchanging' ? '正在登入…' : state === 'needs-invite' || state === 'claiming-invite' ? errorMessage ?? '請輸入同工提供的一次性啟用碼。' : state === 'error' ? errorMessage ?? '登入失敗，請稍後重試。' : '登入後可以保存你的讀經進度。'}</Text>
-      {state === 'needs-invite' || state === 'claiming-invite' ? <>
-        <TextInput value={inviteCode} onChangeText={setInviteCode} placeholder="一次性啟用碼" autoCapitalize="none" autoCorrect={false} style={styles.input} accessibilityLabel="一次性啟用碼" />
-        <Pressable accessibilityRole="button" accessibilityLabel="送出啟用碼" disabled={state === 'claiming-invite' || !inviteCode.trim()} style={[styles.button, (state === 'claiming-invite' || !inviteCode.trim()) && styles.disabled]} onPress={() => { void claimInvite(); }}>
-          <Text style={styles.buttonText}>{state === 'claiming-invite' ? '確認中…' : '完成帳戶啟用'}</Text>
-        </Pressable>
-      </> : <Pressable accessibilityRole="button" accessibilityLabel="使用Google登入" disabled={state === 'exchanging' || state === 'signed-in'} style={[styles.button, (state === 'exchanging' || state === 'signed-in') && styles.disabled]} onPress={() => { void signIn(); }}>
+      {inviting ? inviteForm : <Pressable accessibilityRole="button" accessibilityLabel="使用Google登入" disabled={state === 'exchanging' || state === 'signed-in'} style={[styles.button, (state === 'exchanging' || state === 'signed-in') && styles.disabled]} onPress={() => { void signIn(); }}>
         <Text style={styles.buttonText}>{state === 'signed-in' ? '已登入' : '使用Google登入'}</Text>
       </Pressable>}
     </View>
@@ -116,4 +131,10 @@ const styles = StyleSheet.create({
   input: { minHeight: theme.control.tap, borderColor: theme.colors.borderStrong, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, color: theme.colors.ink, fontSize: theme.type.body.size, paddingHorizontal: theme.spacing.md },
   disabled: { backgroundColor: theme.colors.muted },
   buttonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '700' },
+  welcome: { gap: theme.spacing.sm },
+  welcomeMessage: { textAlign: 'center' },
+  welcomeButton: { minHeight: theme.control.cta, borderRadius: theme.radius.button, backgroundColor: theme.colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm },
+  googleMark: { width: 26, height: 26, borderRadius: 13, backgroundColor: theme.colors.white, alignItems: 'center', justifyContent: 'center' },
+  googleMarkText: { color: '#4285F4', fontSize: 15, fontWeight: '800' },
+  welcomeButtonText: { color: theme.colors.white, fontSize: 17, fontWeight: '800' },
 });

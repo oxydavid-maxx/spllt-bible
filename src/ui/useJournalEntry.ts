@@ -27,6 +27,12 @@ export interface JournalEntryView {
   syncStatus: JournalSyncStatus;
   /** Another device wrote this day. The local text is kept and nothing is overwritten silently. */
   conflict: boolean;
+  /** What the Save button and its label show: nothing written, typed but not saved, or saved. */
+  saveStatus: 'empty' | 'unsaved' | 'saved';
+  /** When the text on screen was last saved (ISO), for 「已儲存 08:58」. */
+  savedAt: string | null;
+  /** The Save button: persist now and report it, without waiting for the automatic save. */
+  saveNow: () => void;
   setBody: (next: string) => void;
   /** Append a verse the member copied out of the reader, on its own line. */
   appendQuote: (quote: string) => void;
@@ -135,12 +141,17 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
   const visible = record && memberId && record.memberId === memberId && record.taskDate === taskDate
     ? record
     : null;
+  const persistedBody = persistedDraftRef.current?.owner === owner ? persistedDraftRef.current.body : visible?.body ?? '';
+  const saveStatus = visible === null ? 'empty' : draft !== persistedBody ? 'unsaved' : draft.length > 0 ? 'saved' : 'empty';
 
   return {
     ready: visible !== null,
     body: draft,
     syncStatus: visible?.syncStatus ?? 'CONFIRMED',
     conflict: visible?.syncStatus === 'SAVE_FAILED',
+    saveStatus,
+    savedAt: saveStatus === 'saved' && visible?.updatedAt ? visible.updatedAt : null,
+    saveNow: flushNow,
     setBody,
     appendQuote,
     flushNow,

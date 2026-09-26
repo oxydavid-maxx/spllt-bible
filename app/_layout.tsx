@@ -1,8 +1,8 @@
-import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { AuthProvider, type AuthSession, type VerifiedProfile } from '../src/services/authSession';
+import { AuthProvider, useAuthSnapshot, type AuthSession, type VerifiedProfile } from '../src/services/authSession';
+import { AppStack, canUseApp } from '../src/ui/AppStack';
 import { revokeConfiguredReminderDeviceBinding, revokeConfiguredReminderDeviceBindingResult } from '../src/services/configuredReminderHeadless';
 import { runtimeConfig } from '../src/config/runtime';
 import { createApiClient } from '../src/services/apiClient';
@@ -16,6 +16,7 @@ import { createReminderDeviceRevokeQueue } from '../src/services/reminderDeviceR
 import { getReadingPlanId } from '../src/ui/readingSession';
 
 export default function RootLayout() {
+  const signedIn = canUseApp(useAuthSnapshot().status);
   const [reminderScheduler] = useState(() => createReminderScheduler());
   useEffect(() => { void reminderScheduler.cancelRetiredMeetingReminders().catch(() => undefined); }, [reminderScheduler]);
   const [reminderRevokeQueue] = useState(() => createReminderDeviceRevokeQueue({ secureStore: SecureStore, revoke: revokeConfiguredReminderDeviceBindingResult }));
@@ -43,5 +44,5 @@ export default function RootLayout() {
   }, []);
   configureReminderRuntime(reminderRuntime);
   // The SDK's footnote/verse/settings sheets are @gorhom/bottom-sheet; without a gesture root their backdrop tap and swipe-down never fire.
-  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><Stack screenOptions={{ headerShown: false }} /></AuthProvider></GestureHandlerRootView>;
+  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} /></AuthProvider></GestureHandlerRootView>;
 }

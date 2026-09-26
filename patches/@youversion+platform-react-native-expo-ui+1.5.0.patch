@@ -1,8 +1,8 @@
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/README.md b/node_modules/@youversion/platform-react-native-expo-ui/README.md
-index 333d445..c476f4b 100644
+index 333d445..49165d9 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/README.md
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/README.md
-@@ -58,3 +58,42 @@ The UI `YouVersionProvider` forwards the same optional version filter lists as c
+@@ -58,3 +58,52 @@ The UI `YouVersionProvider` forwards the same optional version filter lists as c
  This SDK is licensed under [Apache 2.0](./LICENSE).
  
  Licensing information for the Bible versions is available at the [YouVersion Platform](https://platform.youversion.com/) site.
@@ -30,6 +30,16 @@ index 333d445..c476f4b 100644
 +This API does not itself provide account isolation. The host application owns
 +per-member SecureStore values and its applying guard during account restoration.
 +
++### Reader recovery extension (Qingmu, 2026-09-26)
++
++`BibleReader` accepts `retrySignal?: number`. Changing it retries the chapter and the book list
++when either is in error; the host bumps it when the reader comes back into view (a sign-in on
++another tab once left the chapter on "cannot reach the Bible server" until the member switched
++chapters). A failed chapter shows a Chinese card with a 重新載入 button that calls the same retry,
++and the pinned `@youversion/platform-react-hooks` retries a failed read twice before surfacing it.
++The compact header now hides the SDK heading outright, so a missing book list never leaves a
++spinner in its place. See sdkReaderRecovery.test.ts.
++
 +### Maintenance and original-file hash guard
 +
 +Only apply to package version 1.5.0 with these exact original SHA-256 values.
@@ -46,18 +56,33 @@ index 333d445..c476f4b 100644
 +Project patch: patches/@youversion+platform-react-native-expo-ui+1.5.0.patch
 +Project receipt: docs/receipts/sdk-reader-settings-extension-20260912.json
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js b/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js
-index 10cc5be..313843b 100644
+index 10cc5be..59a06cf 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js
-@@ -68,7 +68,7 @@ export default function BibleReaderDOM(props) {
+@@ -8,7 +8,7 @@ import { decodeFontFamilyFromDom } from '../lib/reader-fonts';
+ import { YouVersionProvider } from '../lib/web-yv-provider';
+ const sanitizeCssValue = (value) => value?.replace(/[{};]/g, '').trim();
+ export default function BibleReaderDOM(props) {
+-    const { appKey, apiHost, installationId, fetchBibleContent, highlights, verseActions, onVerseSelect, clearSelectionSignal, theme = 'light', book, chapter, versionId, onBookChange, onChapterChange, onVersionChange, onChapterPickerPress, onVersionPickerPress, onSignInPress, onSignOutPress, userInfo, onFootnotePress, showToolbar = true, onOpenBibleThemeSettings, onExternalLinkPress, fontSize, fontFamily, lineSpacing, onFontSizeChange, onFontFamilyChange, onLineSpacingChange, backgroundColor, foregroundColor, bottomScrollPadding = 0, permittedVersionIds, excludedVersionIds, permittedLanguageTags, locale, } = props;
++    const { appKey, apiHost, installationId, fetchBibleContent, highlights, verseActions, onVerseSelect, clearSelectionSignal, retrySignal, theme = 'light', book, chapter, versionId, onBookChange, onChapterChange, onVersionChange, onChapterPickerPress, onVersionPickerPress, onSignInPress, onSignOutPress, userInfo, onFootnotePress, showToolbar = true, onOpenBibleThemeSettings, onExternalLinkPress, fontSize, fontFamily, lineSpacing, onFontSizeChange, onFontFamilyChange, onLineSpacingChange, backgroundColor, foregroundColor, bottomScrollPadding = 0, permittedVersionIds, excludedVersionIds, permittedLanguageTags, locale, } = props;
+     applySDKConfig({ appKey, apiHost, installationId });
+     registerBibleContentAction({ apiHost, fetchBibleContent });
+     // Once per mount, not per render: there is no token to keep in sync any more,
+@@ -68,12 +68,12 @@ export default function BibleReaderDOM(props) {
      // fontSize/fontFamily use controlled props (not CSS overrides like bg/fg)
      // because the in-WebView toolbar also mutates them — controlled props keep
      // MMKV and the Web SDK's internal state in sync bidirectionally.
 -    const providerContent = (_jsxs(_Fragment, { children: [_jsx("style", { href: "yv-bible-reader-host-height", precedence: "medium", children: `html, body, #root { height: 100%; }` }), _jsx("style", { href: "yv-bible-reader-overrides", precedence: "medium", children: `[data-slot="yv-bible-renderer"] {
-+    const providerContent = (_jsxs(_Fragment, { children: [_jsx("style", { href: "yv-bible-reader-host-height", precedence: "medium", children: `html, body, #root { height: 100%; }` }), _jsx("style", { href: "qingmu-reader-compact-header", precedence: "medium", children: `[data-yv-sdk] > main { padding-top: 16px !important; gap: 16px !important; } [data-yv-sdk] > main > h1:not(:has(svg)) { display: none !important; }` }), _jsx("style", { href: "qingmu-verse-highlight-padding", precedence: "medium", children: ":is([data-slot=yv-bible-renderer],[data-yv-sdk-bible-reader]) .yv-v { padding-inline: 0 !important; }" }), _jsx("style", { href: "yv-bible-reader-overrides", precedence: "medium", children: `[data-slot="yv-bible-renderer"] {
++    const providerContent = (_jsxs(_Fragment, { children: [_jsx("style", { href: "yv-bible-reader-host-height", precedence: "medium", children: `html, body, #root { height: 100%; }` }), _jsx("style", { href: "qingmu-reader-compact-header", precedence: "medium", children: `[data-yv-sdk] > main { padding-top: 16px !important; gap: 16px !important; } [data-yv-sdk] > main > h1 { display: none !important; }` }), _jsx("style", { href: "qingmu-verse-highlight-padding", precedence: "medium", children: ":is([data-slot=yv-bible-renderer],[data-yv-sdk-bible-reader]) .yv-v { padding-inline: 0 !important; }" }), _jsx("style", { href: "yv-bible-reader-overrides", precedence: "medium", children: `[data-slot="yv-bible-renderer"] {
            ${backgroundColor ? `--yv-reader-bg: ${sanitizeCssValue(backgroundColor)} !important;` : ''}
            ${foregroundColor ? `--yv-reader-fg: ${sanitizeCssValue(foregroundColor)} !important;` : ''}
          }` }), bottomScrollPadding > 0 && (_jsx("style", { href: "yv-bible-reader-scroll-padding", precedence: "medium", children: `[data-yv-sdk] > main {
+             padding-bottom: ${bottomScrollPadding}px !important;
+-          }` })), _jsx("div", { style: { position: 'relative', height: '100%', width: '100%' }, children: _jsxs(NativeActionBibleReaderRoot, { highlights: safeHighlights, verseActions: verseActions, onVerseSelect: handleVerseSelect, clearSelectionSignal: clearSelectionSignal, book: book, chapter: chapter, versionId: versionId, onBookChange: onBookChange
++          }` })), _jsx("div", { style: { position: 'relative', height: '100%', width: '100%' }, children: _jsxs(NativeActionBibleReaderRoot, { highlights: safeHighlights, verseActions: verseActions, onVerseSelect: handleVerseSelect, clearSelectionSignal: clearSelectionSignal, retrySignal: retrySignal, book: book, chapter: chapter, versionId: versionId, onBookChange: onBookChange
+                         ? (nextBook) => {
+                             void onBookChange(nextBook);
+                         }
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
 index c48ec7c..d28e766 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
@@ -112,7 +137,7 @@ index 4d1e6a4..a20ded1 100644
      });
  }
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts
-index 103616e..7baf326 100644
+index 103616e..1a61638 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts
 @@ -1,3 +1,4 @@
@@ -120,7 +145,7 @@ index 103616e..7baf326 100644
  import type { BibleReaderShareData, BibleVersionPickerPressData, FootnoteData } from '@youversion/platform-react-ui';
  import type { Ref } from 'react';
  import { type ReactNode } from 'react';
-@@ -51,11 +52,19 @@ export type BibleReaderProps = Omit<DomBibleReaderProps, 'appKey' | 'highlights'
+@@ -51,11 +52,21 @@ export type BibleReaderProps = Omit<DomBibleReaderProps, 'appKey' | 'highlights'
       * screen; render an offline or pending hint rather than an error toast.
       */
      onHighlightError?: (error: HighlightWriteError) => void;
@@ -130,6 +155,8 @@ index 103616e..7baf326 100644
 +     * Never scrolls the reader.
 +     */
 +    playingVerse?: number | null;
++    /** Qingmu extension: change this number to retry a chapter that failed to load. */
++    retrySignal?: number;
      /**
       * Imperative handle — see {@link BibleReaderHandle}. React 19 passes `ref`
       * as an ordinary prop, so there is no `forwardRef` here.
@@ -139,14 +166,14 @@ index 103616e..7baf326 100644
 -export declare function BibleReader({ theme, book: controlledBook, defaultBook, onBookChange, chapter: controlledChapter, defaultChapter, onChapterChange, versionId: controlledVersionId, defaultVersionId, onVersionChange, showToolbar, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, clearSelectionSignal, onCopy: consumerOnCopy, onShare: consumerOnShare, onHighlightError, backgroundColor, foregroundColor, dom, ref, }: BibleReaderProps): ReactNode;
 +export declare const PLAYING_VERSE_HIGHLIGHT_COLOR: string;
 +export declare function mergePlayingVerseHighlight(highlights: Highlight[], scope: { versionId: number | undefined; book: string | undefined; chapter: string | undefined; playingVerse: number | null | undefined }): Highlight[];
-+export declare function BibleReader({ theme, book: controlledBook, defaultBook, onBookChange, chapter: controlledChapter, defaultChapter, onChapterChange, versionId: controlledVersionId, defaultVersionId, onVersionChange, showToolbar, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, playingVerse, clearSelectionSignal, onCopy: consumerOnCopy, onShare: consumerOnShare, onHighlightError, backgroundColor, foregroundColor, dom, ref, }: BibleReaderProps): ReactNode;
++export declare function BibleReader({ theme, book: controlledBook, defaultBook, onBookChange, chapter: controlledChapter, defaultChapter, onChapterChange, versionId: controlledVersionId, defaultVersionId, onVersionChange, showToolbar, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, playingVerse, retrySignal, clearSelectionSignal, onCopy: consumerOnCopy, onShare: consumerOnShare, onHighlightError, backgroundColor, foregroundColor, dom, ref, }: BibleReaderProps): ReactNode;
  //# sourceMappingURL=bible-reader.d.ts.map
 \ No newline at end of file
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js
-index e6974a0..dceb530 100644
+index e6974a0..6694bc3 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js
-@@ -54,7 +54,22 @@ const NO_PROMPT = { kind: 'none' };
+@@ -54,7 +54,24 @@ const NO_PROMPT = { kind: 'none' };
  function sameScope(a, b) {
      return a.versionId === b.versionId && a.book === b.book && a.chapter === b.chapter;
  }
@@ -166,15 +193,17 @@ index e6974a0..dceb530 100644
  export function BibleReader({ theme, book: controlledBook, defaultBook = DEFAULT_BOOK, onBookChange, chapter: controlledChapter, defaultChapter = DEFAULT_CHAPTER, onChapterChange, versionId: controlledVersionId, defaultVersionId = DEFAULT_BIBLE_VERSION_ID, onVersionChange, showToolbar = true, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, 
 +// Qingmu extension: transient reading highlight (see README).
 +playingVerse = null, 
++// Qingmu extension: bump to retry a chapter that failed to load (see README).
++retrySignal = 0, 
  // Defaulted to `0` so a number always crosses the bridge from first mount.
  // The Web SDK treats the value it sees at mount as a baseline and clears the
  // selection on every change after that. Leaving this `undefined` means a
-@@ -379,7 +394,7 @@ clearSelectionSignal = 0, onCopy: consumerOnCopy, onShare: consumerOnShare, onHi
+@@ -379,7 +396,7 @@ clearSelectionSignal = 0, onCopy: consumerOnCopy, onShare: consumerOnShare, onHi
          ...dom,
          style: StyleSheet.flatten([dom?.style, { flex: 1 }]),
      }), [dom]);
 -    return (_jsxs(_Fragment, { children: [_jsx(View, { style: { flex: 1 }, children: _jsx(BibleReaderDOM, { ...authProps, appKey: context.appKey, apiHost: context.apiHost, installationId: context.installationId, fetchBibleContent: context.fetchBibleContent, permittedVersionIds: context.permittedVersionIds, excludedVersionIds: context.excludedVersionIds, permittedLanguageTags: context.permittedLanguageTags, locale: lng, highlights: highlights, verseActions: VERSE_ACTIONS, onVerseSelect: handleVerseSelect, clearSelectionSignal: clearSelectionSignal + internalClearCount, onSignInPress: signIn, onSignOutPress: guardedSignOut, userInfo: userInfo, theme: resolvedTheme, book: book, chapter: chapter, versionId: versionId, fontSize: fontSize, fontFamily: encodeFontFamilyForDom(fontFamily), lineSpacing: lineSpacing, onFontSizeChange: setFontSize, onFontFamilyChange: setFontFamily, onLineSpacingChange: setLineSpacing, onOpenBibleThemeSettings: Platform.OS !== 'web' ? handleOpenBibleThemeSettings : undefined, onBookChange: handleBookChange, onChapterChange: handleChapterChange, onVersionChange: handleVersionChange, showToolbar: showToolbar, onChapterPickerPress: handleChapterPickerPress, onVersionPickerPress: handleVersionPickerPress, onFootnotePress: onFootnotePress, onExternalLinkPress: Platform.OS !== 'web' ? onExternalLinkPress : undefined, backgroundColor: backgroundColor, foregroundColor: foregroundColor, bottomScrollPadding: bottomScrollPadding, dom: readerDom }) }), Platform.OS !== 'web' && (_jsx(BibleReaderSettingsSheet, { isSettingsSheetOpen: isSettingsSheetOpen, onClose: () => setIsSettingsSheetOpen(false) })), Platform.OS !== 'web' && (_jsx(BibleVerseActionSheet
-+    return (_jsxs(_Fragment, { children: [_jsx(View, { style: { flex: 1 }, children: _jsx(BibleReaderDOM, { ...authProps, appKey: context.appKey, apiHost: context.apiHost, installationId: context.installationId, fetchBibleContent: context.fetchBibleContent, permittedVersionIds: context.permittedVersionIds, excludedVersionIds: context.excludedVersionIds, permittedLanguageTags: context.permittedLanguageTags, locale: lng, highlights: mergePlayingVerseHighlight(highlights, { versionId, book, chapter, playingVerse }), verseActions: VERSE_ACTIONS, onVerseSelect: handleVerseSelect, clearSelectionSignal: clearSelectionSignal + internalClearCount, onSignInPress: signIn, onSignOutPress: guardedSignOut, userInfo: userInfo, theme: resolvedTheme, book: book, chapter: chapter, versionId: versionId, fontSize: fontSize, fontFamily: encodeFontFamilyForDom(fontFamily), lineSpacing: lineSpacing, onFontSizeChange: setFontSize, onFontFamilyChange: setFontFamily, onLineSpacingChange: setLineSpacing, onOpenBibleThemeSettings: Platform.OS !== 'web' ? handleOpenBibleThemeSettings : undefined, onBookChange: handleBookChange, onChapterChange: handleChapterChange, onVersionChange: handleVersionChange, showToolbar: showToolbar, onChapterPickerPress: handleChapterPickerPress, onVersionPickerPress: handleVersionPickerPress, onFootnotePress: onFootnotePress, onExternalLinkPress: Platform.OS !== 'web' ? onExternalLinkPress : undefined, backgroundColor: backgroundColor, foregroundColor: foregroundColor, bottomScrollPadding: bottomScrollPadding, dom: readerDom }) }), Platform.OS !== 'web' && (_jsx(BibleReaderSettingsSheet, { isSettingsSheetOpen: isSettingsSheetOpen, onClose: () => setIsSettingsSheetOpen(false) })), Platform.OS !== 'web' && (_jsx(BibleVerseActionSheet
++    return (_jsxs(_Fragment, { children: [_jsx(View, { style: { flex: 1 }, children: _jsx(BibleReaderDOM, { ...authProps, appKey: context.appKey, apiHost: context.apiHost, installationId: context.installationId, fetchBibleContent: context.fetchBibleContent, permittedVersionIds: context.permittedVersionIds, excludedVersionIds: context.excludedVersionIds, permittedLanguageTags: context.permittedLanguageTags, locale: lng, highlights: mergePlayingVerseHighlight(highlights, { versionId, book, chapter, playingVerse }), verseActions: VERSE_ACTIONS, onVerseSelect: handleVerseSelect, clearSelectionSignal: clearSelectionSignal + internalClearCount, retrySignal: retrySignal, onSignInPress: signIn, onSignOutPress: guardedSignOut, userInfo: userInfo, theme: resolvedTheme, book: book, chapter: chapter, versionId: versionId, fontSize: fontSize, fontFamily: encodeFontFamilyForDom(fontFamily), lineSpacing: lineSpacing, onFontSizeChange: setFontSize, onFontFamilyChange: setFontFamily, onLineSpacingChange: setLineSpacing, onOpenBibleThemeSettings: Platform.OS !== 'web' ? handleOpenBibleThemeSettings : undefined, onBookChange: handleBookChange, onChapterChange: handleChapterChange, onVersionChange: handleVersionChange, showToolbar: showToolbar, onChapterPickerPress: handleChapterPickerPress, onVersionPickerPress: handleVersionPickerPress, onFootnotePress: onFootnotePress, onExternalLinkPress: Platform.OS !== 'web' ? onExternalLinkPress : undefined, backgroundColor: backgroundColor, foregroundColor: foregroundColor, bottomScrollPadding: bottomScrollPadding, dom: readerDom }) }), Platform.OS !== 'web' && (_jsx(BibleReaderSettingsSheet, { isSettingsSheetOpen: isSettingsSheetOpen, onClose: () => setIsSettingsSheetOpen(false) })), Platform.OS !== 'web' && (_jsx(BibleVerseActionSheet
              // Yielded, not displaced. A prompt that takes over the sheet host
              // would fire this sheet's `onClose`, which clears the selection the
              // prompt's own answer still needs.

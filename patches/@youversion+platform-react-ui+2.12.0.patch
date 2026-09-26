@@ -1,5 +1,5 @@
 diff --git a/node_modules/@youversion/platform-react-ui/dist/index.cjs b/node_modules/@youversion/platform-react-ui/dist/index.cjs
-index b5984e9..338d772 100644
+index b5984e9..c0a91fc 100644
 --- a/node_modules/@youversion/platform-react-ui/dist/index.cjs
 +++ b/node_modules/@youversion/platform-react-ui/dist/index.cjs
 @@ -1594,9 +1594,41 @@ function sanitizeBibleHtmlDocument(doc) {
@@ -61,8 +61,122 @@ index b5984e9..338d772 100644
      handleParagraphWrapping(doc2, currentParagraph, nextParagraph, verseNum);
    }
    function wrapNodesInVerse(marker, verseNum, nodes) {
+@@ -19573,6 +19605,23 @@ var VerseFootnoteButton = (0, import_react7.memo)(function VerseFootnoteButton2(
+     )
+   ] });
+ });
++// Qingmu extension: a chapter that failed to load offers one obvious way back.
++function QingmuPassageErrorCard({ onRetry }) {
++  return /* @__PURE__ */ (0, import_jsx_runtime29.jsxs)(
++    "div",
++    {
++      role: "alert",
++      "aria-live": "polite",
++      "data-qingmu-passage-error": true,
++      style: { margin: "8px 0", padding: "14px 12px", borderRadius: 12, border: "1px solid #C6D5C9", background: "#F4F7F2", textAlign: "center" },
++      children: [
++        /* @__PURE__ */ (0, import_jsx_runtime29.jsx)("p", { style: { margin: "0 0 4px", fontSize: 15, lineHeight: 1.5, color: "#15302A" }, children: "這一章暫時載不下來" }),
++        /* @__PURE__ */ (0, import_jsx_runtime29.jsx)("p", { style: { margin: "0 0 12px", fontSize: 13, lineHeight: 1.5, color: "#4C5F57" }, children: "可能是網路不穩，按一下再試" }),
++        /* @__PURE__ */ (0, import_jsx_runtime29.jsx)("button", { type: "button", onClick: onRetry, style: { minHeight: 44, padding: "0 22px", border: 0, borderRadius: 10, background: "#1A5544", color: "#FFFFFF", fontSize: 15, fontWeight: 700 }, children: "重新載入" })
++      ]
++    }
++  );
++}
+ function VerseUnavailableMessage({ message }) {
+   return /* @__PURE__ */ (0, import_jsx_runtime29.jsxs)(
+     "div",
+@@ -19849,7 +19898,7 @@ var BibleTextView = (0, import_react7.forwardRef)(
+       );
+     }
+     if (currentError) {
+-      return /* @__PURE__ */ (0, import_jsx_runtime29.jsx)("div", { ref, "data-yv-sdk": true, "data-yv-theme": currentTheme, children: /* @__PURE__ */ (0, import_jsx_runtime29.jsx)(VerseUnavailableMessage, { message: getBibleTextErrorMessage(currentError, t) }) });
++      return /* @__PURE__ */ (0, import_jsx_runtime29.jsx)("div", { ref, "data-yv-sdk": true, "data-yv-theme": currentTheme, children: passageState?.onRetry ? /* @__PURE__ */ (0, import_jsx_runtime29.jsx)(QingmuPassageErrorCard, { onRetry: passageState.onRetry }) : /* @__PURE__ */ (0, import_jsx_runtime29.jsx)(VerseUnavailableMessage, { message: getBibleTextErrorMessage(currentError, t) }) });
+     }
+     return /* @__PURE__ */ (0, import_jsx_runtime29.jsx)(
+       "div",
+@@ -21309,6 +21358,7 @@ function Root8({
+   onHighlightRemove,
+   verseActions = "popover",
+   clearSelectionSignal,
++  retrySignal = 0,
+   children
+ }) {
+   const isHighlightsControlled = useHighlightsControlledLatch(highlights, "BibleReader.Root");
+@@ -21420,7 +21470,7 @@ function Root8({
+   }, [currentLineSpacing, isLineSpacingControlled]);
+   const providerTheme = (0, import_platform_react_hooks6.useTheme)();
+   const theme = background || providerTheme;
+-  const { books, loading: booksLoading } = (0, import_platform_react_hooks6.useBooks)(versionId);
++  const { books, loading: booksLoading, error: booksError, refetch: refetchBooks } = (0, import_platform_react_hooks6.useBooks)(versionId);
+   const booksData = books?.data ?? [];
+   const contextValue = {
+     book,
+@@ -21455,7 +21505,10 @@ function Root8({
+     onHighlightApply,
+     onHighlightRemove,
+     verseActions,
+-    clearSelectionSignal
++    clearSelectionSignal,
++    retrySignal,
++    booksError,
++    refetchBooks
+   };
+   return /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(BibleReaderContext.Provider, { value: contextValue, children: /* @__PURE__ */ (0, import_jsx_runtime35.jsx)(
+     "div",
+@@ -21488,7 +21541,10 @@ function Content8() {
+     onHighlightApply,
+     onHighlightRemove,
+     verseActions,
+-    clearSelectionSignal
++    clearSelectionSignal,
++    retrySignal,
++    booksError,
++    refetchBooks
+   } = useBibleReaderContext();
+   const { version: version2 } = (0, import_platform_react_hooks6.useVersion)(versionId);
+   const bookData = (0, import_react11.useMemo)(() => {
+@@ -21504,7 +21560,8 @@ function Content8() {
+   const {
+     passage,
+     loading: passageLoading,
+-    error: passageError
++    error: passageError,
++    refetch: refetchPassage
+   } = (0, import_platform_react_hooks6.usePassage)({
+     versionId,
+     usfm: usfmReference,
+@@ -21590,6 +21647,19 @@ function Content8() {
+     lastClearSelectionSignalRef.current = clearSelectionSignal;
+     closeAndClearSelectionRef.current();
+   }, [clearSelectionSignal]);
++  // Qingmu extension: retry the chapter, and the book list behind its title, on demand. The
++  // native reader bumps `retrySignal` when it comes back into view; the error card calls the same.
++  const qingmuRetryRef = (0, import_react11.useRef)(() => void 0);
++  qingmuRetryRef.current = () => {
++    refetchPassage?.();
++    if (booksError) refetchBooks?.();
++  };
++  const lastRetrySignalRef = (0, import_react11.useRef)(retrySignal);
++  (0, import_react11.useEffect)(() => {
++    if (lastRetrySignalRef.current === retrySignal) return;
++    lastRetrySignalRef.current = retrySignal;
++    if (passageError || booksError) qingmuRetryRef.current();
++  }, [retrySignal]);
+   function buildVerseSelection(verses) {
+     const sorted = [...new Set(verses)].sort((a, b) => a - b);
+     return {
+@@ -21771,7 +21841,8 @@ function Content8() {
+                   passageState: {
+                     passage,
+                     loading: isRefetching ? false : passageLoading,
+-                    error: passageError
++                    error: passageError,
++                    onRetry: () => qingmuRetryRef.current()
+                   }
+                 }
+               )
 diff --git a/node_modules/@youversion/platform-react-ui/dist/index.js b/node_modules/@youversion/platform-react-ui/dist/index.js
-index d7a4435..8dffa16 100644
+index d7a4435..7f3cb4f 100644
 --- a/node_modules/@youversion/platform-react-ui/dist/index.js
 +++ b/node_modules/@youversion/platform-react-ui/dist/index.js
 @@ -1506,9 +1506,41 @@ function sanitizeBibleHtmlDocument(doc) {
@@ -124,3 +238,117 @@ index d7a4435..8dffa16 100644
      handleParagraphWrapping(doc2, currentParagraph, nextParagraph, verseNum);
    }
    function wrapNodesInVerse(marker, verseNum, nodes) {
+@@ -19525,6 +19557,23 @@ var VerseFootnoteButton = memo(function VerseFootnoteButton2({
+     )
+   ] });
+ });
++// Qingmu extension: a chapter that failed to load offers one obvious way back.
++function QingmuPassageErrorCard({ onRetry }) {
++  return /* @__PURE__ */ jsxs9(
++    "div",
++    {
++      role: "alert",
++      "aria-live": "polite",
++      "data-qingmu-passage-error": true,
++      style: { margin: "8px 0", padding: "14px 12px", borderRadius: 12, border: "1px solid #C6D5C9", background: "#F4F7F2", textAlign: "center" },
++      children: [
++        /* @__PURE__ */ jsx29("p", { style: { margin: "0 0 4px", fontSize: 15, lineHeight: 1.5, color: "#15302A" }, children: "這一章暫時載不下來" }),
++        /* @__PURE__ */ jsx29("p", { style: { margin: "0 0 12px", fontSize: 13, lineHeight: 1.5, color: "#4C5F57" }, children: "可能是網路不穩，按一下再試" }),
++        /* @__PURE__ */ jsx29("button", { type: "button", onClick: onRetry, style: { minHeight: 44, padding: "0 22px", border: 0, borderRadius: 10, background: "#1A5544", color: "#FFFFFF", fontSize: 15, fontWeight: 700 }, children: "重新載入" })
++      ]
++    }
++  );
++}
+ function VerseUnavailableMessage({ message }) {
+   return /* @__PURE__ */ jsxs9(
+     "div",
+@@ -19801,7 +19850,7 @@ var BibleTextView = forwardRef2(
+       );
+     }
+     if (currentError) {
+-      return /* @__PURE__ */ jsx29("div", { ref, "data-yv-sdk": true, "data-yv-theme": currentTheme, children: /* @__PURE__ */ jsx29(VerseUnavailableMessage, { message: getBibleTextErrorMessage(currentError, t) }) });
++      return /* @__PURE__ */ jsx29("div", { ref, "data-yv-sdk": true, "data-yv-theme": currentTheme, children: passageState?.onRetry ? /* @__PURE__ */ jsx29(QingmuPassageErrorCard, { onRetry: passageState.onRetry }) : /* @__PURE__ */ jsx29(VerseUnavailableMessage, { message: getBibleTextErrorMessage(currentError, t) }) });
+     }
+     return /* @__PURE__ */ jsx29(
+       "div",
+@@ -21265,6 +21314,7 @@ function Root8({
+   onHighlightRemove,
+   verseActions = "popover",
+   clearSelectionSignal,
++  retrySignal = 0,
+   children
+ }) {
+   const isHighlightsControlled = useHighlightsControlledLatch(highlights, "BibleReader.Root");
+@@ -21376,7 +21426,7 @@ function Root8({
+   }, [currentLineSpacing, isLineSpacingControlled]);
+   const providerTheme = useTheme4();
+   const theme = background || providerTheme;
+-  const { books, loading: booksLoading } = useBooks2(versionId);
++  const { books, loading: booksLoading, error: booksError, refetch: refetchBooks } = useBooks2(versionId);
+   const booksData = books?.data ?? [];
+   const contextValue = {
+     book,
+@@ -21411,7 +21461,10 @@ function Root8({
+     onHighlightApply,
+     onHighlightRemove,
+     verseActions,
+-    clearSelectionSignal
++    clearSelectionSignal,
++    retrySignal,
++    booksError,
++    refetchBooks
+   };
+   return /* @__PURE__ */ jsx35(BibleReaderContext.Provider, { value: contextValue, children: /* @__PURE__ */ jsx35(
+     "div",
+@@ -21444,7 +21497,10 @@ function Content8() {
+     onHighlightApply,
+     onHighlightRemove,
+     verseActions,
+-    clearSelectionSignal
++    clearSelectionSignal,
++    retrySignal,
++    booksError,
++    refetchBooks
+   } = useBibleReaderContext();
+   const { version: version2 } = useVersion2(versionId);
+   const bookData = useMemo7(() => {
+@@ -21460,7 +21516,8 @@ function Content8() {
+   const {
+     passage,
+     loading: passageLoading,
+-    error: passageError
++    error: passageError,
++    refetch: refetchPassage
+   } = usePassage2({
+     versionId,
+     usfm: usfmReference,
+@@ -21546,6 +21603,19 @@ function Content8() {
+     lastClearSelectionSignalRef.current = clearSelectionSignal;
+     closeAndClearSelectionRef.current();
+   }, [clearSelectionSignal]);
++  // Qingmu extension: retry the chapter, and the book list behind its title, on demand. The
++  // native reader bumps `retrySignal` when it comes back into view; the error card calls the same.
++  const qingmuRetryRef = useRef8(() => void 0);
++  qingmuRetryRef.current = () => {
++    refetchPassage?.();
++    if (booksError) refetchBooks?.();
++  };
++  const lastRetrySignalRef = useRef8(retrySignal);
++  useEffect6(() => {
++    if (lastRetrySignalRef.current === retrySignal) return;
++    lastRetrySignalRef.current = retrySignal;
++    if (passageError || booksError) qingmuRetryRef.current();
++  }, [retrySignal]);
+   function buildVerseSelection(verses) {
+     const sorted = [...new Set(verses)].sort((a, b) => a - b);
+     return {
+@@ -21727,7 +21797,8 @@ function Content8() {
+                   passageState: {
+                     passage,
+                     loading: isRefetching ? false : passageLoading,
+-                    error: passageError
++                    error: passageError,
++                    onRetry: () => qingmuRetryRef.current()
+                   }
+                 }
+               )

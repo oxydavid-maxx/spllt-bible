@@ -28,11 +28,14 @@ import { runtimeConfig } from '../../src/config/runtime';
 import { useCompletionController } from '../../src/services/useCompletionController';
 import type { CompletionAwardEvent } from '../../src/services/completionController';
 import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
+import { useReaderRetrySignal } from '../../src/ui/readerRetrySignal';
 
 let handledTodayReaderTabPressRevision = 0;
 
 export default function ReaderScreen() {
   const chrome = useReaderChrome();
+  // A chapter that failed to load while this tab was out of sight retries when it comes back.
+  const retrySignal = useReaderRetrySignal(chrome.focused);
   const pathname = usePathname();
   // The Reader tab route remains mounted underneath Diary so the one native player and its queue
   // survive that tab transition. Other tabs still release the audio binding as before.
@@ -350,6 +353,7 @@ export default function ReaderScreen() {
       onCanvasEdge={chrome.handleCanvasEdge}
       onVerseSelectionChange={chrome.handleVerseSelection}
       clearVerseSelectionSignal={chrome.verseClearSignal}
+      retrySignal={retrySignal}
       canvasInsets={readerCanvasInsets(chrome.settledInsets)}
       // Held whether or not the journal is open: the panel covers the reader, so a verse is always
       // copied with it closed. The panel offers it on the next open rather than inserting it.
