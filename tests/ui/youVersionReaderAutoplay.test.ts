@@ -12,6 +12,9 @@ vi.mock('react-native', () => ({
   Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'),
 }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView') }));
+// The icon set's build does not parse in the node test environment (a RollupError that kept this
+// whole file from loading); the chapter audio controls only need something to render.
+vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('MaterialCommunityIcons') }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {} }));
 vi.mock('../../src/services/youVersionAdapter', () => ({ createYouVersionAdapter: () => ({ loadReaderUi: async () => ({
   status: 'READER_UI_READY', module: {
@@ -67,6 +70,19 @@ describe('YouVersionReader footnotes', () => {
     expect(text()).not.toContain('註腳');
     // The reader itself stays mounted through all of that.
     expect(reader()).toBeDefined();
+  });
+
+  // 2026-09-26, a phone with the three-button navigation bar: the sheet sat under the bar, so only
+  // the title showed and the note itself was hidden behind the buttons.
+  it('keeps the notes above the system navigation bar', async () => {
+    await mount();
+    const reader = renderer!.root.findAll((node) => String(node.type) === 'Reader')[0];
+    await act(async () => reader.props.onFootnotePress({ verseNum: '7', notes: ['#或譯：可以憑着盼望承受永生'], verseHtml: '', reference: '提多書 3' }));
+    const safe = renderer!.root.findAll((node) => String(node.type) === 'SafeAreaView' && (node.props.edges ?? []).includes('bottom'));
+    expect(safe).toHaveLength(1);
+    const inside = safe[0].findAll((node) => String(node.type) === 'Text').map((node) => String(node.props.children)).join('\n');
+    expect(inside).toContain('提多書 3 第 7 節 註腳');
+    expect(inside).toContain('a. #或譯：可以憑着盼望承受永生');
   });
 });
 

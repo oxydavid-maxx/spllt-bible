@@ -219,6 +219,37 @@ describe('the weekly review verdict', () => {
   });
 });
 
+describe('sermon decks named only with the date (光佑 2026-09-26: 9/6 and 9/13 have one, so they must be linked)', () => {
+  const PRESENTATION = 'application/vnd.google-apps.presentation';
+  const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
+  it('takes the week-dated deck beside the (全) deck as the sermon deck, and leaves an undated one alone', () => {
+    const sep13 = readWeekFiles([
+      { id: '1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE', name: '20260913青崇(全)PPT', mimeType: PRESENTATION },
+      { id: '1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD', name: '913健身是什麼？.pptx', mimeType: PPTX },
+      { id: '150KiXW32avJZFS-hUbXHiTDWYbOlNb7q', name: '岩手短宣.pptx', mimeType: PPTX },
+    ], '2026-09-13');
+    expect(sep13.slides).toBe('https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview');
+    expect(sep13.sermonSlides).toBe('https://drive.google.com/file/d/1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD/view');
+
+    const sep06 = readWeekFiles([
+      { id: '1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ', name: '20260906青崇(全)PPT', mimeType: PRESENTATION },
+      { id: '1dAdamEveDeck000000000000000000', name: '260906 亞當與夏娃.pptx', mimeType: PPTX },
+    ], '2026-09-06');
+    expect(sep06.sermonSlides).toBe('https://drive.google.com/file/d/1dAdamEveDeck000000000000000000/view');
+    expect(sep06.slides).toContain('1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ');
+  });
+
+  it('keeps the (全) deck as the 報告 deck whatever order the folder lists it in', () => {
+    const files = readWeekFiles([
+      { id: '1dAdamEveDeck000000000000000000', name: '260906 亞當與夏娃.pptx', mimeType: PPTX },
+      { id: '1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ', name: '20260906青崇(全)PPT', mimeType: PRESENTATION },
+    ], '2026-09-06');
+    expect(files.slides).toContain('1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ');
+    expect(files.sermonSlides).toContain('1dAdamEveDeck000000000000000000');
+  });
+});
+
 describe('both decks of a week, and links people can actually open', () => {
   it('links the sermon deck as 講道 and the whole-service deck as 報告', () => {
     const presentations = new Set(['1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc', '1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY']);

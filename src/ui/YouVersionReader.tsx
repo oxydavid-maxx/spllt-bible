@@ -336,9 +336,13 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
 
   const footnotePanel = footnote ? <Modal transparent animationType="fade" visible onRequestClose={closeFootnote}>
     <Pressable accessibilityRole="button" accessibilityLabel="關閉註腳" onPress={closeFootnote} style={styles.footnoteScrim}>
-      <Pressable onPress={() => undefined} style={styles.footnoteSheet} accessibilityViewIsModal>
+      <Pressable onPress={() => undefined} style={styles.footnoteHost} accessibilityViewIsModal>
+        {/* The bottom edge keeps the notes above a three-button navigation bar, which otherwise
+            covered everything under the title (2026-09-26). */}
+        <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.footnoteSheet}>
         <View style={styles.footnoteHeader}><Text accessibilityRole="header" style={styles.footnoteTitle}>{`${footnote.reference ?? formatReferenceZhTw(references[activeReferenceIndex] ?? '')} 第 ${footnote.verseNum} 節 註腳`}</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={closeFootnote} hitSlop={8} style={styles.footnoteClose}><Text style={styles.footnoteCloseText}>關閉</Text></Pressable></View>
         <ScrollView contentContainerStyle={styles.footnoteBody}>{footnote.notes.map((note, index) => <Text key={index} style={styles.footnoteNote}>{`${String.fromCharCode(97 + index)}. ${stripHtml(note)}`}</Text>)}</ScrollView>
+        </SafeAreaView>
       </Pressable>
     </Pressable>
   </Modal> : null;
@@ -393,7 +397,8 @@ export function stripHtml(value: string): string {
 
 const styles = StyleSheet.create({
   footnoteScrim: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
-  footnoteSheet: { maxHeight: '60%', backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, paddingBottom: theme.spacing.lg },
+  footnoteHost: { maxHeight: '60%' },
+  footnoteSheet: { backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, paddingBottom: theme.spacing.lg },
   footnoteHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md },
   footnoteTitle: { flex: 1, color: theme.colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
   footnoteClose: { minHeight: theme.control.tap, minWidth: theme.control.tap, alignItems: 'center', justifyContent: 'center' },
