@@ -221,7 +221,7 @@ function personalEarnedPoints(db: DatabaseSync, memberId: string, policy: PointP
 }
 
 function handleProgress(db: DatabaseSync, viewerId: string, date: string, policy: PointPolicy, weeklyDates?: string[], scheduleDates?: string[], periodStart?: string, periodEnd?: string): ApiResponse {
-  if (!/^2026-09-\d{2}$/.test(date)) return json(400, { error: 'INVALID_DATE' });
+  if (!isValidDateOnly(date)) return json(400, { error: 'INVALID_DATE' });
   const viewer = db.prepare('SELECT id, display_name FROM members WHERE id = ?').get(viewerId) as { id: string; display_name: string } | undefined;
   if (!viewer) return json(403, { error: 'UNKNOWN_MEMBER' });
   // Keep this legacy response shape for older clients, but scope every

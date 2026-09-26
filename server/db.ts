@@ -3,7 +3,7 @@ import { ensureMobileSessionSchema } from './mobileSessions';
 import { ensureMeetingSchema } from './meetingSchedules';
 import { LOCAL_SCHEMA } from '../src/storage/schema';
 import { buildCompletionOperationFingerprint } from './operationFingerprint';
-import { defaultReadingDays, ensureGamificationSchema, seedReadingDays, type ReadingDaySeed } from './gamification';
+import { addMissingReadingDays, defaultReadingDays, ensureGamificationSchema, seedReadingDays, type ReadingDaySeed } from './gamification';
 import { ensureJournalSchema } from './journal';
 
 export interface ServerMember {
@@ -204,6 +204,7 @@ export function createDatabase(options: { filename?: string; members?: ServerMem
   ensureJournalSchema(db);
   const readingDayCount = Number((db.prepare('SELECT COUNT(*) AS count FROM reading_days').get() as { count: number }).count);
   if (readingDayCount === 0) seedReadingDays(db, options.readingDays ?? defaultReadingDays());
+  else if (!options.readingDays) addMissingReadingDays(db, defaultReadingDays());
   const insert = db.prepare(
     'INSERT OR REPLACE INTO members (id, display_name, group_id) VALUES (?, ?, ?)',
   );

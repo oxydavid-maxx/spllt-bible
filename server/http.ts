@@ -5,7 +5,7 @@ import { createApiHandler } from './routes';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { verifyGoogleIdToken, verifyGoogleIdTokenAnyAudience } from './googleVerifier';
-import { canonicalSeptemberPlan } from '../src/domain/calendar';
+import { canonicalReadingPlan } from '../src/domain/calendar';
 import { seedMemberInvite, type MemberInviteSeed } from './membership';
 import type { PointPolicy } from '../src/domain/points';
 import { seedMemberGroupProfile, type MemberGroupProfileSeed } from './groups';
@@ -110,7 +110,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     db: database,
     instanceId: process.env.QINGMU_INSTANCE_ID?.trim() || 'unconfigured',
     authMode: googleAudience ? 'google-only' : 'fixture',
-    scheduleDates: canonicalSeptemberPlan.dates,
+    scheduleDates: canonicalReadingPlan.dates,
     pointPolicy,
     autoProvisionGoogleMembers: Boolean(googleAudience && !options.fixtureToken),
     disableMeetingReminders,

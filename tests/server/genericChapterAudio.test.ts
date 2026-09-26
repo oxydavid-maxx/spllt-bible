@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDatabase } from '../../server/db';
-import { seedReadingDays } from '../../server/gamification';
 import { createApiHandler } from '../../server/routes';
 import { validateCapability } from '../../src/domain/chapterAudioContract';
 
@@ -44,12 +43,12 @@ describe('chapter audio prewarm', () => {
     vi.useFakeTimers();
     // 2026-10-19 23:50 Taipei is 15:50 UTC. Ten minutes from the date rolling over.
     vi.setSystemTime(new Date('2026-10-19T15:50:00Z'));
-    const scheduled = createDatabase({ filename: ':memory:', members: [{ id: 'test:a', displayName: 'A', groupId: 'G' }] });
-    seedReadingDays(scheduled.db, [
+    // Only this synthetic schedule: the real plan also has these dates now.
+    const scheduled = createDatabase({ filename: ':memory:', members: [{ id: 'test:a', displayName: 'A', groupId: 'G' }], readingDays: [
       { taskDate: '2026-10-19', planId: 'p', references: ['PSA.103'] },
       { taskDate: '2026-10-20', planId: 'p', references: ['PSA.104'] },
       { taskDate: '2026-10-21', planId: 'p', references: ['PSA.105'] },
-    ]);
+    ] });
     createApiHandler({ db: scheduled, fixtureToken: 'synthetic-fixture', prewarmChapterAudio: true, prewarmVersionIds: [46], now: () => new Date() });
 
     await vi.advanceTimersByTimeAsync(5_000); // the start-up warm

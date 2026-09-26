@@ -1,0 +1,2567 @@
+{
+ "source": {
+  "file": "2026讀經計劃_Vr.xlsx",
+  "sheet": "讀經規劃-by月",
+  "sha256": "40c1d06d1b7851f1258c12bcbaa55142f07a5a3daf74a4770fa90f376536d105",
+  "provided_by": "光佑",
+  "provided_on": "2026-09-26"
+ },
+ "note": "One entry per calendar date, copied cell by cell. The sheet stores most dates with the year 2025 (January as text such as 1/4), but every date sits in the weekday column it has in 2026, so month and day are read as 2026. review=溫故, fresh=知新, psalm=the unlabeled row below 知新.",
+ "days": [
+  {
+   "date": "2026-01-01",
+   "weekday": "Thu",
+   "review": "",
+   "fresh": "太01章",
+   "psalm": "詩1-2"
+  },
+  {
+   "date": "2026-01-02",
+   "weekday": "Fri",
+   "review": "太01章",
+   "fresh": "太02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-03",
+   "weekday": "Sat",
+   "review": "太02章",
+   "fresh": "太03章",
+   "psalm": "詩3"
+  },
+  {
+   "date": "2026-01-04",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-05",
+   "weekday": "Mon",
+   "review": "太03章",
+   "fresh": "太04章",
+   "psalm": "詩4"
+  },
+  {
+   "date": "2026-01-06",
+   "weekday": "Tue",
+   "review": "太04章",
+   "fresh": "太05章1-20節",
+   "psalm": "詩5"
+  },
+  {
+   "date": "2026-01-07",
+   "weekday": "Wed",
+   "review": "太05章1-20節",
+   "fresh": "太05章21-48節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-08",
+   "weekday": "Thu",
+   "review": "太05章21-48節",
+   "fresh": "太06章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-09",
+   "weekday": "Fri",
+   "review": "太06章",
+   "fresh": "太07章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-10",
+   "weekday": "Sat",
+   "review": "太07章",
+   "fresh": "太08章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-11",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-12",
+   "weekday": "Mon",
+   "review": "太08章",
+   "fresh": "太09章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-13",
+   "weekday": "Tue",
+   "review": "太09章",
+   "fresh": "太10章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-14",
+   "weekday": "Wed",
+   "review": "太10章",
+   "fresh": "太11章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-15",
+   "weekday": "Thu",
+   "review": "太11章",
+   "fresh": "太12章1-21節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-16",
+   "weekday": "Fri",
+   "review": "太12章1-21節",
+   "fresh": "太12章22-50節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-17",
+   "weekday": "Sat",
+   "review": "太12章22-50節",
+   "fresh": "太13章1-30節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-18",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-19",
+   "weekday": "Mon",
+   "review": "太13章1-30節",
+   "fresh": "太13章31-58節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-20",
+   "weekday": "Tue",
+   "review": "太13章31-58節",
+   "fresh": "太14章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-21",
+   "weekday": "Wed",
+   "review": "太14章",
+   "fresh": "太15章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-22",
+   "weekday": "Thu",
+   "review": "太15章",
+   "fresh": "太16章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-23",
+   "weekday": "Fri",
+   "review": "太16章",
+   "fresh": "太17章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-24",
+   "weekday": "Sat",
+   "review": "太17章",
+   "fresh": "太18章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-25",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-26",
+   "weekday": "Mon",
+   "review": "太18章",
+   "fresh": "太19章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-27",
+   "weekday": "Tue",
+   "review": "太19章",
+   "fresh": "太20章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-28",
+   "weekday": "Wed",
+   "review": "太20章",
+   "fresh": "太21章1-22節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-01-29",
+   "weekday": "Thu",
+   "review": "太21章1-22節",
+   "fresh": "太21章23-46節",
+   "psalm": "詩6"
+  },
+  {
+   "date": "2026-01-30",
+   "weekday": "Fri",
+   "review": "太21章23-46節",
+   "fresh": "太22章1-22節",
+   "psalm": "詩7"
+  },
+  {
+   "date": "2026-01-31",
+   "weekday": "Sat",
+   "review": "太22章1-22節",
+   "fresh": "太22章23-46節",
+   "psalm": "詩8"
+  },
+  {
+   "date": "2026-02-01",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-02",
+   "weekday": "Mon",
+   "review": "太22章23-46節",
+   "fresh": "太23章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-03",
+   "weekday": "Tue",
+   "review": "太23章",
+   "fresh": "太24章1-25節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-04",
+   "weekday": "Wed",
+   "review": "太24章1-25節",
+   "fresh": "太24章26-51節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-05",
+   "weekday": "Thu",
+   "review": "太24章26-51節",
+   "fresh": "太25章1-23節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-06",
+   "weekday": "Fri",
+   "review": "太25章1-23節",
+   "fresh": "太25章24-46節",
+   "psalm": "詩9"
+  },
+  {
+   "date": "2026-02-07",
+   "weekday": "Sat",
+   "review": "太25章24-46節",
+   "fresh": "太26章1-35節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-08",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-09",
+   "weekday": "Mon",
+   "review": "太26章1-35節",
+   "fresh": "太26章36-75節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-10",
+   "weekday": "Tue",
+   "review": "太26章36-75節",
+   "fresh": "太27章1-33節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-11",
+   "weekday": "Wed",
+   "review": "太27章1-33節",
+   "fresh": "太27章34-66節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-12",
+   "weekday": "Thu",
+   "review": "太27章34-66節",
+   "fresh": "太28章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-13",
+   "weekday": "Fri",
+   "review": "",
+   "fresh": "羅01章",
+   "psalm": "詩10-11"
+  },
+  {
+   "date": "2026-02-14",
+   "weekday": "Sat",
+   "review": "羅01章",
+   "fresh": "羅02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-15",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-16",
+   "weekday": "Mon",
+   "review": "羅02章",
+   "fresh": "羅03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-17",
+   "weekday": "Tue",
+   "review": "羅03章",
+   "fresh": "羅04章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-18",
+   "weekday": "Wed",
+   "review": "羅04章",
+   "fresh": "羅05章",
+   "psalm": "詩12"
+  },
+  {
+   "date": "2026-02-19",
+   "weekday": "Thu",
+   "review": "羅05章",
+   "fresh": "羅06章",
+   "psalm": "詩13"
+  },
+  {
+   "date": "2026-02-20",
+   "weekday": "Fri",
+   "review": "羅06章",
+   "fresh": "羅07章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-21",
+   "weekday": "Sat",
+   "review": "羅07章",
+   "fresh": "羅08章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-22",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-23",
+   "weekday": "Mon",
+   "review": "羅08章",
+   "fresh": "羅09章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-24",
+   "weekday": "Tue",
+   "review": "羅09章",
+   "fresh": "羅10章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-25",
+   "weekday": "Wed",
+   "review": "羅10章",
+   "fresh": "羅11章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-26",
+   "weekday": "Thu",
+   "review": "羅11章",
+   "fresh": "羅12章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-02-27",
+   "weekday": "Fri",
+   "review": "羅12章",
+   "fresh": "羅13章",
+   "psalm": "詩14"
+  },
+  {
+   "date": "2026-02-28",
+   "weekday": "Sat",
+   "review": "羅13章",
+   "fresh": "羅14章",
+   "psalm": "詩15"
+  },
+  {
+   "date": "2026-03-01",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-02",
+   "weekday": "Mon",
+   "review": "羅14章",
+   "fresh": "羅15章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-03",
+   "weekday": "Tue",
+   "review": "羅15章",
+   "fresh": "羅16章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-04",
+   "weekday": "Wed",
+   "review": "",
+   "fresh": "詩16-18",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-05",
+   "weekday": "Thu",
+   "review": "",
+   "fresh": "來01章",
+   "psalm": "詩19-20"
+  },
+  {
+   "date": "2026-03-06",
+   "weekday": "Fri",
+   "review": "來01章",
+   "fresh": "來02章",
+   "psalm": "詩21"
+  },
+  {
+   "date": "2026-03-07",
+   "weekday": "Sat",
+   "review": "來02章",
+   "fresh": "來03章",
+   "psalm": "詩22"
+  },
+  {
+   "date": "2026-03-08",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-09",
+   "weekday": "Mon",
+   "review": "來03章",
+   "fresh": "來04章",
+   "psalm": "詩23"
+  },
+  {
+   "date": "2026-03-10",
+   "weekday": "Tue",
+   "review": "來04章",
+   "fresh": "來05章",
+   "psalm": "詩24"
+  },
+  {
+   "date": "2026-03-11",
+   "weekday": "Wed",
+   "review": "來05章",
+   "fresh": "來06章",
+   "psalm": "詩25"
+  },
+  {
+   "date": "2026-03-12",
+   "weekday": "Thu",
+   "review": "來06章",
+   "fresh": "來07章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-13",
+   "weekday": "Fri",
+   "review": "來07章",
+   "fresh": "來08章",
+   "psalm": "詩26"
+  },
+  {
+   "date": "2026-03-14",
+   "weekday": "Sat",
+   "review": "來08章",
+   "fresh": "來09章",
+   "psalm": "詩27"
+  },
+  {
+   "date": "2026-03-15",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-16",
+   "weekday": "Mon",
+   "review": "來09章",
+   "fresh": "來10章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-17",
+   "weekday": "Tue",
+   "review": "來10章",
+   "fresh": "來11章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-18",
+   "weekday": "Wed",
+   "review": "來11章",
+   "fresh": "來12章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-19",
+   "weekday": "Thu",
+   "review": "來12章",
+   "fresh": "來13章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-20",
+   "weekday": "Fri",
+   "review": "",
+   "fresh": "可01章1-20節",
+   "psalm": "詩28-29"
+  },
+  {
+   "date": "2026-03-21",
+   "weekday": "Sat",
+   "review": "可01章1-20節",
+   "fresh": "可01章21-45節",
+   "psalm": "詩30"
+  },
+  {
+   "date": "2026-03-22",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-23",
+   "weekday": "Mon",
+   "review": "可01章21-45節",
+   "fresh": "可02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-24",
+   "weekday": "Tue",
+   "review": "可02章",
+   "fresh": "可03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-25",
+   "weekday": "Wed",
+   "review": "可03章",
+   "fresh": "可04章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-26",
+   "weekday": "Thu",
+   "review": "可04章",
+   "fresh": "可05章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-27",
+   "weekday": "Fri",
+   "review": "可05章",
+   "fresh": "可06章1-29節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-28",
+   "weekday": "Sat",
+   "review": "可06章1-29節",
+   "fresh": "可06章30-56節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-29",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-30",
+   "weekday": "Mon",
+   "review": "可06章30-56節",
+   "fresh": "可07章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-03-31",
+   "weekday": "Tue",
+   "review": "可07章",
+   "fresh": "可08章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-01",
+   "weekday": "Wed",
+   "review": "可08章",
+   "fresh": "可09章1-27節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-02",
+   "weekday": "Thu",
+   "review": "可09章1-27節",
+   "fresh": "可09章28-50節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-03",
+   "weekday": "Fri",
+   "review": "可09章28-50節",
+   "fresh": "可10章1-27節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-04",
+   "weekday": "Sat",
+   "review": "可10章1-27節",
+   "fresh": "可10章28-52節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-05",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-06",
+   "weekday": "Mon",
+   "review": "可10章28-52節",
+   "fresh": "可11章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-07",
+   "weekday": "Tue",
+   "review": "可11章",
+   "fresh": "可12章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-08",
+   "weekday": "Wed",
+   "review": "可12章",
+   "fresh": "可13章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-09",
+   "weekday": "Thu",
+   "review": "可13章",
+   "fresh": "可14章1-36節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-10",
+   "weekday": "Fri",
+   "review": "可14章1-36節",
+   "fresh": "可14章37-72節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-11",
+   "weekday": "Sat",
+   "review": "可14章37-72節",
+   "fresh": "可15章1-24節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-12",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-13",
+   "weekday": "Mon",
+   "review": "可15章1-24節",
+   "fresh": "可15章25-47節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-14",
+   "weekday": "Tue",
+   "review": "可15章25-47節",
+   "fresh": "可16章",
+   "psalm": "詩31"
+  },
+  {
+   "date": "2026-04-15",
+   "weekday": "Wed",
+   "review": "",
+   "fresh": "加01章",
+   "psalm": "詩32-33"
+  },
+  {
+   "date": "2026-04-16",
+   "weekday": "Thu",
+   "review": "加01章",
+   "fresh": "加02章",
+   "psalm": "詩34"
+  },
+  {
+   "date": "2026-04-17",
+   "weekday": "Fri",
+   "review": "加02章",
+   "fresh": "加03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-18",
+   "weekday": "Sat",
+   "review": "加03章",
+   "fresh": "加04章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-19",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-20",
+   "weekday": "Mon",
+   "review": "加04章",
+   "fresh": "加05章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-21",
+   "weekday": "Tue",
+   "review": "加05章",
+   "fresh": "加06章",
+   "psalm": "詩35"
+  },
+  {
+   "date": "2026-04-22",
+   "weekday": "Wed",
+   "review": "",
+   "fresh": "詩36-37",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-23",
+   "weekday": "Thu",
+   "review": "",
+   "fresh": "弗01章",
+   "psalm": "詩38-39"
+  },
+  {
+   "date": "2026-04-24",
+   "weekday": "Fri",
+   "review": "弗01章",
+   "fresh": "弗02章",
+   "psalm": "詩40"
+  },
+  {
+   "date": "2026-04-25",
+   "weekday": "Sat",
+   "review": "弗02章",
+   "fresh": "弗03章",
+   "psalm": "詩41"
+  },
+  {
+   "date": "2026-04-26",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-27",
+   "weekday": "Mon",
+   "review": "弗03章",
+   "fresh": "弗04章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-28",
+   "weekday": "Tue",
+   "review": "弗04章",
+   "fresh": "弗05章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-29",
+   "weekday": "Wed",
+   "review": "弗05章",
+   "fresh": "弗06章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-04-30",
+   "weekday": "Thu",
+   "review": "",
+   "fresh": "林前01章",
+   "psalm": "詩42-43"
+  },
+  {
+   "date": "2026-05-01",
+   "weekday": "Fri",
+   "review": "林前01章",
+   "fresh": "林前02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-02",
+   "weekday": "Sat",
+   "review": "林前02章",
+   "fresh": "林前03章",
+   "psalm": "詩44"
+  },
+  {
+   "date": "2026-05-03",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-04",
+   "weekday": "Mon",
+   "review": "林前03章",
+   "fresh": "林前04章",
+   "psalm": "詩45"
+  },
+  {
+   "date": "2026-05-05",
+   "weekday": "Tue",
+   "review": "林前04章",
+   "fresh": "林前05章",
+   "psalm": "詩46"
+  },
+  {
+   "date": "2026-05-06",
+   "weekday": "Wed",
+   "review": "林前05章",
+   "fresh": "林前06章",
+   "psalm": "詩47"
+  },
+  {
+   "date": "2026-05-07",
+   "weekday": "Thu",
+   "review": "林前06章",
+   "fresh": "林前07章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-08",
+   "weekday": "Fri",
+   "review": "林前07章",
+   "fresh": "林前08章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-09",
+   "weekday": "Sat",
+   "review": "林前08章",
+   "fresh": "林前09章",
+   "psalm": "詩48"
+  },
+  {
+   "date": "2026-05-10",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-11",
+   "weekday": "Mon",
+   "review": "林前09章",
+   "fresh": "林前10章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-12",
+   "weekday": "Tue",
+   "review": "林前10章",
+   "fresh": "林前11章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-13",
+   "weekday": "Wed",
+   "review": "林前11章",
+   "fresh": "林前12章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-14",
+   "weekday": "Thu",
+   "review": "林前12章",
+   "fresh": "林前13章",
+   "psalm": "詩49"
+  },
+  {
+   "date": "2026-05-15",
+   "weekday": "Fri",
+   "review": "林前13章",
+   "fresh": "林前14章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-16",
+   "weekday": "Sat",
+   "review": "林前14章",
+   "fresh": "林前15章1-32節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-17",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-18",
+   "weekday": "Mon",
+   "review": "林前15章1-32節",
+   "fresh": "林前15章33-58節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-19",
+   "weekday": "Tue",
+   "review": "林前15章33-58節",
+   "fresh": "林前16章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-20",
+   "weekday": "Wed",
+   "review": "",
+   "fresh": "路01章1-38節",
+   "psalm": "詩50"
+  },
+  {
+   "date": "2026-05-21",
+   "weekday": "Thu",
+   "review": "路01章1-38節",
+   "fresh": "路01章39-80節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-22",
+   "weekday": "Fri",
+   "review": "路01章39-80節",
+   "fresh": "路02章1-24節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-23",
+   "weekday": "Sat",
+   "review": "路02章1-24節",
+   "fresh": "路02章25-52節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-24",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-25",
+   "weekday": "Mon",
+   "review": "路02章25-52節",
+   "fresh": "路03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-26",
+   "weekday": "Tue",
+   "review": "路03章",
+   "fresh": "路04章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-27",
+   "weekday": "Wed",
+   "review": "路04章",
+   "fresh": "路05章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-28",
+   "weekday": "Thu",
+   "review": "路05章",
+   "fresh": "路06章1-26節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-29",
+   "weekday": "Fri",
+   "review": "路06章1-26節",
+   "fresh": "路06章27-49節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-30",
+   "weekday": "Sat",
+   "review": "路06章27-49節",
+   "fresh": "路07章1-30節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-05-31",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-01",
+   "weekday": "Mon",
+   "review": "路07章1-30節",
+   "fresh": "路07章31-50節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-02",
+   "weekday": "Tue",
+   "review": "路07章31-50節",
+   "fresh": "路08章1-25節",
+   "psalm": "詩51"
+  },
+  {
+   "date": "2026-06-03",
+   "weekday": "Wed",
+   "review": "路08章1-25節",
+   "fresh": "路08章26-56節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-04",
+   "weekday": "Thu",
+   "review": "路08章26-56節",
+   "fresh": "路09章1-36節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-05",
+   "weekday": "Fri",
+   "review": "路09章1-36節",
+   "fresh": "路09章37-62節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-06",
+   "weekday": "Sat",
+   "review": "路09章37-62節",
+   "fresh": "路10章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-07",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-08",
+   "weekday": "Mon",
+   "review": "路10章",
+   "fresh": "路11章1-28節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-09",
+   "weekday": "Tue",
+   "review": "路11章1-28節",
+   "fresh": "路11章29-54節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-10",
+   "weekday": "Wed",
+   "review": "路11章29-54節",
+   "fresh": "路12章1-31節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-11",
+   "weekday": "Thu",
+   "review": "路12章1-31節",
+   "fresh": "路12章32-59節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-12",
+   "weekday": "Fri",
+   "review": "路12章32-59節",
+   "fresh": "路13章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-13",
+   "weekday": "Sat",
+   "review": "路13章",
+   "fresh": "路14章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-14",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-15",
+   "weekday": "Mon",
+   "review": "路14章",
+   "fresh": "路15章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-16",
+   "weekday": "Tue",
+   "review": "路15章",
+   "fresh": "路16章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-17",
+   "weekday": "Wed",
+   "review": "路16章",
+   "fresh": "路17章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-18",
+   "weekday": "Thu",
+   "review": "路17章",
+   "fresh": "路18章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-19",
+   "weekday": "Fri",
+   "review": "路18章",
+   "fresh": "路19章1-27節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-20",
+   "weekday": "Sat",
+   "review": "路19章1-27節",
+   "fresh": "路19章28-48節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-21",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-22",
+   "weekday": "Mon",
+   "review": "路19章28-48節",
+   "fresh": "路20章1-26節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-23",
+   "weekday": "Tue",
+   "review": "路20章1-26節",
+   "fresh": "路20章27-47節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-24",
+   "weekday": "Wed",
+   "review": "路20章27-47節",
+   "fresh": "路21章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-25",
+   "weekday": "Thu",
+   "review": "路21章",
+   "fresh": "路22章1-38節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-26",
+   "weekday": "Fri",
+   "review": "路22章1-38節",
+   "fresh": "路22章39-71節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-27",
+   "weekday": "Sat",
+   "review": "路22章39-71節",
+   "fresh": "路23章1-26節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-28",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-29",
+   "weekday": "Mon",
+   "review": "路23章1-26節",
+   "fresh": "路23章27-56節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-06-30",
+   "weekday": "Tue",
+   "review": "路23章27-56節",
+   "fresh": "路24章1-27節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-01",
+   "weekday": "Wed",
+   "review": "路24章1-27節",
+   "fresh": "路24章28-53節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-02",
+   "weekday": "Thu",
+   "review": "",
+   "fresh": "林後01章",
+   "psalm": "詩52-53"
+  },
+  {
+   "date": "2026-07-03",
+   "weekday": "Fri",
+   "review": "林後01章",
+   "fresh": "林後02章",
+   "psalm": "詩54"
+  },
+  {
+   "date": "2026-07-04",
+   "weekday": "Sat",
+   "review": "林後02章",
+   "fresh": "林後03章",
+   "psalm": "詩55"
+  },
+  {
+   "date": "2026-07-05",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-06",
+   "weekday": "Mon",
+   "review": "林後03章",
+   "fresh": "林後04章",
+   "psalm": "詩56"
+  },
+  {
+   "date": "2026-07-07",
+   "weekday": "Tue",
+   "review": "林後04章",
+   "fresh": "林後05章",
+   "psalm": "詩57"
+  },
+  {
+   "date": "2026-07-08",
+   "weekday": "Wed",
+   "review": "林後05章",
+   "fresh": "林後06章",
+   "psalm": "詩58"
+  },
+  {
+   "date": "2026-07-09",
+   "weekday": "Thu",
+   "review": "林後06章",
+   "fresh": "林後07章",
+   "psalm": "詩59"
+  },
+  {
+   "date": "2026-07-10",
+   "weekday": "Fri",
+   "review": "林後07章",
+   "fresh": "林後08章",
+   "psalm": "詩60"
+  },
+  {
+   "date": "2026-07-11",
+   "weekday": "Sat",
+   "review": "林後08章",
+   "fresh": "林後09章",
+   "psalm": "詩61"
+  },
+  {
+   "date": "2026-07-12",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-13",
+   "weekday": "Mon",
+   "review": "林後09章",
+   "fresh": "林後10章",
+   "psalm": "詩62"
+  },
+  {
+   "date": "2026-07-14",
+   "weekday": "Tue",
+   "review": "林後10章",
+   "fresh": "林後11章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-15",
+   "weekday": "Wed",
+   "review": "林後11章",
+   "fresh": "林後12章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-16",
+   "weekday": "Thu",
+   "review": "林後12章",
+   "fresh": "林後13章",
+   "psalm": "詩63"
+  },
+  {
+   "date": "2026-07-17",
+   "weekday": "Fri",
+   "review": "",
+   "fresh": "腓01章",
+   "psalm": "詩64-65"
+  },
+  {
+   "date": "2026-07-18",
+   "weekday": "Sat",
+   "review": "腓01章",
+   "fresh": "腓02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-19",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-20",
+   "weekday": "Mon",
+   "review": "腓02章",
+   "fresh": "腓03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-21",
+   "weekday": "Tue",
+   "review": "腓03章",
+   "fresh": "腓04章",
+   "psalm": "詩66"
+  },
+  {
+   "date": "2026-07-22",
+   "weekday": "Wed",
+   "review": "",
+   "fresh": "詩67-68",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-23",
+   "weekday": "Thu",
+   "review": "",
+   "fresh": "詩69-71",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-24",
+   "weekday": "Fri",
+   "review": "",
+   "fresh": "西01章",
+   "psalm": "詩72"
+  },
+  {
+   "date": "2026-07-25",
+   "weekday": "Sat",
+   "review": "西01章",
+   "fresh": "西02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-26",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-27",
+   "weekday": "Mon",
+   "review": "西02章",
+   "fresh": "西03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-28",
+   "weekday": "Tue",
+   "review": "西03章",
+   "fresh": "西04章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-07-29",
+   "weekday": "Wed",
+   "review": "",
+   "fresh": "帖前01章",
+   "psalm": "詩73-74"
+  },
+  {
+   "date": "2026-07-30",
+   "weekday": "Thu",
+   "review": "帖前01章",
+   "fresh": "帖前02章",
+   "psalm": "詩75"
+  },
+  {
+   "date": "2026-07-31",
+   "weekday": "Fri",
+   "review": "帖前02章",
+   "fresh": "帖前03章",
+   "psalm": "詩76"
+  },
+  {
+   "date": "2026-08-01",
+   "weekday": "Sat",
+   "review": "帖前03章",
+   "fresh": "帖前04章",
+   "psalm": "詩77"
+  },
+  {
+   "date": "2026-08-02",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-03",
+   "weekday": "Mon",
+   "review": "帖前04章",
+   "fresh": "帖前05章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-04",
+   "weekday": "Tue",
+   "review": "",
+   "fresh": "詩78-79",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-05",
+   "weekday": "Wed",
+   "review": "",
+   "fresh": "帖後01章",
+   "psalm": "詩80-81"
+  },
+  {
+   "date": "2026-08-06",
+   "weekday": "Thu",
+   "review": "帖後01章",
+   "fresh": "帖後02章",
+   "psalm": "詩82"
+  },
+  {
+   "date": "2026-08-07",
+   "weekday": "Fri",
+   "review": "帖後02章",
+   "fresh": "帖後03章",
+   "psalm": "詩83"
+  },
+  {
+   "date": "2026-08-08",
+   "weekday": "Sat",
+   "review": "",
+   "fresh": "約01章1-23節",
+   "psalm": "詩84-85"
+  },
+  {
+   "date": "2026-08-09",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-10",
+   "weekday": "Mon",
+   "review": "約01章1-23節",
+   "fresh": "約01章24-51節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-11",
+   "weekday": "Tue",
+   "review": "約01章24-51節",
+   "fresh": "約02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-12",
+   "weekday": "Wed",
+   "review": "約02章",
+   "fresh": "約03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-13",
+   "weekday": "Thu",
+   "review": "約03章",
+   "fresh": "約04章1-27節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-14",
+   "weekday": "Fri",
+   "review": "約04章1-27節",
+   "fresh": "約04章28-54節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-15",
+   "weekday": "Sat",
+   "review": "約04章28-54節",
+   "fresh": "約05章1-23節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-16",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-17",
+   "weekday": "Mon",
+   "review": "約05章1-23節",
+   "fresh": "約05章24-47節",
+   "psalm": "詩86"
+  },
+  {
+   "date": "2026-08-18",
+   "weekday": "Tue",
+   "review": "約05章24-47節",
+   "fresh": "約06章1-36節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-19",
+   "weekday": "Wed",
+   "review": "約06章1-36節",
+   "fresh": "約06章37-71節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-20",
+   "weekday": "Thu",
+   "review": "約06章37-71節",
+   "fresh": "約07章1-27節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-21",
+   "weekday": "Fri",
+   "review": "約07章1-27節",
+   "fresh": "約07章28-52節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-22",
+   "weekday": "Sat",
+   "review": "約07章28-52節",
+   "fresh": "約08章1-30節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-23",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-24",
+   "weekday": "Mon",
+   "review": "約08章1-30節",
+   "fresh": "約08章31-59節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-25",
+   "weekday": "Tue",
+   "review": "約08章31-59節",
+   "fresh": "約09章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-26",
+   "weekday": "Wed",
+   "review": "約09章",
+   "fresh": "約10章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-27",
+   "weekday": "Thu",
+   "review": "約10章",
+   "fresh": "約11章1-29節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-28",
+   "weekday": "Fri",
+   "review": "約11章1-29節",
+   "fresh": "約11章30-57節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-29",
+   "weekday": "Sat",
+   "review": "約11章30-57節",
+   "fresh": "約12章1-26節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-30",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-08-31",
+   "weekday": "Mon",
+   "review": "約12章1-26節",
+   "fresh": "約12章27-50節",
+   "psalm": "詩87"
+  },
+  {
+   "date": "2026-09-01",
+   "weekday": "Tue",
+   "review": "約12章27-50節",
+   "fresh": "約13章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-02",
+   "weekday": "Wed",
+   "review": "約13章",
+   "fresh": "約14章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-03",
+   "weekday": "Thu",
+   "review": "約14章",
+   "fresh": "約15章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-04",
+   "weekday": "Fri",
+   "review": "約15章",
+   "fresh": "約16章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-05",
+   "weekday": "Sat",
+   "review": "約16章",
+   "fresh": "約17章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-06",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-07",
+   "weekday": "Mon",
+   "review": "約17章",
+   "fresh": "約18章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-08",
+   "weekday": "Tue",
+   "review": "約18章",
+   "fresh": "約19章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-09",
+   "weekday": "Wed",
+   "review": "約19章",
+   "fresh": "約20章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-10",
+   "weekday": "Thu",
+   "review": "約20章",
+   "fresh": "約21章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-11",
+   "weekday": "Fri",
+   "review": "",
+   "fresh": "詩88-89",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-12",
+   "weekday": "Sat",
+   "review": "",
+   "fresh": "提前01章",
+   "psalm": "詩90-91"
+  },
+  {
+   "date": "2026-09-13",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-14",
+   "weekday": "Mon",
+   "review": "提前01章",
+   "fresh": "提前02章",
+   "psalm": "詩92"
+  },
+  {
+   "date": "2026-09-15",
+   "weekday": "Tue",
+   "review": "提前02章",
+   "fresh": "提前03章",
+   "psalm": "詩93"
+  },
+  {
+   "date": "2026-09-16",
+   "weekday": "Wed",
+   "review": "提前03章",
+   "fresh": "提前04章",
+   "psalm": "詩94"
+  },
+  {
+   "date": "2026-09-17",
+   "weekday": "Thu",
+   "review": "提前04章",
+   "fresh": "提前05章",
+   "psalm": "詩95"
+  },
+  {
+   "date": "2026-09-18",
+   "weekday": "Fri",
+   "review": "提前05章",
+   "fresh": "提前06章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-19",
+   "weekday": "Sat",
+   "review": "",
+   "fresh": "提後01章",
+   "psalm": "詩96-97"
+  },
+  {
+   "date": "2026-09-20",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-21",
+   "weekday": "Mon",
+   "review": "提後01章",
+   "fresh": "提後02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-22",
+   "weekday": "Tue",
+   "review": "提後02章",
+   "fresh": "提後03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-23",
+   "weekday": "Wed",
+   "review": "提後03章",
+   "fresh": "提後04章",
+   "psalm": "詩98"
+  },
+  {
+   "date": "2026-09-24",
+   "weekday": "Thu",
+   "review": "",
+   "fresh": "多01章",
+   "psalm": "詩99-100"
+  },
+  {
+   "date": "2026-09-25",
+   "weekday": "Fri",
+   "review": "多01章",
+   "fresh": "多02章",
+   "psalm": "詩101"
+  },
+  {
+   "date": "2026-09-26",
+   "weekday": "Sat",
+   "review": "多02章",
+   "fresh": "多03章",
+   "psalm": "詩102"
+  },
+  {
+   "date": "2026-09-27",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-28",
+   "weekday": "Mon",
+   "review": "",
+   "fresh": "詩103-104",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-29",
+   "weekday": "Tue",
+   "review": "",
+   "fresh": "詩105",
+   "psalm": ""
+  },
+  {
+   "date": "2026-09-30",
+   "weekday": "Wed",
+   "review": "",
+   "fresh": "詩106",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-01",
+   "weekday": "Thu",
+   "review": "",
+   "fresh": "詩107-108",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-02",
+   "weekday": "Fri",
+   "review": "",
+   "fresh": "門",
+   "psalm": "詩109"
+  },
+  {
+   "date": "2026-10-03",
+   "weekday": "Sat",
+   "review": "",
+   "fresh": "雅01章",
+   "psalm": "詩110"
+  },
+  {
+   "date": "2026-10-04",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-05",
+   "weekday": "Mon",
+   "review": "雅01章",
+   "fresh": "雅02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-06",
+   "weekday": "Tue",
+   "review": "雅02章",
+   "fresh": "雅03章",
+   "psalm": "詩111"
+  },
+  {
+   "date": "2026-10-07",
+   "weekday": "Wed",
+   "review": "雅03章",
+   "fresh": "雅04章",
+   "psalm": "詩112"
+  },
+  {
+   "date": "2026-10-08",
+   "weekday": "Thu",
+   "review": "雅04章",
+   "fresh": "雅05章",
+   "psalm": "詩113"
+  },
+  {
+   "date": "2026-10-09",
+   "weekday": "Fri",
+   "review": "",
+   "fresh": "彼前01章",
+   "psalm": "詩114-115"
+  },
+  {
+   "date": "2026-10-10",
+   "weekday": "Sat",
+   "review": "彼前01章",
+   "fresh": "彼前02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-11",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-12",
+   "weekday": "Mon",
+   "review": "彼前02章",
+   "fresh": "彼前03章",
+   "psalm": "詩116"
+  },
+  {
+   "date": "2026-10-13",
+   "weekday": "Tue",
+   "review": "彼前03章",
+   "fresh": "彼前04章",
+   "psalm": "詩117"
+  },
+  {
+   "date": "2026-10-14",
+   "weekday": "Wed",
+   "review": "彼前04章",
+   "fresh": "彼前05章",
+   "psalm": "詩118"
+  },
+  {
+   "date": "2026-10-15",
+   "weekday": "Thu",
+   "review": "",
+   "fresh": "詩119篇89-176節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-16",
+   "weekday": "Fri",
+   "review": "",
+   "fresh": "詩119篇1-88節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-17",
+   "weekday": "Sat",
+   "review": "",
+   "fresh": "彼後01章",
+   "psalm": "詩120-121"
+  },
+  {
+   "date": "2026-10-18",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-19",
+   "weekday": "Mon",
+   "review": "彼後01章",
+   "fresh": "彼後02章",
+   "psalm": "詩122"
+  },
+  {
+   "date": "2026-10-20",
+   "weekday": "Tue",
+   "review": "彼後02章",
+   "fresh": "彼後03章",
+   "psalm": "詩123"
+  },
+  {
+   "date": "2026-10-21",
+   "weekday": "Wed",
+   "review": "",
+   "fresh": "徒01章",
+   "psalm": "詩124-125"
+  },
+  {
+   "date": "2026-10-22",
+   "weekday": "Thu",
+   "review": "徒01章",
+   "fresh": "徒02章1-24節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-23",
+   "weekday": "Fri",
+   "review": "徒02章1-24節",
+   "fresh": "徒02章25-47節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-24",
+   "weekday": "Sat",
+   "review": "徒02章25-47節",
+   "fresh": "徒03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-25",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-26",
+   "weekday": "Mon",
+   "review": "徒03章",
+   "fresh": "徒04章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-27",
+   "weekday": "Tue",
+   "review": "徒04章",
+   "fresh": "徒05章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-28",
+   "weekday": "Wed",
+   "review": "徒05章",
+   "fresh": "徒06章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-29",
+   "weekday": "Thu",
+   "review": "徒06章",
+   "fresh": "徒07章1-29節",
+   "psalm": "詩126"
+  },
+  {
+   "date": "2026-10-30",
+   "weekday": "Fri",
+   "review": "徒07章1-29節",
+   "fresh": "徒07章31-60節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-10-31",
+   "weekday": "Sat",
+   "review": "徒07章31-60節",
+   "fresh": "徒08章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-01",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-02",
+   "weekday": "Mon",
+   "review": "徒08章",
+   "fresh": "徒09章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-03",
+   "weekday": "Tue",
+   "review": "徒09章",
+   "fresh": "徒10章1-23節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-04",
+   "weekday": "Wed",
+   "review": "徒10章1-23節",
+   "fresh": "徒10章24-48節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-05",
+   "weekday": "Thu",
+   "review": "徒10章24-48節",
+   "fresh": "徒11章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-06",
+   "weekday": "Fri",
+   "review": "徒11章",
+   "fresh": "徒12章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-07",
+   "weekday": "Sat",
+   "review": "徒12章",
+   "fresh": "徒13章1-25節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-08",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-09",
+   "weekday": "Mon",
+   "review": "徒13章1-25節",
+   "fresh": "徒13章26-52節",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-10",
+   "weekday": "Tue",
+   "review": "徒13章26-52節",
+   "fresh": "徒14章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-11",
+   "weekday": "Wed",
+   "review": "徒14章",
+   "fresh": "徒15章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-12",
+   "weekday": "Thu",
+   "review": "徒15章",
+   "fresh": "徒16章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-13",
+   "weekday": "Fri",
+   "review": "徒16章",
+   "fresh": "徒17章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-14",
+   "weekday": "Sat",
+   "review": "徒17章",
+   "fresh": "徒18章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-15",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-16",
+   "weekday": "Mon",
+   "review": "徒18章",
+   "fresh": "徒19章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-17",
+   "weekday": "Tue",
+   "review": "徒19章",
+   "fresh": "徒20章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-18",
+   "weekday": "Wed",
+   "review": "徒20章",
+   "fresh": "徒21章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-19",
+   "weekday": "Thu",
+   "review": "徒21章",
+   "fresh": "徒22章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-20",
+   "weekday": "Fri",
+   "review": "徒22章",
+   "fresh": "徒23章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-21",
+   "weekday": "Sat",
+   "review": "徒23章",
+   "fresh": "徒24章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-22",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-23",
+   "weekday": "Mon",
+   "review": "徒24章",
+   "fresh": "徒25章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-24",
+   "weekday": "Tue",
+   "review": "徒25章",
+   "fresh": "徒26章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-25",
+   "weekday": "Wed",
+   "review": "徒26章",
+   "fresh": "徒27章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-26",
+   "weekday": "Thu",
+   "review": "徒27章",
+   "fresh": "徒28章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-27",
+   "weekday": "Fri",
+   "review": "",
+   "fresh": "約一01章",
+   "psalm": "詩127-128"
+  },
+  {
+   "date": "2026-11-28",
+   "weekday": "Sat",
+   "review": "約一01章",
+   "fresh": "約一02章",
+   "psalm": "詩129"
+  },
+  {
+   "date": "2026-11-29",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-11-30",
+   "weekday": "Mon",
+   "review": "約一02章",
+   "fresh": "約一03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-01",
+   "weekday": "Tue",
+   "review": "約一03章",
+   "fresh": "約一04章",
+   "psalm": "詩130"
+  },
+  {
+   "date": "2026-12-02",
+   "weekday": "Wed",
+   "review": "約一04章",
+   "fresh": "約一05章",
+   "psalm": "詩131"
+  },
+  {
+   "date": "2026-12-03",
+   "weekday": "Thu",
+   "review": "",
+   "fresh": "約二",
+   "psalm": "詩132-133"
+  },
+  {
+   "date": "2026-12-04",
+   "weekday": "Fri",
+   "review": "",
+   "fresh": "約三",
+   "psalm": "詩134-135"
+  },
+  {
+   "date": "2026-12-05",
+   "weekday": "Sat",
+   "review": "",
+   "fresh": "猶",
+   "psalm": "詩136"
+  },
+  {
+   "date": "2026-12-06",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-07",
+   "weekday": "Mon",
+   "review": "",
+   "fresh": "啟01章",
+   "psalm": "詩137-138"
+  },
+  {
+   "date": "2026-12-08",
+   "weekday": "Tue",
+   "review": "啟01章",
+   "fresh": "啟02章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-09",
+   "weekday": "Wed",
+   "review": "啟02章",
+   "fresh": "啟03章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-10",
+   "weekday": "Thu",
+   "review": "啟03章",
+   "fresh": "啟04章",
+   "psalm": "詩139"
+  },
+  {
+   "date": "2026-12-11",
+   "weekday": "Fri",
+   "review": "啟04章",
+   "fresh": "啟05章",
+   "psalm": "詩140"
+  },
+  {
+   "date": "2026-12-12",
+   "weekday": "Sat",
+   "review": "啟05章",
+   "fresh": "啟06章",
+   "psalm": "詩141"
+  },
+  {
+   "date": "2026-12-13",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-14",
+   "weekday": "Mon",
+   "review": "啟06章",
+   "fresh": "啟07章",
+   "psalm": "詩142"
+  },
+  {
+   "date": "2026-12-15",
+   "weekday": "Tue",
+   "review": "啟07章",
+   "fresh": "啟08章",
+   "psalm": "詩143"
+  },
+  {
+   "date": "2026-12-16",
+   "weekday": "Wed",
+   "review": "啟08章",
+   "fresh": "啟09章",
+   "psalm": "詩144"
+  },
+  {
+   "date": "2026-12-17",
+   "weekday": "Thu",
+   "review": "啟09章",
+   "fresh": "啟10章",
+   "psalm": "詩145"
+  },
+  {
+   "date": "2026-12-18",
+   "weekday": "Fri",
+   "review": "啟10章",
+   "fresh": "啟11章",
+   "psalm": "詩146"
+  },
+  {
+   "date": "2026-12-19",
+   "weekday": "Sat",
+   "review": "啟11章",
+   "fresh": "啟12章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-20",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-21",
+   "weekday": "Mon",
+   "review": "啟12章",
+   "fresh": "啟13章",
+   "psalm": "詩147"
+  },
+  {
+   "date": "2026-12-22",
+   "weekday": "Tue",
+   "review": "啟13章",
+   "fresh": "啟14章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-23",
+   "weekday": "Wed",
+   "review": "啟14章",
+   "fresh": "啟15章",
+   "psalm": "詩148"
+  },
+  {
+   "date": "2026-12-24",
+   "weekday": "Thu",
+   "review": "啟15章",
+   "fresh": "啟16章",
+   "psalm": "詩149"
+  },
+  {
+   "date": "2026-12-25",
+   "weekday": "Fri",
+   "review": "啟16章",
+   "fresh": "啟17章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-26",
+   "weekday": "Sat",
+   "review": "啟17章",
+   "fresh": "啟18章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-27",
+   "weekday": "Sun",
+   "review": "安息",
+   "fresh": "",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-28",
+   "weekday": "Mon",
+   "review": "啟18章",
+   "fresh": "啟19章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-29",
+   "weekday": "Tue",
+   "review": "啟19章",
+   "fresh": "啟20章",
+   "psalm": "詩150"
+  },
+  {
+   "date": "2026-12-30",
+   "weekday": "Wed",
+   "review": "啟20章",
+   "fresh": "啟21章",
+   "psalm": ""
+  },
+  {
+   "date": "2026-12-31",
+   "weekday": "Thu",
+   "review": "啟21章",
+   "fresh": "啟22章",
+   "psalm": ""
+  }
+ ]
+}

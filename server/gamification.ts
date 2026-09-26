@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
+import { canonicalReadingPlan } from '../src/domain/calendar';
 import {
   calculateBand,
   canonicalMemberPair,
@@ -280,18 +281,19 @@ export function seedReadingDays(db: DatabaseSync, days: readonly ReadingDaySeed[
   }
 }
 
+/** The plan the app runs on (September, then the church sheet through 12/31), all under PLAN_ID. */
 export function defaultReadingDays(): ReadingDaySeed[] {
-  return [
-    ['2026-09-01', ['JHN.12.27-50', 'JHN.13']], ['2026-09-02', ['JHN.13', 'JHN.14']], ['2026-09-03', ['JHN.14', 'JHN.15']],
-    ['2026-09-04', ['JHN.15', 'JHN.16']], ['2026-09-05', ['JHN.16', 'JHN.17']], ['2026-09-07', ['JHN.17', 'JHN.18']],
-    ['2026-09-08', ['JHN.18', 'JHN.19']], ['2026-09-09', ['JHN.19', 'JHN.20']], ['2026-09-10', ['JHN.20', 'JHN.21']],
-    ['2026-09-11', ['PSA.88', 'PSA.89']], ['2026-09-12', ['1TI.1', 'PSA.90', 'PSA.91']], ['2026-09-14', ['1TI.1', '1TI.2', 'PSA.92']],
-    ['2026-09-15', ['1TI.2', '1TI.3', 'PSA.93']], ['2026-09-16', ['1TI.3', '1TI.4', 'PSA.94']], ['2026-09-17', ['1TI.4', '1TI.5', 'PSA.95']],
-    ['2026-09-18', ['1TI.5', '1TI.6']], ['2026-09-19', ['2TI.1', 'PSA.96', 'PSA.97']], ['2026-09-21', ['2TI.1', '2TI.2']],
-    ['2026-09-22', ['2TI.2', '2TI.3']], ['2026-09-23', ['2TI.3', '2TI.4', 'PSA.98']], ['2026-09-24', ['TIT.1', 'PSA.99', 'PSA.100']],
-    ['2026-09-25', ['TIT.1', 'TIT.2', 'PSA.101']], ['2026-09-26', ['TIT.2', 'TIT.3', 'PSA.102']], ['2026-09-28', ['PSA.103', 'PSA.104']],
-    ['2026-09-29', ['PSA.105']], ['2026-09-30', ['PSA.106']],
-  ].map(([taskDate, references]) => ({ taskDate, planId: PLAN_ID, references } as ReadingDaySeed));
+  return canonicalReadingPlan.days.map((day) => ({ taskDate: day.date, planId: PLAN_ID, references: [...day.references] }));
+}
+
+/**
+ * Adds the plan dates a database does not have yet and never rewrites one it has. Production was
+ * seeded with September only; this is how it gains October to December on its next start.
+ */
+export function addMissingReadingDays(db: DatabaseSync, days: readonly ReadingDaySeed[]): void {
+  const present = new Set((db.prepare('SELECT task_date FROM reading_days').all() as Array<{ task_date: string }>).map((row) => row.task_date));
+  const missing = days.filter((day) => !present.has(day.taskDate));
+  if (missing.length > 0) seedReadingDays(db, missing);
 }
 
 export function readReadingDays(db: DatabaseSync, from: string, to: string, today: string, memberId: string): { taskDate: string; planId: string; references: string[]; sourceRevision: number; sourceDigest: string; status: CompletionMutationInput['status']; revision: number; canComplete: boolean }[] {
