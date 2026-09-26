@@ -148,6 +148,17 @@ if ($gradlePropertiesAfter -cne $gradlePropertiesBefore) {
 }
 
 if ($Bundle -and $Variant -ne 'release') { throw 'An App Bundle is only produced for a release build.' }
+# A sideloaded APK is downloaded whole. 0.5.11/0.5.12 went out at 162 MB with all four ABIs: an
+# ARM-only APK had crashed on the x86_64 test emulator (SoLoader looks inside the APK for x86_64
+# libraries and never finds the ARM ones the emulator translates), so the x86 sets came back.
+# Release APKs default to the two ARM sets phones run, with compressed native libraries. Android
+# then extracts them at install, and the emulator's ARM translation loads extracted libraries, so
+# the exact APK that is published also runs on the emulator. App Bundles keep every ABI,
+# uncompressed, because Play serves each phone only its own.
+if ($Variant -eq 'release' -and -not $Bundle) {
+  if (-not $ReactNativeArchitectures) { $ReactNativeArchitectures = 'arm64-v8a,armeabi-v7a' }
+  if (-not $PSBoundParameters.ContainsKey('LegacyPackaging')) { $LegacyPackaging = [switch]$true }
+}
 $gradleTask = if ($Bundle) { 'bundleRelease' } elseif ($Variant -eq 'release') { 'assembleRelease' } else { 'assembleDebug' }
 $fixtureEnabled = $env:EXPO_PUBLIC_QINGMU_FIXTURE -eq 'true'
 $buildProfile = if ($fixtureEnabled) { 'QA_CORE_FIXTURE_ONLY' } else { 'PILOT_GOOGLE_HTTPS' }
@@ -228,6 +239,11 @@ $apkName = if ($Variant -eq 'release') { 'app-release.apk' } else { 'app-debug.a
 $apk = if ($Bundle) { Join-Path $root 'android\app\build\outputs\bundle\release\app-release.aab' }
   else { Join-Path $root "android\app\build\outputs\apk\$apkDirectory\$apkName" }
 if (-not (Test-Path $apk)) { throw "Gradle completed but the artifact was not found: $apk" }
+if ($Variant -eq 'release' -and -not $Bundle) {
+  # Fails the build when an extra ABI, a source map, or excess size slips back in.
+  & npx tsx (Join-Path $root 'scripts/check-apk-budget.ts') $apk $ReactNativeArchitectures 90
+  if ($LASTEXITCODE -ne 0) { throw 'Release APK failed the size/ABI budget (scripts/check-apk-budget.ts)' }
+}
 $hash = (Get-FileHash $apk -Algorithm SHA256).Hash.ToLowerInvariant()
 $receipt = [ordered]@{
   kind = "android-$Variant-candidate"
