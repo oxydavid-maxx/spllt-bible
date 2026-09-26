@@ -1,6 +1,6 @@
 {
   "week": "2026-09-20",
-  "generatedAt": "2026-09-21T23:05:57.079Z",
+  "generatedAt": "2026-09-26T14:05:07.627Z",
   "sermon": {
     "title": "先",
     "speaker": "光佑",
@@ -8,6 +8,7 @@
     "audio": "https://drive.google.com/file/d/1CX5pHpYDmNPN-2_9E082QikMMWPhlHtg/view",
     "slides": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview",
     "transcript": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view",
+    "sermonSlides": "https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview",
     "youtube": null
   },
   "next": {
@@ -24,7 +25,8 @@
       "speaker": "中亮",
       "audio": null,
       "slides": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview",
-      "transcript": null
+      "transcript": null,
+      "sermonSlides": "https://drive.google.com/file/d/1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD/view"
     },
     {
       "week": "2026-09-06",
@@ -32,7 +34,8 @@
       "speaker": "為潔",
       "audio": null,
       "slides": "https://docs.google.com/presentation/d/1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ/preview",
-      "transcript": null
+      "transcript": null,
+      "sermonSlides": "https://drive.google.com/file/d/1FVOvVG9Egjr_NYTgoYIqaQzaJQOONt3y/view"
     },
     {
       "week": "2025-12-13",
@@ -47,8 +50,9 @@
       "title": null,
       "speaker": null,
       "audio": null,
-      "slides": "https://drive.google.com/file/d/1c3-qEtjRJFjFHwY7AvW-mLcqQ8Ta3ZJe/view",
-      "transcript": null
+      "slides": "https://docs.google.com/presentation/d/1X-OHFSCEhwGgKecv99IJ8C9q0fvdnZRcngUbKLemoZk/preview",
+      "transcript": null,
+      "sermonSlides": "https://drive.google.com/file/d/1WZ4QgwZQ4vlmJ_JPEqv-JKcTr__r4wi2/view"
     }
   ]
 }
