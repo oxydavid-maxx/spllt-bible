@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { checkDownloadHref, checkUpdateNotice, findDownloadHref } from '../src/config/installLink';
-import { readPublishedVersion, VERSION_URL } from '../src/services/updateCheck';
+import { LEGACY_VERSION_URL, readPublishedVersion, VERSION_URL } from '../src/services/updateCheck';
 
 // usage: tsx scripts/verify-install-link.ts <install page URL> <the APK that should be served>
 // Run after publishing: the button must point at an APK next to the page, and that URL must serve
@@ -29,11 +29,13 @@ async function main(): Promise<void> {
   // Every installed app decides "update available" from this file, so publishing is not finished
   // until it names this release. The query string keeps a cached copy from answering for it.
   const app = JSON.parse(readFileSync('app.json', 'utf8')) as { expo: { version: string; android: { versionCode: number } } };
-  const noticeResponse = await fetch(`${VERSION_URL}?t=${Date.now()}`);
-  const notice = noticeResponse.ok ? readPublishedVersion(await noticeResponse.json().catch(() => null)) : null;
-  const noticeProblems = checkUpdateNotice(notice, { versionCode: app.expo.android.versionCode, pageUrl });
-  if (noticeProblems.length > 0) throw new Error(`${noticeProblems.join('; ')}. Update announcements/app-version.json on main.`);
-  console.log(`update notice ok: apps older than ${app.expo.version} (${app.expo.android.versionCode}) are sent to ${pageUrl}`);
+  for (const [url, where] of [[VERSION_URL, 'assets/app-version.json beside the APK'], [LEGACY_VERSION_URL, 'announcements/app-version.json on main (read by 0.5.4-0.5.15)']] as const) {
+    const noticeResponse = await fetch(`${url}?t=${Date.now()}`);
+    const notice = noticeResponse.ok ? readPublishedVersion(await noticeResponse.json().catch(() => null)) : null;
+    const noticeProblems = checkUpdateNotice(notice, { versionCode: app.expo.android.versionCode, pageUrl });
+    if (noticeProblems.length > 0) throw new Error(`${noticeProblems.join('; ')}. Update ${where}.`);
+  }
+  console.log(`update notices ok: apps older than ${app.expo.version} (${app.expo.android.versionCode}) are sent to ${pageUrl}`);
 }
 
 main().catch((error) => { console.error(String(error instanceof Error ? error.message : error)); process.exit(1); });

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const { primitive, appState } = vi.hoisted(() => ({
   primitive: (name: string) => (props: Record<string, unknown>) => require('react').createElement(name, props, props.children as never),
@@ -32,10 +32,14 @@ const PAGE = 'https://home.luminexhealthbiohack.com/public/jhuke-bible/';
 const UPDATE: UpdateState = { available: true, mandatory: true, versionName: '0.5.16', url: PAGE, note: '10 月起的讀經進度要這一版才看得到。' };
 const NONE: UpdateState = { available: false, mandatory: false, versionName: null, url: null, note: null };
 
+const mounted: Array<ReturnType<typeof create>> = [];
+afterEach(() => { mounted.splice(0).forEach((tree) => act(() => tree.unmount())); vi.useRealTimers(); });
+
 async function render(check: () => Promise<UpdateState>) {
   const open = vi.fn();
   let tree!: ReturnType<typeof create>;
   await act(async () => { tree = create(React.createElement(UpdatePrompt, { check, open })); });
+  mounted.push(tree);
   return {
     open,
     tree,
@@ -59,6 +63,16 @@ describe('the update prompt', () => {
     act(() => { view.byLabel('稍後再說').props.onPress(); });
     expect(view.text()).not.toContain('有新版本');
     await act(async () => { appState.listener?.('active'); });
+    expect(check).toHaveBeenCalledTimes(2);
+    expect(view.text()).toContain('有新版本 0.5.16');
+  });
+
+  it('asks once more a little later when the first check found nothing, as on a phone that just woke without network', async () => {
+    vi.useFakeTimers();
+    const check = vi.fn<() => Promise<UpdateState>>().mockResolvedValueOnce(NONE).mockResolvedValue(UPDATE);
+    const view = await render(check);
+    expect(view.tree.toJSON()).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
     expect(check).toHaveBeenCalledTimes(2);
     expect(view.text()).toContain('有新版本 0.5.16');
   });

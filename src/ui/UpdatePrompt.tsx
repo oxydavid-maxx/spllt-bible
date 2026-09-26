@@ -4,6 +4,8 @@ import { AppState, Linking, Modal, Pressable, StyleSheet, Text, View } from 'rea
 import { fetchUpdateState, NO_UPDATE, type UpdateState } from '../services/updateCheck';
 import { theme } from './Theme';
 
+const RETRY_MS = 20_000;
+
 function installedVersionCode(): number | null {
   const code = Number(Application.nativeBuildVersion);
   return Number.isInteger(code) && code > 0 ? code : null;
@@ -32,16 +34,18 @@ export function UpdatePrompt({
 
   useEffect(() => {
     let active = true;
-    const ask = () => {
-      void check().then((next) => {
-        if (!active) return;
-        setState(next);
-        setDismissed(false);
-      });
-    };
-    ask();
-    const subscription = AppState.addEventListener('change', (status) => { if (status === 'active') ask(); });
-    return () => { active = false; subscription.remove(); };
+    const ask = () => check().then((next) => {
+      if (!active) return next;
+      setState(next);
+      setDismissed(false);
+      return next;
+    });
+    // A failed check reads as "no update", and a phone that has just woken often has no network yet;
+    // one more try a little later means the member does not have to leave and come back to see it.
+    const retry = setTimeout(() => { void ask(); }, RETRY_MS);
+    void ask().then((first) => { if (first.available) clearTimeout(retry); });
+    const subscription = AppState.addEventListener('change', (status) => { if (status === 'active') void ask(); });
+    return () => { active = false; clearTimeout(retry); subscription.remove(); };
     // `check` is fixed for the life of the prompt; re-subscribing on every render would re-ask.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

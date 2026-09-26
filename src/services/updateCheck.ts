@@ -1,5 +1,5 @@
 /**
- * Whether a newer build exists, decided from a file published beside the weekly announcement.
+ * Whether a newer build exists, decided from a small file published beside the APK.
  *
  * The native route is Play's in-app updates, which can force a full-screen update flow. It needs a
  * Play Core module, a native module needs a prebuild, and this project deliberately does not
@@ -12,11 +12,18 @@
  * on the same schedule as production, and a youth group on an internal track should not be silently
  * three versions behind.
  *
- * Published to the same public repo as the announcements: no new credential, no new server, and the
- * weekly job already knows how to push there.
+ * No new credential and no new server: the file sits on the same public page as the APK.
  */
 
-export const VERSION_URL =
+/**
+ * Beside the APK and its install page on home.luminex, and published with them in one step. The
+ * GitHub copy it replaces was left at 0.5.9 for six releases, and on 2026-09-26 GitHub was
+ * unreachable from this machine's connection several times while home.luminex always answered.
+ */
+export const VERSION_URL = 'https://home.luminexhealthbiohack.com/public/jhuke-bible/assets/app-version.json';
+
+/** What 0.5.4 to 0.5.15 read. Kept in step with VERSION_URL for as long as those builds are installed. */
+export const LEGACY_VERSION_URL =
   'https://raw.githubusercontent.com/oxydavid-maxx/spllt-bible/main/announcements/app-version.json';
 
 const TIMEOUT_MS = 8_000;
