@@ -160,3 +160,38 @@ describe('a day of writing survives every way it could be dropped', () => {
     expect(hook.view().conflict).toBe(true);
   });
 });
+
+// 光佑 2026-09-26: "日記寫完要可以按儲存，以及儲存成功。不然寫完有點不知所措". Saving already happened
+// two seconds after typing stopped, but nothing on screen said so. The hook now reports it.
+describe('the journal tells the member whether their writing is saved', () => {
+  it('has nothing to report on an empty day', () => {
+    expect(mountHook('2026-09-12').view().saveStatus).toBe('empty');
+  });
+
+  it('reports unsaved while typing and saved, with the time, once the Save button is pressed', () => {
+    vi.setSystemTime(new Date('2026-09-26T00:58:00.000Z'));
+    const hook = mountHook('2026-09-26');
+    act(() => { hook.view().setBody('今天讀到多 2 章'); });
+    expect(hook.view().saveStatus).toBe('unsaved');
+
+    act(() => { hook.view().saveNow(); });
+
+    expect(hook.view().saveStatus).toBe('saved');
+    expect(hook.view().savedAt).toBe('2026-09-26T00:58:00.000Z');
+    expect(store.get({ memberId: 'member-self', taskDate: '2026-09-26' })?.body).toBe('今天讀到多 2 章');
+  });
+
+  it('also reports saved when the automatic save got there first', () => {
+    const hook = mountHook('2026-09-26');
+    act(() => { hook.view().setBody('忘了按儲存'); });
+    act(() => { vi.advanceTimersByTime(2_000); });
+    expect(hook.view().saveStatus).toBe('saved');
+  });
+
+  it('shows a day written earlier as saved, at the time it was written', () => {
+    store.save({ memberId: 'member-self', planId: 'church-2026-09', taskDate: '2026-09-25', body: '昨天寫的', operationId: 'seed', expectedRevision: 0 }, '2026-09-25T12:30:00.000Z');
+    const hook = mountHook('2026-09-25');
+    expect(hook.view().saveStatus).toBe('saved');
+    expect(hook.view().savedAt).toBe('2026-09-25T12:30:00.000Z');
+  });
+});

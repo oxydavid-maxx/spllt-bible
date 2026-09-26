@@ -1,0 +1,34 @@
+diff --git a/node_modules/@youversion/platform-react-hooks/dist/chunk-UZ2LOWFK.js b/node_modules/@youversion/platform-react-hooks/dist/chunk-UZ2LOWFK.js
+index fcb1f87..a9a058c 100644
+--- a/node_modules/@youversion/platform-react-hooks/dist/chunk-UZ2LOWFK.js
++++ b/node_modules/@youversion/platform-react-hooks/dist/chunk-UZ2LOWFK.js
+@@ -36,7 +36,11 @@ var queryClientDefaultOptions = {
+     // Hooks show the error on the first failure.
+     // TanStack Query retries three times by default.
+     // Those retries delay the error.
+-    retry: false,
++    // Qingmu extension (not upstream): a read that fails once - a WebView in a background tab
++    // while the member signs in, a flaky network - must not strand the reader on an error. Two
++    // quick retries run while the reader still shows loading; only the third failure surfaces.
++    retry: 2,
++    retryDelay: (attempt) => Math.min(1e3 * 2 ** attempt, 4e3),
+     // Hooks always attempt the request and report a transport
+     // failure through `error`.
+     // TanStack Query pauses a fetch by default when the browser
+diff --git a/node_modules/@youversion/platform-react-hooks/dist/index.cjs b/node_modules/@youversion/platform-react-hooks/dist/index.cjs
+index 65f59b2..29afff5 100644
+--- a/node_modules/@youversion/platform-react-hooks/dist/index.cjs
++++ b/node_modules/@youversion/platform-react-hooks/dist/index.cjs
+@@ -213,7 +213,11 @@ var queryClientDefaultOptions = {
+     // Hooks show the error on the first failure.
+     // TanStack Query retries three times by default.
+     // Those retries delay the error.
+-    retry: false,
++    // Qingmu extension (not upstream): a read that fails once - a WebView in a background tab
++    // while the member signs in, a flaky network - must not strand the reader on an error. Two
++    // quick retries run while the reader still shows loading; only the third failure surfaces.
++    retry: 2,
++    retryDelay: (attempt) => Math.min(1e3 * 2 ** attempt, 4e3),
+     // Hooks always attempt the request and report a transport
+     // failure through `error`.
+     // TanStack Query pauses a fetch by default when the browser

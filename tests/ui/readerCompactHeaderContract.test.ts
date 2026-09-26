@@ -17,10 +17,13 @@ function compactHeaderStyle() {
 }
 
 describe('compact Reader SDK header contract', () => {
-  it('removes only the duplicate loaded book/chapter heading and keeps metadata fallback visible', () => {
+  // The chips above the reader already name the chapter, so the SDK heading is always hidden. It used
+  // to stay visible while it held the book-title spinner, which on a failed book list meant a spinner
+  // that never went away (seen on a Pixel, 2026-09-26). Loading and errors show in the passage area.
+  it('hides the duplicate book/chapter heading in every state, including a book title that never loads', () => {
     const style = compactHeaderStyle();
-    expect(style).toContain('[data-yv-sdk] > main > h1:not(:has(svg))');
-    expect(style).toContain('display: none');
+    expect(style).toContain('[data-yv-sdk] > main > h1 { display: none !important; }');
+    expect(style).not.toContain(':has(svg)');
     expect(style).toContain('padding-top: 16px');
     expect(style).not.toContain('.yv-v');
     expect(sdkReader).toMatch(/bookData\?\.title\s*\|\|[\s\S]{0,160}LoaderIcon/);

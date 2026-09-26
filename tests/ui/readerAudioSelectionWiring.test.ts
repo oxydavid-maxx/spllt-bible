@@ -88,6 +88,7 @@ vi.mock('react-native', () => ({
   useWindowDimensions: () => ({ width: 393, fontScale: 1 }),
   Modal: (props: { visible: boolean; children?: React.ReactNode }) => props.visible ? React.createElement('Modal', props, props.children) : null,
   BackHandler: { addEventListener: vi.fn(() => ({ remove: vi.fn() })) },
+  AppState: { addEventListener: vi.fn(() => ({ remove: vi.fn() })) },
   AccessibilityInfo: {
     addEventListener: vi.fn(() => ({ remove: vi.fn() })),
     isScreenReaderEnabled: vi.fn(async () => false),
