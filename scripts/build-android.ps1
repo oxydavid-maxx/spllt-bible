@@ -148,11 +148,17 @@ if ($gradlePropertiesAfter -cne $gradlePropertiesBefore) {
 }
 
 if ($Bundle -and $Variant -ne 'release') { throw 'An App Bundle is only produced for a release build.' }
-# A sideloaded APK is downloaded whole. All four ABIs made 0.5.11/0.5.12 a 162 MB download (x86 and
-# x86_64 only run on emulators), because the ARM-only flag was a manual argument that got dropped.
-# Release APKs default to arm64-v8a, which current phones run; pass -ReactNativeArchitectures for
-# another set. App Bundles keep every ABI because Play serves each phone only its own.
-if ($Variant -eq 'release' -and -not $Bundle -and -not $ReactNativeArchitectures) { $ReactNativeArchitectures = 'arm64-v8a' }
+# A sideloaded APK is downloaded whole. 0.5.11/0.5.12 went out at 162 MB with all four ABIs: an
+# ARM-only APK had crashed on the x86_64 test emulator (SoLoader looks inside the APK for x86_64
+# libraries and never finds the ARM ones the emulator translates), so the x86 sets came back.
+# Release APKs default to the two ARM sets phones run, with compressed native libraries. Android
+# then extracts them at install, and the emulator's ARM translation loads extracted libraries, so
+# the exact APK that is published also runs on the emulator. App Bundles keep every ABI,
+# uncompressed, because Play serves each phone only its own.
+if ($Variant -eq 'release' -and -not $Bundle) {
+  if (-not $ReactNativeArchitectures) { $ReactNativeArchitectures = 'arm64-v8a,armeabi-v7a' }
+  if (-not $PSBoundParameters.ContainsKey('LegacyPackaging')) { $LegacyPackaging = [switch]$true }
+}
 $gradleTask = if ($Bundle) { 'bundleRelease' } elseif ($Variant -eq 'release') { 'assembleRelease' } else { 'assembleDebug' }
 $fixtureEnabled = $env:EXPO_PUBLIC_QINGMU_FIXTURE -eq 'true'
 $buildProfile = if ($fixtureEnabled) { 'QA_CORE_FIXTURE_ONLY' } else { 'PILOT_GOOGLE_HTTPS' }

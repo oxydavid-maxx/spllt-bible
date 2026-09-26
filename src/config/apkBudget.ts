@@ -1,8 +1,8 @@
 /**
  * The sideloaded release APK is downloaded whole, so its size is the install experience. 0.5.11 and
- * 0.5.12 went out at 162 MB because the ARM-only build argument was manual and got dropped: four
- * native library sets (two of them emulator-only x86) were 118 MB of it. The build now defaults a
- * release APK to arm64-v8a and runs this check on the result.
+ * 0.5.12 went out at 162 MB: four native library sets (two of them emulator-only x86) were 118 MB
+ * of it. The build now defaults a release APK to the two ARM sets with compressed native libraries
+ * and runs this check on the result; uncompressed, the two ARM sets alone exceed the budget.
  */
 
 export interface ZipEntryInfo {

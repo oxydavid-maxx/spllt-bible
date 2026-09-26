@@ -42,38 +42,45 @@ function makeZip(files: Array<[string, number]>): Buffer {
 }
 
 describe('the sideloaded APK stays small', () => {
-  // 0.5.11 and 0.5.12 shipped 162 MB because the ARM-only flag was a manual build argument; four
-  // ABIs (two of them emulator-only x86) were 118 MB of it. A release APK is now arm64-v8a by
-  // default and the build fails when another ABI, a source map, or excess size slips in.
+  // 0.5.11 and 0.5.12 shipped 162 MB: an ARM-only APK had crashed on the x86_64 test emulator, so
+  // the emulator-only x86 sets were added back, and four ABIs were 118 MB of it. A release APK now
+  // carries the two ARM sets compressed (the emulator runs that too), and the build fails when
+  // another ABI, a source map, or excess size slips in.
   it('reads the files and sizes an APK contains', () => {
     const entries = readZipEntries(makeZip([['lib/arm64-v8a/libhermes.so', 40], ['assets/app.js', 10]]));
     expect(entries).toEqual([{ name: 'lib/arm64-v8a/libhermes.so', compressedSize: 40 }, { name: 'assets/app.js', compressedSize: 10 }]);
   });
 
-  it('accepts an arm64-only APK without source maps under the budget', () => {
-    const entries = [{ name: 'lib/arm64-v8a/libhermes.so', compressedSize: 40 }, { name: 'assets/www.bundle/entry.js', compressedSize: 10 }];
-    expect(checkApkBudget(entries, 80e6, { abis: ['arm64-v8a'], maxBytes: 90e6 })).toEqual([]);
+  it('accepts an ARM APK without source maps under the budget', () => {
+    const entries = [
+      { name: 'lib/arm64-v8a/libhermes.so', compressedSize: 40 },
+      { name: 'lib/armeabi-v7a/libhermes.so', compressedSize: 30 },
+      { name: 'assets/www.bundle/entry.js', compressedSize: 10 },
+    ];
+    expect(checkApkBudget(entries, 70e6, { abis: ['arm64-v8a', 'armeabi-v7a'], maxBytes: 90e6 })).toEqual([]);
   });
 
-  it('names every emulator or 32-bit library set, shipped source map, and excess megabyte', () => {
+  it('names every emulator library set, missing phone set, shipped source map, and excess megabyte', () => {
     const entries = [
       { name: 'lib/arm64-v8a/libhermes.so', compressedSize: 40 },
       { name: 'lib/x86/libhermes.so', compressedSize: 40 },
       { name: 'lib/x86_64/libhermes.so', compressedSize: 40 },
       { name: 'assets/www.bundle/entry.js.map', compressedSize: 10 },
     ];
-    const problems = checkApkBudget(entries, 162.4e6, { abis: ['arm64-v8a'], maxBytes: 90e6 });
+    const problems = checkApkBudget(entries, 162.4e6, { abis: ['arm64-v8a', 'armeabi-v7a'], maxBytes: 90e6 });
     expect(problems).toEqual([
       'unexpected native ABI x86',
       'unexpected native ABI x86_64',
+      'missing native ABI armeabi-v7a',
       '1 source map file(s) shipped, e.g. assets/www.bundle/entry.js.map',
       'APK is 162.4 MB, over the 90.0 MB budget',
     ]);
   });
 
-  it('builds release APKs for arm64-v8a unless told otherwise, and checks the result', () => {
+  it('builds release APKs for ARM phones with compressed native libraries unless told otherwise, and checks the result', () => {
     const script = readFileSync('scripts/build-android.ps1', 'utf8');
-    expect(script).toMatch(/if \(\$Variant -eq 'release' -and -not \$Bundle -and -not \$ReactNativeArchitectures\) \{ \$ReactNativeArchitectures = 'arm64-v8a' \}/);
+    expect(script).toMatch(/if \(-not \$ReactNativeArchitectures\) \{ \$ReactNativeArchitectures = 'arm64-v8a,armeabi-v7a' \}/);
+    expect(script).toMatch(/if \(-not \$PSBoundParameters\.ContainsKey\('LegacyPackaging'\)\) \{ \$LegacyPackaging = \[switch\]\$true \}/);
     expect(script).toMatch(/scripts\/check-apk-budget\.ts/);
   });
 });
