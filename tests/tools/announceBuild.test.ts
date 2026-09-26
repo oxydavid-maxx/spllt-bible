@@ -15,6 +15,7 @@ vi.mock('../../tools/announce/office', () => ({
 }));
 
 import { buildAnnouncement, readWeekFiles, type Announcement } from '../../tools/announce/build';
+import { dropLinksNeedingSignIn } from '../../tools/announce/linkAccess';
 import { buildReviewPrompt, parseVerdict } from '../../tools/announce/review';
 
 const WEEK = [
@@ -215,5 +216,30 @@ describe('the weekly review verdict', () => {
     expect(prompt).toContain('2026-09-21');
     expect(prompt).toContain('NG;FIELDS');
     expect(prompt).toContain('講道標題只有一兩個字是正常的');
+  });
+});
+
+describe('both decks of a week, and links people can actually open', () => {
+  it('links the sermon deck as 講道 and the whole-service deck as 報告', () => {
+    const presentations = new Set(['1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc', '1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY']);
+    const files = readWeekFiles(WEEK.map((entry) => (presentations.has(entry.id) ? { ...entry, mimeType: 'application/vnd.google-apps.presentation' } : entry)));
+    expect(files.sermonSlides).toBe('https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview');
+    expect(files.slides).toBe('https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview');
+    expect(files.title).toBe('先');
+  });
+
+  it('leaves out a link that asks for a Google sign-in or is gone, keeps one it could not check, and names each', async () => {
+    const announcement: Announcement = {
+      week: '2026-09-20', generatedAt: '2026-09-26T00:00:00.000Z', next: null, standing: null,
+      sermon: { title: '先', speaker: null, passage: null, audio: 'https://drive.google.com/file/d/open/view', slides: 'https://docs.google.com/presentation/d/locked/preview', sermonSlides: 'https://docs.google.com/presentation/d/flaky/preview', transcript: null, youtube: null },
+      past: [{ week: '2026-09-13', title: null, speaker: null, audio: null, slides: 'https://docs.google.com/presentation/d/gone/preview', transcript: null }],
+    };
+    const warnings = await dropLinksNeedingSignIn(announcement, async (url) => (url.includes('locked') ? 'needs-sign-in' : url.includes('gone') ? 'missing' : url.includes('flaky') ? 'unknown' : 'open'));
+    expect(announcement.sermon).toMatchObject({ audio: 'https://drive.google.com/file/d/open/view', slides: null, sermonSlides: 'https://docs.google.com/presentation/d/flaky/preview' });
+    expect(announcement.past[0].slides).toBeNull();
+    expect(warnings).toEqual([
+      'LINK_NEEDS_SHARING:2026-09-20:slides:https://docs.google.com/presentation/d/locked/preview',
+      'LINK_MISSING:2026-09-13:slides:https://docs.google.com/presentation/d/gone/preview',
+    ]);
   });
 });

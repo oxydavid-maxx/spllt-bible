@@ -21,7 +21,10 @@ export interface SermonBlock {
   speaker: string | null;
   passage: string | null;
   audio: string | null;
+  /** The whole-service deck (報告). */
   slides: string | null;
+  /** The sermon's own deck (講道); older published files do not carry it. */
+  sermonSlides?: string | null;
   transcript: string | null;
   youtube: string | null;
 }
@@ -31,7 +34,10 @@ export interface PastWeek {
   title: string | null;
   speaker: string | null;
   audio: string | null;
+  /** The whole-service deck (報告). */
   slides: string | null;
+  /** The sermon's own deck (講道); older published files do not carry it. */
+  sermonSlides?: string | null;
   transcript: string | null;
 }
 
@@ -51,7 +57,7 @@ function parseSermon(value: unknown): SermonBlock | null {
   const item = value as Record<string, unknown>;
   const sermon: SermonBlock = {
     title: orNull(item.title), speaker: orNull(item.speaker), passage: orNull(item.passage),
-    audio: orNull(item.audio), slides: orNull(item.slides), transcript: orNull(item.transcript),
+    audio: orNull(item.audio), slides: orNull(item.slides), sermonSlides: orNull(item.sermonSlides), transcript: orNull(item.transcript),
     youtube: orNull(item.youtube),
   };
   return Object.values(sermon).some((entry) => entry !== null) ? sermon : null;
@@ -81,7 +87,7 @@ export function parseAnnouncement(value: unknown): Announcement | null {
       past.push({
         week: week.week, title: orNull(week.title),
         speaker: typeof week.speaker === 'string' && week.speaker.trim() ? week.speaker.trim() : null,
-        audio: orNull(week.audio), slides: orNull(week.slides), transcript: orNull(week.transcript),
+        audio: orNull(week.audio), slides: orNull(week.slides), sermonSlides: orNull(week.sermonSlides), transcript: orNull(week.transcript),
       });
     }
   }

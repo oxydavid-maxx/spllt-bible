@@ -177,3 +177,37 @@ describe('a headline out of a topic cell', () => {
     expect(headline('')).toBe('');
   });
 });
+
+describe('the two decks of a week (光佑 2026-09-26: the 講道 deck and the 報告 deck are both linked)', () => {
+  // The real listing markup, trimmed: every entry carries its file type in the list icon.
+  const TYPED = '<div class="flip-entry" id="entry-1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc"><a href="https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/edit?usp=drive_web">'
+    + '<div class="flip-entry-list-icon"><img src="https://drive-thirdparty.googleusercontent.com/16/type/application/vnd.google-apps.presentation" alt=""/></div>'
+    + '<div class="flip-entry-title">20260920 青崇講道｜先</div></a></div>'
+    + '<div class="flip-entry" id="entry-1H87b3pGJoVPsjicbZT588hURi2839nw4"><div class="flip-entry-list-icon"><img src="https://drive-thirdparty.googleusercontent.com/16/type/application/pdf" alt=""/></div>'
+    + '<div class="flip-entry-title">20260920 先｜線上聆聽連結.pdf</div></div>';
+
+  it('reads each file type from the listing', () => {
+    expect(parseFolderListing(TYPED)).toEqual([
+      { id: '1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc', name: '20260920 青崇講道｜先', mimeType: 'application/vnd.google-apps.presentation' },
+      { id: '1H87b3pGJoVPsjicbZT588hURi2839nw4', name: '20260920 先｜線上聆聽連結.pdf', mimeType: 'application/pdf' },
+    ]);
+  });
+
+  it('tells the sermon deck from the service deck and from the sermon manuscript', () => {
+    expect(classifyFile('20260920 青崇講道｜先', 'application/vnd.google-apps.presentation')).toBe('sermonSlides');
+    expect(classifyFile('20261004 青崇講道｜信', 'application/pdf')).toBe('sermonSlides');
+    expect(classifyFile('20260920 青崇講道｜先', 'application/vnd.google-apps.document')).toBe('sermonDoc');
+    expect(classifyFile('20260920青崇(全)PPT', 'application/vnd.google-apps.presentation')).toBe('slides');
+    expect(classifyFile('20261004青崇(全).pdf', 'application/pdf')).toBe('slides');
+    expect(classifyFile('20260920 先｜線上聆聽連結.pdf', 'application/pdf')).toBe('poster');
+  });
+
+  it('links each file the way its type opens', () => {
+    expect(viewUrl({ id: '1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc', name: 'x', mimeType: 'application/vnd.google-apps.presentation' }, 'sermonSlides'))
+      .toBe('https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview');
+    expect(viewUrl({ id: '1cuaRcYwP_RytcnXpIwyblcGNlEXuCOgS6yC_ZFM0dzI', name: '未命名文件', mimeType: 'application/vnd.google-apps.document' }, 'other'))
+      .toBe('https://docs.google.com/document/d/1cuaRcYwP_RytcnXpIwyblcGNlEXuCOgS6yC_ZFM0dzI/view');
+    expect(viewUrl({ id: '1H87b3pGJoVPsjicbZT588hURi2839nw4', name: 'x.pdf', mimeType: 'application/pdf' }, 'sermonSlides'))
+      .toBe('https://drive.google.com/file/d/1H87b3pGJoVPsjicbZT588hURi2839nw4/view');
+  });
+});
