@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -10,6 +10,9 @@ import { useAuthSnapshot } from '../../src/services/authSession';
 import { runtimeConfig } from '../../src/config/runtime';
 import { eventDateFromLabel, fetchEventRegistrations, type EventRegistrationSummary } from '../../src/services/eventRegistrationClient';
 import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
+import { fetchUpdateState, NO_UPDATE, type UpdateState } from '../../src/services/updateCheck';
+import { UpdateCard } from '../../src/ui/UpdateCard';
+import { installedVersionCode } from '../../src/ui/UpdatePrompt';
 import { theme } from '../../src/ui/Theme';
 
 /**
@@ -73,11 +76,21 @@ export default function AnnouncementsScreen() {
   }, [session?.sessionToken, session?.memberId, nextDate]);
   useFocusEffect(loadRegistration);
 
+  // The update stays findable here after the prompt is dismissed; asked again each time the tab shows.
+  const [update, setUpdate] = useState<UpdateState>(NO_UPDATE);
+  const loadUpdate = useCallback(() => {
+    let active = true;
+    void fetchUpdateState(installedVersionCode()).then((next) => { if (active) setUpdate(next); });
+    return () => { active = false; };
+  }, []);
+  useFocusEffect(loadUpdate);
+
   return <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
     <View style={styles.toolbar}>
       <Text accessibilityRole="header" style={styles.title}>公告</Text>
       <AccountEntryButton />
     </View>
+    <UpdateCard state={update} onUpdate={(url) => { void Linking.openURL(url).catch(() => undefined); }} />
     {announcement
       ? <AnnouncementBoard
           announcement={announcement}

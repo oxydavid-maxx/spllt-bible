@@ -4,10 +4,10 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildAnnouncement, PARENT_FOLDER, PROGRAM_WORKBOOK, SUNDAY_WORKBOOK, type Announcement } from '../../tools/announce/build';
 
-const sources = vi.hoisted(() => ({ fetchFolderHtml: vi.fn(), fetchWorkbook: vi.fn(), fetchSlidesText: vi.fn(), fetchDriveFile: vi.fn(), fetchDocText: vi.fn(), linkAccess: vi.fn(async () => 'open'), publish: vi.fn() }));
+const sources = vi.hoisted(() => ({ fetchFolderHtml: vi.fn(), fetchWorkbook: vi.fn(), fetchSlidesText: vi.fn(), fetchDriveFile: vi.fn(), fetchDocText: vi.fn(), linkAccess: vi.fn(async () => 'open'), publish: vi.fn(), review: vi.fn(async () => ({ sensible: true })) }));
 vi.mock('../../tools/announce/fetch', () => sources);
 vi.mock('../../tools/announce/publisher', () => ({ publishAnnouncement: sources.publish }));
-vi.mock('../../tools/announce/review', () => ({ reviewAnnouncement: async () => ({ sensible: true }) }));
+vi.mock('../../tools/announce/review', () => ({ reviewAnnouncement: sources.review }));
 
 // Small, real stored ZIP members: exercise the actual XLSX reader, not a parser double.
 function workbook(tabs: Record<string, string[][]>): Buffer {
@@ -52,7 +52,7 @@ function failFolder(id: string, value: string | null = null) {
   const normal = sources.fetchFolderHtml.getMockImplementation()!;
   sources.fetchFolderHtml.mockImplementation(async (key: string) => key === id ? value : normal(key));
 }
-async function runIndex(previousValue: Announcement | null, archive?: Announcement) {
+async function runIndex(previousValue: Announcement | null, archive?: Announcement, options: { review?: boolean } = {}) {
   const repo = mkdtempSync(join(tmpdir(), 'qingmu-ingest-')); roots.push(repo); mkdirSync(join(repo, 'announcements'));
   const before = previousValue ? JSON.stringify(previousValue) + '\n' : null;
   if (before) writeFileSync(join(repo, 'announcements/latest.json'), before);
@@ -60,7 +60,7 @@ async function runIndex(previousValue: Announcement | null, archive?: Announceme
   const oldArgv = process.argv, oldRepo = process.env.QINGMU_ANNOUNCE_REPO, oldExit = process.exitCode;
   const output: string[] = [], writer = vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: unknown) => { output.push(String(chunk)); return true; }) as typeof process.stdout.write);
   try {
-    vi.resetModules(); process.argv = [process.execPath, 'index.ts', '--skip-review', '--date', '2026-09-22'];
+    vi.resetModules(); process.argv = [process.execPath, 'index.ts', ...(options.review ? [] : ['--skip-review']), '--date', '2026-09-22'];
     process.env.QINGMU_ANNOUNCE_REPO = repo; process.exitCode = undefined;
     await import('../../tools/announce/index'); await vi.waitFor(() => expect(process.exitCode).not.toBeUndefined());
     return { code: process.exitCode, output: output.join(''), before, after: before ? readFileSync(join(repo, 'announcements/latest.json'), 'utf8') : null };
@@ -118,5 +118,47 @@ describe('announcement source failure preservation', () => {
     failFolder('week20', current + listing(['deck20', '20260920.pptx']));
     const result = await runIndex(previous);
     expect(result.code).toBe(1); expect(result.output).toContain('DECK'); expect(sources.publish).not.toHaveBeenCalled(); expect(result.after).toBe(result.before);
+  });
+});
+
+describe('the next gathering, in full (光佑 2026-09-27: both sessions and who serves)', () => {
+  it('lists the first and second session and the roster row for the next date', async () => {
+    sources.fetchWorkbook.mockImplementation(async (id: string) => id === PROGRAM_WORKBOOK
+      ? workbook({
+          '中亮第二四周青年啟發內容': [['Date', 'Topic', 'Owner', 'Note'], ['46292', ['耶穌：耶穌是誰？', '你是否親眼見過名人？'].join(String.fromCharCode(10)), '中亮/大專', '']],
+          '小丁第二四周第二堂': [['Date', 'Topic', 'Owner', 'Note'], ['46292', '爸媽不在家，我要活下去系列: 豚汁定食/如何殺柚子', '淑君校長/大廚', '']],
+        })
+      : workbook({
+          '常設': [['key', 'value'], ['地址', '測試地址']],
+          '2026服事表': [
+            ['2026竹科靈糧堂 青年崇拜/服事表'],
+            ['日期', '講員', '敬拜團+詩歌', '主領(報告)', '招待', '影音(投影/音控)', '聖餐', '愛筵', '清潔', '小組長'],
+            ['46292', '中亮', '大專青少混合', '光佑', '小丁/文樂', '柏睿/獻巍＆采人', '-', '淑君及大廚們', '全體', ''],
+          ],
+        }));
+    const { announcement } = await buildAnnouncement({ today: '2026-09-22' });
+    expect(announcement?.next).toMatchObject({
+      date: '9/27',
+      sessions: [
+        { label: '第一堂', kind: '青年啟發', title: '耶穌：耶穌是誰？', owner: '中亮/大專' },
+        { label: '第二堂', kind: null, title: '爸媽不在家，我要活下去系列: 豚汁定食/如何殺柚子', owner: '淑君校長/大廚' },
+      ],
+      roles: [
+        { label: '講員', value: '中亮' }, { label: '敬拜團+詩歌', value: '大專青少混合' }, { label: '主領(報告)', value: '光佑' },
+        { label: '招待', value: '小丁/文樂' }, { label: '影音(投影/音控)', value: '柏睿/獻巍＆采人' }, { label: '愛筵', value: '淑君及大廚們' },
+        { label: '清潔', value: '全體' },
+      ],
+    });
+  });
+});
+
+describe('the daily run (光佑 2026-09-27: once a day, and no tokens when nothing changed)', () => {
+  it('asks for the review only when the announcement changed', async () => {
+    const built = (await buildAnnouncement({ today: '2026-09-22' })).announcement!;
+    sources.review.mockClear();
+    expect((await runIndex({ ...built, generatedAt: '2000-01-01T00:00:00.000Z' }, undefined, { review: true })).code).toBe(0);
+    expect(sources.review).not.toHaveBeenCalled();
+    expect((await runIndex({ ...built, standing: { 地址: '搬家了' } }, undefined, { review: true })).code).toBe(0);
+    expect(sources.review).toHaveBeenCalledTimes(1);
   });
 });

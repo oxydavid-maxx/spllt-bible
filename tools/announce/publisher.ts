@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { Announcement } from './build';
+import { contentOf } from './content';
 
 function git(repo: string, args: string[]): string {
   return execFileSync('git', ['-C', repo, ...args], {
@@ -23,11 +24,6 @@ function outputPaths(week: string): string[] {
 }
 
 /** Ignore only the run timestamp, just as the original weekly job did. */
-function contentOf(announcement: Announcement): string {
-  const { generatedAt, ...rest } = announcement;
-  void generatedAt;
-  return JSON.stringify(rest);
-}
 
 function cleanCheckout(repo: string): void {
   if (git(repo, ['status', '--porcelain=v1', '--untracked-files=all'])) {

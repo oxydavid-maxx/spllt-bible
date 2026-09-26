@@ -50,6 +50,19 @@ describe('reading what the weekly job published', () => {
 
   // A later run adding a field must not stop an older phone rendering the rest. That is the opposite
   // of the points parsers, where an unexpected key means the server started leaking something.
+  it('reads the sessions and roster of the next gathering, dropping malformed entries', () => {
+    const announcement = parseAnnouncement({
+      ...PUBLISHED,
+      next: {
+        date: '9/27', topic: '豚汁定食', owner: '淑君校長/大廚', signup: null,
+        sessions: [{ label: '第一堂', kind: '青年啟發', title: '耶穌：耶穌是誰？', owner: '中亮/大專' }, { label: '第二堂', title: '' }, 'x'],
+        roles: [{ label: '講員', value: '中亮' }, { label: '聖餐' }, null],
+      },
+    });
+    expect(announcement?.next?.sessions).toEqual([{ label: '第一堂', kind: '青年啟發', title: '耶穌：耶穌是誰？', owner: '中亮/大專' }]);
+    expect(announcement?.next?.roles).toEqual([{ label: '講員', value: '中亮' }]);
+  });
+
   it('ignores fields a newer publisher added', () => {
     const announcement = parseAnnouncement({ ...PUBLISHED, somethingNew: { a: 1 }, sermon: { ...PUBLISHED.sermon, extra: 'x' } });
     expect(announcement?.sermon?.title).toBe('先');

@@ -21,6 +21,8 @@ export const SUNDAY_WORKBOOK = '1XVzcYvDzIum-HEjuFWwVBJ9_ZphV4sFy3p-xneQSScU';
 /** Tabs the job reads. A tab that has been renamed simply yields nothing, and its block disappears. */
 const SERMON_TABS = ['中亮第一三周信息排班', '中亮第二四周青年啟發內容'];
 const GATHERING_TABS = ['正慧姐青崇一三周第二堂規劃', '小丁第二四周第二堂'];
+/** What the first session is on the weeks each first-session tab covers. */
+const FIRST_SESSION_KIND: Record<string, string> = { 中亮第一三周信息排班: '信息', 中亮第二四周青年啟發內容: '青年啟發' };
 const STANDING_TAB = '常設';
 
 const PAST_WEEKS = 8;
@@ -38,11 +40,19 @@ export interface SermonBlock {
   youtube: string | null;
 }
 
+export interface NextSession { label: string; kind: string | null; title: string; owner: string | null }
+
 export interface Announcement {
   week: string;
   generatedAt: string;
   sermon: SermonBlock | null;
-  next: { date: string; topic: string; owner: string | null; signup: string | null } | null;
+  next: {
+    date: string; topic: string; owner: string | null; signup: string | null;
+    /** Both sessions of that Sunday; older phones keep reading topic and owner. */
+    sessions?: NextSession[];
+    /** Who serves, as the roster's own column names say it. */
+    roles?: Array<{ label: string; value: string }>;
+  } | null;
   standing: Record<string, string> | null;
   past: Array<{ week: string; title: string | null; speaker: string | null; audio: string | null; slides: string | null; sermonSlides?: string | null; transcript: string | null }>;
 }
@@ -121,6 +131,44 @@ function standingFrom(workbook: Buffer): Record<string, string> | null {
 }
 
 /** The dated service sheet labels the speaker explicitly; program-tab owners can be a group. */
+/**
+ * Both sessions of one Sunday (光佑, 2026-09-27): the first from whichever first-session tab covers
+ * that week (信息 on the first and third Sundays, 青年啟發 on the second and fourth), the second from
+ * the second-session tabs. Titles are the cell's first line; the rest of a 青年啟發 cell is the
+ * small-group questions.
+ */
+function sessionsOn(program: Buffer, date: string): NextSession[] {
+  const sessions: NextSession[] = [];
+  for (const tab of SERMON_TABS) {
+    const row = rowFor(readPlanRows(xlsxSheetRows(program, tab)), date);
+    if (row) { sessions.push({ label: '第一堂', kind: FIRST_SESSION_KIND[tab] ?? null, title: headline(row.topic), owner: row.owner || null }); break; }
+  }
+  for (const tab of GATHERING_TABS) {
+    const row = rowFor(readPlanRows(xlsxSheetRows(program, tab)), date);
+    if (row) { sessions.push({ label: '第二堂', kind: null, title: headline(row.topic), owner: row.owner || null }); break; }
+  }
+  return sessions;
+}
+
+/**
+ * That Sunday's row of the service roster (2026服事表), under the roster's own column names, so a
+ * column the church adds shows up without an app update. Empty cells and "-" (nobody that week)
+ * are left out.
+ */
+export function rolesOn(rows: string[][], date: string): Array<{ label: string; value: string }> {
+  const headerIndex = rows.findIndex((row) => row.some((cell) => cell.trim() === '日期') && row.some((cell) => cell.trim() === '講員'));
+  if (headerIndex < 0) return [];
+  const header = rows[headerIndex];
+  const dateColumn = header.findIndex((cell) => cell.trim() === '日期');
+  const row = rows.slice(headerIndex + 1).find((candidate) => excelSerialToDate(Number(candidate[dateColumn])) === date);
+  if (!row) return [];
+  return header.flatMap((label, index) => {
+    const name = label.trim();
+    const value = (row[index] ?? '').trim();
+    return index === dateColumn || !name || !value || value === '-' ? [] : [{ label: name, value }];
+  });
+}
+
 function speakersByWeek(workbook: Buffer): Map<string, string> {
   const rows = xlsxSheetRows(workbook, '2026服事表');
   const headerIndex = rows.findIndex((row) => row.some((cell) => cell.trim() === '日期')
@@ -174,6 +222,8 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
 
   const thisWeekSermon = rowFor(sermonRows, week);
   const upcoming = nextAfter([...gatheringRows, ...sermonRows], week);
+  const sessions = upcoming ? sessionsOn(program, upcoming.date) : [];
+  const roles = upcoming ? rolesOn(xlsxSheetRows(sunday, '2026服事表'), upcoming.date) : [];
   const deck = await deckText(files.deck);
   if (deck === null) return { announcement: null, reason: 'DECK_UNREACHABLE' };
   const signup = findSignupUrl(deck);
@@ -229,7 +279,11 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
       week,
       generatedAt: new Date().toISOString(),
       sermon,
-      next: upcoming ? { date: shortDate(upcoming.date), topic: headline(upcoming.topic), owner: upcoming.owner || null, signup } : null,
+      next: upcoming ? {
+        date: shortDate(upcoming.date), topic: headline(upcoming.topic), owner: upcoming.owner || null, signup,
+        ...(sessions.length ? { sessions } : {}),
+        ...(roles.length ? { roles } : {}),
+      } : null,
       standing,
       past,
     },

@@ -6,7 +6,7 @@ import { theme } from './Theme';
 
 const RETRY_MS = 20_000;
 
-function installedVersionCode(): number | null {
+export function installedVersionCode(): number | null {
   const code = Number(Application.nativeBuildVersion);
   return Number.isInteger(code) && code > 0 ? code : null;
 }
