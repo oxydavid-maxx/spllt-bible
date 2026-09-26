@@ -51,24 +51,45 @@ function isoWeek(folderName: string): string {
   return `${folderName.slice(0, 4)}-${folderName.slice(4, 6)}-${folderName.slice(6, 8)}`;
 }
 
-/** Links for one week's folder, and the sermon title its file names carry. */
-export function readWeekFiles(entries: DriveEntry[]): Omit<SermonBlock, 'speaker' | 'passage' | 'youtube'> & { deck: DriveEntry | null } {
+const isServiceDeck = (name: string) => /[（(]全[)）]/.test(name);
+
+/** Whether a file name starts with the week's date the way people write it: 20260906, 260906, 0906 or 906. */
+function namedForWeek(name: string, week: string): boolean {
+  const [year, month, day] = week.split('-');
+  if (!year || !month || !day) return false;
+  return [`${year}${month}${day}`, `${year.slice(2)}${month}${day}`, `${month}${day}`, `${Number(month)}${day}`]
+    .some((prefix) => name.startsWith(prefix) && !/\d/.test(name.charAt(prefix.length)));
+}
+
+/**
+ * Links for one week's folder, and the sermon title its file names carry.
+ *
+ * The whole-service deck (…青崇(全)PPT) is the 報告 deck. The sermon deck is the file named 講道, or,
+ * when there is none (光佑, 2026-09-26: 9/6 and 9/13 had one), another deck named with the week's
+ * date — 260906 亞當與夏娃.pptx, 913健身是什麼？.pptx — while an undated one such as 岩手短宣.pptx
+ * is something else shown that Sunday.
+ */
+export function readWeekFiles(entries: DriveEntry[], week?: string): Omit<SermonBlock, 'speaker' | 'passage' | 'youtube'> & { deck: DriveEntry | null } {
   let audio: string | null = null;
-  let slides: string | null = null;
   let sermonSlides: string | null = null;
   let transcript: string | null = null;
   let title: string | null = null;
-  let deck: DriveEntry | null = null;
+  const decks: DriveEntry[] = [];
 
   for (const entry of entries) {
     const kind = classifyFile(entry.name, entry.mimeType);
     if (kind === 'audio' && !audio) audio = viewUrl(entry, kind);
-    if (kind === 'slides' && !slides) { slides = viewUrl(entry, kind); deck = entry; }
+    if (kind === 'slides') decks.push(entry);
     if (kind === 'sermonSlides' && !sermonSlides) sermonSlides = viewUrl(entry, kind);
     if (kind === 'transcript' && !transcript) transcript = viewUrl(entry, kind);
     if (!title && (kind === 'sermonDoc' || kind === 'sermonSlides' || kind === 'transcript')) title = sermonTitleFromName(entry.name);
   }
-  return { title, audio, slides, sermonSlides, transcript, deck };
+  const deck = decks.find((entry) => isServiceDeck(entry.name)) ?? decks[0] ?? null;
+  if (!sermonSlides && week && deck && isServiceDeck(deck.name)) {
+    const dated = decks.find((entry) => entry !== deck && namedForWeek(entry.name, week));
+    if (dated) sermonSlides = viewUrl(dated, 'sermonSlides');
+  }
+  return { title, audio, slides: deck ? viewUrl(deck, 'slides') : null, sermonSlides, transcript, deck };
 }
 
 function readTabs(workbook: Buffer, tabs: string[]): PlanRow[] {
@@ -136,7 +157,7 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
 
   const weekHtml = await fetchFolderHtml(chosen.id);
   if (weekHtml === null) return { announcement: null, reason: 'WEEK_FOLDER_UNREACHABLE' };
-  const files = readWeekFiles(parseFolderListing(weekHtml));
+  const files = readWeekFiles(parseFolderListing(weekHtml), week);
 
   const [program, sunday] = await Promise.all([fetchWorkbook(PROGRAM_WORKBOOK), fetchWorkbook(SUNDAY_WORKBOOK)]);
   if (program === null || sunday === null) return { announcement: null, reason: 'REQUIRED_WORKBOOK_UNREACHABLE' };
@@ -194,7 +215,7 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
       warnings.push(`HISTORY_LAST_GOOD:${priorWeek}`);
       continue;
     }
-    const older = readWeekFiles(parseFolderListing(listing));
+    const older = readWeekFiles(parseFolderListing(listing), priorWeek);
     if (!older.audio && !older.slides && !older.sermonSlides && !older.transcript) continue;
     past.push({
       week: priorWeek, title: older.title, speaker,
