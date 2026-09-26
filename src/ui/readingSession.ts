@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { canonicalSeptemberPlan, getAdjacentScheduledDates, getInitialReadingDate, getPeriodForDate, getReadingDay } from '../domain/calendar';
+import { canonicalReadingPlan, getAdjacentScheduledDates, getInitialReadingDate, getPeriodForDate, getReadingDay } from '../domain/calendar';
 import type { ReadingPlan } from '../domain/types';
 
 export interface ReadingPlanSnapshot extends ReadingPlan {
@@ -16,11 +16,11 @@ function todayInTaipei(): string {
 function initialDate(): string {
   const configured = process.env.EXPO_PUBLIC_QINGMU_TEST_DATE?.trim();
   if (configured && /^\d{4}-\d{2}-\d{2}$/.test(configured)) return configured;
-  return getInitialReadingDate(canonicalSeptemberPlan, todayInTaipei());
+  return getInitialReadingDate(canonicalReadingPlan, todayInTaipei());
 }
 
-let activePlan: ReadingPlanSnapshot = canonicalSeptemberPlan;
-let planIdByDate = new Map(canonicalSeptemberPlan.days.map((day) => [day.date, canonicalSeptemberPlan.planId]));
+let activePlan: ReadingPlanSnapshot = canonicalReadingPlan;
+let planIdByDate = new Map(canonicalReadingPlan.days.map((day) => [day.date, canonicalReadingPlan.planId]));
 let selectedDate = initialDate();
 let snapshotRevision = 0;
 let todayReaderTabPressRevision = 0;
@@ -116,8 +116,8 @@ export function mergeReadingPlan(plan: ReadingPlanSnapshot): void {
 }
 
 export function resetReadingPlan(): void {
-  activePlan = canonicalSeptemberPlan;
-  planIdByDate = new Map(canonicalSeptemberPlan.days.map((day) => [day.date, canonicalSeptemberPlan.planId]));
+  activePlan = canonicalReadingPlan;
+  planIdByDate = new Map(canonicalReadingPlan.days.map((day) => [day.date, canonicalReadingPlan.planId]));
   publish();
 }
 

@@ -2,7 +2,7 @@
   "expo": {
     "name": "竹科聖經",
     "slug": "qingmu-youth",
-    "version": "0.5.13",
+    "version": "0.5.14",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "org.qingmu.youth",
@@ -31,7 +31,7 @@
     ],
     "android": {
       "package": "org.qingmu.youth",
-      "versionCode": 34,
+      "versionCode": 35,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"

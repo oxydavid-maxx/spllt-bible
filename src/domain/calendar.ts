@@ -1,5 +1,6 @@
 import type { ReadingDay, ReadingPlan } from './types';
 import septemberCalendar from '../../data/september-2026.json';
+import readingPlan2026 from '../../data/reading-plan-2026.json';
 
 interface CalendarInput {
   plan_id?: string;
@@ -18,13 +19,25 @@ function asStringArray(value: unknown, field: string): string[] {
   return value;
 }
 
+function isDateOnly(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T12:00:00Z`).toISOString().slice(0, 10) === value;
+}
+
+/** The September design fixture (data/september-2026.json), which focused tests still build plans from. */
 export function loadSeptemberPlan(raw: unknown): ReadingPlan {
+  const plan = loadReadingPlan(raw);
+  const outside = plan.dates.findIndex((date) => !/^2026-09-\d{2}$/.test(date));
+  if (outside >= 0) throw new Error(`invalid September date at index ${outside}`);
+  return plan;
+}
+
+export function loadReadingPlan(raw: unknown): ReadingPlan {
   const input = raw as CalendarInput;
   if (!input || !Array.isArray(input.days)) throw new Error('calendar must contain days');
 
   const days: ReadingDay[] = input.days.map((day, index) => {
-    if (!day || typeof day.date !== 'string' || !/^2026-09-\d{2}$/.test(day.date)) {
-      throw new Error(`invalid September date at index ${index}`);
+    if (!day || typeof day.date !== 'string' || !isDateOnly(day.date)) {
+      throw new Error(`invalid date at index ${index}`);
     }
     return {
       date: day.date,
@@ -48,17 +61,24 @@ export function loadSeptemberPlan(raw: unknown): ReadingPlan {
 
 export const canonicalSeptemberPlan = loadSeptemberPlan(septemberCalendar);
 
+/** The plan the app and server run on: September, then the church sheet through 12/31 (data/reading-plan-2026.json). */
+export const canonicalReadingPlan = loadReadingPlan(readingPlan2026);
+
 export function getReadingDay(plan: ReadingPlan, date: string): ReadingDay | undefined {
   return plan.days.find((day) => day.date === date);
 }
 
-export function isSeptemberDate(date: string): boolean {
-  return /^2026-09-(0[1-9]|[12]\d|30)$/.test(date);
-}
-
+/**
+ * Today when it falls inside the plan's months, scheduled or not (a Sunday shows that there is no task);
+ * otherwise the plan's first or last day. Only September used to count, so 10/1 opened on 9/1.
+ */
 export function getInitialReadingDate(plan: ReadingPlan, candidate: string): string {
-  if (isSeptemberDate(candidate)) return candidate;
-  return plan.days[0]?.date ?? '2026-09-01';
+  const first = plan.dates[0];
+  const last = plan.dates[plan.dates.length - 1];
+  if (!first || !last) return candidate;
+  if (candidate < `${first.slice(0, 7)}-01`) return first;
+  if (candidate.slice(0, 7) > last.slice(0, 7)) return last;
+  return candidate;
 }
 
 export function getAdjacentScheduledDates(plan: ReadingPlan, date: string): { previous?: string; next?: string } {

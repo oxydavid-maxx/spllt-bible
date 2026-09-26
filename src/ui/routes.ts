@@ -1,7 +1,7 @@
 export const appRoutes = ['today', 'reader', 'progress', 'groups'] as const;
 export const initialRoute = '/(tabs)/today' as const;
 import { fixtureProfile } from './fixtureProfile';
-import { canonicalSeptemberPlan, getReadingDay } from '../domain/calendar';
+import { canonicalReadingPlan, getReadingDay } from '../domain/calendar';
 
 export type UiContentState = 'C_PENDING_ACCESS' | 'C_TECHNICAL_PROBE' | 'C_READY' | 'C_NOT_AVAILABLE';
 
@@ -38,7 +38,7 @@ export interface FixtureModels {
 }
 
 export function buildFixtureModels(date = '2026-09-08'): FixtureModels {
-  const day = getReadingDay(canonicalSeptemberPlan, date);
+  const day = getReadingDay(canonicalReadingPlan, date);
   const references = day?.references ?? [];
   const sharedGoal = { completed: 1, target: 2, personal: 1 };
   return {
