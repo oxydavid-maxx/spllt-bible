@@ -148,6 +148,11 @@ if ($gradlePropertiesAfter -cne $gradlePropertiesBefore) {
 }
 
 if ($Bundle -and $Variant -ne 'release') { throw 'An App Bundle is only produced for a release build.' }
+# A sideloaded APK is downloaded whole. All four ABIs made 0.5.11/0.5.12 a 162 MB download (x86 and
+# x86_64 only run on emulators), because the ARM-only flag was a manual argument that got dropped.
+# Release APKs default to arm64-v8a, which current phones run; pass -ReactNativeArchitectures for
+# another set. App Bundles keep every ABI because Play serves each phone only its own.
+if ($Variant -eq 'release' -and -not $Bundle -and -not $ReactNativeArchitectures) { $ReactNativeArchitectures = 'arm64-v8a' }
 $gradleTask = if ($Bundle) { 'bundleRelease' } elseif ($Variant -eq 'release') { 'assembleRelease' } else { 'assembleDebug' }
 $fixtureEnabled = $env:EXPO_PUBLIC_QINGMU_FIXTURE -eq 'true'
 $buildProfile = if ($fixtureEnabled) { 'QA_CORE_FIXTURE_ONLY' } else { 'PILOT_GOOGLE_HTTPS' }
@@ -228,6 +233,11 @@ $apkName = if ($Variant -eq 'release') { 'app-release.apk' } else { 'app-debug.a
 $apk = if ($Bundle) { Join-Path $root 'android\app\build\outputs\bundle\release\app-release.aab' }
   else { Join-Path $root "android\app\build\outputs\apk\$apkDirectory\$apkName" }
 if (-not (Test-Path $apk)) { throw "Gradle completed but the artifact was not found: $apk" }
+if ($Variant -eq 'release' -and -not $Bundle) {
+  # Fails the build when an extra ABI, a source map, or excess size slips back in.
+  & npx tsx (Join-Path $root 'scripts/check-apk-budget.ts') $apk $ReactNativeArchitectures 90
+  if ($LASTEXITCODE -ne 0) { throw 'Release APK failed the size/ABI budget (scripts/check-apk-budget.ts)' }
+}
 $hash = (Get-FileHash $apk -Algorithm SHA256).Hash.ToLowerInvariant()
 $receipt = [ordered]@{
   kind = "android-$Variant-candidate"

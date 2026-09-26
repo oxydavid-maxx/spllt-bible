@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 export interface PatchTarget {
   /** Path relative to the project root, e.g. node_modules/@youversion/platform-core/dist/x.js */
@@ -134,6 +134,29 @@ export function writeStampDigest(projectRoot: string, digest: string): void {
 export interface SyncDepsOptions {
   npmCi: (cwd: string) => void;
   patchesDirName?: string;
+  /** Folder of deployed worktrees (the pinned backends) that must not share this node_modules. */
+  sharedWorktreesDir?: string;
+}
+
+/**
+ * Worktrees under `worktreesDir` whose node_modules is a link (junction) to this project's. `npm ci`
+ * deletes node_modules first, so reinstalling here would pull packages out from under whatever runs
+ * from those worktrees. On 2026-09-26 that was the production backend, which survived only on the
+ * modules it already had in memory.
+ */
+export function findWorktreesSharingNodeModules(projectRoot: string, worktreesDir: string): string[] {
+  if (!existsSync(worktreesDir)) return [];
+  const ours = resolve(projectRoot, 'node_modules').toLowerCase();
+  const sharing: string[] = [];
+  for (const name of readdirSync(worktreesDir)) {
+    const worktree = join(worktreesDir, name);
+    const link = join(worktree, 'node_modules');
+    try {
+      if (!lstatSync(link).isSymbolicLink()) continue;
+      if (resolve(worktree, readlinkSync(link)).replace(/[\\/]+$/, '').toLowerCase() === ours) sharing.push(worktree);
+    } catch { /* no node_modules there */ }
+  }
+  return sharing;
 }
 
 /**
@@ -153,6 +176,10 @@ export function syncDeps(projectRoot: string, options: SyncDepsOptions): DepsSyn
   const stampDigestBefore = readStampDigest(projectRoot);
   let ranInstall = false;
   if (stampDigestBefore !== digest) {
+    const sharing = options.sharedWorktreesDir ? findWorktreesSharingNodeModules(projectRoot, options.sharedWorktreesDir) : [];
+    if (sharing.length > 0) {
+      throw new Error(`Refusing npm ci: these worktrees run from this node_modules through a link and would lose their packages: ${sharing.join(', ')}. Give each its own dependency folder first (see .handoff/operations-local.md).`);
+    }
     options.npmCi(projectRoot);
     ranInstall = true;
   }
