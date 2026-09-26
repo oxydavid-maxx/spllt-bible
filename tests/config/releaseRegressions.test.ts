@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkApkBudget, readZipEntries } from '../../src/config/apkBudget';
-import { checkDownloadHref } from '../../src/config/installLink';
+import { checkDownloadHref, checkUpdateNotice } from '../../src/config/installLink';
 import { findWorktreesSharingNodeModules, syncDeps } from '../../src/config/depsSync';
 
 // Three basics that came back more than once (2026-09-26), each guarded where it would recur.
@@ -92,6 +92,17 @@ describe('the install page downloads the APK itself', () => {
 
   it('accepts an APK served next to the page', () => {
     expect(checkDownloadHref(page, 'assets/jhuke-bible-0.5.13.apk')).toEqual([]);
+  });
+
+  // 2026-09-26: the notice every installed app reads still named 0.5.9 six releases later, so
+  // nobody was told to update. Publishing is not done until it names this release and the page.
+  it('requires the update notice to announce this release and point at the install page', () => {
+    expect(checkUpdateNotice({ versionCode: 37, url: page }, { versionCode: 37, pageUrl: page })).toEqual([]);
+    expect(checkUpdateNotice({ versionCode: 30, url: 'https://github.com/oxydavid-maxx/spllt-bible/releases/download/x/app.apk' }, { versionCode: 37, pageUrl: page })).toEqual([
+      'the update notice announces versionCode 30, not this release\'s 37',
+      `the update notice points at https://github.com/oxydavid-maxx/spllt-bible/releases/download/x/app.apk, not the install page ${page}`,
+    ]);
+    expect(checkUpdateNotice(null, { versionCode: 37, pageUrl: page })).toEqual(['the update notice (announcements/app-version.json) is missing or unreadable']);
   });
 
   it('refuses a GitHub link, another site, or something that is not an APK', () => {

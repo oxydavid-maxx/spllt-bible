@@ -16,6 +16,24 @@ export function checkDownloadHref(pageUrl: string, href: string): string[] {
   return [];
 }
 
+/**
+ * The update notice every installed app reads (announcements/app-version.json) must announce the
+ * release being published and send people to the install page. On 2026-09-26 it still named 0.5.9
+ * and a GitHub asset six releases later, so no installed app ever offered an update.
+ */
+export function checkUpdateNotice(
+  published: { versionCode: number; url: string } | null,
+  release: { versionCode: number; pageUrl: string },
+): string[] {
+  if (!published) return ['the update notice (announcements/app-version.json) is missing or unreadable'];
+  const problems: string[] = [];
+  if (published.versionCode !== release.versionCode) {
+    problems.push(`the update notice announces versionCode ${published.versionCode}, not this release's ${release.versionCode}`);
+  }
+  if (published.url !== release.pageUrl) problems.push(`the update notice points at ${published.url}, not the install page ${release.pageUrl}`);
+  return problems;
+}
+
 /** The href of the page's download button: the first link with class "download". */
 export function findDownloadHref(html: string): string | null {
   const anchor = html.match(/<a\b[^>]*\bclass="[^"]*\bdownload\b[^"]*"[^>]*>/i)?.[0];
