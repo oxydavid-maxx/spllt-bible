@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildAnnouncement, PARENT_FOLDER, PROGRAM_WORKBOOK, SUNDAY_WORKBOOK, type Announcement } from '../../tools/announce/build';
 
-const sources = vi.hoisted(() => ({ fetchFolderHtml: vi.fn(), fetchWorkbook: vi.fn(), fetchSlidesText: vi.fn(), fetchDriveFile: vi.fn(), fetchDocText: vi.fn(), publish: vi.fn() }));
+const sources = vi.hoisted(() => ({ fetchFolderHtml: vi.fn(), fetchWorkbook: vi.fn(), fetchSlidesText: vi.fn(), fetchDriveFile: vi.fn(), fetchDocText: vi.fn(), linkAccess: vi.fn(async () => 'open'), publish: vi.fn() }));
 vi.mock('../../tools/announce/fetch', () => sources);
 vi.mock('../../tools/announce/publisher', () => ({ publishAnnouncement: sources.publish }));
 vi.mock('../../tools/announce/review', () => ({ reviewAnnouncement: async () => ({ sensible: true }) }));

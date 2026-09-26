@@ -22,6 +22,7 @@ const FULL: Announcement = {
     title: '先', speaker: '光佑', passage: '創3',
     audio: 'https://drive.google.com/file/d/1CX/view',
     slides: 'https://docs.google.com/presentation/d/1yf/preview',
+    sermonSlides: 'https://docs.google.com/presentation/d/1Gd/preview',
     transcript: 'https://docs.google.com/document/d/1rW/view',
     youtube: null,
   },
@@ -83,9 +84,9 @@ describe('the notice board', () => {
     expect(board.wrapRows()).not.toHaveLength(0);
   });
 
-  it('opens each of the three sermon links', () => {
+  it('opens each sermon link, the 講道 and 報告 decks under their own names', () => {
     const board = render(FULL);
-    for (const [label, url] of [['錄音', 'https://drive.google.com/file/d/1CX/view'], ['投影片', 'https://docs.google.com/presentation/d/1yf/preview'], ['逐字稿', 'https://docs.google.com/document/d/1rW/view']]) {
+    for (const [label, url] of [['錄音', 'https://drive.google.com/file/d/1CX/view'], ['講道投影片', 'https://docs.google.com/presentation/d/1Gd/preview'], ['報告投影片', 'https://docs.google.com/presentation/d/1yf/preview'], ['逐字稿', 'https://docs.google.com/document/d/1rW/view']]) {
       act(() => { board.byLabel(label).props.onPress(); });
       expect(board.onOpen).toHaveBeenCalledWith(url);
     }
@@ -97,7 +98,8 @@ describe('the notice board', () => {
     const board = render({ ...FULL, sermon: { ...FULL.sermon!, audio: null, transcript: null } });
     expect(board.byLabel('錄音')).toBeUndefined();
     expect(board.byLabel('逐字稿')).toBeUndefined();
-    expect(board.byLabel('投影片')).toBeDefined();
+    expect(board.byLabel('報告投影片')).toBeDefined();
+    expect(board.byLabel('投影片')).toBeUndefined();
   });
 
   it('omits a whole block the published file does not carry', () => {

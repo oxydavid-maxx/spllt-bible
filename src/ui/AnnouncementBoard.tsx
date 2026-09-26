@@ -59,7 +59,7 @@ export function AnnouncementBoard({ announcement, stale, onOpen, registration }:
       <Text style={styles.headline}>{sermon.title ?? '講道'}</Text>
       <Text style={styles.muted}>{[sermon.speaker, sermon.passage].filter(Boolean).join(' · ')}</Text>
       <LinkRow
-        links={[['錄音', sermon.audio], ['投影片', sermon.slides], ['逐字稿', sermon.transcript], ['影片', sermon.youtube]]}
+        links={[['錄音', sermon.audio], ['講道投影片', sermon.sermonSlides ?? null], ['報告投影片', sermon.slides], ['逐字稿', sermon.transcript], ['影片', sermon.youtube]]}
         onOpen={onOpen}
       />
     </View> : null}
@@ -68,7 +68,7 @@ export function AnnouncementBoard({ announcement, stale, onOpen, registration }:
       <Text style={styles.eyebrow}>以前的主日</Text>
       {past.map((week) => <View key={week.week} style={styles.pastRow}>
         <Text style={styles.pastTitle}>{[shortWeek(week.week), week.speaker, week.title].filter(Boolean).join(' · ')}</Text>
-        <LinkRow links={[['錄音', week.audio], ['投影片', week.slides], ['逐字稿', week.transcript]]} onOpen={onOpen} />
+        <LinkRow links={[['錄音', week.audio], ['講道投影片', week.sermonSlides ?? null], ['報告投影片', week.slides], ['逐字稿', week.transcript]]} onOpen={onOpen} />
       </View>)}
     </View> : null}
 

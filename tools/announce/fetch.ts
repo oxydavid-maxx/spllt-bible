@@ -33,6 +33,23 @@ export async function fetchFolderHtml(folderId: string): Promise<string | null> 
   return await get(`https://drive.google.com/embeddedfolderview?id=${folderId}#list`, 'text') as string | null;
 }
 
+/** Whether a link opens for someone who is not signed in to Google, the way most members open it. */
+export async function linkAccess(url: string): Promise<'open' | 'needs-sign-in' | 'missing' | 'unknown'> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { redirect: 'follow', signal: controller.signal });
+    await response.body?.cancel().catch(() => undefined);
+    if (new URL(response.url).hostname === 'accounts.google.com' || response.status === 401 || response.status === 403) return 'needs-sign-in';
+    if (response.status === 404) return 'missing';
+    return response.ok ? 'open' : 'unknown';
+  } catch {
+    return 'unknown';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Plain text of a Google Slides deck. */
 export async function fetchSlidesText(fileId: string): Promise<string | null> {
   return await get(`https://docs.google.com/presentation/d/${fileId}/export/txt`, 'text') as string | null;

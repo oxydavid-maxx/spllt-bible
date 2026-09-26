@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildAnnouncement, type Announcement } from './build';
+import { linkAccess } from './fetch';
+import { dropLinksNeedingSignIn } from './linkAccess';
 import { reviewAnnouncement } from './review';
 import { publishAnnouncement } from './publisher';
 
@@ -42,11 +44,13 @@ function previousWeek(week: string, fallbackFiles: Map<string, string | null>): 
       const item = prior.week === week ? prior.sermon : prior.past?.find((entry) => entry.week === week);
       if (!item) continue;
       const text = (value: unknown) => typeof value === 'string' && value.trim() ? value : null;
+      const sermonSlides = text(item.sermonSlides);
       const result = {
         week, title: text(item.title), speaker: text(item.speaker),
         audio: text(item.audio), slides: text(item.slides), transcript: text(item.transcript),
+        ...(sermonSlides ? { sermonSlides } : {}),
       };
-      if (result.audio || result.slides || result.transcript) return result;
+      if (result.audio || result.slides || sermonSlides || result.transcript) return result;
     } catch { /* Try the other last-good copy; a broken cache must never invent a week. */ }
   }
   return null;
@@ -65,6 +69,7 @@ async function main(): Promise<number> {
     process.stdout.write(`NOT PUBLISHED: ${reason}\n`);
     return 1;
   }
+  for (const warning of await dropLinksNeedingSignIn(announcement, linkAccess)) process.stdout.write(`NOT LINKED: ${warning}\n`);
 
   const json = `${JSON.stringify(announcement, null, 2)}\n`;
   if (dryRun) {

@@ -7,7 +7,8 @@
  * module is string handling, and the expensive parts stay out of it.
  */
 
-export interface DriveEntry { id: string; name: string }
+/** mimeType comes from the listing's file-type icon; a listing without one leaves it out. */
+export interface DriveEntry { id: string; name: string; mimeType?: string }
 
 /**
  * Entries out of Drive's embedded folder view.
@@ -23,7 +24,8 @@ export function parseFolderListing(html: string): DriveEntry[] {
     const id = block.slice(0, quote);
     const title = /flip-entry-title">([^<]+)/.exec(block);
     if (!id || !title) continue;
-    entries.push({ id, name: decodeEntities(title[1].trim()) });
+    const type = /\/16\/type\/([^"?#\s]+)/.exec(block);
+    entries.push({ id, name: decodeEntities(title[1].trim()), ...(type ? { mimeType: decodeURIComponent(type[1]) } : {}) });
   }
   return entries;
 }
@@ -60,7 +62,17 @@ export function listWeekFolders(entries: DriveEntry[], today: string): DriveEntr
     .sort((a, b) => b.name.localeCompare(a.name));
 }
 
-export type FileKind = 'slides' | 'audio' | 'transcript' | 'sermonDoc' | 'poster' | 'video' | 'other';
+/** slides is the whole-service deck (報告 included); sermonSlides is the sermon's own deck (講道). */
+export type FileKind = 'slides' | 'sermonSlides' | 'audio' | 'transcript' | 'sermonDoc' | 'poster' | 'video' | 'other';
+
+const GOOGLE_SLIDES = 'application/vnd.google-apps.presentation';
+const GOOGLE_DOC = 'application/vnd.google-apps.document';
+
+/** A deck in any of the forms it arrives in: Google Slides, an uploaded PowerPoint, or a PDF. */
+function isDeck(name: string, mimeType?: string): boolean {
+  if (mimeType) return mimeType === GOOGLE_SLIDES || mimeType === 'application/pdf' || /presentationml|powerpoint/.test(mimeType);
+  return /\.(pptx?|pdf)$/i.test(name) || /PPT$/.test(name);
+}
 
 /**
  * What a file in the week folder is, by its name.
@@ -69,14 +81,18 @@ export type FileKind = 'slides' | 'audio' | 'transcript' | 'sermonDoc' | 'poster
  * consistent and human-chosen. A file that does not match is `other` and is simply not linked,
  * which is the right outcome for anything unexpected appearing in the folder.
  */
-export function classifyFile(name: string): FileKind {
+export function classifyFile(name: string, mimeType?: string): FileKind {
   const lower = name.toLowerCase();
   if (/逐字稿/.test(name)) return 'transcript';
-  if (/青崇講道/.test(name) && !/逐字稿/.test(name)) return 'sermonDoc';
+  // 20260920 青崇講道｜先 is the sermon's deck when it is a deck, and the manuscript (which only
+  // lends the week its title) when it is a document. Only the listing's file type tells them apart.
+  if (/講道/.test(name)) return isDeck(name, mimeType) ? 'sermonSlides' : 'sermonDoc';
   if (/\.(mp4|mov|m4v)$/.test(lower)) return 'video';
   if (/\.(mp3|m4a|wav)$/.test(lower)) return 'audio';
   if (/ppt$|\.pptx$|投影片|簡報/.test(lower) || /PPT$/.test(name)) return 'slides';
-  if (/\.pdf$/.test(lower)) return 'poster';
+  if (mimeType === GOOGLE_SLIDES || (mimeType && /presentationml|powerpoint/.test(mimeType))) return 'slides';
+  // A PDF is a poster unless it is the whole-service deck, 20261004青崇(全).pdf.
+  if (/\.pdf$/.test(lower)) return /[（(]全[)）]/.test(name) ? 'slides' : 'poster';
   return 'other';
 }
 
@@ -85,9 +101,12 @@ export function isGoogleNative(id: string): boolean {
   return id.length >= 40;
 }
 
+/** The URL that opens the file for its type; the id shape and the kind are the fallback when the listing gives no type. */
 export function viewUrl(entry: DriveEntry, kind: FileKind): string {
-  if (isGoogleNative(entry.id)) {
-    if (kind === 'slides') return `https://docs.google.com/presentation/d/${entry.id}/preview`;
+  if (entry.mimeType === GOOGLE_SLIDES) return `https://docs.google.com/presentation/d/${entry.id}/preview`;
+  if (entry.mimeType === GOOGLE_DOC) return `https://docs.google.com/document/d/${entry.id}/view`;
+  if (!entry.mimeType && isGoogleNative(entry.id)) {
+    if (kind === 'slides' || kind === 'sermonSlides') return `https://docs.google.com/presentation/d/${entry.id}/preview`;
     if (kind === 'transcript' || kind === 'sermonDoc') return `https://docs.google.com/document/d/${entry.id}/view`;
   }
   return `https://drive.google.com/file/d/${entry.id}/view`;
