@@ -1,7 +1,7 @@
 {
-  "versionCode": 37,
-  "versionName": "0.5.16",
+  "versionCode": 38,
+  "versionName": "0.5.17",
   "url": "https://home.luminexhealthbiohack.com/public/jhuke-bible/",
-  "mandatory": true,
-  "note": "10 月起的讀經進度要這一版才看得到；之後有新版會直接跳出更新視窗。"
+  "mandatory": false,
+  "note": "修正註腳被手機下方按鈕擋住；公告加上講道投影片。"
 }
