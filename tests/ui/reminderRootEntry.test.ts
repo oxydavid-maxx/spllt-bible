@@ -37,6 +37,9 @@ vi.mock('../../src/services/configuredReminderHeadless', () => ({ registerConfig
 vi.mock('../../src/services/reminderRuntime', () => ({ ReminderRuntimeOwner: class { constructor(options: unknown) { state.runtimeOptions = options; } }, configureReminderRuntime: () => {} }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn() }));
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ getProfile: async () => null }) }));
+// The update prompt also lives at Root and listens for the foreground; it has its own test, and here
+// it would take the one AppState listener this file captures for the reminder wiring.
+vi.mock('../../src/ui/UpdatePrompt', () => ({ UpdatePrompt: () => null }));
 
 import RootLayout from '../../app/_layout';
 import { setSelectedReadingDate, useReadingSession } from '../../src/ui/readingSession';
