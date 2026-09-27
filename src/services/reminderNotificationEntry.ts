@@ -2,11 +2,11 @@ import type { AuthSnapshot } from './authSession';
 import type { HeadlessMeetingPayload, HeadlessValidationResult } from './reminderDelivery';
 import type { NotificationBehavior } from 'expo-notifications';
 export type ReminderEntryAuth = Pick<AuthSnapshot, 'status' | 'session' | 'epoch'>;
-type Options = { getAuth: () => ReminderEntryAuth; canNavigate: () => boolean; defaultActionIdentifier: string; validateLatest: (payload: HeadlessMeetingPayload) => Promise<HeadlessValidationResult>; openReadingDate: (date: string) => void; openMeeting: (meetingId: string) => void };
+type Options = { getAuth: () => ReminderEntryAuth; canNavigate: () => boolean; defaultActionIdentifier: string; validateLatest: (payload: HeadlessMeetingPayload) => Promise<HeadlessValidationResult>; openReadingDate: (date: string) => void; openMeeting: (meetingId: string) => void; openFriends?: () => void };
 type Disposition = 'handled' | 'ignored' | 'deferred';
 const hiddenBehavior: NotificationBehavior = { shouldShowBanner: false, shouldShowList: false, shouldPlaySound: false, shouldSetBadge: false };
 const visibleBehavior: NotificationBehavior = { shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false };
-type Entry = { kind: 'READING'; memberId: string; taskDate: string } | { kind: 'MEETING'; memberId: string; payload: HeadlessMeetingPayload };
+type Entry = { kind: 'READING'; memberId: string; taskDate: string } | { kind: 'MEETING'; memberId: string; payload: HeadlessMeetingPayload } | { kind: 'FRIENDS'; memberId: string };
 function record(value: unknown): Record<string, unknown> | null { return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null; }
 function dataOf(notification: unknown) { return record(record(record(notification)?.request)?.content)?.data; }
 function entryOf(notification: unknown): Entry | null {
@@ -16,6 +16,8 @@ function entryOf(notification: unknown): Entry | null {
     if (typeof data.taskDate !== 'string' || !validDateOnly(data.taskDate) || typeof data.targetId !== 'string' || !data.targetId.trim() || data.reminderId !== `reading:${data.memberId}:${data.taskDate}`) return null;
     return { kind: 'READING', memberId: data.memberId, taskDate: data.taskDate };
   }
+  // Posted by friendPush for the member this device is bound to. It only ever opens the friends list.
+  if (data.kind === 'FRIEND_ADDED') return typeof data.friendMemberId === 'string' && data.friendMemberId.trim() ? { kind: 'FRIENDS', memberId: data.memberId } : null;
   const revision = typeof data.scheduleRevision === 'string' && data.scheduleRevision.trim() ? Number(data.scheduleRevision) : data.scheduleRevision;
   if (data.event !== 'MEETING_REMINDER' || typeof data.reminderId !== 'string' || !data.reminderId.trim() || typeof data.meetingId !== 'string' || !data.meetingId.trim() || typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) return null;
   return { kind: 'MEETING', memberId: data.memberId, payload: { event: 'MEETING_REMINDER', reminderId: data.reminderId, meetingId: data.meetingId, scheduleRevision: revision } };
@@ -47,6 +49,7 @@ export function createReminderNotificationController(options: Options) {
     const entry = entryOf(notification);
     if (!entry || (auth.status !== 'signed-in' && !(allowExpired && auth.status === 'expired')) || auth.session?.memberId !== entry.memberId || !sameOwner(auth, allowExpired)) return null;
     if (entry.kind === 'READING') return entry;
+    if (entry.kind === 'FRIENDS') return options.openFriends ? entry : null;
     const latest = await withinDeadline(options.validateLatest(entry.payload));
     return sameOwner(auth, allowExpired) && latest?.valid === true && latest.status === 'SCHEDULED' && latest.memberId === entry.memberId && latest.meetingId === entry.payload.meetingId && latest.scheduleRevision === entry.payload.scheduleRevision ? entry : null;
   }
@@ -71,6 +74,7 @@ export function createReminderNotificationController(options: Options) {
         if (!entry || latestIntent !== key || !sameOwner(auth) || !options.canNavigate()) return 'ignored';
         // All navigation is chosen here. Payload route/URL fields are never used.
         if (entry.kind === 'READING') options.openReadingDate(entry.taskDate);
+        else if (entry.kind === 'FRIENDS') options.openFriends?.();
         else options.openMeeting(entry.payload.meetingId);
         handled.add(key);
         if (handled.size > 128) handled.delete(handled.values().next().value!);

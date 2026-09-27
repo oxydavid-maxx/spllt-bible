@@ -154,7 +154,7 @@ describe('a nomination as somebody other than its author', () => {
     ensureNominationSchema(database.db);
     database.db.prepare(`INSERT INTO reward_nomination_rounds(round_id, title, opened_by, opened_at, closes_at, state)
       VALUES('round-1', '十月', 'member-admin', 0, ?, 'OPEN')`).run(Date.parse('2026-09-30T16:00:00.000Z'));
-    await api({ method: 'POST', url: '/api/rewards/nominations', headers: headers('member-self'), body: JSON.stringify({ operationId: randomUUID(), name: '桌遊', note: '桌遊' }) });
+    await api({ method: 'POST', url: '/api/rewards/nominations', headers: headers('member-self'), body: JSON.stringify({ operationId: randomUUID(), name: '桌遊', note: '桌遊', quantity: '1 盒' }) });
     const id = (database.db.prepare('SELECT nomination_id FROM reward_nominations').get() as { nomination_id: string }).nomination_id;
     database.db.prepare(`INSERT INTO reward_nomination_assists(nomination_id, estimated_twd, note_suggestion, state, attempts, requested_at)
       VALUES(?, 1000, '大家聚會後可以一起玩的桌遊。', 'DONE', 1, 0)`).run(id);
@@ -165,7 +165,7 @@ describe('a nomination as somebody other than its author', () => {
     const { api, headers } = await boardWithSuggestion();
     const response = await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-friend') });
     const entry = (response.body as { nominations: Array<Record<string, unknown>> }).nominations[0];
-    expect(keys(entry)).toEqual(['createdAt', 'displayName', 'estimatedPoints', 'mine', 'name', 'nominationId', 'note', 'revision', 'status', 'voteCount', 'voted']);
+    expect(keys(entry)).toEqual(['createdAt', 'displayName', 'estimatedPoints', 'mine', 'name', 'nominationId', 'note', 'quantity', 'revision', 'status', 'voteCount', 'voted']);
     expect(JSON.stringify(response.body)).not.toContain('大家聚會後');
   });
 
@@ -173,7 +173,7 @@ describe('a nomination as somebody other than its author', () => {
     const { api, headers } = await boardWithSuggestion();
     const response = await api({ method: 'GET', url: '/api/admin/rewards/nominations', headers: headers('member-admin') });
     const entry = (response.body as { nominations: Array<Record<string, unknown>> }).nominations[0];
-    expect(keys(entry)).toEqual(['createdAt', 'createdBy', 'displayName', 'estimatedPoints', 'mine', 'name', 'nominationId', 'note', 'revision', 'status', 'voteCount', 'voted']);
+    expect(keys(entry)).toEqual(['createdAt', 'createdBy', 'displayName', 'estimatedPoints', 'mine', 'name', 'nominationId', 'note', 'quantity', 'revision', 'status', 'voteCount', 'voted']);
     expect(JSON.stringify(response.body)).not.toContain('大家聚會後');
   });
 

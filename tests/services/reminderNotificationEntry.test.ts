@@ -160,3 +160,34 @@ describe('notification lifecycle binding', () => {
     binding.dispose(); expect(remove).toHaveBeenCalledOnce(); expect(setHandler).toHaveBeenLastCalledWith(null);
   });
 });
+
+describe('the friend notification opens the friends list', () => {
+  const friendData = (memberId = 'member:a') => ({ kind: 'FRIEND_ADDED', memberId, friendMemberId: 'member:b' });
+  function friendFixture() {
+    const openFriends = vi.fn();
+    const openReadingDate = vi.fn();
+    const validateLatest = vi.fn();
+    const controller = createReminderNotificationController({ getAuth: signedIn, canNavigate: () => true, defaultActionIdentifier: 'default', openReadingDate, openMeeting: vi.fn(), openFriends, validateLatest });
+    return { controller, openFriends, openReadingDate, validateLatest };
+  }
+
+  it('navigates to the friends list for the member it was posted for, with no server round trip', async () => {
+    const f = friendFixture();
+    expect(await f.controller.handleResponse(response(friendData(), 'friend-1'))).toBe('handled');
+    expect(f.openFriends).toHaveBeenCalledOnce();
+    expect(f.openReadingDate).not.toHaveBeenCalled();
+    expect(f.validateLatest).not.toHaveBeenCalled();
+  });
+
+  it('ignores one posted for another account on this phone', async () => {
+    const f = friendFixture();
+    expect(await f.controller.handleResponse(response(friendData('member:b'), 'friend-2'))).toBe('ignored');
+    expect(f.openFriends).not.toHaveBeenCalled();
+  });
+
+  it('shows it if it lands while the app is open for that member', async () => {
+    const f = friendFixture();
+    expect(await f.controller.handleForeground(notification(friendData(), 'friend-3'))).toMatchObject({ shouldShowBanner: true });
+    expect(await f.controller.handleForeground(notification(friendData('member:b'), 'friend-4'))).toMatchObject({ shouldShowBanner: false });
+  });
+});
