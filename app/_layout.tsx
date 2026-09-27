@@ -15,6 +15,11 @@ import { randomUUID } from 'expo-crypto';
 import { ReminderNotificationBridge } from '../src/services/ReminderNotificationBridge';
 import { createReminderDeviceRevokeQueue } from '../src/services/reminderDeviceRevokeQueue';
 import { getReadingPlanId } from '../src/ui/readingSession';
+import { registerConfiguredFriendPushTask } from '../src/services/friendPush';
+
+// At module scope, as the meeting task once was: a push that wakes a closed app has to find the task
+// already defined. A phone without the native modules simply has no friend notifications.
+void registerConfiguredFriendPushTask().catch(() => undefined);
 
 export default function RootLayout() {
   const signedIn = canUseApp(useAuthSnapshot().status);

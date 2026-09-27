@@ -42,8 +42,18 @@ export function AnnouncementBoard({ announcement, stale, onOpen, registration }:
   return <ScrollView contentContainerStyle={styles.page}>
     {next ? <View style={styles.card} accessibilityLabel="下次聚會">
       <Text style={styles.eyebrow}>{`下次 ${next.date}`}</Text>
-      <Text style={styles.headline}>{next.topic}</Text>
-      {next.owner ? <Text style={styles.muted}>{next.owner}</Text> : null}
+      {next.sessions && next.sessions.length > 0
+        ? next.sessions.map((session) => <View key={session.label} style={styles.session} accessibilityLabel={session.label}>
+            <Text style={styles.sessionTag}>{session.label}</Text>
+            <View style={styles.sessionCopy}>
+              <Text style={styles.sessionTitle}>{session.title}</Text>
+              {session.kind || session.owner ? <Text style={styles.muted}>{[session.kind, session.owner].filter(Boolean).join(' · ')}</Text> : null}
+            </View>
+          </View>)
+        : <>
+            <Text style={styles.headline}>{next.topic}</Text>
+            {next.owner ? <Text style={styles.muted}>{next.owner}</Text> : null}
+          </>}
       {next.signup ? <Pressable
         accessibilityRole="button" accessibilityLabel="報名"
         onPress={() => onOpen(next.signup!)} style={styles.primaryButton}
@@ -51,6 +61,15 @@ export function AnnouncementBoard({ announcement, stale, onOpen, registration }:
       {registration && registration.total > 0 ? <View accessibilityLabel="報名狀況" style={styles.signups}>
         <Text style={styles.muted}>{`已有 ${registration.total} 人報名${registration.registered ? '，包括你' : ''}`}</Text>
         {registration.friends.length > 0 ? <Text style={styles.friends}>{`朋友：${registration.friends.join('、')}`}</Text> : null}
+      </View> : null}
+      {next.roles && next.roles.length > 0 ? <View style={styles.roles} accessibilityLabel="服事">
+        <Text style={styles.eyebrow}>服事</Text>
+        <View style={styles.roleGrid}>
+          {next.roles.map((role) => <View key={role.label} style={styles.role}>
+            <Text style={styles.roleLabel}>{role.label}</Text>
+            <Text style={styles.roleValue}>{role.value}</Text>
+          </View>)}
+        </View>
       </View> : null}
     </View> : null}
 
@@ -91,6 +110,15 @@ const styles = StyleSheet.create({
   eyebrow: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
   headline: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
   muted: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  session: { flexDirection: 'row', gap: theme.spacing.sm, paddingVertical: theme.spacing.xs },
+  sessionTag: { alignSelf: 'flex-start', overflow: 'hidden', borderRadius: theme.radius.chip, backgroundColor: theme.colors.primarySoft, color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xxs },
+  sessionCopy: { flex: 1, minWidth: 0 },
+  sessionTitle: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
+  roles: { marginTop: theme.spacing.sm, paddingTop: theme.spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border, gap: theme.spacing.xs },
+  roleGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: theme.spacing.md, rowGap: theme.spacing.xxs },
+  role: { flexDirection: 'row', flexBasis: '45%', flexGrow: 1, gap: theme.spacing.xs, minWidth: 0 },
+  roleLabel: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  roleValue: { flexShrink: 1, color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
   links: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs, paddingTop: theme.spacing.xs },
   link: { minHeight: theme.control.tap, justifyContent: 'center', paddingHorizontal: theme.spacing.sm, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.primary },
   linkText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },

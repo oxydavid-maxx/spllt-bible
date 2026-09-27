@@ -137,6 +137,17 @@ export function getReadingPlanId(taskDate: string): string | null {
   return planIdByDate.get(taskDate) ?? null;
 }
 
+/** First and last scheduled dates of the active plan: the months there is anything to show. */
+export function getReadingPlanSpan(): { first: string; last: string } | null {
+  return activePlan.dates.length > 0 ? { first: activePlan.dates[0], last: activePlan.dates[activePlan.dates.length - 1] } : null;
+}
+
+/** A scheduled day from the plan the reading tab reads, for screens that name it the same way. */
+export function getScheduledReading(taskDate: string): { planId: string; references: string[] } | null {
+  const day = getReadingDay(activePlan, taskDate);
+  return day ? { planId: planIdByDate.get(taskDate) ?? activePlan.planId, references: [...day.references] } : null;
+}
+
 function subscribe(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);

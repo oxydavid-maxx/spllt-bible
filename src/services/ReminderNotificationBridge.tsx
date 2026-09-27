@@ -4,6 +4,7 @@ import { getAuthSnapshot, useAuthSnapshot } from './authSession';
 import { validateConfiguredMeetingReminder } from './configuredReminderHeadless';
 import { bindReminderNotifications, createReminderNotificationController } from './reminderNotificationEntry';
 import { setSelectedReadingDate } from '../ui/readingSession';
+import { parseFriendAdded, publishFriendAdded, requestOpenFriendsList } from './friendPush';
 import { AppState } from 'react-native';
 import type { PendingReminderDeviceRevocations } from './reminderDevice';
 
@@ -26,6 +27,7 @@ export function ReminderNotificationBridge({ revokeQueue }: { revokeQueue?: Pend
   useEffect(() => {
     let active = true;
     let binding: ReturnType<typeof bindReminderNotifications> | null = null;
+    let received: { remove: () => void } | null = null;
     void import('expo-notifications').then(notifications => {
       if (!active) return;
       const controller = createReminderNotificationController({
@@ -37,14 +39,23 @@ export function ReminderNotificationBridge({ revokeQueue }: { revokeQueue?: Pend
         // Meeting reminders were retired. A stale notification/deep link returns
         // to the reading entry and never recreates the old group surface.
         openMeeting: () => { router.push('/today'); },
+        openFriends: () => { requestOpenFriendsList(); router.push('/progress'); },
       });
       binding = bindReminderNotifications(notifications, controller);
       bindingRef.current = binding;
       void binding.resume();
+      // A data push while the app is open reaches JS here (and in the friend task; the bus keeps one).
+      try {
+        received = notifications.addNotificationReceivedListener((notification) => {
+          const event = parseFriendAdded(notification);
+          if (event) publishFriendAdded(event);
+        });
+      } catch { /* The friend task still delivers the same event in the foreground. */ }
     }).catch(() => { console.warn('提醒通知入口初始化失敗'); });
     return () => {
       active = false;
       binding?.dispose();
+      received?.remove();
       if (bindingRef.current === binding) bindingRef.current = null;
     };
   }, []);

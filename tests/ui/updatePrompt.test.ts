@@ -22,6 +22,7 @@ vi.mock('react-native', () => ({
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { UpdatePrompt } from '../../src/ui/UpdatePrompt';
+import { UpdateCard } from '../../src/ui/UpdateCard';
 import type { UpdateState } from '../../src/services/updateCheck';
 
 // 光佑 (2026-09-26): until the Play listing exists, every member needs a button that takes them to
@@ -80,5 +81,26 @@ describe('the update prompt', () => {
   it('shows nothing when the phone already has the newest version or the check fails', async () => {
     const view = await render(async () => NONE);
     expect(view.tree.toJSON()).toBeNull();
+  });
+});
+
+// 光佑 (2026-09-27): if the prompt is dismissed by mistake, the update must still be findable. The
+// notice board carries a card for as long as the phone is behind.
+describe('the update card on the notice board', () => {
+  it('shows the newest version while the phone is behind, and 更新 goes to the install page', () => {
+    const onUpdate = vi.fn();
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(React.createElement(UpdateCard, { state: UPDATE, onUpdate })); });
+    mounted.push(tree);
+    expect(JSON.stringify(tree.toJSON())).toContain('有新版本 0.5.16');
+    act(() => { tree.root.findAll((node) => node.props?.accessibilityLabel === '更新到 0.5.16')[0].props.onPress(); });
+    expect(onUpdate).toHaveBeenCalledWith(PAGE);
+  });
+
+  it('is absent when the phone is up to date', () => {
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(React.createElement(UpdateCard, { state: NONE, onUpdate: vi.fn() })); });
+    mounted.push(tree);
+    expect(tree.toJSON()).toBeNull();
   });
 });

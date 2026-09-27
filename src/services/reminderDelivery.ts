@@ -93,7 +93,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
  *
  * The last candidate is the event itself, which keeps a directly-injected map working.
  */
-function candidateDataMaps(data: unknown): Array<Record<string, unknown>> {
+export function candidateDataMaps(data: unknown): Array<Record<string, unknown>> {
   const root = asRecord(data);
   if (!root) return [];
   const request = asRecord(asRecord(root.notification)?.request);

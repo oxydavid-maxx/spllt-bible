@@ -232,6 +232,11 @@ export class ReminderRuntimeOwner {
       if (!this.isCurrent(session, generation)) return;
       this.activationBaselineReady = true;
       this.setState({ ...nextState, ready: true });
+      // App pushes (a new friend) reach every signed-in member, so the device registers whatever the
+      // reminder settings are. An Android FCM token needs no permission, so nothing is asked here;
+      // sign-out still revokes it through cleanupInvalidated. Never awaited and never an error the
+      // reminder settings show: a phone that cannot register now tries again on the next activation.
+      void this.ensureTokenRegistration(session, generation, client).catch(() => false);
     })();
     this.activationReady = activation;
     try {
@@ -318,13 +323,9 @@ export class ReminderRuntimeOwner {
         if (!await this.ensureTokenRegistration(session, generation, client)) throw new Error('REMINDER_DEVICE_UNAVAILABLE');
       }
     }
-    if (!next.meetingEnabled && wasMeetingEnabled) {
-      this.tokenSubscription?.remove();
-      this.tokenSubscription = null;
-      const binding = await readReminderDeviceBinding(this.options.secureStore, session.memberId);
-      if (!this.isCurrent(session, generation) || this.pendingPreferences !== intent) return;
-      if (binding) await this.releaseCapturedBinding(binding, session, true);
-    }
+    // Turning meeting reminders off no longer releases the device binding: the same token now carries
+    // every app push, and the server already drops a meeting reminder for a member whose preference
+    // is off (discoverDueMeetingEvents joins on meeting_enabled=1; sendDueMeetingEvent re-checks it).
     if (!this.isCurrent(session, generation) || this.pendingPreferences !== intent) return;
     const saved = await this.bounded(client.saveReminderPreferences({ ...next, preferenceGeneration: preferenceRevision }));
     if (!this.isCurrent(session, generation) || preferenceRevision !== this.preferenceRevision || this.pendingPreferences !== intent) return;

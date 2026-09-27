@@ -12,9 +12,10 @@ import { getMemberGroupProfile } from './groups';
 import { ensureJournalSchema, getJournalEntry, listJournalEntries, saveJournalEntry } from './journal';
 import { ensureEventRegistrationSchema, formRegistrationKeyMatches, formSyncIdentityMatches, getEventRegistrationView, readFormRegistrationPush, replaceEventRegistrations, type FormSyncIdentity } from './eventRegistrations';
 import { getCommunityProgress } from './communityProgress';
-import { closeRound, createNomination, decideNomination, ensureNominationSchema, listNominationHistory, listNominations, listNominationsForAdmin, openRound, resolveSuggestion, setVote, withdrawNomination, type NominationDecision } from './rewardNominations';
+import { closeRound, createNomination, decideNomination, ensureNominationSchema, listNominationHistory, listNominations, listNominationsForAdmin, openRound, resolveSuggestion, setVote, updateNominationQuantity, withdrawNomination, type NominationDecision } from './rewardNominations';
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
 import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
+import { notifyFriendAdded, type PushDataSender } from './friendPush';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
 import {
   GAMIFICATION_POLICY_VERSION,
@@ -80,6 +81,8 @@ export interface ApiHandlerOptions {
   formRegistrationKey?: string;
   /** Or the script sends its Google identity token; the push route is absent without either. */
   formSyncIdentity?: FormSyncIdentity;
+  /** Data-only FCM to a member's registered devices. Absent means app events are simply not pushed. */
+  pushData?: PushDataSender;
   now?: () => Date;
 }
 
@@ -550,7 +553,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (url.pathname === '/api/rewards/nominations' && request.method === 'POST') {
         const payload = parseBody(request.body);
         const created = createNomination(options.db.db, auth.memberId, String(payload.operationId ?? ''),
-          String(payload.name ?? ''), typeof payload.note === 'string' ? payload.note : undefined, now().getTime());
+          String(payload.name ?? ''), typeof payload.note === 'string' ? payload.note : undefined, now().getTime(), payload.quantity);
         if (isGamificationError(created)) return gamificationError(created);
         const replayed = options.db.db.prepare('SELECT 1 FROM mutation_receipts WHERE actor_member_id = ? AND operation_id = ? AND created_at < ?')
           .get(auth.memberId, String(payload.operationId ?? ''), now().getTime());
@@ -567,6 +570,14 @@ export function createApiHandler(options: ApiHandlerOptions) {
         const own = /^\/api\/rewards\/nominations\/([^/]+)$/.exec(url.pathname);
         if (own && request.method === 'DELETE') {
           const result = withdrawNomination(options.db.db, auth.memberId, decodeURIComponent(own[1]), now().getTime());
+          return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
+        }
+      }
+      {
+        const quantity = /^\/api\/rewards\/nominations\/([^/]+)\/quantity$/.exec(url.pathname);
+        if (quantity && request.method === 'PATCH') {
+          const payload = parseBody(request.body);
+          const result = updateNominationQuantity(options.db.db, auth.memberId, decodeURIComponent(quantity[1]), payload.quantity, now().getTime());
           return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
         }
       }
@@ -596,8 +607,15 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (request.method === 'POST' && url.pathname === '/api/friends/claim') {
         const body = parseBody(request.body);
         if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.token !== 'string' || !body.token.trim()) return gamificationError({ status: 400, code: 'INVALID_FRIEND_CLAIM' });
+        const replay = Boolean(options.db.db.prepare('SELECT 1 FROM mutation_receipts WHERE actor_member_id=? AND operation_id=?').get(auth.memberId, body.operationId));
         const result = claimFriend(options.db.db, auth.memberId, body.operationId, body.token, { now });
-        return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
+        if (isGamificationError(result)) return gamificationError(result);
+        // Only the claim that made the friendship announces it; a replayed operation or a second scan
+        // of an existing friend says nothing. Not awaited: the push never shapes this answer.
+        if (!replay && result.friendshipCreated === true && typeof result.memberId === 'string' && options.pushData) {
+          void notifyFriendAdded(options.db.db, options.pushData, { ownerMemberId: result.memberId, friendMemberId: auth.memberId }).catch(() => { console.warn('FRIEND_PUSH_FAILED', 'NOTIFY_ERROR'); });
+        }
+        return gamificationJson(200, result);
       }
       const removeFriendMatch = url.pathname.match(/^\/api\/friends\/([^/]+)$/);
       if (request.method === 'DELETE' && removeFriendMatch) {

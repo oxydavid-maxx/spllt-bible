@@ -2,7 +2,8 @@ import { statSync } from 'node:fs';
 import { createServiceAccountAccessTokenProvider, resolveFcmCredentialFile } from './fcmAuth';
 import { createFcmSender } from './fcmSender';
 import type { MeetingSender } from './remoteReminders';
-export function createRemoteConfiguration(env: Record<string, string | undefined> = process.env): { status: 'REMOTE_PENDING' | 'REMOTE_READY'; senderConfigured: boolean; dispatcherEnabled: boolean; pendingReasons: string[]; delivery: { enabled: true; send: MeetingSender } | null } {
+import type { PushDataSender } from './friendPush';
+export function createRemoteConfiguration(env: Record<string, string | undefined> = process.env): { status: 'REMOTE_PENDING' | 'REMOTE_READY'; senderConfigured: boolean; dispatcherEnabled: boolean; pendingReasons: string[]; delivery: { enabled: true; send: MeetingSender } | null; push: PushDataSender | null } {
   const projectId = env.QINGMU_FCM_PROJECT_ID?.trim();
   const credentialFile = resolveFcmCredentialFile(env);
   const reasons: string[] = [];
@@ -12,8 +13,11 @@ export function createRemoteConfiguration(env: Record<string, string | undefined
   const dispatcherEnabled = env.QINGMU_REMINDER_WORKER_AUTOSTART === 'true';
   const senderConfigured = reasons.length === 0;
   if (!dispatcherEnabled) reasons.push('DISPATCHER_DISABLED');
-  if (!senderConfigured) return { status: 'REMOTE_PENDING', senderConfigured: false, dispatcherEnabled, pendingReasons: reasons, delivery: null };
+  if (!senderConfigured) return { status: 'REMOTE_PENDING', senderConfigured: false, dispatcherEnabled, pendingReasons: reasons, delivery: null, push: null };
   const provider = createServiceAccountAccessTokenProvider({ credentialFilePath: credentialFile! });
   const sender = createFcmSender({ projectId: projectId!, enabled: true, getAccessToken: provider.getAccessToken });
-  return { status: dispatcherEnabled ? 'REMOTE_READY' : 'REMOTE_PENDING', senderConfigured: true, dispatcherEnabled, pendingReasons: reasons, delivery: { enabled: true, send: (token, payload) => sender.send(token, payload, { ttlSeconds: 300 }) } };
+  // App events (a new friend) need only the sender, not the meeting dispatcher: they are sent when
+  // they happen, never on a schedule. An hour is long enough for a phone that was briefly offline.
+  const push: PushDataSender = (token, data) => sender.sendData(token, { data, ttlSeconds: 3600, priority: 'HIGH', ...(data.friendMemberId ? { collapseKey: `friend:${data.friendMemberId}` } : {}) });
+  return { status: dispatcherEnabled ? 'REMOTE_READY' : 'REMOTE_PENDING', senderConfigured: true, dispatcherEnabled, pendingReasons: reasons, delivery: { enabled: true, send: (token, payload) => sender.send(token, payload, { ttlSeconds: 300 }) }, push };
 }

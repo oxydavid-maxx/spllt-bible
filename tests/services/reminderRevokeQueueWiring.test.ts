@@ -52,13 +52,16 @@ describe('persistent reminder revoke integration', () => {
     expect(String(f.values.get(REMINDER_DEVICE_REVOKE_QUEUE_KEY) ?? '')).not.toContain(binding.token);
   });
 
-  it('uses the same durable path when meeting reminders are explicitly disabled', async () => {
+  // The binding now serves every app push (friend added), so turning meeting reminders off keeps it;
+  // the server drops meeting reminders for a member whose preference is off. Sign-out, above, is what
+  // releases it through the durable queue.
+  it('keeps the device binding when meeting reminders are explicitly disabled', async () => {
     const f = fixture(true); await settle(); f.events.length = 0;
     await f.owner.savePreferences({ readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30 }); await settle();
-    expect(f.values.get(REMINDER_DEVICE_REVOKE_QUEUE_KEY)).toBeDefined();
-    expect(f.events.indexOf('persist-pending')).toBeLessThan(f.events.indexOf('clear-owner'));
+    expect(f.values.get(REMINDER_DEVICE_REVOKE_QUEUE_KEY)).toBeUndefined();
+    expect(f.values.get(REMINDER_DEVICE_OWNER_RECEIPT_KEY)).toBeDefined();
     expect(f.owner.getSnapshot().meetingEnabled).toBe(false);
-    expect(f.revoke).toHaveBeenCalledOnce(); expect(f.legacyRevoke).not.toHaveBeenCalled(); f.owner.dispose();
+    expect(f.revoke).not.toHaveBeenCalled(); expect(f.legacyRevoke).not.toHaveBeenCalled(); f.owner.dispose();
   });
 
   it('treats a server-revoked persistent session as termination, denying presentation before queued cleanup finishes', async () => {

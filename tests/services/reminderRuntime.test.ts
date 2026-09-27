@@ -110,8 +110,10 @@ describe('auth-owned reminder runtime', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(register).toHaveBeenCalledTimes(2);
     await owner.savePreferences({ readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30 });
-    expect(listenerActive).toBe(false);
+    // The token also carries app pushes now, so rotation keeps being followed with meetings off.
+    expect(listenerActive).toBe(true);
     owner.dispose();
+    expect(listenerActive).toBe(false);
   });
 
   it('leaves reading off and publishes denied permission when the scheduler denies', async () => {
@@ -316,7 +318,8 @@ describe('auth-owned reminder runtime', () => {
         expect(state.readingEnabled).toBe(apiState.readingEnabled);
         expect(state.meetingEnabled).toBe(apiState.meetingEnabled);
         expect(scheduled.every((job) => job.memberId === 'member:property')).toBe(true);
-        expect(tokenListeners.size).toBe(state.meetingEnabled ? 1 : 0);
+        // One live rotation listener for the signed-in owner, whatever the preferences: never none, never two.
+        expect(tokenListeners.size).toBe(1);
         expect(registrations).toBeGreaterThanOrEqual(revocations);
       } finally {
         owner.dispose();

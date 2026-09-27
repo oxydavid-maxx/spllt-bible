@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildAnnouncement, type Announcement } from './build';
+import { contentOf } from './content';
 import { linkAccess } from './fetch';
 import { dropLinksNeedingSignIn } from './linkAccess';
 import { reviewAnnouncement } from './review';
@@ -79,7 +80,12 @@ async function main(): Promise<number> {
 
   for (const warning of warnings ?? []) process.stdout.write(`USING LAST GOOD: ${warning}\n`);
 
-  if (!skipReview) {
+  // The review is the job's only model call. Once a day, most days nothing changed: compare with
+  // what is already published first, and ask only about a file that would actually go out.
+  let published: string | null = null;
+  try { published = contentOf(JSON.parse(readFileSync(join(REPO, 'announcements/latest.json'), 'utf8')) as Announcement); } catch { /* none yet */ }
+  const unchanged = published === contentOf(announcement);
+  if (!skipReview && !unchanged) {
     const verdict = await reviewAnnouncement(announcement);
     if (!verdict.sensible) {
       // Refusing to publish is the safe failure: last week's file stays, which is stale but true.

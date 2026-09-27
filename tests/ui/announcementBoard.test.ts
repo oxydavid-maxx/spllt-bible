@@ -122,3 +122,31 @@ describe('the notice board', () => {
     expect(render(FULL, false).text()).not.toContain('還沒連上');
   });
 });
+
+describe('the next gathering in full', () => {
+  it('shows both sessions with their owners and who serves, from the published file', () => {
+    const board = render({
+      ...FULL,
+      next: {
+        ...FULL.next!,
+        sessions: [
+          { label: '第一堂', kind: '青年啟發', title: '耶穌：耶穌是誰？', owner: '中亮/大專' },
+          { label: '第二堂', kind: null, title: '爸媽不在家，我要活下去系列: 豚汁定食/如何殺柚子', owner: '淑君校長/大廚' },
+        ],
+        roles: [{ label: '講員', value: '中亮' }, { label: '主領(報告)', value: '光佑' }, { label: '招待', value: '小丁/文樂' }],
+      },
+    });
+    const text = board.text();
+    for (const expected of ['第一堂', '耶穌：耶穌是誰？', '青年啟發 · 中亮/大專', '第二堂', '淑君校長/大廚', '服事', '講員', '中亮', '主領(報告)', '光佑', '小丁/文樂']) {
+      expect(text).toContain(expected);
+    }
+    expect(board.byLabel('報名')).toBeDefined();
+  });
+
+  it('falls back to the single topic when the file has no sessions', () => {
+    const text = render(FULL).text();
+    expect(text).toContain('豚汁定食/如何殺柚子');
+    expect(text).not.toContain('第一堂');
+    expect(text).not.toContain('服事');
+  });
+});

@@ -28,6 +28,8 @@ import { ensureAssistSchema, pointsFromTwd } from './nominationAssist';
 const MAX_OPEN_PER_MEMBER = 1;
 const MAX_NAME_LENGTH = 40;
 const MAX_NOTE_LENGTH = 200;
+/** 多少/多久, in the proposer's own words: 1 杯, 2 小時, 3 片. Long enough for that, not for a note. */
+const MAX_QUANTITY_LENGTH = 20;
 const MAX_TITLE_LENGTH = 40;
 
 /** What the group is shown of a finished round. The rest stays with the people it belongs to. */
@@ -62,6 +64,7 @@ interface NominationRow {
   nomination_id: string;
   name: string;
   note: string | null;
+  quantity: string | null;
   created_by: string;
   display_name: string;
   status: NominationStatus;
@@ -71,6 +74,7 @@ interface NominationRow {
   voted: number;
   estimated_twd: number | null;
   note_suggestion: string | null;
+  reminder: string | null;
   withdrawn: number;
 }
 
@@ -113,7 +117,16 @@ export function ensureNominationSchema(db: DatabaseSync): void {
   // Taking your own idea back and having it taken off the board are the same status and very
   // different events, so which one happened is recorded rather than inferred.
   if (!columns.has('withdrawn')) db.exec('ALTER TABLE reward_nominations ADD COLUMN withdrawn INTEGER NOT NULL DEFAULT 0');
+  // Null for every idea put forward before 多少/多久 existed, and for installed apps that do not send it.
+  if (!columns.has('quantity')) db.exec('ALTER TABLE reward_nominations ADD COLUMN quantity TEXT');
   ensureAssistSchema(db);
+}
+
+/** A quantity as sent, trimmed; undefined when it is not a usable 1–20 character string. */
+function readQuantity(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= MAX_QUANTITY_LENGTH ? trimmed : undefined;
 }
 
 /**
@@ -121,14 +134,20 @@ export function ensureNominationSchema(db: DatabaseSync): void {
  *
  * `noteSuggestion` is behind `mine` and that single boolean is the whole privacy story for it. A
  * 輔導 reading "the model rewrote 小明's explanation" turns a private nudge into a public
- * correction, and a teenager who knows that can happen stops writing explanations.
+ * correction, and a teenager who knows that can happen stops writing explanations. The quantity
+ * reminder sits behind the same boolean for the same reason.
+ *
+ * Points are only shown for a quantity that was priced. Without a quantity the price was a guess
+ * at how much of the thing, so ten minutes and a whole day would read as the same number.
  */
 function project(row: NominationRow, viewerId: string, toPoints: (twd: number) => number | null): Record<string, unknown> {
   const mine = row.created_by === viewerId;
-  const estimatedPoints = row.estimated_twd === null ? null : toPoints(Number(row.estimated_twd));
+  const priced = row.quantity !== null && row.reminder === null && row.estimated_twd !== null;
+  const estimatedPoints = priced ? toPoints(Number(row.estimated_twd)) : null;
   return {
     nominationId: row.nomination_id,
     name: row.name,
+    ...(row.quantity ? { quantity: row.quantity } : {}),
     ...(row.note ? { note: row.note } : {}),
     displayName: row.display_name,
     status: row.status,
@@ -139,11 +158,12 @@ function project(row: NominationRow, viewerId: string, toPoints: (twd: number) =
     createdAt: row.created_at,
     ...(estimatedPoints !== null ? { estimatedPoints } : {}),
     ...(mine && row.note_suggestion ? { noteSuggestion: row.note_suggestion } : {}),
+    ...(mine && row.quantity !== null && row.reminder ? { quantityReminder: row.reminder } : {}),
   };
 }
 
-const SELECT = `SELECT n.nomination_id, n.name, n.note, n.created_by, m.display_name, n.status, n.revision, n.created_at, n.withdrawn,
-    a.estimated_twd, a.note_suggestion,
+const SELECT = `SELECT n.nomination_id, n.name, n.note, n.quantity, n.created_by, m.display_name, n.status, n.revision, n.created_at, n.withdrawn,
+    a.estimated_twd, a.note_suggestion, a.reminder,
     (SELECT COUNT(*) FROM reward_nomination_votes v WHERE v.nomination_id = n.nomination_id) AS vote_count,
     (SELECT COUNT(*) FROM reward_nomination_votes v WHERE v.nomination_id = n.nomination_id AND v.member_id = ?) AS voted
   FROM reward_nominations n
@@ -284,16 +304,23 @@ export function closeRound(
   });
 }
 
+/**
+ * `quantity` is undefined when the caller sent none — every installed 0.5.17 app — and the idea is
+ * stored with a null quantity exactly as before. When it is sent it has to be a real one.
+ */
 export function createNomination(
-  db: DatabaseSync, memberId: string, operationId: string, name: string, note: string | undefined, nowMs: number,
+  db: DatabaseSync, memberId: string, operationId: string, name: string, note: string | undefined, nowMs: number, quantity?: unknown,
 ): Record<string, unknown> | GamificationError {
   ensureNominationSchema(db);
-  const payload = { name, note: note ?? null };
+  // The receipt payload of a request without a quantity stays exactly what it was, so an old app
+  // retrying across the deploy replays its receipt instead of colliding with it.
+  const payload = quantity === undefined ? { name, note: note ?? null } : { name, note: note ?? null, quantity };
   const prior = readMutationReceipt(db, memberId, operationId, payload);
   if (prior) return 'result' in prior ? prior.result : prior;
   const trimmed = name.trim();
   const trimmedNote = note?.trim() ?? '';
-  if (!trimmed || trimmed.length > MAX_NAME_LENGTH || trimmedNote.length > MAX_NOTE_LENGTH) {
+  const trimmedQuantity = quantity === undefined ? null : readQuantity(quantity);
+  if (!trimmed || trimmed.length > MAX_NAME_LENGTH || trimmedNote.length > MAX_NOTE_LENGTH || trimmedQuantity === undefined) {
     return { status: 400, code: 'INVALID_NOMINATION' };
   }
   const round = currentRoundRow(db);
@@ -307,8 +334,8 @@ export function createNomination(
 
   return transaction(db, () => {
     const nominationId = randomUUID();
-    db.prepare(`INSERT INTO reward_nominations(nomination_id, name, note, created_by, status, revision, created_at, updated_at, round_id)
-      VALUES(?,?,?,?, 'OPEN', 1, ?, ?, ?)`).run(nominationId, trimmed, trimmedNote || null, memberId, nowMs, nowMs, round.round_id);
+    db.prepare(`INSERT INTO reward_nominations(nomination_id, name, note, quantity, created_by, status, revision, created_at, updated_at, round_id)
+      VALUES(?,?,?,?,?, 'OPEN', 1, ?, ?, ?)`).run(nominationId, trimmed, trimmedNote || null, trimmedQuantity, memberId, nowMs, nowMs, round.round_id);
     const row = db.prepare(`${SELECT} WHERE n.nomination_id = ?`).get(memberId, nominationId) as unknown as NominationRow;
     const result = project(row, memberId, (twd) => pointsFromTwd(db, twd));
     writeMutationReceipt(db, memberId, operationId, 'NOMINATION_CREATE', payload, 'nomination', nominationId, result, nowMs);
@@ -336,6 +363,44 @@ export function withdrawNomination(
     db.prepare("UPDATE reward_nominations SET status = 'REMOVED', withdrawn = 1, revision = ?, updated_at = ? WHERE nomination_id = ?")
       .run(revision, nowMs, nominationId);
     return { nominationId, status: 'REMOVED', withdrawn: true, revision };
+  });
+}
+
+/**
+ * The author rewrites their own 多少/多久, usually because the estimate came back as a reminder.
+ *
+ * Votes stay: the idea is the same idea, now said precisely enough to price. The estimate is asked
+ * once more and only the estimate — the note's rewrite was already offered. Sending the quantity it
+ * already has changes nothing, so a retried save cannot ask the model twice.
+ */
+export function updateNominationQuantity(
+  db: DatabaseSync, memberId: string, nominationId: string, quantity: unknown, nowMs: number,
+): Record<string, unknown> | GamificationError {
+  ensureNominationSchema(db);
+  const trimmed = readQuantity(quantity);
+  if (trimmed === undefined) return { status: 400, code: 'INVALID_NOMINATION' };
+  return transaction(db, () => {
+    const current = db.prepare('SELECT created_by, status, revision, round_id, quantity FROM reward_nominations WHERE nomination_id = ?')
+      .get(nominationId) as { created_by: string; status: NominationStatus; revision: number; round_id: string | null; quantity: string | null } | undefined;
+    if (!current || current.created_by !== memberId) return { status: 404, code: 'NOMINATION_NOT_FOUND' } satisfies GamificationError;
+    if (current.status !== 'OPEN') return { status: 409, code: 'NOMINATION_CLOSED' } satisfies GamificationError;
+    const round = currentRoundRow(db);
+    if (!round || round.round_id !== current.round_id || nowMs >= Number(round.closes_at)) {
+      return { status: 409, code: 'VOTING_CLOSED' } satisfies GamificationError;
+    }
+    if (current.quantity !== trimmed) {
+      db.prepare('UPDATE reward_nominations SET quantity = ?, revision = ?, updated_at = ? WHERE nomination_id = ?')
+        .run(trimmed, current.revision + 1, nowMs, nominationId);
+      // A row the worker has not reached yet keeps its full first run; one it has finished is
+      // queued again for the estimate alone.
+      db.prepare(`INSERT INTO reward_nomination_assists(nomination_id, state, attempts, requested_at, estimate_only) VALUES(?, 'PENDING', 0, ?, 0)
+        ON CONFLICT(nomination_id) DO UPDATE SET estimated_twd = NULL, reminder = NULL, state = 'PENDING', failure = NULL, attempts = 0,
+          requested_at = excluded.requested_at, completed_at = NULL,
+          estimate_only = CASE WHEN reward_nomination_assists.state = 'PENDING' THEN reward_nomination_assists.estimate_only ELSE 1 END`)
+        .run(nominationId, nowMs);
+    }
+    const row = db.prepare(`${SELECT} WHERE n.nomination_id = ?`).get(memberId, nominationId) as unknown as NominationRow;
+    return project(row, memberId, (twd) => pointsFromTwd(db, twd));
   });
 }
 

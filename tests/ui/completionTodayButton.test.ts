@@ -79,4 +79,13 @@ describe('Points today completion button', () => {
     act(() => { tree.root.findByProps({ accessibilityRole: 'button' }).props.onPress(); });
     expect(onUndo).toHaveBeenCalledOnce();
   });
+
+  it('speaks about the chosen day when it is not today, and can be told its undo is not on this phone', () => {
+    const olderDay = { ...base, taskDate: '2026-09-25' };
+    expect(buildCompletionTodayButtonModel({ record: olderDay, pending: false, retryable: false, canComplete: true, today: '2026-09-27' })).toMatchObject({ disabled: false, label: '我已完成讀經' });
+    expect(buildCompletionTodayButtonModel({ record: { ...olderDay, status: 'COMPLETED' }, pending: false, retryable: false, canComplete: true, today: '2026-09-27' })).toMatchObject({ label: '這天讀經已完成', completed: true, disabled: false });
+    expect(buildCompletionTodayButtonModel({ record: { ...base, taskDate: '2026-09-27' }, pending: false, retryable: false, canComplete: true, today: '2026-09-27' })).toMatchObject({ label: '完成今日讀經' });
+    // Finished on another phone: shown as finished, and not a button that silently does nothing.
+    expect(buildCompletionTodayButtonModel({ record: { ...olderDay, status: 'COMPLETED' }, pending: false, retryable: false, canComplete: true, today: '2026-09-27', undoable: false })).toMatchObject({ completed: true, disabled: true });
+  });
 });

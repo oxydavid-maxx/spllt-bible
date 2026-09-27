@@ -44,13 +44,33 @@ export interface PastWeek {
 export interface Announcement {
   week: string;
   sermon: SermonBlock | null;
-  next: { date: string; topic: string; owner: string | null; signup: string | null } | null;
+  next: {
+    date: string; topic: string; owner: string | null; signup: string | null;
+    /** Both sessions of that Sunday, when the file carries them. */
+    sessions?: Array<{ label: string; kind: string | null; title: string; owner: string | null }>;
+    /** Who serves, under the roster's own column names. */
+    roles?: Array<{ label: string; value: string }>;
+  } | null;
   standing: Record<string, string> | null;
   past: PastWeek[];
 }
 
 const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 const orNull = (value: unknown): string | null => (text(value) ? value : null);
+
+const records = (value: unknown): Array<Record<string, unknown>> =>
+  Array.isArray(value) ? value.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object') : [];
+
+/** Sessions and roster, each entry kept only when it has what the board draws. */
+function parseNextDetail(next: Record<string, unknown>) {
+  const sessions = records(next.sessions)
+    .filter((entry) => text(entry.label) && text(entry.title))
+    .map((entry) => ({ label: entry.label as string, kind: orNull(entry.kind), title: entry.title as string, owner: orNull(entry.owner) }));
+  const roles = records(next.roles)
+    .filter((entry) => text(entry.label) && text(entry.value))
+    .map((entry) => ({ label: entry.label as string, value: entry.value as string }));
+  return { ...(sessions.length ? { sessions } : {}), ...(roles.length ? { roles } : {}) };
+}
 
 function parseSermon(value: unknown): SermonBlock | null {
   if (!value || typeof value !== 'object') return null;
@@ -96,7 +116,7 @@ export function parseAnnouncement(value: unknown): Announcement | null {
     week: item.week,
     sermon: parseSermon(item.sermon),
     next: next && text(next.date) && text(next.topic)
-      ? { date: next.date, topic: next.topic, owner: orNull(next.owner), signup: orNull(next.signup) }
+      ? { date: next.date, topic: next.topic, owner: orNull(next.owner), signup: orNull(next.signup), ...parseNextDetail(next) }
       : null,
     standing: standing
       ? Object.fromEntries(Object.entries(standing).filter((pair): pair is [string, string] => text(pair[1])))
