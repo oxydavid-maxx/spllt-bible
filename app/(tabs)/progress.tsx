@@ -496,7 +496,8 @@ export default function ProgressScreen() {
         votesLeft={nominations?.votesLeft}
         votesPerMember={nominations?.votesPerMember}
         busy={nominationBusy}
-        onNominate={(name, note) => runNomination(() => client!.nominateReward({ name, ...(note ? { note } : {}) }))}
+        onNominate={(name, note, quantity) => runNomination(() => client!.nominateReward({ name, quantity, ...(note ? { note } : {}) }))}
+        onEditQuantity={(nominationId, quantity) => { void runNomination(() => client!.updateNominationQuantity(nominationId, quantity)); }}
         onVote={(nominationId, voting) => { void runNomination(() => client!.setNominationVote(nominationId, voting)); }}
         onWithdraw={(nominationId) => { void runNomination(() => client!.withdrawNomination(nominationId)); }}
         onResolveSuggestion={(nominationId, accept) => { void runNomination(() => client!.resolveNoteSuggestion(nominationId, accept)); }}

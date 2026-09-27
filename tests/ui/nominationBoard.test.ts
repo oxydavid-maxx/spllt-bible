@@ -82,9 +82,11 @@ describe('the board makes it clear whose idea a prize was', () => {
     const onNominate = vi.fn();
     const { byLabel, text } = render({ onNominate, nominations: [] });
     act(() => { byLabel('獎品名稱').props.onChangeText('桌遊'); });
+    act(() => { byLabel('多少或多久').props.onChangeText('1 盒'); });
     act(() => { byLabel('提名獎品').props.onPress(); });
-    expect(onNominate).toHaveBeenCalledWith('桌遊', '');
+    expect(onNominate).toHaveBeenCalledWith('桌遊', '', '1 盒');
     expect(text()).not.toContain('"value":"桌遊"');
+    expect(text()).not.toContain('"value":"1 盒"');
   });
 
   it('ignores an empty submission rather than creating a blank idea', () => {
@@ -169,10 +171,10 @@ describe('what a price estimate is allowed to look like', () => {
     expect(render({ nominations: [nomination({ estimatedPoints: 75 })] }).text()).toContain('約 75 分');
   });
 
-  it('says nothing when there is no estimate, rather than explaining itself', () => {
+  it('says plainly that there is no estimate yet, with no number', () => {
     const view = render({ nominations: [nomination()] });
     expect(view.text()).not.toContain('約');
-    expect(view.text()).not.toContain('估');
+    expect(view.text()).toContain('還沒估分');
   });
 
   it('puts the estimate where the 輔導 is about to type a price', () => {
@@ -261,5 +263,72 @@ describe('three votes, said out loud rather than discovered', () => {
 
   it('says nothing about votes once the round stops taking them', () => {
     expect(render({ round: round({ phase: 'DECIDING' }), votesLeft: 2 }).text()).not.toContain('還有 2 票');
+  });
+});
+
+describe('多少/多久, in the proposer’s own words', () => {
+  const texts = (view: ReturnType<typeof render>) => view.tree.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => node.children.join(''));
+
+  it('asks for it between the prize and the note, and will not send an idea without it', () => {
+    const onNominate = vi.fn();
+    const view = render({ onNominate, nominations: [] });
+    const labels = view.tree.root.findAll((node) => (node.type as unknown) === 'TextInput').map((node) => node.props.accessibilityLabel);
+    expect(labels).toEqual(['獎品名稱', '多少或多久', '補充說明']);
+    expect(texts(view)).toContain('多少/多久？（必填，自己寫）');
+
+    act(() => { view.byLabel('獎品名稱').props.onChangeText('唱 KTV'); });
+    expect(view.byLabel('提名獎品').props.disabled).toBe(true);
+    act(() => { view.byLabel('多少或多久').props.onChangeText('   '); });
+    expect(view.byLabel('提名獎品').props.disabled).toBe(true);
+    act(() => { view.byLabel('提名獎品').props.onPress(); });
+    expect(onNominate).not.toHaveBeenCalled();
+
+    act(() => { view.byLabel('多少或多久').props.onChangeText('2 小時'); });
+    expect(view.byLabel('提名獎品').props.disabled).toBe(false);
+    act(() => { view.byLabel('提名獎品').props.onPress(); });
+    expect(onNominate).toHaveBeenCalledWith('唱 KTV', '', '2 小時');
+  });
+
+  it('offers no preset choices, only a field of twenty characters', () => {
+    const view = render({ nominations: [] });
+    expect(view.byLabel('多少或多久').props.maxLength).toBe(20);
+    expect(view.tree.root.findAll((node) => node.props?.accessibilityRole === 'radio')).toHaveLength(0);
+  });
+
+  it('shows the quantity as a tag beside the name', () => {
+    const view = render({ nominations: [nomination({ name: '珍奶', quantity: '1 杯', estimatedPoints: 15 })] });
+    expect(texts(view)).toEqual(expect.arrayContaining(['珍奶', '1 杯']));
+    expect(view.text()).toContain('約 15 分');
+  });
+
+  it('tells the author, and only the author, why there is no estimate, and lets them fix it', () => {
+    const onEditQuantity = vi.fn();
+    const reminded = nomination({ name: '打電動', quantity: '很久', mine: true, quantityReminder: '「很久」估不出分數，要不要寫多久？例如 1 小時' });
+    const view = render({ nominations: [reminded], onEditQuantity });
+    expect(texts(view)).toContain('小提醒：「很久」估不出分數，要不要寫多久？例如 1 小時');
+    expect(view.text()).toContain('還沒估分');
+
+    act(() => { view.byLabel('修改 打電動 的多少或多久').props.onPress(); });
+    const input = view.byLabel('打電動 的多少或多久');
+    expect(input.props.value).toBe('很久');
+    expect(input.props.maxLength).toBe(20);
+    act(() => { view.byLabel('打電動 的多少或多久').props.onChangeText('1 小時'); });
+    act(() => { view.byLabel('儲存 打電動 的多少或多久').props.onPress(); });
+    expect(onEditQuantity).toHaveBeenCalledWith('n1', '1 小時');
+
+    const theirs = render({ nominations: [{ ...reminded, mine: false, quantityReminder: undefined }], onEditQuantity });
+    expect(theirs.text()).not.toContain('小提醒');
+    expect(theirs.byLabel('修改 打電動 的多少或多久')).toBeUndefined();
+  });
+
+  it('reminds the author of an idea from before 多少/多久 to add one', () => {
+    const view = render({ nominations: [nomination({ name: '打電動', mine: true })], onEditQuantity: () => undefined });
+    expect(texts(view).some((line) => line.startsWith('小提醒：') && line.includes('多少/多久'))).toBe(true);
+    expect(view.byLabel('修改 打電動 的多少或多久')).toBeDefined();
+  });
+
+  it('offers no fix once voting has closed', () => {
+    const view = render({ round: round({ phase: 'DECIDING' }), nominations: [nomination({ mine: true, quantity: '很久', quantityReminder: '「很久」估不出分數' })], onEditQuantity: () => undefined });
+    expect(view.byLabel('修改 電影票 的多少或多久')).toBeUndefined();
   });
 });

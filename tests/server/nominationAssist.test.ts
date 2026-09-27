@@ -4,7 +4,7 @@ import { createDatabase } from '../../server/db';
 import { ensureNominationSchema } from '../../server/rewardNominations';
 import {
   buildEstimatePrompt, buildSuggestionPrompt, createNominationAssistWorker,
-  parseEstimate, parseSuggestion, pointsFromTwd, readAssist,
+  parseEstimate, parseEstimateAnswer, parseSuggestion, pointsFromTwd, readAssist,
 } from '../../server/nominationAssist';
 
 /**
@@ -46,6 +46,25 @@ describe('reading a price out of whatever the model said', () => {
   it('refuses a number nobody meant', () => {
     expect(parseEstimate('5')).toBeNull();
     expect(parseEstimate('999999')).toBeNull();
+  });
+});
+
+describe('a price or a reminder, and nothing in between', () => {
+  it('takes a price the same way it always did', () => {
+    expect(parseEstimateAnswer('NT$1,200')).toEqual({ twd: 1200 });
+  });
+  it('takes a reminder written on the one line it was asked for', () => {
+    expect(parseEstimateAnswer('提醒：「很久」估不出分數，要不要寫多久？例如 1 小時')).toEqual({ reminder: '「很久」估不出分數，要不要寫多久？例如 1 小時' });
+    expect(parseEstimateAnswer('提醒: 珍奶用「30 分鐘」算不出來，要不要寫幾杯？')).toEqual({ reminder: '珍奶用「30 分鐘」算不出來，要不要寫幾杯？' });
+  });
+  it('refuses a reminder that runs on, spills onto a second line, or says nothing', () => {
+    expect(parseEstimateAnswer(`提醒：${'好'.repeat(61)}`)).toBeNull();
+    expect(parseEstimateAnswer('提醒：要寫清楚\n另外我覺得')).toBeNull();
+    expect(parseEstimateAnswer('提醒：')).toBeNull();
+  });
+  it('refuses whatever else the model says', () => {
+    expect(parseEstimateAnswer('大概五十到八十元')).toBeNull();
+    expect(parseEstimateAnswer('我覺得提醒：很久')).toBeNull();
   });
 });
 
@@ -107,6 +126,14 @@ describe('what the prompts carry', () => {
     expect(prompt).toContain('桌遊');
     expect(prompt).toContain('大家一起玩');
     expect(prompt).toContain('新台幣');
+  });
+  it('puts the quantity beside the name and says how to answer when it cannot be priced', () => {
+    const prompt = buildEstimatePrompt('珍奶', null, '30 分鐘');
+    expect(prompt).toContain('珍奶');
+    expect(prompt).toContain('30 分鐘');
+    expect(prompt).toContain('提醒');
+    // Without a quantity it is the prompt it always was.
+    expect(buildEstimatePrompt('桌遊', null)).not.toContain('提醒');
   });
   it('asks for OK when there is nothing to say', () => {
     expect(buildSuggestionPrompt('大家一起玩')).toContain('OK');

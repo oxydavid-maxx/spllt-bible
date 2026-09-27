@@ -43,6 +43,8 @@ const ROUND_POINTS_TO = 5;
 const MAX_MULTIPLE_OF_DEAREST = 10;
 
 const MAX_SUGGESTION_LENGTH = 120;
+/** One sentence to the proposer. Longer is the model explaining itself, which is not a reminder. */
+const MAX_REMINDER_LENGTH = 60;
 /** A timeout is worth one more try; a poor answer to the same question is not. */
 const MAX_ATTEMPTS = 2;
 
@@ -52,6 +54,8 @@ export interface NominationAssist {
   nominationId: string;
   estimatedTwd: number | null;
   noteSuggestion: string | null;
+  /** Why the quantity could not be priced, for the proposer. Stored instead of an estimate. */
+  reminder: string | null;
   state: AssistState;
 }
 
@@ -68,17 +72,24 @@ export function ensureAssistSchema(db: DatabaseSync): void {
       completed_at INTEGER
     );
   `);
+  // Added the guarded way every later column is, so a database from before 多少/多久 opens as it was.
+  const columns = new Set((db.prepare('PRAGMA table_info(reward_nomination_assists)').all() as Array<{ name: string }>).map((column) => column.name));
+  if (!columns.has('reminder')) db.exec('ALTER TABLE reward_nomination_assists ADD COLUMN reminder TEXT');
+  // Set when the author edits the quantity: the note was already offered its rewrite, so only the
+  // estimate is asked again.
+  if (!columns.has('estimate_only')) db.exec('ALTER TABLE reward_nomination_assists ADD COLUMN estimate_only INTEGER NOT NULL DEFAULT 0');
 }
 
 export function readAssist(db: DatabaseSync, nominationId: string): NominationAssist | null {
   ensureAssistSchema(db);
-  const row = db.prepare('SELECT nomination_id, estimated_twd, note_suggestion, state FROM reward_nomination_assists WHERE nomination_id = ?')
-    .get(nominationId) as { nomination_id: string; estimated_twd: number | null; note_suggestion: string | null; state: AssistState } | undefined;
+  const row = db.prepare('SELECT nomination_id, estimated_twd, note_suggestion, reminder, state FROM reward_nomination_assists WHERE nomination_id = ?')
+    .get(nominationId) as { nomination_id: string; estimated_twd: number | null; note_suggestion: string | null; reminder: string | null; state: AssistState } | undefined;
   if (!row) return null;
   return {
     nominationId: row.nomination_id,
     estimatedTwd: row.estimated_twd === null ? null : Number(row.estimated_twd),
     noteSuggestion: row.note_suggestion,
+    reminder: row.reminder,
     state: row.state,
   };
 }
@@ -104,6 +115,25 @@ export function parseEstimate(raw: string): number | null {
   return value >= MIN_TWD && value <= MAX_TWD ? value : null;
 }
 
+/**
+ * The one estimate call's answer: a price, a reminder for the proposer, or nothing.
+ *
+ * The reminder has to arrive on the single line it was asked for and stay short. Anything else —
+ * a range, a paragraph, a reminder buried mid-sentence — is treated like any other poor answer:
+ * no estimate, nothing shown, and nobody told the model misbehaved.
+ */
+export function parseEstimateAnswer(raw: string): { twd: number } | { reminder: string } | null {
+  const trimmed = String(raw ?? '').trim();
+  const reminder = /^提醒[:：]\s*(.*)$/s.exec(trimmed);
+  if (reminder) {
+    const text = reminder[1].trim();
+    if (!text || text.length > MAX_REMINDER_LENGTH || /[\r\n]/.test(text)) return null;
+    return { reminder: text };
+  }
+  const twd = parseEstimate(trimmed);
+  return twd === null ? null : { twd };
+}
+
 /** What 電影票 is worth today, or what it was worth when this was written. */
 function anchorPoints(db: DatabaseSync): number {
   const row = db.prepare('SELECT cost_points FROM rewards WHERE name = ? AND active = 1 ORDER BY cost_points LIMIT 1')
@@ -122,13 +152,31 @@ export function pointsFromTwd(db: DatabaseSync, twd: number): number | null {
   return points > ceiling ? null : points;
 }
 
-export function buildEstimatePrompt(name: string, note: string | null): string {
+/**
+ * The unit check is folded into this same question rather than asked separately: the model already
+ * has to read the quantity to price it, so noticing that 「很久」 cannot be priced costs nothing more.
+ * Without a quantity (an idea from before 多少/多久 existed) it is the prompt it always was.
+ */
+export function buildEstimatePrompt(name: string, note: string | null, quantity?: string | null): string {
+  if (!quantity) {
+    return [
+      '你在幫教會青少年團契估一個獎品的價格。',
+      '請估計下面這個獎品在台灣買大約要多少新台幣。',
+      '只輸出一個阿拉伯數字,不要單位、不要範圍、不要任何說明文字。',
+      '',
+      `獎品名稱:${name}`,
+      ...(note ? [`補充說明:${note}`] : []),
+    ].join('\n');
+  }
   return [
     '你在幫教會青少年團契估一個獎品的價格。',
-    '請估計下面這個獎品在台灣買大約要多少新台幣。',
-    '只輸出一個阿拉伯數字,不要單位、不要範圍、不要任何說明文字。',
+    '提案的人自己寫了要多少或多久。',
+    '如果數量清楚、也跟這個獎品搭得起來,請估計在台灣買這個數量大約要多少新台幣,只輸出一個阿拉伯數字,不要單位、不要範圍、不要任何說明文字。',
+    '如果數量太模糊(例如「很久」、「很多」),或跟獎品搭不起來(例如珍奶寫「30 分鐘」),就不要估價,只輸出一行:',
+    '提醒:一句給提案人的話,40 字以內,說哪裡估不出來、建議怎麼寫。例如:提醒:「很久」估不出分數，要不要寫多久？例如 1 小時',
     '',
     `獎品名稱:${name}`,
+    `多少/多久:${quantity}`,
     ...(note ? [`補充說明:${note}`] : []),
   ].join('\n');
 }
@@ -163,7 +211,7 @@ export interface AssistCli {
   busy(): boolean;
 }
 
-interface PendingRow { nomination_id: string; name: string; note: string | null; attempts: number }
+interface PendingRow { nomination_id: string; name: string; note: string | null; quantity: string | null; attempts: number; estimate_only: number }
 
 export interface NominationAssistWorker {
   tick(): Promise<void>;
@@ -199,18 +247,23 @@ export function createNominationAssistWorker(options: {
     // Nothing is started while the last one is still running: this machine is also the app.
     if (cli.busy()) return;
 
-    const pending = db.prepare(`SELECT n.nomination_id, n.name, n.note, a.attempts
+    const pending = db.prepare(`SELECT n.nomination_id, n.name, n.note, n.quantity, a.attempts, a.estimate_only
       FROM reward_nomination_assists a JOIN reward_nominations n ON n.nomination_id = a.nomination_id
       WHERE a.state = 'PENDING' AND n.status = 'OPEN'
       ORDER BY a.requested_at LIMIT 1`).get() as PendingRow | undefined;
     if (!pending) return;
 
     const attempts = Number(pending.attempts) + 1;
+    const estimateOnly = Number(pending.estimate_only) === 1;
     let estimate: number | null = null;
+    let reminder: string | null = null;
     let suggestion: string | null = null;
     try {
-      estimate = parseEstimate(await cli.invoke(buildEstimatePrompt(pending.name, pending.note)));
-      if (pending.note) suggestion = parseSuggestion(await cli.invoke(buildSuggestionPrompt(pending.note)), pending.note);
+      const answer = parseEstimateAnswer(await cli.invoke(buildEstimatePrompt(pending.name, pending.note, pending.quantity)));
+      if (answer && 'twd' in answer) estimate = answer.twd;
+      // A reminder is about the quantity; with none written there is nothing for it to be about.
+      else if (answer && pending.quantity) reminder = answer.reminder;
+      if (pending.note && !estimateOnly) suggestion = parseSuggestion(await cli.invoke(buildSuggestionPrompt(pending.note)), pending.note);
     } catch (error) {
       // Only the classification is kept. The prompt carried a student's words and the message may
       // quote them back, so nothing from either is written down.
@@ -224,10 +277,12 @@ export function createNominationAssistWorker(options: {
 
     // A poor answer is final. The same prompt produces the same kind of answer, so asking again
     // only spends the machine; the nomination simply carries no estimate, as they all used to.
-    const usable = estimate !== null;
-    db.prepare(`UPDATE reward_nomination_assists SET estimated_twd = ?, note_suggestion = ?, state = ?, failure = ?, attempts = ?, completed_at = ?
+    const usable = estimate !== null || reminder !== null;
+    // An estimate-only rerun leaves the note's rewrite exactly where the author left it.
+    db.prepare(`UPDATE reward_nomination_assists SET estimated_twd = ?, reminder = ?, note_suggestion = CASE WHEN ? THEN note_suggestion ELSE ? END,
+        state = ?, failure = ?, attempts = ?, completed_at = ?, estimate_only = 0
       WHERE nomination_id = ?`)
-      .run(estimate, suggestion, usable ? 'DONE' : 'FAILED', usable ? null : 'UNUSABLE_ANSWER', attempts, at, pending.nomination_id);
+      .run(estimate, reminder, estimateOnly ? 1 : 0, suggestion, usable ? 'DONE' : 'FAILED', usable ? null : 'UNUSABLE_ANSWER', attempts, at, pending.nomination_id);
   };
 
   const tick = (): Promise<void> => {

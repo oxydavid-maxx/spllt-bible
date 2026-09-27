@@ -38,8 +38,8 @@ function setup() {
 }
 
 type Setup = ReturnType<typeof setup>;
-const nominate = (api: Setup['api'], headers: Setup['headers'], memberId: string, name: string, note?: string) =>
-  api({ method: 'POST', url: '/api/rewards/nominations', headers: headers(memberId), body: JSON.stringify({ operationId: randomUUID(), name, note }) });
+const nominate = (api: Setup['api'], headers: Setup['headers'], memberId: string, name: string, note?: string, quantity?: string) =>
+  api({ method: 'POST', url: '/api/rewards/nominations', headers: headers(memberId), body: JSON.stringify({ operationId: randomUUID(), name, note, quantity }) });
 const board = async (api: Setup['api'], headers: Setup['headers'], memberId: string) =>
   (await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers(memberId) })).body as { nominations: Array<Record<string, unknown>> };
 
@@ -76,10 +76,12 @@ describe('submitting does not wait for a language model', () => {
 });
 
 describe('the points follow the prize the group agreed on', () => {
+  // Points are only shown for an idea that says how much of it; without a quantity the price was a
+  // guess at the amount as well (see nominationQuantity.test.ts).
   it('prices an estimate against the current 電影票', async () => {
     const { api, headers, database, priceMovieTicket } = setup();
     priceMovieTicket(75);
-    await nominate(api, headers, 'member-self', '桌遊');
+    await nominate(api, headers, 'member-self', '桌遊', undefined, '1 盒');
     await createNominationAssistWorker({ db: database.db, cli: cliDouble(['300']), now: () => new Date(0) }).tick();
 
     expect((await board(api, headers, 'member-self')).nominations[0].estimatedPoints).toBe(75);
@@ -88,7 +90,7 @@ describe('the points follow the prize the group agreed on', () => {
   it('moves every estimate when a 輔導 reprices, with no tick in between', async () => {
     const { api, headers, database, priceMovieTicket, reprice } = setup();
     priceMovieTicket(75);
-    await nominate(api, headers, 'member-self', '桌遊');
+    await nominate(api, headers, 'member-self', '桌遊', undefined, '1 盒');
     await createNominationAssistWorker({ db: database.db, cli: cliDouble(['300']), now: () => new Date(0) }).tick();
     expect((await board(api, headers, 'member-self')).nominations[0].estimatedPoints).toBe(75);
 

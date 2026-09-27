@@ -330,3 +330,29 @@ describe('the nomination board never carries a handle to a person', () => {
     await expect(client.getNominations()).resolves.toEqual({ round: null, nominations: [], votesLeft: 3, votesPerMember: 3 });
   });
 });
+
+describe('多少/多久 travels with a nomination', () => {
+  it('reads the quantity for everybody and the reminder the server gives its author', async () => {
+    const fetchImpl = vi.fn(async () => response({
+      round: { roundId: 'r1', title: '十月獎品', closesAt: 1790000000000, phase: 'VOTING' },
+      nominations: [{ nominationId: 'n1', name: '打電動', quantity: '很久', displayName: '小明', status: 'OPEN', voteCount: 1, voted: false, mine: true, revision: 2, quantityReminder: '「很久」估不出分數' }],
+    }));
+    const client = createGamificationApiClient({ baseUrl: 'https://api.test', token: 'token', memberId: 'member-self', fetchImpl: fetchImpl as never });
+    const board = await client.getNominations();
+    expect(board.nominations[0]).toMatchObject({ quantity: '很久', quantityReminder: '「很久」估不出分數' });
+  });
+
+  it('sends the quantity with a new nomination and edits it on its own', async () => {
+    const fetchImpl = vi.fn(async () => response({}));
+    const client = createGamificationApiClient({ baseUrl: 'https://api.test', token: 'token', memberId: 'member-self', fetchImpl: fetchImpl as never });
+    await client.nominateReward({ name: '珍奶', quantity: '1 杯' });
+    await client.updateNominationQuantity('n 1', '2 杯');
+    const [createUrl, createInit] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(createUrl).toBe('https://api.test/api/rewards/nominations');
+    expect(JSON.parse(String(createInit.body))).toMatchObject({ name: '珍奶', quantity: '1 杯' });
+    const [editUrl, editInit] = fetchImpl.mock.calls[1] as unknown as [string, RequestInit];
+    expect(editUrl).toBe('https://api.test/api/rewards/nominations/n%201/quantity');
+    expect(editInit.method).toBe('PATCH');
+    expect(JSON.parse(String(editInit.body))).toEqual({ quantity: '2 杯' });
+  });
+});

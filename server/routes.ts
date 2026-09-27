@@ -12,7 +12,7 @@ import { getMemberGroupProfile } from './groups';
 import { ensureJournalSchema, getJournalEntry, listJournalEntries, saveJournalEntry } from './journal';
 import { ensureEventRegistrationSchema, formRegistrationKeyMatches, formSyncIdentityMatches, getEventRegistrationView, readFormRegistrationPush, replaceEventRegistrations, type FormSyncIdentity } from './eventRegistrations';
 import { getCommunityProgress } from './communityProgress';
-import { closeRound, createNomination, decideNomination, ensureNominationSchema, listNominationHistory, listNominations, listNominationsForAdmin, openRound, resolveSuggestion, setVote, withdrawNomination, type NominationDecision } from './rewardNominations';
+import { closeRound, createNomination, decideNomination, ensureNominationSchema, listNominationHistory, listNominations, listNominationsForAdmin, openRound, resolveSuggestion, setVote, updateNominationQuantity, withdrawNomination, type NominationDecision } from './rewardNominations';
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
 import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
@@ -550,7 +550,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (url.pathname === '/api/rewards/nominations' && request.method === 'POST') {
         const payload = parseBody(request.body);
         const created = createNomination(options.db.db, auth.memberId, String(payload.operationId ?? ''),
-          String(payload.name ?? ''), typeof payload.note === 'string' ? payload.note : undefined, now().getTime());
+          String(payload.name ?? ''), typeof payload.note === 'string' ? payload.note : undefined, now().getTime(), payload.quantity);
         if (isGamificationError(created)) return gamificationError(created);
         const replayed = options.db.db.prepare('SELECT 1 FROM mutation_receipts WHERE actor_member_id = ? AND operation_id = ? AND created_at < ?')
           .get(auth.memberId, String(payload.operationId ?? ''), now().getTime());
@@ -567,6 +567,14 @@ export function createApiHandler(options: ApiHandlerOptions) {
         const own = /^\/api\/rewards\/nominations\/([^/]+)$/.exec(url.pathname);
         if (own && request.method === 'DELETE') {
           const result = withdrawNomination(options.db.db, auth.memberId, decodeURIComponent(own[1]), now().getTime());
+          return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
+        }
+      }
+      {
+        const quantity = /^\/api\/rewards\/nominations\/([^/]+)\/quantity$/.exec(url.pathname);
+        if (quantity && request.method === 'PATCH') {
+          const payload = parseBody(request.body);
+          const result = updateNominationQuantity(options.db.db, auth.memberId, decodeURIComponent(quantity[1]), payload.quantity, now().getTime());
           return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
         }
       }

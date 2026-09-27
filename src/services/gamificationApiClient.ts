@@ -117,6 +117,8 @@ function parseBookGoal(value: unknown): CommunityBookGoal | null {
 export interface RewardNomination {
   nominationId: string;
   name: string;
+  /** 多少/多久 in the proposer's words; absent on ideas from before it was asked. */
+  quantity?: string;
   note?: string;
   displayName: string;
   status: 'OPEN' | 'APPROVED' | 'DECLINED';
@@ -128,6 +130,8 @@ export interface RewardNomination {
   estimatedPoints?: number;
   /** A clearer way to say it, offered to the author and sent to nobody else. */
   noteSuggestion?: string;
+  /** Why the quantity could not be priced, sent to the author alone. */
+  quantityReminder?: string;
 }
 
 export type NominationRoundPhase = 'VOTING' | 'DECIDING';
@@ -187,6 +191,7 @@ function parseNomination(value: unknown): RewardNomination | null {
   return {
     nominationId: item.nominationId,
     name: item.name,
+    ...(string(item.quantity) ? { quantity: item.quantity } : {}),
     ...(string(item.note) ? { note: item.note } : {}),
     displayName: item.displayName,
     status: item.status,
@@ -196,6 +201,7 @@ function parseNomination(value: unknown): RewardNomination | null {
     revision: item.revision,
     ...(positiveInt(item.estimatedPoints) ? { estimatedPoints: item.estimatedPoints } : {}),
     ...(string(item.noteSuggestion) ? { noteSuggestion: item.noteSuggestion } : {}),
+    ...(string(item.quantityReminder) ? { quantityReminder: item.quantityReminder } : {}),
   };
 }
 
@@ -427,8 +433,11 @@ export function createGamificationApiClient(options: GamificationApiClientOption
     async closeNominationRound(roundId: string): Promise<void> {
       await request(`/api/admin/rewards/nomination-rounds/${encodeURIComponent(roundId)}/close`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId() }) });
     },
-    async nominateReward(input: { name: string; note?: string }): Promise<void> {
-      await request('/api/rewards/nominations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), name: input.name, ...(input.note ? { note: input.note } : {}) }) });
+    async nominateReward(input: { name: string; note?: string; quantity?: string }): Promise<void> {
+      await request('/api/rewards/nominations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), name: input.name, ...(input.note ? { note: input.note } : {}), ...(input.quantity ? { quantity: input.quantity } : {}) }) });
+    },
+    async updateNominationQuantity(nominationId: string, quantity: string): Promise<void> {
+      await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}/quantity`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ quantity }) });
     },
     async setNominationVote(nominationId: string, voting: boolean): Promise<void> {
       await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}/vote`, { method: voting ? 'PUT' : 'DELETE' });
