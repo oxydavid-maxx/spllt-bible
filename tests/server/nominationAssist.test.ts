@@ -138,6 +138,12 @@ describe('what the prompts carry', () => {
   it('asks for OK when there is nothing to say', () => {
     expect(buildSuggestionPrompt('大家一起玩')).toContain('OK');
   });
+  // Production, 2026-09-27: 「多一點」 came back as 「希望奖品可以多一些…」. Plain 「中文」 let the
+  // model answer in simplified characters; every line a member reads says which script.
+  it('asks for Traditional Chinese wherever the model writes words a member reads', () => {
+    expect(buildSuggestionPrompt('多一點')).toContain('繁體中文');
+    expect(buildEstimatePrompt('打電動', null, '很久')).toContain('繁體中文');
+  });
 });
 
 describe('the worker that does the waiting', () => {
