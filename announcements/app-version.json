@@ -1,7 +1,7 @@
 {
-  "versionCode": 38,
-  "versionName": "0.5.17",
+  "versionCode": 39,
+  "versionName": "0.5.18",
   "url": "https://home.luminexhealthbiohack.com/public/jhuke-bible/",
   "mandatory": false,
-  "note": "修正註腳被手機下方按鈕擋住；公告加上講道投影片。"
+  "note": "積分頁可以在日曆上補登讀經；被加好友馬上看到；獎品提案要寫多少/多久；公告列出第一堂、第二堂和服事。"
 }
