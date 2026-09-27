@@ -1,6 +1,6 @@
 {
   "week": "2026-09-27",
-  "generatedAt": "2026-09-27T01:00:08.652Z",
+  "generatedAt": "2026-09-27T03:31:12.977Z",
   "sermon": {
     "title": "耶穌：耶穌是誰？",
     "speaker": "中亮/大專",
@@ -14,7 +14,47 @@
     "date": "10/4",
     "topic": "創世記3~5章",
     "owner": "分組進行",
-    "signup": "https://forms.gle/Z7EvQyzCVEmnQYHNA"
+    "signup": "https://forms.gle/Z7EvQyzCVEmnQYHNA",
+    "sessions": [
+      {
+        "label": "第一堂",
+        "kind": "信息",
+        "title": "亞當的後代",
+        "owner": "佑駿"
+      },
+      {
+        "label": "第二堂",
+        "kind": null,
+        "title": "創世記3~5章",
+        "owner": "分組進行"
+      }
+    ],
+    "roles": [
+      {
+        "label": "講員",
+        "value": "佑駿"
+      },
+      {
+        "label": "主領(報告)",
+        "value": "中亮"
+      },
+      {
+        "label": "招待",
+        "value": "玉堃/心予"
+      },
+      {
+        "label": "聖餐",
+        "value": "全體"
+      },
+      {
+        "label": "愛筵",
+        "value": "豐盛小組"
+      },
+      {
+        "label": "清潔",
+        "value": "全體"
+      }
+    ]
   },
   "standing": null,
   "past": [
