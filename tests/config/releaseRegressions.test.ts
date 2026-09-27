@@ -2,20 +2,21 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkApkBudget, readZipEntries } from '../../src/config/apkBudget';
+import { checkApkBudget, checkFirebaseConfig, readZipEntries, readZipEntry } from '../../src/config/apkBudget';
 import { checkDownloadHref, checkUpdateNotice } from '../../src/config/installLink';
 import { findWorktreesSharingNodeModules, syncDeps } from '../../src/config/depsSync';
 
 // Three basics that came back more than once (2026-09-26), each guarded where it would recur.
 
 /** A minimal stored (uncompressed) zip with the given files, enough for the central directory reader. */
-function makeZip(files: Array<[string, number]>): Buffer {
+function makeZip(files: Array<[string, number | Buffer]>): Buffer {
   const locals: Buffer[] = [];
   const centrals: Buffer[] = [];
   let offset = 0;
-  for (const [name, size] of files) {
+  for (const [name, content] of files) {
     const nameBytes = Buffer.from(name, 'utf8');
-    const data = Buffer.alloc(size);
+    const data = typeof content === 'number' ? Buffer.alloc(content) : content;
+    const size = data.length;
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt32LE(size, 18);
@@ -75,6 +76,23 @@ describe('the sideloaded APK stays small', () => {
       '1 source map file(s) shipped, e.g. assets/www.bundle/entry.js.map',
       'APK is 162.4 MB, over the 90.0 MB budget',
     ]);
+  });
+
+  // 2026-09-27: every APK from 0.5.11 to 0.5.18 shipped without its Firebase config. The regenerated
+  // android/ project had lost the google-services Gradle plugin, the staged google-services.json was
+  // never compiled in, and no phone could get a push token, silently. The release check now reads
+  // the APK's own resources for the app id the build staged.
+  it('fails a release APK whose resources do not carry the staged Firebase app id', () => {
+    const appId = '1:123:android:abc';
+    const withConfig = makeZip([['resources.arsc', Buffer.concat([Buffer.from('xx'), Buffer.from(appId, 'utf16le')])]]);
+    const without = makeZip([['resources.arsc', Buffer.from('no config here')]]);
+    expect(readZipEntry(withConfig, 'resources.arsc')?.includes(Buffer.from(appId, 'utf16le'))).toBe(true);
+    expect(readZipEntry(withConfig, 'missing.bin')).toBeNull();
+    expect(checkFirebaseConfig(readZipEntry(withConfig, 'resources.arsc'), appId)).toEqual([]);
+    expect(checkFirebaseConfig(readZipEntry(without, 'resources.arsc'), appId)).toEqual([
+      'APK resources lack the Firebase app id from android/app/google-services.json (is the com.google.gms.google-services Gradle plugin applied?)',
+    ]);
+    expect(checkFirebaseConfig(null, null)).toEqual(['no android/app/google-services.json was staged, so push notifications cannot work']);
   });
 
   it('builds release APKs for ARM phones with compressed native libraries unless told otherwise, and checks the result', () => {

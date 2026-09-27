@@ -142,23 +142,24 @@ describe('score profile reading calendar', () => {
     expect(onChartChange).toHaveBeenCalledWith({ range: 'month' });
   });
 
-  it('lays a month out Monday-first with leading blanks and weekday headers', () => {
+  it('lays a month out Sunday-first with leading blanks and weekday headers', () => {
     const monthBuckets = Array.from({ length: 30 }, (_, index) => { const day = String(index + 1).padStart(2, '0'); return { key: `2026-09-${day}`, startDate: `2026-09-${day}`, endDate: `2026-09-${day}`, earnedPoints: index === 9 ? 1 : 0 }; });
     const monthChart = { ...chart, range: 'month' as const, anchor: '2026-09', periodStart: '2026-09-01', periodEnd: '2026-09-30', buckets: monthBuckets, earnedPoints: 1 };
     const renderer = render({ profile: { ...profile(), chart: monthChart } });
-    for (const header of ['一', '二', '三', '四', '五', '六', '日']) expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === header)).toHaveLength(1);
-    // 2026-09-01 is a Tuesday: exactly one blank before it.
-    expect(renderer.root.findAll((node) => String(node.type) === 'View' && flat(node.props.style).height === 32 && !node.props.accessibilityLabel)).toHaveLength(1);
+    const headers = renderer.root.findAll((node) => String(node.type) === 'Text' && ['日', '一', '二', '三', '四', '五', '六'].includes(node.props.children)).map((node) => node.props.children);
+    expect(headers).toEqual(['日', '一', '二', '三', '四', '五', '六']);
+    // 2026-09-01 is a Tuesday: two blanks (日, 一) before it.
+    expect(renderer.root.findAll((node) => String(node.type) === 'View' && flat(node.props.style).height === 32 && !node.props.accessibilityLabel)).toHaveLength(2);
     expect(cells(renderer)).toHaveLength(30);
-    // 14–20 Sep 2026 is Monday–Sunday: a fully read row deepens together and is counted as one 完整週.
-    const perfectBuckets = monthBuckets.map((bucket) => (bucket.key >= '2026-09-14' && bucket.key <= '2026-09-20') || bucket.key === '2026-09-10' ? { ...bucket, earnedPoints: 1 } : bucket);
+    // 13–19 Sep 2026 is Sunday–Saturday: a fully read row deepens together and is counted as one 完整週.
+    const perfectBuckets = monthBuckets.map((bucket) => (bucket.key >= '2026-09-13' && bucket.key <= '2026-09-19') || bucket.key === '2026-09-10' ? { ...bucket, earnedPoints: 1 } : bucket);
     const perfectRenderer = render({ profile: { ...profile(), chart: { ...monthChart, buckets: perfectBuckets, earnedPoints: 8 } }, today: '2026-09-25' });
     expect(texts(perfectRenderer)).toContain('本期 8 天 · 完整週 1');
     expect(cells(perfectRenderer).filter((node) => flat(node.props.style).backgroundColor === '#123B30')).toHaveLength(7);
     expect(flat(cells(perfectRenderer).find((node) => node.props.accessibilityLabel.startsWith('2026-09-10'))!.props.style).backgroundColor).toBe('#1A5544');
     // Every header, blank and day sits in a 1/7-wide slot so seven always fit on one row (device regression: 日 wrapped).
     const slots = renderer.root.findAll((node) => String(node.type) === 'View' && flat(node.props.style).width === '14.2857%');
-    expect(slots).toHaveLength(7 + 1 + 30);
+    expect(slots).toHaveLength(7 + 2 + 30);
     expect(renderer.root.findAll((node) => typeof flat(node.props.style).columnGap === 'number')).toHaveLength(0);
     expect(texts(renderer)).toContain('2026年9月');
     expect(texts(renderer)).toContain('本期 1 天');
