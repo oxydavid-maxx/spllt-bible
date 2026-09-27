@@ -61,11 +61,12 @@ describe('the day selected when the page opens', () => {
 });
 
 describe('the month it draws', () => {
-  it('starts on Monday, with blanks before the first', () => {
+  // 光佑 2026-09-27: the week starts on Sunday (日), as church calendars here do.
+  it('starts on Sunday, with blanks before the first', () => {
     const cells = monthCells('2026-09');
-    expect(cells.slice(0, 2)).toEqual([null, '2026-09-01']);
+    expect(cells.slice(0, 3)).toEqual([null, null, '2026-09-01']);
     expect(cells.filter(Boolean)).toHaveLength(30);
-    expect(monthCells('2026-06')[0]).toBe('2026-06-01');
+    expect(monthCells('2026-11')[0]).toBe('2026-11-01');
   });
   it('moves across years', () => {
     expect(shiftMonth('2026-12', 1)).toBe('2027-01');
@@ -93,9 +94,11 @@ const cell = (renderer: TestRenderer.ReactTestRenderer, date: string) => rendere
 const texts = (renderer: TestRenderer.ReactTestRenderer) => renderer.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => node.children.join(''));
 
 describe('the calendar card', () => {
-  it('draws the month Monday first with ‹ › and one tappable cell per day', () => {
+  it('draws the month Sunday first with ‹ › and one tappable cell per day', () => {
     const view = render({ onPreviousMonth: () => undefined, onNextMonth: () => undefined });
-    expect(texts(view).slice(0, 10)).toEqual(expect.arrayContaining(['2026年9月', '一', '二', '三', '四', '五', '六', '日']));
+    const shown = texts(view);
+    expect(shown).toContain('2026年9月');
+    expect(shown.slice(shown.indexOf('日'), shown.indexOf('日') + 7)).toEqual(['日', '一', '二', '三', '四', '五', '六']);
     expect(view.root.findByProps({ accessibilityLabel: '上個月' })).toBeDefined();
     expect(view.root.findByProps({ accessibilityLabel: '下個月' })).toBeDefined();
     expect(view.root.findAll((node) => (node.type as unknown) === 'Pressable' && /^2026-09-\d{2} /.test(String(node.props.accessibilityLabel ?? '')))).toHaveLength(30);

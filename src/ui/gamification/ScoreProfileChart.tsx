@@ -7,7 +7,7 @@ import { theme } from '../Theme';
 
 // Reading calendar. One point per day means a bar chart degenerates into 0/1 hairlines; a
 // calendar shows at a glance which days were read, which were missed, and what is still ahead.
-// 週 = one row, 月 = month grid (Monday first), 年 = 12 month cells, 全部 = one cell per year.
+// 週 = one row, 月 = month grid (Sunday first), 年 = 12 month cells, 全部 = one cell per year.
 
 const RANGE_OPTIONS: Array<{ range: ScoreChartRange; label: string }> = [
   { range: 'week', label: '週' },
@@ -15,7 +15,7 @@ const RANGE_OPTIONS: Array<{ range: ScoreChartRange; label: string }> = [
   { range: 'year', label: '年' },
   { range: 'all', label: '全部' },
 ];
-const WEEKDAY_HEADERS = ['一', '二', '三', '四', '五', '六', '日'];
+const WEEKDAY_HEADERS = ['日', '一', '二', '三', '四', '五', '六'];
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
 export interface ScoreProfileChartProps {
@@ -203,9 +203,9 @@ function cellState(bucket: ScoreChartBucket, today: string): 'read' | 'missed' |
   return bucket.earnedPoints > 0 ? 'read' : 'missed';
 }
 
-/** Monday-first column index (0–6) for an ISO date. */
-function mondayIndex(date: string): number {
-  return (new Date(`${date}T12:00:00.000Z`).getUTCDay() + 6) % 7;
+/** Sunday-first column index (0–6) for an ISO date (光佑 2026-09-27: the week starts on 日). */
+function weekColumn(date: string): number {
+  return new Date(`${date}T12:00:00.000Z`).getUTCDay();
 }
 
 function DayCell({ bucket, today, selected, onSelect, perfect = false }: { bucket: ScoreChartBucket; today: string; selected: boolean; onSelect: (key: string) => void; perfect?: boolean }) {
@@ -229,14 +229,14 @@ function bucketCapacity(bucket: ScoreChartBucket): number {
   return Number.isInteger(year) ? (new Date(Date.UTC(year, 1, 29)).getUTCMonth() === 1 ? 366 : 365) : 365;
 }
 
-/** Monday-first rows of the month grid whose seven days were all read ("完整週", capped by nature). */
+/** Sunday-first rows of the month grid whose seven days were all read ("完整週", capped by nature). */
 export function perfectWeekKeys(buckets: readonly ScoreChartBucket[]): Set<string> {
   const keys = new Set<string>();
   let row: ScoreChartBucket[] = [];
   const flush = () => { if (row.length === 7 && row.every((bucket) => bucket.earnedPoints > 0)) row.forEach((bucket) => keys.add(bucket.key)); row = []; };
   for (const bucket of buckets) {
     if (!isDayKey(bucket.key)) return keys;
-    if (mondayIndex(bucket.key) === 0) flush();
+    if (weekColumn(bucket.key) === 0) flush();
     row.push(bucket);
   }
   flush();
@@ -274,7 +274,7 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
   const selectedBucket = calendarChart.buckets.find((bucket) => bucket.key === selectedKey) ?? null;
   const cumulativeSelectedBucket = chart.buckets.find((bucket) => bucket.key === selectedKey) ?? null;
   const dailyBuckets = calendarChart.buckets.length > 0 && calendarChart.buckets.every((bucket) => isDayKey(bucket.key));
-  const leadingBlanks = dailyBuckets && chart.range === 'month' && calendarChart.buckets[0] ? mondayIndex(calendarChart.buckets[0].key) : 0;
+  const leadingBlanks = dailyBuckets && chart.range === 'month' && calendarChart.buckets[0] ? weekColumn(calendarChart.buckets[0].key) : 0;
   const perfect = dailyBuckets && chart.range === 'month' ? perfectWeekKeys(calendarChart.buckets) : new Set<string>();
   const perfectWeeks = perfect.size / 7;
   const selectedCumulative = cumulativeSelectedBucket?.cumulativeEarnedPoints;
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
   cellBlank: { height: 32 },
   cell: { height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted },
   cellRead: { backgroundColor: theme.colors.primary },
-  // A whole Monday–Sunday row read: the seven cells deepen together, a capped "streak" that never punishes.
+  // A whole Sunday–Saturday row read: the seven cells deepen together, a capped "streak" that never punishes.
   cellPerfect: { backgroundColor: theme.colors.primaryDeep },
   cellMissed: { backgroundColor: theme.colors.surfaceMuted },
   cellFuture: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: theme.colors.border },

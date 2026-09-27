@@ -82,10 +82,10 @@ export function defaultSelectedDate(today: string, days: CalendarDays): string {
   return today;
 }
 
-/** The month as grid slots, Monday first: null for the blanks before the 1st. */
+/** The month as grid slots, Sunday first (光佑 2026-09-27): null for the blanks before the 1st. */
 export function monthCells(month: string): Array<string | null> {
   const first = utcNoon(`${month}-01`);
-  const blanks = (first.getUTCDay() + 6) % 7;
+  const blanks = first.getUTCDay();
   const dates = Array.from({ length: daysIn(month) }, (_, index) => `${month}-${String(index + 1).padStart(2, '0')}`);
   return [...Array.from({ length: blanks }, () => null), ...dates];
 }

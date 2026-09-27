@@ -13,7 +13,7 @@ import { dayHeading, dayMessage, dayState, monthCells, type CalendarDays, type D
  * undone; every other day gets one line saying why not.
  */
 
-const WEEKDAY_HEADERS = ['一', '二', '三', '四', '五', '六', '日'];
+const WEEKDAY_HEADERS = ['日', '一', '二', '三', '四', '五', '六'];
 const STATE_LABEL: Record<DayState, string> = { open: '未完成', completed: '已完成', expired: '未完成', rest: '沒有讀經', future: '未到' };
 
 export interface ReadingCalendarCardProps {
