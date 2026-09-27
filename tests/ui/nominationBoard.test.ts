@@ -133,7 +133,7 @@ describe('the round is an election, not a suggestion box', () => {
   it('shows the title and how long is left', () => {
     const view = render();
     expect(view.text()).toContain('十月獎品');
-    expect(view.text()).toContain('還有 11 天');
+    expect(view.text()).toContain('投票還有 11 天');
   });
 
   it('says what is happening once voting has closed', () => {
