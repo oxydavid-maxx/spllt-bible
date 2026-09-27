@@ -9,13 +9,21 @@ export interface CompletionTodayButtonProps {
   canComplete: boolean;
   onComplete: () => void;
   onUndo: () => void;
+  /**
+   * The Taipei date. When the record is for another day (the 積分 calendar's selected day) the
+   * button speaks about that day rather than about today. Omitted, it is today's button as before.
+   */
+  today?: string;
+  /** False for a day finished on another phone: shown finished, with no undo that silently does nothing. */
+  undoable?: boolean;
 }
 
-export function buildCompletionTodayButtonModel(input: Pick<CompletionTodayButtonProps, 'record' | 'pending' | 'retryable' | 'canComplete'>) {
+export function buildCompletionTodayButtonModel(input: Pick<CompletionTodayButtonProps, 'record' | 'pending' | 'retryable' | 'canComplete' | 'today' | 'undoable'>) {
   const retry = input.record.syncStatus === 'SAVE_FAILED' && input.retryable;
   const terminalFailure = input.record.syncStatus === 'SAVE_FAILED' && !input.retryable;
   const completed = input.record.status === 'COMPLETED';
-  const disabled = input.pending || terminalFailure || (!completed && !retry && !input.canComplete);
+  const otherDay = input.today !== undefined && input.record.taskDate !== input.today;
+  const disabled = input.pending || terminalFailure || (!completed && !retry && !input.canComplete) || (completed && !retry && input.undoable === false);
   const label = input.pending
     ? '已記錄，等待同步'
     : terminalFailure
@@ -23,9 +31,9 @@ export function buildCompletionTodayButtonModel(input: Pick<CompletionTodayButto
       : retry
         ? '重試同步完成記錄'
         : completed
-          ? '今日讀經已完成'
+          ? otherDay ? '這天讀經已完成' : '今日讀經已完成'
           : input.canComplete
-            ? '完成今日讀經'
+            ? otherDay ? '我已完成讀經' : '完成今日讀經'
             : '今天沒有可完成的讀經';
   return { disabled, label, completed, retry } as const;
 }

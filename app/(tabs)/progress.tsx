@@ -24,8 +24,11 @@ import type { CompletionAwardEvent, CompletionSyncEvent } from '../../src/servic
 import { applyCompletionSyncToProfile } from '../../src/ui/completionProfileSync';
 import { CompletionTodayButton } from '../../src/ui/CompletionTodayButton';
 import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
-import { getReadingPlanId } from '../../src/ui/readingSession';
+import { getReadingPlanId, getReadingPlanSpan, getScheduledReading } from '../../src/ui/readingSession';
 import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
+import type { CompletionRecord } from '../../src/domain/completion';
+import { ReadingCalendarCard } from '../../src/ui/gamification/ReadingCalendarCard';
+import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
 import { consumeOpenFriendsList, subscribeFriendAdded, subscribeOpenFriendsList, type FriendAddedEvent } from '../../src/services/friendPush';
 
 type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'admin-rewards' | 'redeem' | 'redemptions' | 'pending' | 'nominations' | 'open-round' | null;
@@ -36,11 +39,16 @@ export default function ProgressScreen() {
   const client = useMemo(() => session ? createGamificationApiClient({ baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [session?.memberId, session?.sessionToken]);
   const completionClient = useMemo(() => session ? createApiClient({ baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [session?.memberId, session?.sessionToken]);
   const today = taipeiDate();
-  const localTodayPlanId = getReadingPlanId(today);
-  const fallbackTodayPlanId = localTodayPlanId ?? monthlyPlanId(today);
-  const [todaySchedule, setTodaySchedule] = useState<{ taskDate: string; planId: string; canComplete: boolean } | null>(() => localTodayPlanId
-    ? { taskDate: today, planId: localTodayPlanId, canComplete: isWithinCompletionWindow(today, today) }
-    : null);
+  // The own page's reading calendar. Its days come from the account's reading-days schedule, one
+  // month at a time, never from the trend chart's range; the reading tab's local plan stands in
+  // until the schedule answers or when it cannot be reached.
+  const [calendarMonth, setCalendarMonth] = useState(() => today.slice(0, 7));
+  const [schedule, setSchedule] = useState<{ days: Map<string, CalendarDay>; ranges: Array<{ from: string; to: string }> }>(() => ({ days: new Map(), ranges: [] }));
+  // Completion sync events by day: a backfill confirmed while the page is open is painted at once.
+  const [confirmedDays, setConfirmedDays] = useState<Record<string, boolean>>({});
+  const [selectedDate, setSelectedDate] = useState(today);
+  // Once the member picks a day (or acts on one) the page stops choosing for them until next focus.
+  const pickedDate = useRef(false);
   const [completionAward, setCompletionAward] = useState<CompletionAwardEvent | null>(null);
   const awardRefreshRef = useRef<(memberId: string) => void>(() => undefined);
   const [capabilities, setCapabilities] = useState<ViewerCapabilities | null>(null);
@@ -63,7 +71,6 @@ export default function ProgressScreen() {
   const [focused, setFocused] = useState(false);
   const [primaryReady, setPrimaryReady] = useState(false);
   const [appForeground, setAppForeground] = useState(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
-  const [secondaryRefresh, setSecondaryRefresh] = useState(0);
   const guard = useRef(createAdminUnlockGuard({ authenticate: createNativeAdminAuthenticator() }));
   // The member's own points, kept on the device so a backend that is off does not blank this page.
   // Only their own: see profileCache for why a friend's totals must not land here.
@@ -95,23 +102,24 @@ export default function ProgressScreen() {
     if (chart.anchor !== null) chartCache.current.set(chartKey(memberId, nextScope, { range: chart.range, anchor: chart.anchor }), chart);
   };
   const accountKey = session ? JSON.stringify([session.memberId, session.sessionToken]) : null;
+  const [secondaryRefresh, setSecondaryRefresh] = useState(0);
   useEffect(() => {
     let active = true;
     const expectedAuthEpoch = auth.epoch;
-    const localPlanId = getReadingPlanId(today);
-    setTodaySchedule(localPlanId ? { taskDate: today, planId: localPlanId, canComplete: isWithinCompletionWindow(today, today) } : null);
     if (!completionClient || !session) return () => { active = false; };
-    void completionClient.getReadingDays(today, today).then((schedule) => {
-      if (!active || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
-      const day = schedule?.days.find((item) => item.taskDate === today);
-      setTodaySchedule(day
-        ? { taskDate: today, planId: day.planId, canComplete: day.canComplete }
-        : schedule ? { taskDate: today, planId: fallbackTodayPlanId, canComplete: false } : localPlanId
-          ? { taskDate: today, planId: localPlanId, canComplete: isWithinCompletionWindow(today, today) }
-          : null);
+    const range = readingDaysRange(calendarMonth, today);
+    void completionClient.getReadingDays(range.from, range.to).then((response) => {
+      if (!active || !response || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
+      const fetched = new Map(response.days.map((day) => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', canComplete: day.canComplete }] as const));
+      setSchedule((current) => {
+        const days = new Map([...current.days].filter(([date]) => date < range.from || date > range.to));
+        for (const [date, day] of fetched) days.set(date, day);
+        return { days, ranges: [...current.ranges.filter((item) => item.from !== range.from || item.to !== range.to), range] };
+      });
+      if (!pickedDate.current && calendarMonth === today.slice(0, 7)) setSelectedDate(defaultSelectedDate(today, fetched));
     }).catch(() => undefined);
     return () => { active = false; };
-  }, [completionClient, session?.memberId, session?.sessionToken, today, auth.epoch]);
+  }, [completionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh]);
   const isLive = useCallback((generation: number, expectedScope: ScoreScope, expectedMember?: string | null, requiresUnlock = false) => Boolean(focusedRef.current && appActive.current && requestGeneration.current === generation && activeScope.current === expectedScope && (expectedMember === undefined || expectedMember === activeMember.current) && session && isCurrentAuthSession(session) && (!requiresUnlock || guard.current.state === 'unlocked')), [session]);
   // Account-wide secondary content is independent of the selected chart range/member.
   const isViewLive = useCallback((generation: number) => Boolean(focusedRef.current && appActive.current && viewGeneration.current === generation && session && isCurrentAuthSession(session)), [session]);
@@ -153,7 +161,10 @@ export default function ProgressScreen() {
     });
     return () => subscription.remove();
   }, [clearProtectedState]);
-  useEffect(() => { setCapabilities(null); setError(null); setCompletionAward(null); }, [accountKey]);
+  useEffect(() => {
+    setCapabilities(null); setError(null); setCompletionAward(null);
+    setSchedule({ days: new Map(), ranges: [] }); setConfirmedDays({}); pickedDate.current = false;
+  }, [accountKey]);
 
   const prefetchCharts = useCallback(async (memberId: string, nextScope: ScoreScope, currentRange: ScoreChartRange, generation: number, requestId: number) => {
     if (!client) return;
@@ -243,6 +254,8 @@ export default function ProgressScreen() {
   }, [client, session, clearProtectedState, loadProfile]);
   refreshOnForeground.current = refreshOwnProfile;
   useFocusEffect(useCallback(() => {
+    // Each visit starts on this month and lets the page choose the day again.
+    pickedDate.current = false; setCalendarMonth(taipeiDate().slice(0, 7));
     focusedRef.current = true; setFocused(true); refreshOwnProfile(); openRequestedFriends.current();
     return () => { focusedRef.current = false; setFocused(false); clearProtectedState(false, true, true); };
   }, [clearProtectedState, refreshOwnProfile]));
@@ -467,10 +480,16 @@ export default function ProgressScreen() {
   awardRefreshRef.current = (memberId) => {
     if (session?.memberId === memberId && scope === 'me' && focusedRef.current && appActive.current) void loadProfile(memberId, 'me');
   };
-  const todayPlanId = todaySchedule?.taskDate === today ? todaySchedule.planId : localTodayPlanId ?? fallbackTodayPlanId;
-  const todayCanComplete = todaySchedule?.taskDate === today
-    ? todaySchedule.canComplete
-    : Boolean(localTodayPlanId && isWithinCompletionWindow(today, today));
+  // What the calendar knows about a day: the schedule's answer once that range has loaded (a date
+  // it did not return has no reading), the reading tab's plan until then.
+  const scheduledDay = (date: string): CalendarDay | undefined => {
+    if (schedule.ranges.some((range) => date >= range.from && date <= range.to)) return schedule.days.get(date);
+    const local = getScheduledReading(date);
+    return local ? { ...local, completed: false, canComplete: isWithinCompletionWindow(date, today) } : undefined;
+  };
+  const selectedBase = scheduledDay(selectedDate);
+  const selectedPlanId = selectedBase?.planId ?? getReadingPlanId(selectedDate) ?? monthlyPlanId(selectedDate);
+  const selectedCanComplete = dayState(selectedDate, today, selectedBase && { ...selectedBase, completed: false }) === 'open';
   const refreshedCompletionOperations = useRef(new Set<string>());
   const refreshCompletionProfile = useCallback((event: CompletionSyncEvent | CompletionAwardEvent) => {
     if (event.memberId !== session?.memberId || refreshedCompletionOperations.current.has(event.operationId)) return;
@@ -484,13 +503,38 @@ export default function ProgressScreen() {
   }, [session?.memberId]);
   const onCompletionAward = useCallback((event: CompletionAwardEvent) => {
     setCompletionAward(event);
+    if (event.memberId === session?.memberId) setConfirmedDays((current) => ({ ...current, [event.taskDate]: true }));
     refreshCompletionProfile(event);
-  }, [refreshCompletionProfile]);
+  }, [refreshCompletionProfile, session?.memberId]);
   const onCompletionConfirmed = useCallback((event: CompletionSyncEvent) => {
     // The event carries its original taskDate; a cross-month backfill still refreshes this member's profile.
+    if (event.memberId === session?.memberId) setConfirmedDays((current) => ({ ...current, [event.taskDate]: event.status === 'COMPLETED' }));
     refreshCompletionProfile(event);
-  }, [refreshCompletionProfile]);
-  const completion = useCompletionController({ planId: todayPlanId, taskDate: today, canComplete: todayCanComplete, onAward: onCompletionAward, onConfirmed: onCompletionConfirmed });
+  }, [refreshCompletionProfile, session?.memberId]);
+  // The same shared controller the reading tab uses, pointed at whichever day the calendar selected.
+  const completion = useCompletionController({ planId: selectedPlanId, taskDate: selectedDate, canComplete: selectedCanComplete, onAward: onCompletionAward, onConfirmed: onCompletionConfirmed });
+  // The selected day's own record is the freshest word on it (it flips the moment the button is
+  // pressed); other days take a confirmed sync event over the schedule.
+  const localRecordTouched = (record: CompletionRecord) => record.revision > 0 || record.syncStatus !== 'CONFIRMED' || record.status !== 'UNREPORTED';
+  const calendarDay = (date: string): CalendarDay | undefined => {
+    const base = scheduledDay(date);
+    if (!base) return undefined;
+    if (date === selectedDate && completion.record.taskDate === date && localRecordTouched(completion.record)) return { ...base, completed: completion.record.status === 'COMPLETED' };
+    return date in confirmedDays ? { ...base, completed: confirmedDays[date] } : base;
+  };
+  // The displayed month, plus the selected day wherever it is: paging months keeps the button.
+  const calendarDays = new Map<string, CalendarDay>();
+  for (const date of new Set([selectedDate, ...monthCells(calendarMonth).filter((cell): cell is string => cell !== null)])) {
+    const day = calendarDay(date);
+    if (day) calendarDays.set(date, day);
+  }
+  const planSpan = getReadingPlanSpan();
+  const lastMonth = planSpan && planSpan.last.slice(0, 7) > today.slice(0, 7) ? planSpan.last.slice(0, 7) : today.slice(0, 7);
+  const selectedState = dayState(selectedDate, today, calendarDays.get(selectedDate));
+  // Finished on another phone: this phone's controller holds no record to undo, so the button says
+  // finished and stays still rather than offering an undo that does nothing.
+  const finishedElsewhere = selectedState === 'completed' && completion.record.status !== 'COMPLETED';
+  const withPick = (run: () => void) => { pickedDate.current = true; run(); };
 
   if (!session) return <View style={styles.screen}><Text style={styles.title}>積分</Text><Text style={styles.note}>請先登入以查看積分。</Text></View>;
   const ownProfile = profile?.memberId === session.memberId ? profile : null;
@@ -501,26 +545,47 @@ export default function ProgressScreen() {
     {/* A number with no note beside it claims to be current. This one is not. */}
     {profileStale && ownProfile ? <Text style={styles.stale}>目前顯示上次的積分，還沒連上更新</Text> : null}
     {scope === 'me' && !ownProfile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
-    {scope === 'me' && ownProfile ? <View style={styles.completionAction}>
-      <CompletionTodayButton
-        record={completion.record}
-        pending={completion.pending}
-        retryable={completion.retryable}
-        canComplete={todayCanComplete}
-        onComplete={() => { void completion.complete(); }}
-        onUndo={completion.requestUndo}
-      />
-      {completion.syncError ? <Text accessibilityRole="alert" style={styles.stale}>{completion.record.syncStatus === 'SAVE_FAILED' && !completion.retryable ? '完成記錄無法同步，本機完成狀態仍保留。' : '同步遇到問題，完成狀態已保留，連線後會重試。'}</Text> : null}
-    </View> : null}
     {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
     {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { requestGeneration.current += 1; stopPrefetch(); activeMember.current = null; setBusy(false); setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}
-    {scope === 'me' && nominations?.round ? <NominationBanner
-      round={nominations.round}
-      nowMs={Date.now()}
-      mine={nominations.nominations.some((item) => item.mine && item.status === 'OPEN')}
-      onOpen={() => setSheet('nominations')}
+    {scope === 'me' && ownProfile ? <ScoreProfile
+      profile={ownProfile}
+      showChartViewToggle={false}
+      lead={<>
+        <ReadingCalendarCard
+          month={calendarMonth}
+          today={today}
+          selectedDate={selectedDate}
+          days={calendarDays}
+          onSelect={(date) => withPick(() => setSelectedDate(date))}
+          onPreviousMonth={planSpan && calendarMonth > planSpan.first.slice(0, 7) ? () => setCalendarMonth(shiftMonth(calendarMonth, -1)) : undefined}
+          onNextMonth={calendarMonth < lastMonth ? () => setCalendarMonth(shiftMonth(calendarMonth, 1)) : undefined}
+          action={<View style={styles.completionAction}>
+            <CompletionTodayButton
+              record={finishedElsewhere ? { ...completion.record, status: 'COMPLETED' } : completion.record}
+              pending={completion.pending}
+              retryable={completion.retryable}
+              canComplete={selectedCanComplete}
+              today={today}
+              undoable={!finishedElsewhere}
+              onComplete={() => withPick(() => { void completion.complete(); })}
+              onUndo={() => withPick(completion.requestUndo)}
+            />
+            {completion.syncError ? <Text accessibilityRole="alert" style={styles.stale}>{completion.record.syncStatus === 'SAVE_FAILED' && !completion.retryable ? '完成記錄無法同步，本機完成狀態仍保留。' : '同步遇到問題，完成狀態已保留，連線後會重試。'}</Text> : null}
+          </View>}
+        />
+        {nominations?.round ? <NominationBanner
+          round={nominations.round}
+          nowMs={Date.now()}
+          mine={nominations.nominations.some((item) => item.mine && item.status === 'OPEN')}
+          onOpen={() => setSheet('nominations')}
+        /> : null}
+      </>}
+      rewards={shelfRewards ?? undefined}
+      community={community ? <CommunityProgress books={community.books} personDays={community.personDays} currentBook={community.currentBook} /> : undefined}
+      onChooseTarget={(rewardId) => { void setTarget(rewardId); }}
+      onChartChange={loadProfileChart}
+      onChooseReward={() => void loadRewards()}
     /> : null}
-    {scope === 'me' && ownProfile ? <ScoreProfile profile={ownProfile} rewards={shelfRewards ?? undefined} community={community ? <CommunityProgress books={community.books} personDays={community.personDays} currentBook={community.currentBook} /> : undefined} onChooseTarget={(rewardId) => { void setTarget(rewardId); }} onChartChange={loadProfileChart} onChooseReward={() => void loadRewards()} /> : null}
     <CompletionAwardFeedback event={completionAward} onFinished={(operationId) => setCompletionAward((current) => current?.operationId === operationId ? null : current)} />
     <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: openQrSheet }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards('admin-rewards'); } }] : []), ...(capabilities?.canManageRewards && !nominations?.round ? [{ label: '開一輪獎品提案', onPress: () => setSheet('open-round') }] : []), ...(nominations?.round ? [{ label: '獎品提案', onPress: () => setSheet('nominations') }] : [])]} />
     <ActionSheet visible={sheet === 'nominations'} title={nominations?.round?.title ?? '獎品提案'} onClose={() => setSheet(null)}>
@@ -574,4 +639,4 @@ export default function ProgressScreen() {
 function monthNow(): string { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).formatToParts(new Date()); const year = parts.find((part) => part.type === 'year')?.value ?? '1970'; const month = parts.find((part) => part.type === 'month')?.value ?? '01'; return `${year}-${month}`; }
 function monthlyPlanId(date: string): string { return `church-${date.slice(0, 7)}`; }
 function messageFor(reason: unknown): string { return reason instanceof GamificationApiError ? reason.userMessage : '目前無法載入積分，請稍後再試。'; }
-const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, inactiveCover: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: theme.colors.background }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, completionAction: { gap: theme.spacing.xs, marginBottom: theme.spacing.md }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNotice: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.sm, borderRadius: theme.radius.card, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, friendTick: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary }, friendTickText: { color: theme.colors.white, fontSize: theme.type.caption.size, fontWeight: '900' }, friendNoticeText: { flexShrink: 1, color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNoticeHint: { textAlign: 'center' } });
+const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, inactiveCover: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: theme.colors.background }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, completionAction: { gap: theme.spacing.xs }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNotice: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.sm, borderRadius: theme.radius.card, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, friendTick: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary }, friendTickText: { color: theme.colors.white, fontSize: theme.type.caption.size, fontWeight: '900' }, friendNoticeText: { flexShrink: 1, color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNoticeHint: { textAlign: 'center' } });

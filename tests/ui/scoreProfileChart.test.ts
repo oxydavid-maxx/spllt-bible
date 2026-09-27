@@ -241,4 +241,25 @@ describe('score profile reading calendar', () => {
     expect(flat(strong.props.style).backgroundColor).toBe('#1A5544');
     expect(renderer.root.findByProps({ accessibilityLabel: '2026年9月 3 天' }).props.style.some((style: unknown) => style && typeof style === 'object' && (style as { minHeight?: number }).minHeight === 48)).toBe(true);
   });
+
+  it('drops the 走勢/日曆 toggle on the member’s own page, whose calendar is at the top, and keeps 週/月/年/全部', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { today: TODAY, profile: { ...profile(), chart: { ...chart, openingEarnedPoints: 0, buckets: chart.buckets.map((bucket) => ({ ...bucket, cumulativeEarnedPoints: 4 })) } }, showChartViewToggle: false } as never)); });
+    expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '日曆')).toHaveLength(0);
+    expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '走勢')).toHaveLength(0);
+    expect(texts(renderer)).toContain('累積積分走勢');
+    for (const label of ['週', '月', '年', '全部']) expect(renderer.root.findByProps({ accessibilityLabel: label })).toBeDefined();
+    // A friend's page has no calendar above it, so it keeps the toggle.
+    const friend = render({ profile: profile() }, 'trend');
+    expect(friend.root.findAll((node) => node.props.accessibilityLabel === '日曆').length).toBeGreaterThan(0);
+  });
+
+  it('puts what it is given first in the page, above the reward goal and the chart', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    const own = { ...profile(), private: { redeemableBalance: 4, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } };
+    act(() => { renderer = TestRenderer.create(React.createElement(ScoreProfile, { today: TODAY, profile: own, lead: React.createElement('Lead'), community: React.createElement('Community') } as never)); });
+    const scroll = renderer.root.findByType('ScrollView' as never);
+    const order = (scroll.children as TestRenderer.ReactTestInstance[]).map((child) => typeof child.type === 'string' ? child.type : (child.type as { name?: string }).name);
+    expect(order.slice(0, 4)).toEqual(['Lead', 'RewardGoalCard', 'ScoreProfileChart', 'Community']);
+  });
 });

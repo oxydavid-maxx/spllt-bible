@@ -24,6 +24,11 @@ export interface ScoreProfileChartProps {
   onChartChange?: (query: ScoreChartQuery) => void;
   /** Taipei calendar date used to mark "today"; injectable for tests. */
   today?: string;
+  /**
+   * The 走勢/日曆 toggle. Off on the member's own page, which has its reading calendar at the top;
+   * a friend's page has no calendar elsewhere and keeps it.
+   */
+  showViewToggle?: boolean;
 }
 
 export function chartQueryForRange(_chart: ScoreChart, range: ScoreChartRange): ScoreChartQuery {
@@ -255,11 +260,12 @@ function CountCell({ bucket, label, selected, onSelect, today }: { bucket: Score
   </Pressable></View>;
 }
 
-export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChartChange, today: suppliedToday }: ScoreProfileChartProps) {
+export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChartChange, today: suppliedToday, showViewToggle = true }: ScoreProfileChartProps) {
   const chart = suppliedChart ?? fallbackChart(fallbackMonths);
   const isLegacyFallback = suppliedChart === undefined;
   const today = suppliedToday ?? taipeiDate(new Date());
-  const [view, setView] = useState<'trend' | 'calendar'>(isLegacyFallback ? 'calendar' : 'trend');
+  const [chosenView, setView] = useState<'trend' | 'calendar'>(isLegacyFallback ? 'calendar' : 'trend');
+  const view = !isLegacyFallback && !showViewToggle ? 'trend' : chosenView;
   const defaultKey = () => chart.buckets.find((bucket) => bucket.key === today)?.key ?? chart.buckets.find((bucket) => bucket.key === today.slice(0, 7))?.key ?? chart.buckets.find((bucket) => bucket.key === today.slice(0, 4))?.key ?? chart.buckets.at(-1)?.key ?? null;
   const [selectedKey, setSelectedKey] = useState<string | null>(defaultKey);
   useEffect(() => { setView(isLegacyFallback ? 'calendar' : 'trend'); }, [isLegacyFallback]);
@@ -278,7 +284,7 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
       <Text style={styles.cardTitle}>{isLegacyFallback ? '近六個月' : view === 'trend' ? '累積積分走勢' : '讀經日曆'}</Text>
       <Text accessibilityLabel={`本期 ${readDays(calendarChart)} 天${perfectWeeks > 0 ? `，完整週 ${perfectWeeks}` : ''}`} style={styles.periodTotal}>{`本期 ${readDays(calendarChart)} 天${perfectWeeks > 0 ? ` · 完整週 ${perfectWeeks}` : ''}`}</Text>
     </View>
-    {!isLegacyFallback ? <View accessibilityRole="tablist" style={styles.rangeSelector}>
+    {!isLegacyFallback && showViewToggle ? <View accessibilityRole="tablist" style={styles.rangeSelector}>
       {(['trend', 'calendar'] as const).map((option) => <Pressable key={option} accessibilityRole="tab" accessibilityLabel={option === 'trend' ? '走勢' : '日曆'} accessibilityState={{ selected: view === option }} onPress={() => setView(option)} style={[styles.rangeOption, view === option && styles.rangeOptionActive]}><Text style={[styles.rangeText, view === option && styles.rangeTextActive]}>{option === 'trend' ? '走勢' : '日曆'}</Text></Pressable>)}
     </View> : null}
     {!isLegacyFallback ? <View accessibilityRole="tablist" style={styles.rangeSelector}>
