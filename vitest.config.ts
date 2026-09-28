@@ -16,6 +16,9 @@ export default defineConfig({
       'expo-application': fileURLToPath(new URL('./tests/doubles/expo-application.ts', import.meta.url)),
       // And again through expo-crypto, which the completion flow uses for operation ids.
       'expo-crypto': fileURLToPath(new URL('./tests/doubles/expo-crypto.ts', import.meta.url)),
+      // And through the icon font: @expo/vector-icons -> expo-font -> expo-asset -> react-native's Flow
+      // source, which node cannot parse, so reader and audio-control tests failed to load at all.
+      '@expo/vector-icons/MaterialCommunityIcons': fileURLToPath(new URL('./tests/doubles/materialCommunityIcons.ts', import.meta.url)),
     },
   },
   test: {
