@@ -10,11 +10,18 @@ const { primitive, api, auth, ApiError, appListeners } = vi.hoisted(() => ({
   appListeners: [] as Array<(state: string) => void>,
 }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined, deleteItemAsync: async () => undefined }));
+// The progress tab's completion controller opens the local SQLite repository (expo-sqlite -> the expo
+// runtime, which node cannot load); these tests never read it, the same stand-in as the reader tests.
+// The completion card's controller is covered by its own tests; here it would add a second focus effect and
+// AppState listener that this harness does not model. Same stand-in as progressFriendPush.test.ts.
+vi.mock('../../src/services/useCompletionController', () => ({ useCompletionController: (options: { planId: string; taskDate: string }) => ({ record: { memberId: 'self', planId: options.planId, taskDate: options.taskDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' }, pending: false, syncError: false, retryable: false, complete: vi.fn(async () => undefined), requestUndo: vi.fn() }) }));
+vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
+vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn() }));
 vi.mock('react-native', () => ({ AppState: { addEventListener: vi.fn((_event: string, listener: (state: string) => void) => { appListeners.push(listener); return { remove: vi.fn() }; }) }, Pressable: primitive('Pressable'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle') }; });
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | void) => { require('react').useEffect(callback, []); } }));
 vi.mock('expo-local-authentication', () => ({ authenticateAsync: vi.fn(async () => ({ success: true })) }));
-vi.mock('../../src/services/authSession', () => ({ isCurrentAuthSession: () => true, registerAuthLifecycleListener: () => vi.fn(), useAuthSnapshot: () => auth }));
+vi.mock('../../src/services/authSession', () => ({ getAuthSnapshot: () => auth, isCurrentAuthSession: () => true, registerAuthLifecycleListener: () => vi.fn(), useAuthSnapshot: () => auth }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ GamificationApiError: ApiError, createGamificationApiClient: () => api }));
 vi.mock('../../src/ui/gamification/PeopleList', () => ({ PeopleList: (props: any) => React.createElement('PeopleList', props) }));
 vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (props: any) => React.createElement('ScoreProfile', props) }));
@@ -186,7 +193,7 @@ describe('progress gamification route', () => {
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label === '尚未確認操作 (1)')).toBe(true);
 
-    await act(async () => { appListeners[appListeners.length - 1]?.('background'); appListeners[appListeners.length - 1]?.('active'); await Promise.resolve(); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); [...appListeners].forEach((listener) => listener('active')); await Promise.resolve(); });
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label.startsWith('尚未確認操作'))).toBe(false);
     await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
@@ -233,8 +240,8 @@ describe('progress gamification route', () => {
     await act(async () => { list.props.onSelect(list.props.people[0]); });
     await act(async () => { renderer.root.findByType('ScoreProfile' as any).props.onOpenActions(); });
     await act(async () => { renderer.root.findByType('RewardControls' as any).props.onRedeem('reward-1'); });
-    await act(async () => { appListeners[appListeners.length - 1]?.('background'); rejectRedeem(new ApiError('timeout')); });
-    await act(async () => { appListeners[appListeners.length - 1]?.('active'); await Promise.resolve(); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); rejectRedeem(new ApiError('timeout')); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('active')); await Promise.resolve(); });
     await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); });
     const recordAction = renderer.root.findByType('ActionSheet' as any).props.actions.find((action: any) => action.label === '我的領取紀錄');
     await act(async () => { await recordAction.onPress(); });

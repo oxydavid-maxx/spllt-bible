@@ -144,6 +144,8 @@ it('asks to collapse once per downward gesture, ignores small reverse scrolls, a
       expect(run.padBottom).toBe('190px');
     }
   } finally {
-    if (resolve(work).startsWith(`${temporaryRoot}\\qingmu-reader-immersion-`)) rmSync(work, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    // Chromium's helper processes can hold the profile for seconds after --dump-dom returns on a busy
+    // machine (EPERM under load, 2026-09-28), so removal retries for up to 5 s.
+    if (resolve(work).startsWith(`${temporaryRoot}\\qingmu-reader-immersion-`)) rmSync(work, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
   }
 }, 40000);

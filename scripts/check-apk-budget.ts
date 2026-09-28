@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { checkApkBudget, checkBackgroundAudioManifest, checkFirebaseConfig, readZipEntries, readZipEntry } from '../src/config/apkBudget';
+import { checkApkBudget, checkBackgroundAudioManifest, checkFirebaseConfig, checkLeanReaderSheets, readZipEntries, readZipEntry } from '../src/config/apkBudget';
 
 // usage: tsx scripts/check-apk-budget.ts <apk> <abi[,abi]> <maxMB>
 const [apk, abis, maxMb] = process.argv.slice(2);
@@ -19,6 +19,8 @@ const problems = [
   ...checkFirebaseConfig(readZipEntry(zip, 'resources.arsc'), appId),
   // Background chapter audio: expo-audio's playback service, which only a regenerated android/ carries.
   ...checkBackgroundAudioManifest(readZipEntry(zip, 'AndroidManifest.xml')),
+  // The reader's sheets are the app's own: no reanimated / worklets, natively or in the JS bundle.
+  ...checkLeanReaderSheets(readZipEntries(zip), readZipEntry(zip, 'assets/index.android.bundle')),
 ];
 if (problems.length > 0) {
   console.error(`APK budget failed for ${apk}:\n- ${problems.join('\n- ')}`);

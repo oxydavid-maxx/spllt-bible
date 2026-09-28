@@ -347,6 +347,7 @@ export default function ReaderScreen() {
       onCanvasReveal={chrome.revealTools}
       onCanvasEdge={chrome.handleCanvasEdge}
       onVerseSelectionChange={chrome.handleVerseSelection}
+      onSheetOpenChange={chrome.handleSheetOpenChange}
       clearVerseSelectionSignal={chrome.verseClearSignal}
       retrySignal={retrySignal}
       canvasInsets={readerCanvasInsets(chrome.settledInsets)}

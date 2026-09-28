@@ -40,11 +40,14 @@ const mount = (active = true, bottomCell = false) => act(() => {
   view = TestRenderer.create(React.createElement(ChapterAudioControls, { ...props, ...(bottomCell ? { bottomCell } : {}) }));
 });
 
+// The slot style is an array (base + bottom-bar / reader-action variants); what matters is the result.
+const flatStyle = (style: unknown) => Object.assign({}, ...[style].flat(Infinity as 1).filter(Boolean));
+
 describe('ChapterAudioControls stable slot', () => {
   it('keeps an empty fixed slot hidden from accessibility when inactive', async () => {
     mount(false);
     const root = view!.root.findAll(node => String(node.type) === 'View')[0];
-    expect(root.props.style).toMatchObject({ width: 48, height: 48, flexShrink: 0 });
+    expect(flatStyle(root.props.style)).toMatchObject({ width: 48, height: 48, flexShrink: 0 });
     expect(root.props.accessibilityElementsHidden).toBe(true);
     expect(root.props.importantForAccessibility).toBe('no-hide-descendants');
     expect(view!.root.findAll(node => String(node.type) === 'Pressable')).toHaveLength(0);
@@ -55,11 +58,12 @@ describe('ChapterAudioControls stable slot', () => {
     fetchImpl.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }));
     mount();
     const slot = view!.root.findAll(node => String(node.type) === 'View')[1];
-    expect(slot.props.style).toMatchObject({ width: 48, height: 48, flexShrink: 0 });
+    expect(flatStyle(slot.props.style)).toMatchObject({ width: 48, height: 48, flexShrink: 0 });
     expect(slot.props.accessibilityState).toMatchObject({ busy: true });
     expect(view!.root.findAll(node => String(node.type) === 'Text').map((node) => String(node.props.children)).join(' ')).not.toContain('正在取得本章語音');
     await act(async () => release(new Response(JSON.stringify(payload(false)) )));
-    const labels = view!.root.findAll(node => String(node.type) === 'Text').map((node) => node.props.accessibilityLabel).filter(Boolean);
+    // The no-audio state is the volume-off icon itself, announced through the icon's own label.
+    const labels = view!.root.findAll(node => ['Text', 'MaterialCommunityIcons'].includes(String(node.type))).map((node) => node.props.accessibilityLabel).filter(Boolean);
     expect(labels).toContain('本章沒有朗讀');
   });
 

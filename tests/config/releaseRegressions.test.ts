@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkApkBudget, checkBackgroundAudioManifest, checkFirebaseConfig, readZipEntries, readZipEntry } from '../../src/config/apkBudget';
+import { checkApkBudget, checkBackgroundAudioManifest, checkFirebaseConfig, checkLeanReaderSheets, readZipEntries, readZipEntry } from '../../src/config/apkBudget';
 import { checkDownloadHref, checkUpdateNotice } from '../../src/config/installLink';
 import { findWorktreesSharingNodeModules, syncDeps } from '../../src/config/depsSync';
 
@@ -122,6 +122,36 @@ describe('the sideloaded APK stays small', () => {
   it('runs the manifest check on every release APK the build produces', () => {
     const script = readFileSync('scripts/check-apk-budget.ts', 'utf8');
     expect(script).toMatch(/checkBackgroundAudioManifest\(readZipEntry\(zip, 'AndroidManifest\.xml'\)\)/);
+  });
+
+  // 2026-09-28: reanimated + worklets (pulled in by the YouVersion SDK's Gorhom sheets) cost ~155 MB of
+  // native memory and an idle UI-thread frame loop on RN 0.85. The app serves its own sheet; this keeps
+  // either library from sneaking back in through a dependency or a lost Metro / linking setting.
+  it('fails a release APK that carries reanimated or worklets, natively or in the JS bundle', () => {
+    const lean = makeZip([['lib/arm64-v8a/libreactnative.so', 1], ['assets/index.android.bundle', Buffer.from('HBC ExpoAudio main', 'utf8')]]);
+    expect(checkLeanReaderSheets(readZipEntries(lean), readZipEntry(lean, 'assets/index.android.bundle'))).toEqual([]);
+    const heavy = makeZip([
+      ['lib/arm64-v8a/libreanimated.so', 1], ['lib/armeabi-v7a/libworklets.so', 1],
+      ['assets/index.android.bundle', Buffer.from('HBC WorkletsModule ReanimatedModule', 'utf8')],
+    ]);
+    expect(checkLeanReaderSheets(readZipEntries(heavy), readZipEntry(heavy, 'assets/index.android.bundle'))).toEqual([
+      'native library lib/arm64-v8a/libreanimated.so is linked; reanimated / worklets must stay out (react-native.config.js)',
+      'native library lib/armeabi-v7a/libworklets.so is linked; reanimated / worklets must stay out (react-native.config.js)',
+      'the JS bundle contains WorkletsModule; reanimated / worklets must stay out (metro.leanSheets.js)',
+      'the JS bundle contains ReanimatedModule; reanimated / worklets must stay out (metro.leanSheets.js)',
+    ]);
+    expect(checkLeanReaderSheets([], null)).toEqual(['the APK has no assets/index.android.bundle']);
+  });
+
+  const withReanimated = 'C:/dev/apps/qingmu-bible/.handoff/play-20260925/jhuke-bible-0.5.18-39-f1a3e62.apk';
+  it.skipIf(!existsSync(withReanimated))('rejects the f1a3e62 APK that still carried them', () => {
+    const zip = readFileSync(withReanimated);
+    expect(checkLeanReaderSheets(readZipEntries(zip), readZipEntry(zip, 'assets/index.android.bundle')).length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('runs the lean-sheets check on every release APK the build produces', () => {
+    const script = readFileSync('scripts/check-apk-budget.ts', 'utf8');
+    expect(script).toMatch(/checkLeanReaderSheets\(readZipEntries\(zip\), readZipEntry\(zip, 'assets\/index\.android\.bundle'\)\)/);
   });
 
   it('builds release APKs for ARM phones with compressed native libraries unless told otherwise, and checks the result', () => {

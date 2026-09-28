@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDatabase } from '../server/db';
 import { createApiHandler } from '../server/routes';
 import { createSessionToken } from '../server/session';
@@ -7,7 +8,20 @@ import { fetchChapterCapability } from '../src/services/contentCapabilityClient'
 
 const secret = 'isolated-deployment-test-secret-never-used-live';
 const databases: Array<ReturnType<typeof createDatabase>> = [];
-afterEach(() => { for (const db of databases.splice(0)) db.close(); });
+afterEach(() => { for (const db of databases.splice(0)) db.close(); vi.unstubAllGlobals(); });
+
+// The server resolves chapter audio live from YouVersion's audio endpoint (server/genericChapterAudio.ts).
+// Tests must not depend on the network or on what YouVersion has recorded today: JHN.13 answers with a
+// payload captured from that endpoint on 2026-09-28, anything else with the endpoint's "not found" reply.
+const recordedJohn13 = readFileSync(new URL('./fixtures/youversion-chapter-audio-1392-JHN.13.json', import.meta.url), 'utf8');
+beforeEach(() => {
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    if (url.hostname !== 'audio-bible.youversionapi.com') throw new Error(`unexpected network request in a memory test: ${url}`);
+    if (url.searchParams.get('version_id') === '1392' && url.searchParams.get('reference') === 'JHN.13') return new Response(recordedJohn13, { status: 200 });
+    return new Response(JSON.stringify({ response: { code: 404, data: { errors: [{ key: 'audio_bible.reference.not_found' }] } } }), { status: 404 });
+  });
+});
 
 function assembled() {
   const db = createDatabase({ filename: ':memory:', members: [
@@ -38,7 +52,11 @@ describe('exact deployed old baseline with minimal audio/profile additions', () 
   it('keeps both new paths behind the existing production-session authentication boundary', async () => {
     const { request } = assembled();
     for (const url of ['/api/me/profile', '/api/content-capabilities?versionId=1392&usfm=JHN.13']) {
-      expect(await request(url)).toMatchObject({ status: 401, body: { error: 'AUTH_REQUIRED' } });
+      // Profile errors are { code, retryable } objects now, capability errors still a bare code; the App's
+      // clients read either shape (apiClient.ts), so the boundary is the status plus the code.
+      const refused = await request(url) as { status: number; body: { error: unknown } };
+      expect(refused.status).toBe(401);
+      expect(typeof refused.body.error === 'string' ? refused.body.error : (refused.body.error as { code?: string }).code).toBe('AUTH_REQUIRED');
       expect(await request(url, 'Bearer invalid-memory-token')).toMatchObject({ status: 401 });
       const expired = createSessionToken('test:alice', secret, Math.floor(Date.now() / 1000) - 2, 1);
       expect(await request(url, `Bearer ${expired}`)).toMatchObject({ status: 401 });
@@ -50,6 +68,7 @@ describe('exact deployed old baseline with minimal audio/profile additions', () 
     const client = createApiClient({ baseUrl: 'http://memory', token, memberId: 'test:alice', fetchImpl: transport });
     expect(await client.getProfile()).toEqual({
       memberId: 'test:alice', displayName: 'Alice Student', avatarUrl: null, groupId: 'test:g1', groupName: null,
+      capabilities: { canManageRewards: false, canRedeemRewards: false, canViewAllScores: false },
     });
   });
 
@@ -82,13 +101,13 @@ describe('exact deployed old baseline with minimal audio/profile additions', () 
     }
   });
 
-  it('preserves legacy callers and distinguishes missing observations from a different recording', async () => {
+  it('preserves legacy callers and reports a chapter YouVersion has no recording for as no audio, without a uri', async () => {
     const { request, token } = assembled();
     expect(await request('/api/content-capabilities', `Bearer ${token}`)).toEqual({
       status: 200, body: { status: 'C_PENDING_ACCESS', reason: 'Content authorization is pending', evidenceRefs: [] },
     });
     const missing = await request('/api/content-capabilities?versionId=1392&usfm=TIT.1', `Bearer ${token}`);
-    expect(missing).toMatchObject({ status: 200, body: { identity: { versionId: 1392, usfm: 'TIT.1' }, audio: false, status: 'pending_observation' } });
+    expect(missing).toMatchObject({ status: 200, body: { identity: { versionId: 1392, usfm: 'TIT.1' }, audio: false, status: 'explicit_no_audio' } });
     expect(missing.body).not.toHaveProperty('uri');
   });
 });

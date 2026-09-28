@@ -37,6 +37,16 @@ if ($yvEnvFile -and (Test-Path -LiteralPath $yvEnvFile)) {
   }
 }
 
+# Validate authoritative process inputs before native prerequisites or generated-file mutations.
+# Release inputs are validated first, before dependency sync can reinstall node_modules: a build that
+# is going to be refused must not change anything on disk on its way to that refusal.
+if ($Variant -eq 'release') {
+  . (Join-Path $PSScriptRoot 'release-environment.ps1')
+  Assert-QingmuReleaseEnvironment -ProjectRoot $root
+  # Expo's installed @expo/env supports this switch; .env must not add unvalidated bundle inputs.
+  $env:EXPO_NO_DOTENV = '1'
+}
+
 # Bring node_modules to exactly package-lock.json + every patches/*.patch before anything else
 # reads it. A checkout that skips `npm ci` (or an install whose postinstall/patch-package step
 # silently failed to take effect) must never reach Gradle: JS bundled into the APK reflects
@@ -51,14 +61,6 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Dependency sync failed (scripts/sync-deps.ts exited $LASTEXITCODE); node_modules does not match package-lock.json + patches/. See output above." }
 } finally {
   Pop-Location
-}
-
-# Validate authoritative process inputs before native prerequisites or generated-file mutations.
-if ($Variant -eq 'release') {
-  . (Join-Path $PSScriptRoot 'release-environment.ps1')
-  Assert-QingmuReleaseEnvironment -ProjectRoot $root
-  # Expo's installed @expo/env supports this switch; .env must not add unvalidated bundle inputs.
-  $env:EXPO_NO_DOTENV = '1'
 }
 
 # The toolchain lives under the governed dev root, not in AppData. The old default outlived the

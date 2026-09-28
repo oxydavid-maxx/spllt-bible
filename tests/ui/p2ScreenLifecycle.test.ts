@@ -8,17 +8,25 @@ const { api, auth, nav, store, appListeners, storageGet, cameraPermission, reque
   cameraPermission: { granted: false, status: 'undetermined' }, requestCameraPermission: vi.fn(),
   platform: { OS: 'ios' }, launchScanner: vi.fn(), scannerListeners: [] as Array<(event: { data: string }) => void>, cameraScanner: { available: true },
 }));
+// The progress tab's completion controller opens the local SQLite repository (expo-sqlite -> the expo
+// runtime, which node cannot load); these tests never read it, the same stand-in as the reader tests.
+// The completion card's controller is covered by its own tests; here it would add a second focus effect and
+// AppState listener that this harness does not model. Same stand-in as progressFriendPush.test.ts.
+vi.mock('../../src/services/useCompletionController', () => ({ useCompletionController: (options: { planId: string; taskDate: string }) => ({ record: { memberId: 'self', planId: options.planId, taskDate: options.taskDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' }, pending: false, syncError: false, retryable: false, complete: vi.fn(async () => undefined), requestUndo: vi.fn() }) }));
+vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
+vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn() }));
 vi.mock('react-native', () => ({ Platform: platform, AppState: { currentState: 'active', addEventListener: (_: string, callback: (state: string) => void) => { appListeners.push(callback); return { remove: () => { appListeners.splice(appListeners.indexOf(callback), 1); } }; } }, ActivityIndicator: (p: any) => React.createElement('ActivityIndicator', p), Pressable: (p: any) => React.createElement('Pressable', p, p.children), View: (p: any) => React.createElement('View', p, p.children), Text: (p: any) => React.createElement('Text', p, p.children), TextInput: (p: any) => React.createElement('TextInput', p), StyleSheet: { create: (x: any) => x } }));
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => any) => { React.useEffect(() => nav.focused ? callback() : undefined, [callback, nav.focused]); } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: (key: string) => storageGet(key), setItemAsync: async (key: string, value: string) => { if (!/^[\w.-]+$/.test(key)) throw Error('invalid key'); store.set(key, value); } }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn() }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: (p: any) => React.createElement('SafeAreaView', p, p.children) }));
-vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => auth, isCurrentAuthSession: (session: any) => session === auth.session, registerAuthLifecycleListener: () => () => undefined }));
+vi.mock('../../src/services/authSession', () => ({ getAuthSnapshot: () => auth, useAuthSnapshot: () => auth, isCurrentAuthSession: (session: any) => session === auth.session, registerAuthLifecycleListener: () => () => undefined }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ createGamificationApiClient: () => api, GamificationApiError: class extends Error {} }));
 vi.mock('../../src/services/adminUnlockGuard', () => ({ createNativeAdminAuthenticator: () => null, createAdminUnlockGuard: () => ({ state: 'locked', clear() { this.state = 'locked'; }, async unlock() { this.state = 'unlocked'; return true; } }) }));
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => null }));
 vi.mock('../../src/ui/AnnouncementBoard', () => ({ AnnouncementBoard: (p: any) => React.createElement('AnnouncementBoard', p) }));
-vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (p: any) => React.createElement('ScoreProfile', p) }));
+// The real ScoreProfile renders its slots; the nomination banner lives in `lead` since the 0.5.18 layout.
+vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (p: any) => React.createElement('ScoreProfile', p, p.lead, p.nominations) }));
 vi.mock('../../src/ui/gamification/PeopleList', () => ({ PeopleList: (p: any) => React.createElement('PeopleList', p) }));
 vi.mock('expo-camera', () => { const CameraView = Object.assign((props: any) => React.createElement('CameraView', props), { launchScanner, onModernBarcodeScanned: (listener: (event: { data: string }) => void) => { scannerListeners.push(listener); return { remove: () => { scannerListeners.splice(scannerListeners.indexOf(listener), 1); } }; } }); Object.defineProperty(CameraView, 'isModernBarcodeScannerAvailable', { get: () => cameraScanner.available }); return { CameraView, useCameraPermissions: () => [cameraPermission, requestCameraPermission] }; });
 vi.mock('react-native-qrcode-svg', () => ({ default: () => null }));
@@ -172,7 +180,7 @@ describe('nomination action feedback', () => {
     expect(tree.root.findByType(NominationBoard).props.nominations[0].voted).toBe(true);
     await act(async () => staleBody.resolve(board()));
     expect(tree.root.findByType(NominationBoard).props.nominations[0].voted).toBe(true);
-  });
+  }, 20_000); // several real-client round trips; the 5 s default ran out on a loaded machine
   it.each(['chart', 'scope'])('finishes one nomination mutation after the sheet closes and the %s changes', async (change) => {
     const tree = await openBoard(); const mutation = deferred<void>(); api.setNominationVote.mockReturnValueOnce(mutation.promise);
     await act(async () => { void tree.root.findByType(NominationBoard).props.onVote('n1', true); });
@@ -191,6 +199,8 @@ describe('nomination action feedback', () => {
   it('shows rejected mutation feedback inside the sheet and preserves the submitted draft', async () => {
     const tree = await openBoard(); api.nominateReward.mockRejectedValueOnce(Error('offline'));
     await act(async () => tree.root.findAll((n) => String(n.type) === 'TextInput' && n.props.accessibilityLabel === '獎品名稱')[0].props.onChangeText('保留文字'));
+    // Since 0.5.18 an idea needs its 多少/多久 before it can be sent.
+    await act(async () => tree.root.findAll((n) => String(n.type) === 'TextInput' && n.props.accessibilityLabel === '多少或多久')[0].props.onChangeText('1 小時'));
     await press(tree, '提名獎品');
     const sheet = tree.root.findByType('ActionSheet' as any);
     expect(sheet.findAll((n) => String(n.type) === 'Text' && n.props.accessibilityRole === 'alert').length).toBeGreaterThan(0);
@@ -207,9 +217,13 @@ describe('nomination action feedback', () => {
 describe('announcement focus', () => {
   it('starts exactly one request and draws cached content while it waits', async () => {
     store.set('qingmu.announcement.latest', JSON.stringify({ week: '2026-09-20', past: [] }));
-    const remote = deferred<Response>(); const fetchImpl = vi.fn(() => remote.promise); vi.stubGlobal('fetch', fetchImpl);
+    // The tab also asks whether an app update is published (app-version.json); only the notice board
+    // request is the one under test here.
+    const remote = deferred<Response>();
+    const fetchImpl = vi.fn((url: unknown) => String(url).includes('announcements/latest.json') ? remote.promise : new Promise<Response>(() => undefined));
+    vi.stubGlobal('fetch', fetchImpl);
     const tree = await render(AnnouncementsScreen);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls.filter(([url]) => String(url).includes('announcements/latest.json'))).toHaveLength(1);
     expect(tree.root.findByType('AnnouncementBoard' as any).props.announcement.week).toBe('2026-09-20');
     await act(async () => remote.resolve(new Response(JSON.stringify({ week: '2026-09-27', past: [] }))));
     expect(tree.root.findByType('AnnouncementBoard' as any).props.announcement.week).toBe('2026-09-27');

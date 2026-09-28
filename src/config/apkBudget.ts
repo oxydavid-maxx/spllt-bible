@@ -59,6 +59,27 @@ export function checkBackgroundAudioManifest(manifest: Buffer | null): string[] 
     .map((name) => `AndroidManifest.xml lacks ${name}, so chapter narration stops when the app leaves the screen (was android/ regenerated from app.json?)`);
 }
 
+/**
+ * Whether react-native-reanimated or react-native-worklets reached the APK. The YouVersion reader SDK's
+ * sheets pull them in through @gorhom/bottom-sheet, and on React Native 0.85 they cost ~155 MB of
+ * native memory and an idle UI-thread frame loop; the app serves its own sheet instead
+ * (docs/design/lean-reader-sheets.md). Either library can come back silently through a dependency or a
+ * lost Metro / linking setting, so the release check looks for their native libraries and for the
+ * native module names only their JS asks for.
+ */
+export function checkLeanReaderSheets(entries: ZipEntryInfo[], bundle: Buffer | null): string[] {
+  const problems = entries
+    .filter((entry) => /^lib\/[^/]+\/lib(reanimated|worklets)\.so$/.test(entry.name))
+    .map((entry) => `native library ${entry.name} is linked; reanimated / worklets must stay out (react-native.config.js)`);
+  if (!bundle) return [...problems, 'the APK has no assets/index.android.bundle'];
+  for (const name of ['WorkletsModule', 'ReanimatedModule']) {
+    if ([Buffer.from(name, 'utf8'), Buffer.from(name, 'utf16le')].some((form) => bundle.includes(form))) {
+      problems.push(`the JS bundle contains ${name}; reanimated / worklets must stay out (metro.leanSheets.js)`);
+    }
+  }
+  return problems;
+}
+
 /** One file's bytes from a zip, stored or deflated, or null when the zip has no such file. */
 export function readZipEntry(zip: Buffer, wanted: string): Buffer | null {
   const endSignature = 0x06054b50;

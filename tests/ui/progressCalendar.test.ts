@@ -136,7 +136,9 @@ describe('the 積分 page opens on its calendar', () => {
   it('keeps its own days when the trend card moves to 年', async () => {
     await mount();
     await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '年' }).props.onPress(); await Promise.resolve(); });
-    expect(api.getProfile).toHaveBeenLastCalledWith('self', 'me', expect.any(String), { range: 'year' });
+    // The page also prefetches the other ranges on a timer after its first load: on a slow machine the
+    // year chart is either fetched by the tap or already cached by that prefetch. Either way it was read.
+    expect(api.getProfile.mock.calls).toContainEqual(['self', 'me', expect.any(String), { range: 'year' }]);
     expect(flat(cell('2026-09-26').props.style).backgroundColor).toBe('#1A5544');
     expect(renderer!.root.findAll((node) => (node.type as unknown) === 'Pressable' && /^2026-09-\d{2} /.test(String(node.props.accessibilityLabel ?? '')))).toHaveLength(30);
     // And the own trend card has no 走勢/日曆 toggle.

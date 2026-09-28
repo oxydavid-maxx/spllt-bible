@@ -6,18 +6,10 @@ import ts from 'typescript';
 import { create } from 'zustand';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-interface NativeRecord {
-  kind: string;
-  detents: number[] | undefined;
-  layoutReady: boolean;
-  attempts: number;
-  animations: number;
-  position: number;
-  onChange?: (index: number) => void;
-  snapToIndex(index: number): void;
-  close(): void;
-}
-const boundary = vi.hoisted(() => ({ module: null as any, records: new Set<NativeRecord>(), readerMounts: 0, back: null as null | (() => boolean) }));
+const boundary = vi.hoisted(() => ({ module: null as any, readerMounts: 0, back: null as null | (() => boolean) }));
+// React Native's Animated is the only animation double (tests/doubles/animatedDouble.cjs); the sheet
+// itself is the app's real one that Metro serves for '@gorhom/bottom-sheet'.
+const animated = vi.hoisted(() => (require('../doubles/animatedDouble.cjs') as { createAnimatedDouble(): any }).createAnimatedDouble());
 const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknown }) => {
   const R = require('react') as typeof React;
   return R.createElement(name, props, props.children as React.ReactNode);
@@ -25,55 +17,32 @@ const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknow
 const rn = vi.hoisted(() => ({
   ActivityIndicator: primitive('ActivityIndicator'), TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'),
   Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'),
+  ...animated.modules(primitive),
   Platform: { OS: 'android' }, useWindowDimensions: () => ({ width: 390, height: 844 }),
   StyleSheet: { create: (x: unknown) => x, flatten: (x: unknown) => Object.assign({}, ...[x].flat(Infinity)), absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } },
   BackHandler: { addEventListener: (_: string, cb: () => boolean) => { boundary.back = cb; return { remove: () => { boundary.back = null; } }; } },
 }));
 vi.mock('react-native', () => rn);
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 24, left: 0, right: 0 }) }));
+// The reader's content preloader imports the YouVersion core package, whose index loads react-native-mmkv
+// and Nitro, i.e. react-native's own Flow source, which node cannot parse. Same stand-in as the other reader tests.
+vi.mock('@youversion/platform-react-native-expo-core', () => ({ useYouVersion: () => ({ fetchBibleContent: async () => ({ content: '' }) }) }));
+vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined, deleteItemAsync: async () => undefined }));
 vi.mock('../../src/services/youVersionAdapter', () => ({ createYouVersionAdapter: () => ({ loadReaderUi: async () => ({ status: 'READER_UI_READY', module: boundary.module }) }) }));
 import { YouVersionReader, type ReaderOverlayControls } from '../../src/ui/YouVersionReader';
+import * as appSheet from '../../src/ui/sheet/bottomSheet';
 
-// Execute the installed Gorhom public snap method, not a copied readiness model.
-// Native layout delivery and UI-thread animation are the only controlled boundary.
-const gorhomPath = 'node_modules/@gorhom/bottom-sheet/src/components/bottomSheet/BottomSheet.tsx';
-const gorhomSource = ts.createSourceFile(gorhomPath, readFileSync(gorhomPath, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-let snapFunctionSource = '';
-function visit(node: ts.Node) {
-  if (ts.isFunctionExpression(node) && node.name?.text === 'handleSnapToIndex') snapFunctionSource = node.getText(gorhomSource);
-  ts.forEachChild(node, visit);
-}
-visit(gorhomSource);
-if (!snapFunctionSource) throw new Error('Installed Gorhom public snap method not found');
-const snapJs = ts.transpileModule(`const boundSnap = (${snapFunctionSource});`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-const snapFactory = new Function('animatedDetentsState', 'isLayoutCalculated', 'invariant', 'animatedAnimationState', 'isInTemporaryPosition', 'runOnUI', 'animateToPosition', 'ANIMATION_SOURCE', '__DEV__', 'print', `${snapJs}\nreturn boundSnap;`);
-function makeRecord(kind: string): NativeRecord {
-  const record: NativeRecord = { kind, detents: undefined, layoutReady: false, attempts: 0, animations: 0, position: -1, snapToIndex() {}, close() { record.position = -1; record.onChange?.(-1); } };
-  const snap = snapFactory(
-    { get: () => ({ detents: record.detents }) },
-    { get: () => record.layoutReady, get value() { return record.layoutReady; } },
-    (condition: boolean, message: string) => { if (!condition) throw new Error(message); },
-    { get: () => ({ nextPosition: null, nextIndex: null, isForcedClosing: false }) },
-    { value: false }, (fn: Function) => fn,
-    (position: number) => { record.animations++; record.position = position; record.onChange?.(0); },
-    { USER: 'USER' }, false, () => {},
-  );
-  record.snapToIndex = index => { record.attempts++; snap(index); };
-  return record;
-}
-function kindIn(children: any): string | null {
-  if (Array.isArray(children)) return children.map(kindIn).find(Boolean) ?? null;
-  if (!children || typeof children !== 'object') return null;
-  if (['SettingsDom', 'ChapterDom', 'VersionDom'].includes(children.type)) return children.type;
-  return kindIn(children.props?.children);
-}
-function NativeBottomSheet(props: any) {
-  const [record] = React.useState(() => makeRecord(kindIn(props.children) ?? 'direct'));
-  record.onChange = props.onChange;
-  React.useImperativeHandle(props.ref, () => ({ snapToIndex: record.snapToIndex, close: record.close }), [record]);
-  React.useEffect(() => { boundary.records.add(record); return () => { boundary.records.delete(record); }; }, [record]);
-  return React.createElement('NativeBottomSheet', {}, props.children);
-}
+const finishAnimations = () => act(() => { animated.finishAll(); });
+const leanSheets = () => renderer.root.findAll(node => typeof node.type === 'string' && node.props.testID === 'lean-bottom-sheet');
+const sheetOf = (kind: string) => leanSheets().find(node => node.findAll(child => child.type === kind).length > 0)!;
+const isOpen = (sheet: TestRenderer.ReactTestInstance) => sheet.props.pointerEvents === 'auto';
+// On device the DOM WebView content reports its height through BottomSheetView's onLayout.
+const deliverNativeLayouts = () => act(() => {
+  for (const sheet of leanSheets()) {
+    const content = sheet.findAll(node => (node.type as unknown) === 'View' && typeof node.props.onLayout === 'function' && node.props.testID === undefined)[0];
+    content?.props.onLayout({ nativeEvent: { layout: { height: 400 } } });
+  }
+});
 function loadInstalledSheets() {
   const registry = new Map<string, any>([['BibleReaderSettings', 'SettingsDom'], ['ChapterPickerContent', 'ChapterDom'], ['BibleVersionPickerContent', 'VersionDom']]);
   const settings = { fontSize: 20, fontFamily: 'serif', lineSpacing: 'normal', setFontFamily() {}, setFontSize() {}, setLineSpacing() {} };
@@ -81,7 +50,7 @@ function loadInstalledSheets() {
   const dependencies: Record<string, any> = {
     'react': React, 'react/jsx-runtime': jsxRuntime, 'react-native': rn, 'zustand': { create },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 24 }) },
-    '@gorhom/bottom-sheet': { __esModule: true, default: NativeBottomSheet, BottomSheetView: primitive('BottomSheetView'), BottomSheetBackdrop: primitive('BottomSheetBackdrop') },
+    '@gorhom/bottom-sheet': { __esModule: true, ...appSheet },
     '@rn-primitives/portal': { Portal: primitive('Portal'), PortalHost: primitive('PortalHost') },
     '@youversion/platform-react-native-expo-core': { useYouVersion: () => ({ appKey: 'test-key', permittedVersionIds: [1392, 312] }) },
     '@youversion/platform-react-ui': { createBibleThemeSettingsContentHandlers: () => ({}) },
@@ -106,18 +75,19 @@ function loadInstalledSheets() {
 }
 
 let renderer: TestRenderer.ReactTestRenderer;
+let sheetReports: boolean[] = [];
 let controls: ReaderOverlayControls;
 let installed: ReturnType<typeof loadInstalledSheets>;
-const deliverNativeLayouts = () => { for (const record of boundary.records) { record.detents = [400]; record.layoutReady = true; } };
 async function mountReader() {
   await act(async () => { renderer = TestRenderer.create(React.createElement(YouVersionReader, {
     date: '2026-09-12', references: ['PSA.90'], appKey: 'test-key', versionId: 1392, book: 'PSA', chapter: '90',
     allowedVersionIds: [1392, 312], allowTechnicalProbe: true, fullscreen: true,
     renderScreen: (reader, next) => { controls = next; return reader; },
+    onSheetOpenChange: (open: boolean) => { sheetReports.push(open); },
   })); });
 }
 beforeEach(() => {
-  boundary.records.clear(); boundary.readerMounts = 0; boundary.back = null;
+  animated.reset(); boundary.readerMounts = 0; boundary.back = null; sheetReports = [];
   installed = loadInstalledSheets();
   boundary.module = { ...installed, YouVersionProvider: installed.NativeSheetProvider,
     BibleReader: (props: Record<string, unknown>) => { React.useEffect(() => { boundary.readerMounts++; }, []); return React.createElement('OfficialReader', props); },
@@ -129,49 +99,46 @@ beforeEach(() => {
 });
 afterEach(() => { if (renderer) act(() => renderer.unmount()); vi.restoreAllMocks(); });
 
-describe('installed native-sheet readiness boundary', () => {
-  it('falsifies cold mount-open: late native layout does not replay the lost SDK opening command', async () => {
+describe('installed SDK sheets on the app-owned bottom sheet', () => {
+  it('opens a sheet whose SDK open request arrived before its content was measured', async () => {
     await act(async () => { renderer = TestRenderer.create(React.createElement(installed.BibleReaderSettingsSheet, { isSettingsSheetOpen: true, onClose() {} })); });
-    const record = [...boundary.records][0];
-    expect(record.attempts).toBe(1);
-    expect(record.animations).toBe(0);
+    expect(isOpen(leanSheets()[0])).toBe(false);
     deliverNativeLayouts();
-    await act(async () => {});
-    expect(record.animations).toBe(0);
-    expect(record.position).toBe(-1);
-  });
-  it('uses the installed Gorhom empty-detent and layout-ready guards', () => {
-    const record = makeRecord('guard');
-    record.snapToIndex(0); expect(record.animations).toBe(0);
-    record.detents = []; record.snapToIndex(0); expect(record.animations).toBe(0);
-    record.detents = [400]; record.snapToIndex(0); expect(record.animations).toBe(0);
-    record.layoutReady = true; record.snapToIndex(0); expect(record.animations).toBe(1);
+    finishAnimations();
+    expect(isOpen(leanSheets()[0])).toBe(true);
   });
   it.each([
     ['openSettings', 'SettingsDom'], ['openChapterPicker', 'ChapterDom'], ['openVersionPicker', 'VersionDom'],
-  ] as const)('opens %s after its native layout and keeps that host through dismiss/reopen', async (method, kind) => {
+  ] as const)('opens %s and keeps that host mounted through done / back / backdrop dismissals', async (method, kind) => {
     await mountReader();
     const inertHosts = renderer.root.findAll(node => typeof node.type === 'string' && node.props.testID === 'native-sheet-inert-host');
     expect(inertHosts).toHaveLength(3);
     expect(inertHosts.every(node => node.props.pointerEvents === 'none' && node.props.importantForAccessibility === 'no-hide-descendants')).toBe(true);
     deliverNativeLayouts();
     act(() => controls[method]());
-    const record = [...boundary.records].find(value => value.kind === kind)!;
-    expect(record, 'Official sheet must have a native host').toBeDefined();
-    expect(record.animations, 'Opening must reach the real Gorhom animation boundary, not just set isOpen').toBe(1);
-    expect(record.position).toBe(400);
+    finishAnimations();
+    expect(isOpen(sheetOf(kind)), 'Opening must reach the sheet, not just set isOpen').toBe(true);
+    expect(sheetReports.at(-1), 'The screen hears that a sheet is open, so the tab bar can step aside').toBe(true);
     act(() => renderer.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityLabel === '完成設定，返回閱讀')[0].props.onPress());
-    expect(boundary.records.has(record)).toBe(true);
-    expect(record.position).toBe(-1);
+    finishAnimations();
+    expect(isOpen(sheetOf(kind))).toBe(false);
     act(() => controls[method]());
-    expect(record.animations).toBe(2);
+    finishAnimations();
+    expect(isOpen(sheetOf(kind))).toBe(true);
     act(() => { expect(boundary.back?.()).toBe(true); });
-    expect(boundary.records.has(record)).toBe(true);
-    expect(record.position).toBe(-1);
+    finishAnimations();
+    expect(isOpen(sheetOf(kind))).toBe(false);
     act(() => controls[method]());
-    expect(record.animations).toBe(3);
-    act(() => record.onChange?.(-1));
-    expect(boundary.back).toBeNull();
+    finishAnimations();
+    expect(isOpen(sheetOf(kind))).toBe(true);
+    const backdrop = renderer.root.findAll(node => typeof node.type === 'string' && node.props.testID === 'lean-bottom-sheet-backdrop');
+    expect(backdrop).toHaveLength(1);
+    act(() => backdrop[0].props.onPress());
+    finishAnimations();
+    expect(isOpen(sheetOf(kind))).toBe(false);
+    expect(boundary.back, 'A backdrop dismissal must reach the app so its back handler goes away').toBeNull();
+    expect(sheetReports.at(-1), 'and hears it closed again').toBe(false);
+    expect(animated.state.running).toBe(0);
     expect(boundary.readerMounts).toBe(1);
   });
 });

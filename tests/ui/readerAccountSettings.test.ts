@@ -12,6 +12,10 @@ const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknow
 });
 vi.mock('react-native', () => ({ ActivityIndicator: primitive('ActivityIndicator'), TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (x: unknown) => x }, BackHandler: { addEventListener: () => ({ remove() {} }) } }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView') }));
+// The reader's content preloader imports the YouVersion core package (react-native-mmkv and Nitro, i.e.
+// react-native's own Flow source) and the audio controls reach expo-secure-store; node can load neither.
+vi.mock('@youversion/platform-react-native-expo-core', () => ({ useYouVersion: () => ({ fetchBibleContent: async () => ({ content: '' }) }) }));
+vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined, deleteItemAsync: async () => undefined }));
 vi.mock('../../src/services/youVersionAdapter', () => ({ createYouVersionAdapter: () => ({ loadReaderUi: async () => ({ status: 'READER_UI_READY', module: boundary.module }) }) }));
 import { YouVersionReader, type ReaderOverlayControls } from '../../src/ui/YouVersionReader';
 

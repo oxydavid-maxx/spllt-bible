@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { primitive, api, auth, appListeners, focusCallbacks, focusCleanupRef, authListeners } = vi.hoisted(() => ({
   primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children),
@@ -17,6 +17,13 @@ const { primitive, api, auth, appListeners, focusCallbacks, focusCleanupRef, aut
   authListeners: [] as Array<(change: { current: { memberId: string; sessionToken: string } | null }) => void>,
 }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined, deleteItemAsync: async () => undefined }));
+// The progress tab's completion controller opens the local SQLite repository (expo-sqlite -> the expo
+// runtime, which node cannot load); these tests never read it, the same stand-in as the reader tests.
+// The completion card's controller is covered by its own tests; here it would add a second focus effect and
+// AppState listener that this harness does not model. Same stand-in as progressFriendPush.test.ts.
+vi.mock('../../src/services/useCompletionController', () => ({ useCompletionController: (options: { planId: string; taskDate: string }) => ({ record: { memberId: 'self', planId: options.planId, taskDate: options.taskDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' }, pending: false, syncError: false, retryable: false, complete: vi.fn(async () => undefined), requestUndo: vi.fn() }) }));
+vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
+vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn() }));
 vi.mock('react-native', () => ({ AppState: { addEventListener: vi.fn((_event: string, listener: (state: string) => void) => { appListeners.push(listener); return { remove: vi.fn() }; }) }, Pressable: primitive('Pressable'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle') }; });
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | void) => {
@@ -34,6 +41,7 @@ vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | 
 } }));
 vi.mock('expo-local-authentication', () => ({ authenticateAsync: vi.fn(async () => ({ success: true })) }));
 vi.mock('../../src/services/authSession', () => ({
+  getAuthSnapshot: () => auth,
   isCurrentAuthSession: (session: { memberId: string; sessionToken: string }) => auth.status === 'signed-in' && auth.session?.memberId === session.memberId && auth.session?.sessionToken === session.sessionToken,
   registerAuthLifecycleListener: (listener: (change: { current: { memberId: string; sessionToken: string } | null }) => void) => {
     authListeners.push(listener);
@@ -43,7 +51,8 @@ vi.mock('../../src/services/authSession', () => ({
 }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ GamificationApiError: class extends Error { userMessage = 'error'; }, createGamificationApiClient: () => api }));
 vi.mock('../../src/ui/gamification/PeopleList', () => ({ PeopleList: (props: any) => React.createElement('PeopleList', props) }));
-vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (props: any) => React.createElement('ScoreProfile', props) }));
+// The real ScoreProfile renders its slots; the nomination banner lives in `lead` since the 0.5.18 layout.
+vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (props: any) => React.createElement('ScoreProfile', props, props.lead, props.nominations) }));
 vi.mock('../../src/ui/gamification/NominationBanner', () => ({ NominationBanner: (props: any) => React.createElement('NominationBanner', props) }));
 vi.mock('../../src/ui/gamification/CommunityProgress', () => ({ CommunityProgress: (props: any) => React.createElement('CommunityProgress', props) }));
 vi.mock('../../src/ui/gamification/ActionSheet', () => ({ ActionSheet: (props: any) => props.visible ? React.createElement('ActionSheet', props, props.children) : null }));
@@ -53,6 +62,11 @@ vi.mock('../../src/ui/gamification/RewardControls', () => ({ RewardControls: (pr
 import ProgressScreen from '../../app/(tabs)/progress';
 
 describe('progress protected response lifecycle', () => {
+  // The screen prefetches the other chart ranges on a timer after its first profile load. These tests
+  // count profile reads and never reach that timer on a normal run; faking timers keeps it from
+  // firing mid-test on a slow machine (it did under load) instead of relying on the test being quick.
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
+  afterEach(() => { vi.useRealTimers(); });
   it('does not apply a deferred private profile response after app background clears unlock scope', async () => {
     let resolveProfile!: (value: any) => void;
     api.getProfile.mockImplementationOnce(() => new Promise((resolve) => { resolveProfile = resolve; }));
@@ -73,7 +87,7 @@ describe('progress protected response lifecycle', () => {
     const actionSheet = renderer.root.findByType('ActionSheet' as any);
     const recordsAction = actionSheet.props.actions.find((action: any) => action.label === '我的領取紀錄');
     await act(async () => { void recordsAction.onPress(); });
-    await act(async () => { appListeners[appListeners.length - 1]?.('background'); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); });
     await act(async () => { resolveRedemptions([]); });
     expect(renderer.root.findAll((node) => String(node.type) === 'ActionSheet' && node.props.title === '領取紀錄')).toHaveLength(0);
   });
@@ -83,7 +97,7 @@ describe('progress protected response lifecycle', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
     const initialCalls = api.getProfile.mock.calls.length;
-    await act(async () => { appListeners[appListeners.length - 1]?.('background'); appListeners[appListeners.length - 1]?.('active'); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); [...appListeners].forEach((listener) => listener('active')); });
     await act(async () => { await Promise.resolve(); });
     expect(api.getProfile.mock.calls.length).toBeGreaterThan(initialCalls);
     // The refresh is the plain 3-argument call; range prefetches (4 arguments) may follow it.
@@ -108,7 +122,7 @@ describe('progress protected response lifecycle', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
     await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); await Promise.resolve(); });
-    await act(async () => { appListeners[appListeners.length - 1]?.('background'); resolvePending({ ownerMemberId: 'self', redemptions: [], reversals: [] }); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); resolvePending({ ownerMemberId: 'self', redemptions: [], reversals: [] }); });
     expect(api.getPeople).not.toHaveBeenCalledWith('all');
     expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）' && node.props.accessibilityState?.selected)).toHaveLength(0);
   });
