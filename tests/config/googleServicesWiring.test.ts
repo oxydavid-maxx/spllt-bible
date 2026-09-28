@@ -25,6 +25,26 @@ describe('Android Google Services wiring', () => {
     }
   });
 
+  // 2026-09-28: `expo prebuild` run outside scripts/build-android.ps1 saw only the private build
+  // config's QINGMU_GOOGLE_ANDROID_SERVICES_FILE, dropped the google-services Gradle lines, and the
+  // regenerated android/ would have shipped without Firebase again. The config reads either name.
+  it('takes the Android services file from the private build config name as well', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'qingmu-google-services-'));
+    const androidFile = join(root, 'google-services.json');
+    await writeFile(androidFile, '{}');
+    const previousPublic = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_SERVICES_FILE;
+    const previousPrivate = process.env.QINGMU_GOOGLE_ANDROID_SERVICES_FILE;
+    delete process.env.EXPO_PUBLIC_GOOGLE_ANDROID_SERVICES_FILE;
+    process.env.QINGMU_GOOGLE_ANDROID_SERVICES_FILE = androidFile;
+    try {
+      const result = appConfig({ config: { plugins: [] } } as any);
+      expect(result.android.googleServicesFile).toBe(androidFile);
+    } finally {
+      if (previousPublic === undefined) delete process.env.EXPO_PUBLIC_GOOGLE_ANDROID_SERVICES_FILE; else process.env.EXPO_PUBLIC_GOOGLE_ANDROID_SERVICES_FILE = previousPublic;
+      if (previousPrivate === undefined) delete process.env.QINGMU_GOOGLE_ANDROID_SERVICES_FILE; else process.env.QINGMU_GOOGLE_ANDROID_SERVICES_FILE = previousPrivate;
+    }
+  });
+
   it('has an effective Gradle consumer and build-time file binding', async () => {
     const [rootGradle, appGradle, buildScript, bindingScript] = await Promise.all([
       readFile(join(process.cwd(), 'android', 'build.gradle'), 'utf8'),

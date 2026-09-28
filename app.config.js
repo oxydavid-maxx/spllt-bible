@@ -4,7 +4,9 @@ module.exports = ({ config }) => {
   const plugins = Array.isArray(config.plugins)
     ? config.plugins.filter((plugin) => plugin !== 'react-native-nitro-google-signin' && !(Array.isArray(plugin) && plugin[0] === 'react-native-nitro-google-signin'))
     : [];
-  const androidServices = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_SERVICES_FILE;
+  // The private build config names it QINGMU_GOOGLE_ANDROID_SERVICES_FILE; a bare `expo prebuild`
+  // that saw only that name used to drop the google-services Gradle lines (2026-09-28).
+  const androidServices = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_SERVICES_FILE || process.env.QINGMU_GOOGLE_ANDROID_SERVICES_FILE;
   const iosServices = process.env.EXPO_PUBLIC_GOOGLE_IOS_SERVICES_FILE;
   const iosUrlScheme = process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME?.trim();
   const hasAndroidServices = Boolean(androidServices && fs.existsSync(androidServices));
