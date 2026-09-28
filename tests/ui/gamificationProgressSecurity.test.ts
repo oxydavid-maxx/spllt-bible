@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { primitive, api, auth, appListeners, focusCallbacks, focusCleanupRef, authListeners } = vi.hoisted(() => ({
   primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children),
@@ -62,6 +62,11 @@ vi.mock('../../src/ui/gamification/RewardControls', () => ({ RewardControls: (pr
 import ProgressScreen from '../../app/(tabs)/progress';
 
 describe('progress protected response lifecycle', () => {
+  // The screen prefetches the other chart ranges on a timer after its first profile load. These tests
+  // count profile reads and never reach that timer on a normal run; faking timers keeps it from
+  // firing mid-test on a slow machine (it did under load) instead of relying on the test being quick.
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
+  afterEach(() => { vi.useRealTimers(); });
   it('does not apply a deferred private profile response after app background clears unlock scope', async () => {
     let resolveProfile!: (value: any) => void;
     api.getProfile.mockImplementationOnce(() => new Promise((resolve) => { resolveProfile = resolve; }));

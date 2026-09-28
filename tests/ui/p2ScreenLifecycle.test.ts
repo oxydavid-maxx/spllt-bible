@@ -180,7 +180,7 @@ describe('nomination action feedback', () => {
     expect(tree.root.findByType(NominationBoard).props.nominations[0].voted).toBe(true);
     await act(async () => staleBody.resolve(board()));
     expect(tree.root.findByType(NominationBoard).props.nominations[0].voted).toBe(true);
-  });
+  }, 20_000); // several real-client round trips; the 5 s default ran out on a loaded machine
   it.each(['chart', 'scope'])('finishes one nomination mutation after the sheet closes and the %s changes', async (change) => {
     const tree = await openBoard(); const mutation = deferred<void>(); api.setNominationVote.mockReturnValueOnce(mutation.promise);
     await act(async () => { void tree.root.findByType(NominationBoard).props.onVote('n1', true); });

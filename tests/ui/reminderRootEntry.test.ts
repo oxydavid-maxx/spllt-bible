@@ -50,7 +50,16 @@ import * as SecureStore from 'expo-secure-store';
 import { createReminderDeviceRevokeQueue, REMINDER_DEVICE_REVOKE_QUEUE_KEY } from '../../src/services/reminderDeviceRevokeQueue';
 let renderer: TestRenderer.ReactTestRenderer | null = null;
 const reading = { actionIdentifier: 'default', notification: { date: 1, request: { identifier: 'root-reading', content: { data: { kind: 'READING', memberId: 'member:a', reminderId: 'reading:member:a:2026-09-14', targetId: 'church-2026-09', taskDate: '2026-09-14', route: 'https://untrusted.invalid/' } } } } };
-async function mount() { await act(async () => { renderer = TestRenderer.create(React.createElement(RootLayout)); }); await act(async () => { await vi.dynamicImportSettled(); }); }
+async function mount() {
+  await act(async () => { renderer = TestRenderer.create(React.createElement(RootLayout)); });
+  // The bridge registers its listener after import('expo-notifications') resolves. On second and later
+  // mounts that mock is already evaluated, and dynamicImportSettled() does not track every async hop of
+  // such an import (measured: the listener appears one tick after it returns). On a loaded machine that
+  // hop ran late and the listener was still null (2026-09-28), so wait for the registration itself.
+  await act(async () => {
+    await vi.waitFor(async () => { await vi.dynamicImportSettled(); if (!state.listener) throw new Error('notification listener not registered yet'); }, { timeout: 10_000, interval: 20 });
+  });
+}
 async function update() { await act(async () => { renderer!.update(React.createElement(RootLayout)); }); }
 describe('formal Root notification wiring', () => {
   beforeEach(() => {
