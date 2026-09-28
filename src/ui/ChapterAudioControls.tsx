@@ -32,6 +32,7 @@ import { createChapterBoundPlayback, type ChapterBoundPlayback } from '../servic
 import { createAudioSession } from '../services/audioSession';
 import { clearReaderAudioOwner, updateReaderAudioOwner, type ReaderAudioState } from '../services/readerAudioBridge';
 import { CHAPTER_AUDIO_LOCK_SCREEN_OPTIONS, chapterAudioArtwork, chapterAudioCardMetadata } from '../services/chapterAudioBackground';
+import { isAppHidden, subscribeAppHidden } from '../services/appVisibility';
 import { formatReferenceZhTw } from '../domain/scriptureReference';
 import type { AutoplayIntent } from '../services/readerAutoplayController';
 import type { ResolutionStatus } from '../domain/chapterAudioContract';
@@ -311,6 +312,18 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
   // Reading highlight: last verse we told the reader about, per chapter binding, so the reader hears
   // one message per verse change instead of one per 500 ms status tick.
   const playingVerseRef = useRef<{ chapter: string; verse: number | null } | null>(null);
+  // Screen off or another app in front (光佑 2026-09-28: background CPU). Nobody sees the progress or
+  // the verse highlight then, yet every 500 ms status tick read five native properties - each a
+  // blocking JS -> main thread call in expo-audio - and re-rendered these controls, and every verse
+  // change repainted the reader's WebView. While hidden only what the phone still needs is kept: the
+  // EOF hand-off (連讀, and with it the lock-screen card), errors, and the card's own pause/play, which
+  // is native. The current binding resyncs position, verse and play state once on return.
+  const hiddenRef = useRef(isAppHidden());
+  const resyncOnShow = useRef<() => void>(() => {});
+  useEffect(() => subscribeAppHidden((hidden) => {
+    hiddenRef.current = hidden;
+    if (!hidden) resyncOnShow.current();
+  }), []);
   const notifyPlayingVerse = (chapter: string, verse: number | null) => {
     const last = playingVerseRef.current;
     if (last && last.chapter === chapter && last.verse === verse) return;
@@ -421,17 +434,25 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
     const subscription = (player as unknown as PlaybackStatusEmitter).addListener('playbackStatusUpdate', status => {
       if (!bindingIsCurrent()) return;
       if (status.error) { reportPlaybackError(); return; }
-      if (typeof status.currentTime === 'number') notifyPlayingVerse(chapterUsfm, verseAtPosition(resolved.source?.verseTiming, status.currentTime));
+      const hidden = hiddenRef.current;
+      if (!hidden && typeof status.currentTime === 'number') notifyPlayingVerse(chapterUsfm, verseAtPosition(resolved.source?.verseTiming, status.currentTime));
       if (status.didJustFinish) {
-        notifyPlayingVerse(chapterUsfm, null);
+        if (!hidden) notifyPlayingVerse(chapterUsfm, null);
         finishedBinding.current = bound;
         if (eofNotifiedBinding.current !== bound) {
           eofNotifiedBinding.current = bound;
           notifyPlaybackEnded(chapterUsfm);
         }
       }
-      setProgress(bound.getProgress());
+      if (!hidden) setProgress(bound.getProgress());
     });
+    const resync = () => {
+      if (!bindingIsCurrent()) return;
+      const now = bound.getProgress();
+      notifyPlayingVerse(chapterUsfm, finishedBinding.current === bound ? null : verseAtPosition(resolved.source?.verseTiming, now.positionSeconds));
+      setProgress(now);
+    };
+    resyncOnShow.current = resync;
     const freshSource = !audioAuthorized || (capability !== null && versionId !== null
       && validateCapability(capability, { versionId, usfm: chapterUsfm }, Date.now()).ok);
     const replay = replayRequest.current;
@@ -451,6 +472,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
     }
     return () => {
       subscription.remove();
+      if (resyncOnShow.current === resync) resyncOnShow.current = () => {};
       notifyPlayingVerse(chapterUsfm, null);
       try { p?.pause?.(); } catch { /* already released */ }
       bound.dispose();
@@ -470,7 +492,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
     if (!resolved.source) return undefined;
     const id = setInterval(() => {
       const bound = playbackRef.current;
-      if (!bound || bound.disposed) return;
+      if (!bound || bound.disposed || hiddenRef.current) return;
       const next = bound.getProgress();
       setProgress((previous) => previous.positionSeconds === next.positionSeconds
         && previous.durationSeconds === next.durationSeconds && previous.playing === next.playing
