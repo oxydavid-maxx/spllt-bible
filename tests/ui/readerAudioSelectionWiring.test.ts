@@ -25,7 +25,7 @@ const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknow
 });
 
 /** requests the REAL ChapterAudioControls actually issued, in order */
-const recorded = vi.hoisted(() => ({ requests: [] as { versionId: number; usfm: string }[], cancels: 0, audioPlayCalls: 0, audioPauseCalls: 0, audioOwnerMounts: 0, journalSaves: [] as Array<Record<string, unknown>>, completionWrites: 0 }));
+const recorded = vi.hoisted(() => ({ requests: [] as { versionId: number; usfm: string }[], cancels: 0, audioPlayCalls: 0, audioPauseCalls: 0, audioOwnerMounts: 0, livePlayer: false, journalSaves: [] as Array<Record<string, unknown>>, completionWrites: 0 }));
 const completionController = vi.hoisted(() => ({
   record: { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: '2026-09-12', status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' },
   pending: false,
@@ -69,15 +69,21 @@ vi.mock('expo-audio', () => ({
   useAudioPlayer: () => {
     const R = require('react') as typeof React;
     // The real hook holds one instance across renders. Remain inert: this lane proves selection only.
+    // recorded.livePlayer makes play/pause report a real playing state, for tests about what a
+    // playing chapter survives.
     const ref = R.useRef<object | null>(null);
     if (!ref.current) {
       recorded.audioOwnerMounts += 1;
-      ref.current = {
-        play: () => { recorded.audioPlayCalls += 1; }, pause: () => { recorded.audioPauseCalls += 1; }, replace: () => undefined,
-        addListener: () => ({ remove: () => undefined }),
+      const listeners = new Set<(status: { playing: boolean }) => void>();
+      const player = {
+        play: () => { recorded.audioPlayCalls += 1; if (recorded.livePlayer) { player.playing = true; listeners.forEach(listener => listener({ playing: true })); } },
+        pause: () => { recorded.audioPauseCalls += 1; if (player.playing) { player.playing = false; listeners.forEach(listener => listener({ playing: false })); } },
+        replace: () => { player.playing = false; },
+        addListener: (_event: string, listener: (status: { playing: boolean }) => void) => { listeners.add(listener); return { remove: () => { listeners.delete(listener); } }; },
         seekTo: async () => undefined, setPlaybackRate: () => undefined, remove: () => undefined,
         currentTime: 0, duration: 0, playing: false, isLoaded: false, isBuffering: false,
       };
+      ref.current = player;
     }
     return ref.current;
   },
@@ -332,10 +338,10 @@ async function pressTodayTabFrom(pathname = '/progress'): Promise<void> {
   await act(async () => { tabsRenderer = TestRenderer.create(React.createElement(TabsLayout)); });
   const tabs = tabsRenderer.root.findAll((node: Node) => String(node.type) === 'Tabs')[0];
   if (!tabs) throw new Error('Tabs layout was not rendered');
-  const listeners = tabs.props.screenListeners as ((props: { route: { name: string }; navigation: object }) => { tabPress?: (event: { defaultPrevented: boolean }) => void }) | undefined;
+  const listeners = tabs.props.screenListeners as ((props: { route: { name: string }; navigation: object }) => { tabPress?: (event: { defaultPrevented: boolean; preventDefault: () => void }) => void }) | undefined;
   const todayTabPress = listeners?.({ route: { name: 'today' }, navigation: {} }).tabPress;
   if (!todayTabPress) throw new Error('today tabPress entry handler is not wired');
-  act(() => { todayTabPress({ defaultPrevented: false }); });
+  act(() => { todayTabPress({ defaultPrevented: false, preventDefault: () => undefined }); });
   await act(async () => { await Promise.resolve(); });
   await act(async () => { tabsRenderer.unmount(); });
 }
@@ -367,6 +373,7 @@ beforeEach(async () => {
   recorded.cancels = 0;
   recorded.audioPlayCalls = 0;
   recorded.audioPauseCalls = 0;
+  recorded.livePlayer = false;
   recorded.audioOwnerMounts = 0;
   recorded.journalSaves.length = 0;
   completionController.record = { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: BASE_DATE, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
@@ -703,6 +710,52 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'TIT.1' });
     expect(recorded.audioPlayCalls).toBe(playsBeforeDiaryReturn);
     expect(recorded.completionWrites).toBe(0);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  // 2026-09-28: narration now keeps playing on other tabs, so the explicit Today entry (讀經 tapped from
+  // another tab) must not reset the Reader under a playing chapter: that stopped it and switched to the
+  // day's first chapter. While a chapter plays, 讀經 just brings the Reader back to it; with nothing
+  // playing, the day-reset to the first chapter still applies.
+  it('keeps the playing PSA.104 when 讀經 is tapped from 積分, and resets to the first chapter only when nothing plays', async () => {
+    readerAuth.memberId = 'fixture:self';
+    readerAuth.status = 'signed-in';
+    readerAuth.expiresAt = null;
+    recorded.livePlayer = true;
+    const { today } = await configureTodayReferences(['PSA.103', 'PSA.104']);
+    const renderer = await mount();
+    selectAssigned(renderer, '詩104');
+    await act(async () => { for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+    const audioControl = (label: string) => renderer.root.findAll((node: Node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === label)[0];
+    await act(async () => { audioControl('播放詩104語音').props.onPress(); for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+    expect(recorded.audioPlayCalls).toBe(1);
+    const bridge = await import('../../src/services/readerAudioBridge');
+    expect(bridge.getReaderAudioSnapshot()).toEqual({ chapterUsfm: 'PSA.104', state: 'playing' });
+    const pauses = recorded.audioPauseCalls;
+    const { router } = await import('expo-router');
+    vi.mocked(router.replace).mockClear();
+
+    navigationState.focused = false;
+    await pressTodayTabFrom('/progress');
+    navigationState.pathname = '/reader';
+    navigationState.focused = true;
+    await act(async () => { renderer.update(React.createElement(ReaderScreen)); for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+
+    expect(router.replace).toHaveBeenCalledWith('/reader');
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('PSA.104');
+    expect(readerLayout(renderer).props.chapterUsfm).toBe('PSA.104');
+    expect(recorded.audioPauseCalls).toBe(pauses);
+    expect(recorded.audioPlayCalls).toBe(1);
+    expect(bridge.getReaderAudioSnapshot()).toEqual({ chapterUsfm: 'PSA.104', state: 'playing' });
+    expect(await savedRow()).toMatchObject({ mode: 'ASSIGNED', taskDate: today, reference: 'PSA.104' });
+
+    await act(async () => { audioControl('暫停詩104語音').props.onPress(); for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+    expect(bridge.getReaderAudioSnapshot().state).toBe('paused');
+    await pressTodayTabFrom('/progress');
+    navigationState.pathname = '/reader';
+    await act(async () => { renderer.update(React.createElement(ReaderScreen)); for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+    expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('PSA.103');
+    expect(recorded.audioPlayCalls).toBe(1);
     await act(async () => { renderer.unmount(); });
   });
 
