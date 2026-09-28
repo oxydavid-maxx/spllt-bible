@@ -82,6 +82,39 @@ describe('the system media card for chapter narration', () => {
     expect(native.player.card).toEqual([['show', expect.objectContaining({ title: '約翰福音 3 章' }), SEEK]]);
   });
 
+  // Registering the card starts expo-audio's playback service and swaps the player's basic media session
+  // for the service's (two foreground-service starts and a session swap in logcat). That must happen once
+  // per reading, not on every ▶.
+  it('registers the card once for a reading, however often it is paused and resumed', async () => {
+    await mount('JHN.3');
+    for (let round = 0; round < 3; round += 1) { await press(); await press(); }
+    await press();
+    expect(native.player.calls.filter((call: string) => call === 'play')).toHaveLength(4);
+    expect(native.player.card).toEqual([['show', expect.objectContaining({ title: '約翰福音 3 章' }), SEEK]]);
+  });
+
+  // 2026-09-28 device run: narration was PAUSED 6 s after ▶ with no JS or native trace of who paused it.
+  // Every pause this component issues now leaves one logcat line with its reason, so a device run tells a
+  // JS-side stop from a native one (audio focus, the card's own button). Status ticks log nothing.
+  it('leaves one logcat line per pause it issues, with the reason, and none for playback ticks', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await mount('JHN.3');
+    await press();
+    warn.mockClear();
+    await act(async () => { for (let tick = 0; tick < 5; tick += 1) native.player.tick(); });
+    expect(warn).not.toHaveBeenCalled();
+    await press();
+    await press();
+    await show('JHN.4');
+    const lines = warn.mock.calls.map(call => String(call[0])).filter(line => line.startsWith('[chapter-audio] pause'));
+    expect(lines).toEqual([
+      '[chapter-audio] pause member JHN.3',
+      '[chapter-audio] pause rebind JHN.3',
+      '[chapter-audio] pause no-source JHN.4',
+    ]);
+    warn.mockRestore();
+  });
+
   it('follows the next chapter by updating the same card, which needs no foreground (auto-advance while locked)', async () => {
     await mount('PSA.22');
     await press();

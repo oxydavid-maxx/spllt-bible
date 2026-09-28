@@ -142,6 +142,12 @@ function logUnavailable(chapterUsfm: string, versionId: number | null, outcome: 
   if (outcome.kind === 'unavailable') console.warn(`[chapter-audio] ${chapterUsfm} v${versionId ?? 'none'} ${outcome.status} retryable=${outcome.retryable} ${outcome.diagnostic ?? ''}`);
 }
 
+/** Every pause this component issues leaves one logcat line, so a device run can tell a JS-side stop from
+ * a native one (audio focus, the media card's own button), which leave none here. */
+function logPause(reason: 'member' | 'rebind' | 'no-source' | 'error' | 'unmount', chapterUsfm: string): void {
+  console.warn(`[chapter-audio] pause ${reason} ${chapterUsfm}`);
+}
+
 export function selectionKey(versionId: number | null, chapterUsfm: string): string {
   return `${versionId ?? 'none'}::${chapterUsfm.trim().toUpperCase()}`;
 }
@@ -392,6 +398,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
   useEffect(() => {
     const instance = player as unknown as { pause?: () => void };
     return () => {
+      logPause('unmount', liveScope.current.key);
       try { instance?.pause?.(); } catch { /* a player already released by the platform is fine */ }
     };
   }, [player]);
@@ -407,6 +414,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
     setNeedsRetry(false);
     setProgress(previous => ({ ...previous, positionSeconds: 0, durationSeconds: 0, playing: false, buffering: Boolean(resolved.source) }));
     if (!resolved.source) {
+      logPause('no-source', chapterUsfm);
       try { p?.pause?.(); } catch { /* already released */ }
       playbackRef.current?.dispose();
       playbackRef.current = null;
@@ -423,6 +431,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
       && !bound.disposed && scopeIsCurrent() && authIsCurrent();
     const reportPlaybackError = () => {
       if (!bindingIsCurrent()) return;
+      logPause('error', chapterUsfm);
       try { p.pause?.(); } catch { /* the error path must still show the retry state */ }
       setProgress(previous => ({ ...previous, playing: false, buffering: false, loaded: false }));
       setFailure('朗讀暫時無法播放，請重試。');
@@ -474,6 +483,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
       subscription.remove();
       if (resyncOnShow.current === resync) resyncOnShow.current = () => {};
       notifyPlayingVerse(chapterUsfm, null);
+      logPause('rebind', chapterUsfm);
       try { p?.pause?.(); } catch { /* already released */ }
       bound.dispose();
       if (playbackRef.current === bound) {
@@ -559,6 +569,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
   const pauseCurrentPlayback = async () => {
     const bound = currentPlaybackBinding();
     if (!bound) return;
+    logPause('member', chapterUsfm);
     await bound.pause();
     notifyPlaybackPaused(chapterUsfm);
   };

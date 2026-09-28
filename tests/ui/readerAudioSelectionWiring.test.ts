@@ -25,7 +25,7 @@ const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknow
 });
 
 /** requests the REAL ChapterAudioControls actually issued, in order */
-const recorded = vi.hoisted(() => ({ requests: [] as { versionId: number; usfm: string }[], cancels: 0, audioPlayCalls: 0, audioPauseCalls: 0, audioOwnerMounts: 0, livePlayer: false, journalSaves: [] as Array<Record<string, unknown>>, completionWrites: 0 }));
+const recorded = vi.hoisted(() => ({ requests: [] as { versionId: number; usfm: string }[], cancels: 0, audioPlayCalls: 0, audioPauseCalls: 0, audioOwnerMounts: 0, livePlayer: false, native: [] as string[], journalSaves: [] as Array<Record<string, unknown>>, completionWrites: 0 }));
 const completionController = vi.hoisted(() => ({
   record: { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: '2026-09-12', status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' },
   pending: false,
@@ -76,9 +76,11 @@ vi.mock('expo-audio', () => ({
       recorded.audioOwnerMounts += 1;
       const listeners = new Set<(status: { playing: boolean }) => void>();
       const player = {
-        play: () => { recorded.audioPlayCalls += 1; if (recorded.livePlayer) { player.playing = true; listeners.forEach(listener => listener({ playing: true })); } },
-        pause: () => { recorded.audioPauseCalls += 1; if (player.playing) { player.playing = false; listeners.forEach(listener => listener({ playing: false })); } },
-        replace: () => { player.playing = false; },
+        play: () => { recorded.audioPlayCalls += 1; recorded.native.push('play'); if (recorded.livePlayer) { player.playing = true; listeners.forEach(listener => listener({ playing: true })); } },
+        pause: () => { recorded.audioPauseCalls += 1; recorded.native.push('pause'); if (player.playing) { player.playing = false; listeners.forEach(listener => listener({ playing: false })); } },
+        replace: (source: { uri: string }) => { recorded.native.push(`replace:${source.uri.replace(/^.*\//, '')}`); player.playing = false; },
+        setActiveForLockScreen: (active: boolean, metadata?: { title?: string }) => { recorded.native.push(active ? `card:${metadata?.title}` : 'card:off'); },
+        updateLockScreenMetadata: (metadata: { title?: string }) => { recorded.native.push(`card-update:${metadata.title}`); },
         addListener: (_event: string, listener: (status: { playing: boolean }) => void) => { listeners.add(listener); return { remove: () => { listeners.delete(listener); } }; },
         seekTo: async () => undefined, setPlaybackRate: () => undefined, remove: () => undefined,
         currentTime: 0, duration: 0, playing: false, isLoaded: false, isBuffering: false,
@@ -374,6 +376,7 @@ beforeEach(async () => {
   recorded.audioPlayCalls = 0;
   recorded.audioPauseCalls = 0;
   recorded.livePlayer = false;
+  recorded.native.length = 0;
   recorded.audioOwnerMounts = 0;
   recorded.journalSaves.length = 0;
   completionController.record = { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: BASE_DATE, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
@@ -756,6 +759,40 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     await act(async () => { renderer.update(React.createElement(ReaderScreen)); for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
     expect(`${bibleReader(renderer).props.book}.${bibleReader(renderer).props.chapter}`).toBe('PSA.103');
     expect(recorded.audioPlayCalls).toBe(1);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  // 2026-09-28 device run of 9e794de: 積分 -> tap 讀經 (nothing playing, so the Reader resets to the
+  // day's first chapter) -> ▶ about 3 s later. The card came up for 詩篇 103 篇 but narration stayed
+  // PAUSED. Whatever the settle state the ▶ lands in, it must end playing 詩103 with one card.
+  it.each([0, 1, 2, 4, 8, 16])('plays 詩103 when ▶ lands %i steps after the 讀經 day-reset settles into view', async extraSteps => {
+    readerAuth.memberId = 'fixture:self';
+    readerAuth.status = 'signed-in';
+    readerAuth.expiresAt = null;
+    recorded.livePlayer = true;
+    await configureTodayReferences(['PSA.103', 'PSA.104']);
+    const renderer = await mount();
+    selectAssigned(renderer, '詩104');
+    await act(async () => { for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+
+    navigationState.focused = false;
+    navigationState.pathname = '/progress';
+    await act(async () => { renderer.update(React.createElement(ReaderScreen)); for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+    await pressTodayTabFrom('/progress');
+    navigationState.pathname = '/reader';
+    navigationState.focused = true;
+    await act(async () => { renderer.update(React.createElement(ReaderScreen)); });
+    const play = () => renderer.root.findAll((node: Node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '播放詩103語音')[0];
+    for (let step = 0; step < 40 && !play(); step += 1) await act(async () => { await Promise.resolve(); });
+    for (let step = 0; step < extraSteps; step += 1) await act(async () => { await Promise.resolve(); });
+    recorded.native.length = 0;
+    await act(async () => { play().props.onPress(); });
+    await act(async () => { for (let step = 0; step < 16; step += 1) await Promise.resolve(); });
+
+    expect(readerLayout(renderer).props.chapterUsfm).toBe('PSA.103');
+    expect(recorded.native.filter(call => call !== 'card-update:詩篇 103 篇')).toEqual(['play', 'card:詩篇 103 篇']);
+    const bridge = await import('../../src/services/readerAudioBridge');
+    expect(bridge.getReaderAudioSnapshot()).toEqual({ chapterUsfm: 'PSA.103', state: 'playing' });
     await act(async () => { renderer.unmount(); });
   });
 

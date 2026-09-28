@@ -1,5 +1,27 @@
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
+index 992239b..58a778a 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
+@@ -78,6 +78,8 @@ class AudioModule : Module() {
+ 
+   private var audioFocusRequest: AudioFocusRequest? = null
+   private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
++    // Qingmu (not upstream 56.0.13): a focus loss pauses every player with no other trace in logcat.
++    Log.i(TAG, "Audio focus change: $focusChange")
+     appContext.mainQueue.launch {
+       when (focusChange) {
+         AudioManager.AUDIOFOCUS_LOSS -> {
+@@ -176,6 +178,8 @@ class AudioModule : Module() {
+       audioManager.requestAudioFocus(audioFocusChangeListener, AudioManager.STREAM_MUSIC, requestType)
+     }
+ 
++    // Qingmu (not upstream 56.0.13): logged too, so a device log shows whether focus was granted when playback started.
++    Log.i(TAG, "Audio focus request result: $result")
+     if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+       focusAcquired = true
+     } else {
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
-index 196a5d5..1e99bf3 100644
+index 196a5d5..107a205 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
 @@ -1,5 +1,6 @@

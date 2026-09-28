@@ -102,6 +102,15 @@ describe("the media card's status-bar icon (patches/expo-audio+56.0.13.patch)", 
     expect(text).toContain('+      ?: androidx.media3.session.R.drawable.media3_icon_circular_play');
   });
 
+  // 2026-09-28 device run: narration was PAUSED seconds after ▶ and nothing in logcat said why. expo-audio
+  // pauses every player on an audio-focus loss (AudioModule.kt audioFocusChangeListener) silently.
+  it('logs every audio-focus change and focus request result, so a device run shows focus-driven pauses', () => {
+    const text = patch();
+    expect(text).toContain('+++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt');
+    expect(text).toContain('+    Log.i(TAG, "Audio focus change: $focusChange")');
+    expect(text).toContain('+    Log.i(TAG, "Audio focus request result: $result")');
+  });
+
   it('compiles expo-audio from source, because the prebuilt AAR it ships would silently ignore the patch', () => {
     // expo-modules-autolinking links a module that declares a publication from its local-maven-repo AAR
     // (SettingsManager.kt, configurePublication) unless the app lists it under buildFromSource.
