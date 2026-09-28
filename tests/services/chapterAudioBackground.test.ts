@@ -6,8 +6,8 @@ const native = vi.hoisted(() => ({
 }));
 vi.mock('expo-audio', () => ({ setAudioModeAsync: native.setAudioModeAsync }));
 vi.mock('expo-asset', () => ({ Asset: { fromModule: native.fromModule } }));
-// The app icon is a bundled image; its module id is all the startup hands to expo-asset.
-vi.mock('../../src/ui/brandIcon', () => ({ BRAND_ICON: 7 }));
+// The card artwork is a bundled image; its module id is all the startup hands to expo-asset.
+vi.mock('../../src/ui/brandIcon', () => ({ BRAND_ICON: 7, MEDIA_ARTWORK: 8 }));
 
 import {
   CHAPTER_AUDIO_LOCK_SCREEN_OPTIONS, CHAPTER_AUDIO_MODE, chapterAudioArtwork, chapterAudioCardMetadata, setChapterAudioArtwork,
@@ -47,7 +47,8 @@ describe('configureChapterAudio (app startup)', () => {
     expect(native.setAudioModeAsync).toHaveBeenCalledExactlyOnceWith({ shouldPlayInBackground: true, interruptionMode: 'doNotMix', playsInSilentMode: true });
     // expo-audio's Android service reads artwork through java.net.URL: a file:// URL of the icon
     // copied out of the APK loads offline; a bare resource name ("assets_icon") would not parse.
-    expect(native.fromModule).toHaveBeenCalledWith(7);
+    // The 512 x 512 copy of the icon (assets/media-artwork.png), not the 1024 x 1024 icon.png.
+    expect(native.fromModule).toHaveBeenCalledExactlyOnceWith(8);
     await expect(chapterAudioArtwork()).resolves.toBe(localUri);
   });
 

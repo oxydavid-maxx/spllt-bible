@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { compileModsAsync } from '@expo/config-plugins';
 import { getPrebuildConfigAsync } from '@expo/prebuild-config';
 import { NOTIFICATION_ICON } from 'expo-notifications/plugin/build/withNotificationsAndroid';
+import { readPng } from '../helpers/readPng';
 
 // 光佑 2026-09-28: chapter narration plays in the background with a media card. None of that reaches a
 // phone unless the config the build compiles says so: expo-audio's config plugin was never listed, so
@@ -13,31 +13,6 @@ import { NOTIFICATION_ICON } from 'expo-notifications/plugin/build/withNotificat
 
 type Named = { $: Record<string, string> } & Record<string, unknown>;
 
-/** Pixels of an 8-bit RGBA, non-interlaced PNG (what the icon is rasterized as). */
-function readRgbaPng(file: Buffer): { width: number; height: number; data: Buffer } {
-  const width = file.readUInt32BE(16);
-  const height = file.readUInt32BE(20);
-  if (file[24] !== 8 || file[25] !== 6 || file[28] !== 0) throw new Error('expected an 8-bit RGBA non-interlaced PNG');
-  const chunks: Buffer[] = [];
-  for (let at = 8; at < file.length; at += 12 + file.readUInt32BE(at)) {
-    if (file.toString('latin1', at + 4, at + 8) === 'IDAT') chunks.push(file.subarray(at + 8, at + 8 + file.readUInt32BE(at)));
-  }
-  const raw = inflateSync(Buffer.concat(chunks));
-  const stride = width * 4;
-  const data = Buffer.alloc(stride * height);
-  for (let y = 0; y < height; y += 1) {
-    const filter = raw[y * (stride + 1)];
-    for (let x = 0; x < stride; x += 1) {
-      const left = x >= 4 ? data[y * stride + x - 4] : 0;
-      const up = y > 0 ? data[(y - 1) * stride + x] : 0;
-      const corner = x >= 4 && y > 0 ? data[(y - 1) * stride + x - 4] : 0;
-      const paeth = [left, up, corner].sort((a, b) => Math.abs(left + up - corner - a) - Math.abs(left + up - corner - b))[0];
-      const predictor = [0, left, up, (left + up) >> 1, paeth][filter];
-      data[y * stride + x] = (raw[y * (stride + 1) + 1 + x] + predictor) & 0xff;
-    }
-  }
-  return { width, height, data };
-}
 
 async function compiledAndroidManifest() {
   const root = process.cwd();
@@ -78,7 +53,7 @@ describe('background chapter audio reaches the Android build', () => {
     const plugins = JSON.parse(readFileSync('app.json', 'utf8')).expo.plugins as unknown[];
     const notifications = plugins.find(plugin => Array.isArray(plugin) && plugin[0] === 'expo-notifications') as [string, { icon: string }];
     // Android draws a status-bar icon from its alpha alone: anything not white-on-transparent turns into a blob.
-    const icon = readRgbaPng(readFileSync(notifications[1].icon));
+    const icon = readPng(readFileSync(notifications[1].icon));
     let visible = 0;
     for (let at = 0; at < icon.data.length; at += 4) {
       if (icon.data[at + 3] === 0) continue;
@@ -89,6 +64,29 @@ describe('background chapter audio reaches the Android build', () => {
     expect(visible / (icon.width * icon.height)).toBeGreaterThan(0.2);
     expect(visible / (icon.width * icon.height)).toBeLessThan(0.8);
   }, 60_000);
+});
+
+describe('the media card artwork (assets/media-artwork.png)', () => {
+  // 光佑 asked to watch memory: the card's artwork is decoded into full bitmaps by the playback service,
+  // media3 and the system UI. The 1024 x 1024 app icon is 4 MB per decoded copy; the card shows it at most
+  // about 256 dp, so a 512 x 512 copy is sharp there at a quarter of the memory.
+  it('is the app icon itself at 512 x 512, not a redrawn mark', () => {
+    const icon = readPng(readFileSync('assets/icon.png'));
+    const artwork = readPng(readFileSync('assets/media-artwork.png'));
+    expect([artwork.width, artwork.height]).toEqual([512, 512]);
+    expect([icon.width, icon.height]).toEqual([1024, 1024]);
+    let difference = 0;
+    for (let y = 0; y < 512; y += 1) {
+      for (let x = 0; x < 512; x += 1) {
+        for (let channel = 0; channel < 3; channel += 1) {
+          const source = [0, 1].flatMap(dy => [0, 1].map(dx => icon.data[((2 * y + dy) * 1024 + 2 * x + dx) * 4 + channel]));
+          difference += Math.abs(artwork.data[(y * 512 + x) * 4 + channel] - source.reduce((sum, value) => sum + value, 0) / 4);
+        }
+      }
+    }
+    // Mean per-channel difference from a plain 2 x 2 average of the icon: a resample, not another picture.
+    expect(difference / (512 * 512 * 3)).toBeLessThan(2);
+  });
 });
 
 describe("the media card's status-bar icon (patches/expo-audio+56.0.13.patch)", () => {
