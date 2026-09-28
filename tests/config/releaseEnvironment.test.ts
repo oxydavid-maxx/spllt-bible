@@ -19,6 +19,12 @@ function fixture(native = false) {
     if (existsSync(join(repo, 'scripts', name))) copyFileSync(join(repo, 'scripts', name), join(root, 'scripts', name));
   }
   put(root, 'src/read-env.ts', 'export const enabled = process.env.EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE;\n');
+  // The build brings node_modules in line first (scripts/sync-deps.ts); here that step only leaves a mark,
+  // so a test can see whether it ran and a refused build can be shown to have changed nothing.
+  put(root, 'scripts/sync-deps.ts', "import { writeFileSync } from 'node:fs';\nwriteFileSync('sync-deps-ran.txt', 'yes');\n");
+  // The fixture's "APK" is a placeholder; the real size/ABI/content check has its own tests
+  // (tests/config/releaseRegressions.test.ts), so here it only records that the build asked for it.
+  put(root, 'scripts/check-apk-budget.ts', "import { writeFileSync } from 'node:fs';\nwriteFileSync(new URL('../apk-check-ran.txt', import.meta.url), process.argv.slice(2).join(' '));\n");
   const env = { ...process.env };
   // Let Windows PowerShell load its own built-ins, not the parent PowerShell 7 module directory.
   delete env.PSModulePath;
@@ -107,6 +113,12 @@ describe('official Android release entry environment guard', () => {
     expect(result.status).toBe(17); expect(result.body.message).toContain('EXPO_PUBLIC_QINGMU_DEV_TOKEN');
     expect(readFileSync(join(f.root, 'android/gradle.properties'), 'utf8')).toBe('hermesEnabled=false\n');
     expect(readFileSync(sentinel, 'utf8')).toBe('keep until preflight passes'); expect(existsSync(join(f.root, 'android/arguments.txt'))).toBe(false);
+    expect(existsSync(join(f.root, 'sync-deps-ran.txt')), 'a refused release build must not reinstall node_modules either').toBe(false);
+  });
+
+  it('brings node_modules in line once the release inputs are valid', () => {
+    const f = fixture(); const result = run(f);
+    expect(result.body.message).toContain('Android native project is missing'); expect(existsSync(join(f.root, 'sync-deps-ran.txt'))).toBe(true);
   });
 
   it('leaves debug environment behavior unchanged', () => {
@@ -118,7 +130,8 @@ describe('official Android release entry environment guard', () => {
     const f = fixture(true); put(f.root, '.env.production', 'EXPO_PUBLIC_QINGMU_DEV_TOKEN=dotenv-injected\nEXPO_PUBLIC_QINGMU_FROM_DOTENV=true\n');
     put(f.root, 'private.env', `EXPO_PUBLIC_YOUVERSION_APP_KEY=${privateTestKey}\n`);
     const result = run(f, { EXPO_PUBLIC_YOUVERSION_APP_KEY: undefined, EXPO_NO_DOTENV: '0' }, minify ? '-Minify' : '');
-    expect(result.status).toBe(0); expect(result.body.minify).toBe(minify);
+    expect(result.status, result.body?.message ?? result.text.slice(-600)).toBe(0); expect(result.body.minify).toBe(minify);
+    expect(existsSync(join(f.root, 'apk-check-ran.txt')), 'every release build runs the APK check').toBe(true);
     const actual = readFileSync(join(f.root, 'android/arguments.txt'), 'utf8');
     for (const flag of ['-Pandroid.enableMinifyInReleaseBuilds=true', '-Pandroid.enableShrinkResourcesInReleaseBuilds=true']) {
       expect(actual.includes(flag)).toBe(minify); expect(result.body.command.includes(flag)).toBe(minify); expect(result.body.gradleArguments.includes(flag)).toBe(minify);
