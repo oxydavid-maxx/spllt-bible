@@ -31,7 +31,10 @@ function fixture(store = makeStore()) {
   const save = vi.fn(async () => snapshot);
   const oldSessionRevoke = vi.fn(async () => true);
   const deviceRevoke = vi.fn(async (_binding: ReminderDeviceBinding) => true);
-  const createApiClient = vi.fn(() => ({ getReminderSnapshot: async () => snapshot, saveReminderPreferences: save, registerReminderDeviceToken: register, revokeReminderDeviceToken: oldSessionRevoke }));
+  // Reading reminders follow the server's reading days (reminderRuntime.ts loadReadingSchedule); without them
+  // nothing is scheduled at all, which is not what this test is about.
+  const getReadingDays = vi.fn(async (from: string) => ({ today: from, timezone: 'Asia/Taipei', days: [{ taskDate: from, planId: 'church-2026-09', sourceRevision: 1 }, { taskDate: '2026-09-14', planId: 'church-2026-09', sourceRevision: 1 }] }));
+  const createApiClient = vi.fn(() => ({ getReminderSnapshot: async () => snapshot, getReadingDays, saveReminderPreferences: save, registerReminderDeviceToken: register, revokeReminderDeviceToken: oldSessionRevoke }));
   let tokenListener: (() => void) | undefined;
   const removeTokenListener = vi.fn();
   const owner = new ReminderRuntimeOwner({ scheduler: scheduler as any, secureStore: store, createApiClient, revokeDeviceBinding: deviceRevoke, loadNotificationSource: async () => ({ getDevicePushTokenAsync: async () => ({ type: 'android', data: 'device-a' }), addPushTokenListener: listener => { tokenListener = listener; return { remove: removeTokenListener }; } }), generateInstallationId: () => 'installation-one' });
