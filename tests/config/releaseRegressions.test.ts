@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkApkBudget, checkFirebaseConfig, readZipEntries, readZipEntry } from '../../src/config/apkBudget';
+import { checkApkBudget, checkBackgroundAudioManifest, checkFirebaseConfig, readZipEntries, readZipEntry } from '../../src/config/apkBudget';
 import { checkDownloadHref, checkUpdateNotice } from '../../src/config/installLink';
 import { findWorktreesSharingNodeModules, syncDeps } from '../../src/config/depsSync';
 
@@ -93,6 +93,35 @@ describe('the sideloaded APK stays small', () => {
       'APK resources lack the Firebase app id from android/app/google-services.json (is the com.google.gms.google-services Gradle plugin applied?)',
     ]);
     expect(checkFirebaseConfig(null, null)).toEqual(['no android/app/google-services.json was staged, so push notifications cannot work']);
+  });
+
+  // 2026-09-28: background chapter audio needs expo-audio's media playback service in the APK's
+  // manifest. The build compiles an android/ project that is untracked and was never regenerated from
+  // config, so a config-plugin change (google-services last week, expo-audio now) can be right in
+  // app.json and still never reach a phone. The release check reads the APK's own manifest.
+  it('fails a release APK whose manifest lacks the background playback service or its permission', () => {
+    const service = 'expo.modules.audio.service.AudioControlsService';
+    const permission = 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK';
+    const axml = (...strings: string[]) => Buffer.concat([Buffer.from([3, 0, 8, 0]), ...strings.map(text => Buffer.from(text, 'utf16le'))]);
+    const complete = makeZip([['AndroidManifest.xml', axml('android.permission.INTERNET', service, permission)]]);
+    expect(checkBackgroundAudioManifest(readZipEntry(complete, 'AndroidManifest.xml'))).toEqual([]);
+    // aapt may also write a UTF-8 string pool.
+    expect(checkBackgroundAudioManifest(Buffer.from(`${service} ${permission}`, 'utf8'))).toEqual([]);
+    expect(checkBackgroundAudioManifest(readZipEntry(makeZip([['AndroidManifest.xml', axml('android.permission.INTERNET')]]), 'AndroidManifest.xml'))).toEqual([
+      `AndroidManifest.xml lacks ${service}, so chapter narration stops when the app leaves the screen (was android/ regenerated from app.json?)`,
+      `AndroidManifest.xml lacks ${permission}, so chapter narration stops when the app leaves the screen (was android/ regenerated from app.json?)`,
+    ]);
+    expect(checkBackgroundAudioManifest(null)).toEqual(['the APK has no AndroidManifest.xml']);
+  });
+
+  const shipped = 'C:/dev/apps/qingmu-bible/.handoff/play-20260925/jhuke-bible-0.5.18-39-dd1f271.apk';
+  it.skipIf(!existsSync(shipped))('rejects the 0.5.18 APK that went out without them', () => {
+    expect(checkBackgroundAudioManifest(readZipEntry(readFileSync(shipped), 'AndroidManifest.xml'))).toHaveLength(2);
+  });
+
+  it('runs the manifest check on every release APK the build produces', () => {
+    const script = readFileSync('scripts/check-apk-budget.ts', 'utf8');
+    expect(script).toMatch(/checkBackgroundAudioManifest\(readZipEntry\(zip, 'AndroidManifest\.xml'\)\)/);
   });
 
   it('builds release APKs for ARM phones with compressed native libraries unless told otherwise, and checks the result', () => {
