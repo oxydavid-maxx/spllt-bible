@@ -239,7 +239,8 @@ export function NominationBoard({
 
 const styles = StyleSheet.create({
   card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.sm },
-  roundHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm },
+  // Wraps: 「投票還有 9 天（10/5 截止）」 beside the title and the vote count is wider than a phone.
+  roundHead: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: theme.spacing.sm, rowGap: theme.spacing.xxs },
   heading: { color: theme.colors.ink, fontSize: theme.type.label.size, fontWeight: '800', flexShrink: 1 },
   votesLeft: { color: theme.colors.primaryDeep, fontSize: theme.type.caption.size, fontWeight: '800' },
   votesSpent: { color: theme.colors.muted },
