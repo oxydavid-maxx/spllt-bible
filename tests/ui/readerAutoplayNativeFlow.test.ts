@@ -11,7 +11,7 @@ const primitive = vi.hoisted(() => (name: string) => (props: any) => require('re
 const native = vi.hoisted(() => ({ player: null as any }));
 const boundary = vi.hoisted(() => ({ context: null as any }));
 
-vi.mock('react-native', () => ({ ActivityIndicator: primitive('ActivityIndicator'), BackHandler: { addEventListener: () => ({ remove() {} }) }, Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (value: unknown) => value }, Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View') }));
+vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, ActivityIndicator: primitive('ActivityIndicator'), BackHandler: { addEventListener: () => ({ remove() {} }) }, Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (value: unknown) => value }, Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View') }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView') }));
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {} }));
@@ -125,6 +125,21 @@ describe('Reader continuous playback through the real chapter control', () => {
     expect(index).toBe(1);
     expect(native.player.calls).toContain('replace:https://example.test/JHN.19.mp3');
     expect(native.player.calls.filter((call: string) => call === 'play')).toHaveLength(2);
+  });
+
+  // 2026-09-28 device run: the day was 詩103、詩104 and narration started on 詩104. 連讀 only ever moves
+  // to the NEXT reference of the day (index + 1); after the day's last chapter it stops. It never wraps
+  // back to an earlier, unplayed chapter.
+  it("stops after the day's last chapter instead of wrapping back to the first", async () => {
+    index = 1;
+    await mount(['PSA.103', 'PSA.104']);
+    await act(async () => { audioButton().props.onPress(); await Promise.resolve(); });
+    expect(native.player.calls.filter((call: string) => call !== 'pause')).toEqual(['replace:https://example.test/PSA.104.mp3', 'play']);
+    await act(async () => { native.player.finish(); await Promise.resolve(); });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(index).toBe(1);
+    expect(native.player.calls).not.toContain('replace:https://example.test/PSA.103.mp3');
+    expect(native.player.calls.filter((call: string) => call === 'play')).toHaveLength(1);
   });
 
   it('keeps the current chapter playing at its position when continuous playback is turned off', async () => {

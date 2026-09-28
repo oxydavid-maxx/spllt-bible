@@ -1,4 +1,3 @@
-import { usePathname } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, Linking, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,10 +35,6 @@ export default function ReaderScreen() {
   const chrome = useReaderChrome();
   // A chapter that failed to load while this tab was out of sight retries when it comes back.
   const retrySignal = useReaderRetrySignal(chrome.focused);
-  const pathname = usePathname();
-  // The Reader tab route remains mounted underneath Diary so the one native player and its queue
-  // survive that tab transition. Other tabs still release the audio binding as before.
-  const sharedAudioActive = chrome.focused || pathname === '/journal';
   const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession();
   const auth = useAuthSnapshot();
   const session = auth.session;
@@ -364,7 +359,11 @@ export default function ReaderScreen() {
           reader={reader}
           controls={controls}
           chrome={chrome}
-          audioOwnerActive={sharedAudioActive}
+          // The Reader route stays mounted under every other tab (freezeOnBlur: false), so its one native
+          // player and its queue keep reading on 公告, 積分 and 日記, in another app and on a locked screen
+          // (光佑 2026-09-28). Narration stops on an explicit pause, a chapter or version change, sign-out,
+          // or another app taking audio focus - never merely because a different tab is showing.
+          audioOwnerActive
           selectionSource={selection.source}
           activeReferenceIndex={assignedIndex}
           chapterUsfm={currentUsfm}

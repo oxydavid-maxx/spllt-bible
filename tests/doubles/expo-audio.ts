@@ -19,6 +19,10 @@ export function useAudioPlayer(_source?: unknown, _options?: unknown) {
     setPlaybackRate: () => undefined,
     remove: () => undefined,
     addListener: () => ({ remove: () => undefined }),
+    // The system media card (notification shade + lock screen); inert here like everything else.
+    setActiveForLockScreen: () => undefined,
+    updateLockScreenMetadata: () => undefined,
+    clearLockScreenControls: () => undefined,
     currentTime: 0,
     duration: 0,
     playing: false,

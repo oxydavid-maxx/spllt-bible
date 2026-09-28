@@ -9,6 +9,7 @@ import { useAuthSnapshot } from '../../src/services/authSession';
 import { fixtureProfile } from '../../src/ui/fixtureProfile';
 import { getReadingSessionSnapshot, requestTodayReaderTabPress, setJournalEntryDate } from '../../src/ui/readingSession';
 import { useReaderImmersionSnapshot } from '../../src/ui/readerImmersionState';
+import { getReaderAudioSnapshot } from '../../src/services/readerAudioBridge';
 
 export default function TabsLayout() {
   const readerImmersed = useReaderImmersionSnapshot();
@@ -25,6 +26,14 @@ export default function TabsLayout() {
         tabPress: event => {
           if (event.defaultPrevented) return;
           if (route.name === 'today') {
+            // Narration keeps playing on every tab (光佑 2026-09-28). While a chapter plays, 讀經 only
+            // brings the Reader back to it: the Today-entry reset below would stop it and switch to the
+            // day's first chapter. With nothing playing, the reset still applies.
+            if (getReaderAudioSnapshot().state === 'playing') {
+              event.preventDefault();
+              if (pathname !== '/reader') router.replace('/reader');
+              return;
+            }
             // Diary is another surface of the same reading session. Returning from it must not
             // run the explicit Today-entry reset or remount the shared audio owner.
             if (pathname === '/journal') {

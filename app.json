@@ -21,11 +21,23 @@
           "recordAudioAndroid": false
         }
       ],
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true,
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-local-authentication",
       "expo-secure-store",
       "expo-font",
       "expo-status-bar",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png"
+        }
+      ],
       "react-native-nitro-google-signin",
       "./plugins/withQingmuProguardRules"
     ],

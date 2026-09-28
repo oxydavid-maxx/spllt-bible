@@ -39,7 +39,7 @@ vi.mock('expo-secure-store', () => {
 });
 
 vi.mock('react-native', () => ({
-  ActivityIndicator: primitive('ActivityIndicator'),
+  AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, ActivityIndicator: primitive('ActivityIndicator'),
   Pressable: primitive('Pressable'),
   StyleSheet: { create: (v: unknown) => v },
   Text: primitive('Text'),

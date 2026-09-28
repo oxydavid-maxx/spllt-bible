@@ -45,6 +45,20 @@ export function checkFirebaseConfig(resources: Buffer | null, appId: string | nu
   return ['APK resources lack the Firebase app id from android/app/google-services.json (is the com.google.gms.google-services Gradle plugin applied?)'];
 }
 
+/**
+ * Whether the APK's manifest carries what background chapter narration needs: expo-audio's media
+ * playback service and the foreground-service permission for it. Both come from expo-audio's config
+ * plugin, which only reaches the APK when android/ is regenerated from app.json; without them Android
+ * pauses the reading as soon as the app leaves the screen, and nothing fails at build time.
+ * The binary manifest's string pool is UTF-16 (or UTF-8), so both are looked for.
+ */
+export function checkBackgroundAudioManifest(manifest: Buffer | null): string[] {
+  if (!manifest) return ['the APK has no AndroidManifest.xml'];
+  return ['expo.modules.audio.service.AudioControlsService', 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK']
+    .filter((name) => ![Buffer.from(name, 'utf8'), Buffer.from(name, 'utf16le')].some((form) => manifest.includes(form)))
+    .map((name) => `AndroidManifest.xml lacks ${name}, so chapter narration stops when the app leaves the screen (was android/ regenerated from app.json?)`);
+}
+
 /** One file's bytes from a zip, stored or deflated, or null when the zip has no such file. */
 export function readZipEntry(zip: Buffer, wanted: string): Buffer | null {
   const endSignature = 0x06054b50;
