@@ -17,6 +17,10 @@ const { primitive, api, auth, appListeners, focusCallbacks, focusCleanupRef, aut
   authListeners: [] as Array<(change: { current: { memberId: string; sessionToken: string } | null }) => void>,
 }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined, deleteItemAsync: async () => undefined }));
+// The progress tab's completion controller opens the local SQLite repository (expo-sqlite -> the expo
+// runtime, which node cannot load); these tests never read it, the same stand-in as the reader tests.
+vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
+vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn() }));
 vi.mock('react-native', () => ({ AppState: { addEventListener: vi.fn((_event: string, listener: (state: string) => void) => { appListeners.push(listener); return { remove: vi.fn() }; }) }, Pressable: primitive('Pressable'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle') }; });
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | void) => {
@@ -34,6 +38,7 @@ vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | 
 } }));
 vi.mock('expo-local-authentication', () => ({ authenticateAsync: vi.fn(async () => ({ success: true })) }));
 vi.mock('../../src/services/authSession', () => ({
+  getAuthSnapshot: () => auth,
   isCurrentAuthSession: (session: { memberId: string; sessionToken: string }) => auth.status === 'signed-in' && auth.session?.memberId === session.memberId && auth.session?.sessionToken === session.sessionToken,
   registerAuthLifecycleListener: (listener: (change: { current: { memberId: string; sessionToken: string } | null }) => void) => {
     authListeners.push(listener);

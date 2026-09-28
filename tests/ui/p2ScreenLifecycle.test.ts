@@ -8,12 +8,16 @@ const { api, auth, nav, store, appListeners, storageGet, cameraPermission, reque
   cameraPermission: { granted: false, status: 'undetermined' }, requestCameraPermission: vi.fn(),
   platform: { OS: 'ios' }, launchScanner: vi.fn(), scannerListeners: [] as Array<(event: { data: string }) => void>, cameraScanner: { available: true },
 }));
+// The progress tab's completion controller opens the local SQLite repository (expo-sqlite -> the expo
+// runtime, which node cannot load); these tests never read it, the same stand-in as the reader tests.
+vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
+vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn() }));
 vi.mock('react-native', () => ({ Platform: platform, AppState: { currentState: 'active', addEventListener: (_: string, callback: (state: string) => void) => { appListeners.push(callback); return { remove: () => { appListeners.splice(appListeners.indexOf(callback), 1); } }; } }, ActivityIndicator: (p: any) => React.createElement('ActivityIndicator', p), Pressable: (p: any) => React.createElement('Pressable', p, p.children), View: (p: any) => React.createElement('View', p, p.children), Text: (p: any) => React.createElement('Text', p, p.children), TextInput: (p: any) => React.createElement('TextInput', p), StyleSheet: { create: (x: any) => x } }));
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => any) => { React.useEffect(() => nav.focused ? callback() : undefined, [callback, nav.focused]); } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: (key: string) => storageGet(key), setItemAsync: async (key: string, value: string) => { if (!/^[\w.-]+$/.test(key)) throw Error('invalid key'); store.set(key, value); } }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn() }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: (p: any) => React.createElement('SafeAreaView', p, p.children) }));
-vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => auth, isCurrentAuthSession: (session: any) => session === auth.session, registerAuthLifecycleListener: () => () => undefined }));
+vi.mock('../../src/services/authSession', () => ({ getAuthSnapshot: () => auth, useAuthSnapshot: () => auth, isCurrentAuthSession: (session: any) => session === auth.session, registerAuthLifecycleListener: () => () => undefined }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ createGamificationApiClient: () => api, GamificationApiError: class extends Error {} }));
 vi.mock('../../src/services/adminUnlockGuard', () => ({ createNativeAdminAuthenticator: () => null, createAdminUnlockGuard: () => ({ state: 'locked', clear() { this.state = 'locked'; }, async unlock() { this.state = 'unlocked'; return true; } }) }));
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => null }));
