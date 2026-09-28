@@ -53,6 +53,6 @@ export default function RootLayout() {
     return createApiClient({ baseUrl: config.apiBaseUrl, token: session.sessionToken, memberId: session.memberId }).getProfile();
   }, []);
   configureReminderRuntime(reminderRuntime);
-  // The SDK's footnote/verse/settings sheets are @gorhom/bottom-sheet; without a gesture root their backdrop tap and swipe-down never fire.
+  // The gesture root stays for react-native-gesture-handler users; the SDK's sheets no longer need it (they are the app's own, src/ui/sheet/bottomSheet.tsx).
   return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} /><UpdatePrompt /></AuthProvider></GestureHandlerRootView>;
 }
