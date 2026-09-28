@@ -121,22 +121,24 @@
 ### 5.2 Workflows
 
 **`.github/workflows/unit.yml`**（ubuntu-latest，免費）
+
 - 每個 PR 跑 vitest 全套，輸出通過、略過、失敗數和失敗清單。
 
 **`.github/workflows/ios.yml`**（`macos-26`，釘 Xcode 26.4.1，也就是 EAS 預設版本那一線）
+
 - **觸發**：`pull_request` 加 paths filter（`app/**`、`src/**`、`plugins/**`、`patches/**`、`package*.json`、`app.json`、`app.config.js`、`metro*.js`、`react-native.config.js`、`babel.config.js`、`.maestro/**`、`scripts/ios/**`、`.github/workflows/ios.yml`），加上手動 `workflow_dispatch`。
 - **不用 `macos-latest`**：這個標籤會被 GitHub 換掉，所以釘 `macos-26`。
 - **並行**：`concurrency: ios-${{ github.ref }}`，同一分支有新的 push 就取消舊的那次。權限只給 `contents: read`。
 - **步驟**：
-  1. checkout，裝 Node 24（跟本機同一個主版本），`npm ci`
-  2. `expo prebuild --platform ios --no-install`，帶測試建置變數
-  3. `pod install`。快取 key＝lockfile、patches、`app.json`、`app.config.js` 的雜湊
-  4. xcodebuild
-  5. I2–I4 守門
-  6. 起假資料後端
-  7. 開模擬器、安裝、啟動
-  8. Maestro，一次跑一個 flow
-  9. 產生摘要，上傳截圖和摘要
+    1. checkout，裝 Node 24（跟本機同一個主版本），`npm ci`
+    2. `expo prebuild --platform ios --no-install`，帶測試建置變數
+    3. `pod install`。快取 key＝lockfile、patches、`app.json`、`app.config.js` 的雜湊
+    4. xcodebuild
+    5. I2–I4 守門
+    6. 起假資料後端
+    7. 開模擬器、安裝、啟動
+    8. Maestro，一次跑一個 flow
+    9. 產生摘要，上傳截圖和摘要
 - **不放任何 Apple 憑證。** 只有 Q1 同意後，才讀 `secrets.YOUVERSION_APP_KEY`。fork 來的 PR 拿不到 secret，這時讀經項目標「略過（無 key）」，不算失敗。
 
 ### 5.3 Secrets（每一個都要光佑逐項同意）
@@ -188,12 +190,12 @@
 - iOS 不能側載。路線是先用 TestFlight 內部測試，讓 1–2 位可信任的大人照清單驗真機；之後走 App Store「不公開上架」（Q3 建議）。
 - **不公開上架（unlisted）是什麼**：不出現在搜尋、分類、排行榜，只有拿到連結的人才找得到。一樣要通過完整審核。送審後另外填申請表。Apple 可能不核准，這時退回公開上架或 TestFlight 外部連結。
 - **需要準備**：
-  - 用 Apple 登入（4.8）
-  - 隱私權政策（改寫 `docs/play/privacy-policy.md`）和 App 隱私標籤
-  - 截圖：由 Maestro 在 6.9 吋模擬器上自動截
-  - 出口合規：`ITSAppUsesNonExemptEncryption=false`
-  - App 內刪除帳號（已經有）
-  - 審核人員的登入方式：用 Apple 登入後會自動建成員，審核人員用自己的 Apple ID 就能登入
+    - 用 Apple 登入（4.8）
+    - 隱私權政策（改寫 `docs/play/privacy-policy.md`）和 App 隱私標籤
+    - 截圖：由 Maestro 在 6.9 吋模擬器上自動截
+    - 出口合規：`ITSAppUsesNonExemptEncryption=false`
+    - App 內刪除帳號（已經有）
+    - 審核人員的登入方式：用 Apple 登入後會自動建成員，審核人員用自己的 Apple ID 就能登入
 - **更新**：App Store 會自動更新。iOS 版關掉 UpdatePrompt。
 
 ## 8. 里程碑
@@ -205,9 +207,9 @@
 - **內容**：`unit.yml`、`ios.yml`、`.maestro/smoke.yaml`、`scripts/ios/`（守門和摘要腳本），外加追蹤 issue。
 - **動到的共用檔**：無，只新增檔案。
 - **驗收**：
-  - PR 上 unit 和 ios 兩個 workflow 都綠，摘要 I1–I5 全 PASS。
-  - 有首頁截圖。
-  - 記下 .app 大小基準和 CI 耗時。
+    - PR 上 unit 和 ios 兩個 workflow 都綠，摘要 I1–I5 全 PASS。
+    - 有首頁截圖。
+    - 記下 .app 大小基準和 CI 耗時。
 - **Android 不退步**：`git diff --stat` 只有新增檔。unit.yml 的結果要跟本機一樣是 1859/2/0；不一樣的話列出差異清單，屬於環境差異的就標註，不改產品程式。
 - **需要的決定**：無。
 - **工作量**：約 1 天。
@@ -215,12 +217,12 @@
 ### M1：iOS 設定落地
 
 - **內容**：
-  - `app.json` 的 `ios` 區塊：buildNumber、`supportsTablet: false`、`infoPlist.ITSAppUsesNonExemptEncryption: false`。
-  - 權限說明字串全部中文。相機已經有；Face ID 要補；麥克風：兩個套件都會自動加英文預設字串，改成誠實的中文說明。
-  - expo-notifications 的 `mode` 依建置類型設定。
-  - `app.config.js` 修 Google 設定：Android 檔和 iOS plist 要能同時存在；只有 Android 檔時，輸出跟現在逐字相同。
-  - 只有測試建置才加本機網路例外（如果 M0 證明需要）。
-  - `NavigationBar` 加平台判斷。
+    - `app.json` 的 `ios` 區塊：buildNumber、`supportsTablet: false`、`infoPlist.ITSAppUsesNonExemptEncryption: false`。
+    - 權限說明字串全部中文。相機已經有；Face ID 要補；麥克風：兩個套件都會自動加英文預設字串，改成誠實的中文說明。
+    - expo-notifications 的 `mode` 依建置類型設定。
+    - `app.config.js` 修 Google 設定：Android 檔和 iOS plist 要能同時存在；只有 Android 檔時，輸出跟現在逐字相同。
+    - 只有測試建置才加本機網路例外（如果 M0 證明需要）。
+    - `NavigationBar` 加平台判斷。
 - **動到的共用檔**：`app.json`、`app.config.js`。
 - **驗收**：`tests/config/iosConfig.test.ts` 先紅後綠；CI 的 I3 全 PASS；buildNumber＝versionCode 的測試通過。
 - **Android 不退步**：prebuild diff 是空的；`build.py` 建出候選 APK，check-apk-budget PASS，大小差 ≤ 0.1 MB。
@@ -230,11 +232,11 @@
 
 - **前提**：Q1 同意。
 - **內容**：
-  - `nativeSheetLifecycle` 測試加上 iOS 分支。
-  - 關著的面板對 VoiceOver 隱藏（用 `Platform.OS` 限定 iOS）。
-  - WebView 內容程序被殺掉時自動重載。
-  - Maestro flows：固定日期的經文要出現；三個面板開、關；選經節、出現動作列、關掉；沉浸模式收合和叫回。
-  - iOS 用來退出沉浸模式、清除選取的畫面按鈕：**先做整頁 mock，你說「改」才做。**
+    - `nativeSheetLifecycle` 測試加上 iOS 分支。
+    - 關著的面板對 VoiceOver 隱藏（用 `Platform.OS` 限定 iOS）。
+    - WebView 內容程序被殺掉時自動重載。
+    - Maestro flows：固定日期的經文要出現；三個面板開、關；選經節、出現動作列、關掉；沉浸模式收合和叫回。
+    - iOS 用來退出沉浸模式、清除選取的畫面按鈕：**先做整頁 mock，你說「改」才做。**
 - **驗收**：讀經相關的 F* 全 PASS；I2 仍然是 0；有截圖。
 - **Android 不退步**：vitest。如果改到 Android 也會走的程式，就在光佑手機上跑 `sheets_check.py` 迴歸（只用 `adb install -r`）。
 - **工作量**：1–2 天，另加 mock。
@@ -242,10 +244,10 @@
 ### M3：背景朗讀與鎖定畫面
 
 - **內容**：
-  - iOS 版說明文字，不提前景服務。
-  - 確認中斷處理。
-  - Maestro A1：切分頁、切 App。
-  - 鎖定畫面 metadata 的單元測試。
+    - iOS 版說明文字，不提前景服務。
+    - 確認中斷處理。
+    - Maestro A1：切分頁、切 App。
+    - 鎖定畫面 metadata 的單元測試。
 - **驗收**：A1 PASS，單元測試通過。
 - **Android 不退步**：vitest。如果改到共用的音訊程式，實機跑 `audio_check.py` 的 18 項。
 - **工作量**：約 0.5 天。
@@ -253,15 +255,15 @@
 ### M4：推播與提醒（程式完成、模擬器驗過；真正送達留到 M7）
 
 - **內容**：
-  - App：接受 iOS token，登記 IOS 和 APNs 環境。
-  - App：背景會讀的 SecureStore 鍵改成 AFTER_FIRST_UNLOCK（只影響 iOS）。
-  - App：iOS 本機提醒加數量上限。
-  - 後端：APNs sender、路由、資料庫。
+    - App：接受 iOS token，登記 IOS 和 APNs 環境。
+    - App：背景會讀的 SecureStore 鍵改成 AFTER_FIRST_UNLOCK（只影響 iOS）。
+    - App：iOS 本機提醒加數量上限。
+    - 後端：APNs sender、路由、資料庫。
 - **驗收**：
-  - 後端單元測試（假 APNs http2 伺服器）通過。
-  - Android FCM 請求快照沒變。
-  - `simctl push` 送出的通知會出現，點了開到正確頁。
-  - 本機提醒在 1 分鐘後出現。
+    - 後端單元測試（假 APNs http2 伺服器）通過。
+    - Android FCM 請求快照沒變。
+    - `simctl push` 送出的通知會出現，點了開到正確頁。
+    - 本機提醒在 1 分鐘後出現。
 - **Android 不退步**：FCM 快照、vitest、`server:smoke`。
 - **部署**：只合併程式，後端到 M7 才部署。
 - **工作量**：約 1.5 天。
@@ -271,10 +273,10 @@
 - **範圍**：更新提示、日記資料夾、帳號刪除文案。
 - **流程**：先做整頁 mock（iOS 和 Android 並排），你說「改」才做。
 - **內容**：
-  - UpdatePrompt、UpdateBanner、UpdateCard 在 iOS 都不出現。
-  - app-version.json 維持 Android 格式，只加一個可選的 `ios` 區塊；舊版 App 會忽略它。
-  - 日記「鏡射到資料夾」在 iOS 改成「存到檔案」或隱藏。
-  - 帳號刪除文案改成兩個平台通用。
+    - UpdatePrompt、UpdateBanner、UpdateCard 在 iOS 都不出現。
+    - app-version.json 維持 Android 格式，只加一個可選的 `ios` 區塊；舊版 App 會忽略它。
+    - 日記「鏡射到資料夾」在 iOS 改成「存到檔案」或隱藏。
+    - 帳號刪除文案改成兩個平台通用。
 - **驗收**：Platform＝ios 的單元測試通過；Maestro 確認開 App 時沒有更新視窗；`verify-install-link.ts` 照舊 PASS。
 - **Android 不退步**：UpdatePrompt 在 Android 的行為測試不變。
 - **工作量**：約 1 天，含 mock。
@@ -282,34 +284,34 @@
 ### M6：登入（Google iOS 加上用 Apple 登入）
 
 - **前提**：
-  - Q3 選了 App Store。
-  - 第二輪決定：在你的 GCP/Firebase 帳號建 iOS OAuth client，plist 放進私有 loader。
+    - Q3 選了 App Store。
+    - 第二輪決定：在你的 GCP/Firebase 帳號建 iOS OAuth client，plist 放進私有 loader。
 - **內容**：
-  - Google iOS 設定。
-  - expo-apple-authentication：Android 端排除自動連結，用 APK 守門確認沒有變大。
-  - 後端驗 Apple token，首次登入自動建成員。
-  - 登入頁 mock。
+    - Google iOS 設定。
+    - expo-apple-authentication：Android 端排除自動連結，用 APK 守門確認沒有變大。
+    - 後端驗 Apple token，首次登入自動建成員。
+    - 登入頁 mock。
 - **動到的共用檔**：`package.json`、lockfile。Android 打包下次會重裝依賴，**事先跟你說**，並先確認後端用的是自己的 `C:\w\deps-backend-*`，不共用打包資料夾。
 - **驗收**：
-  - 模擬器按「Google 登入」會開出 Google 頁面。
-  - Apple 按鈕只在 iOS 出現。
-  - 後端測試：假 Apple token 的簽章、aud、iss、過期都要檢查到。
+    - 模擬器按「Google 登入」會開出 Google 頁面。
+    - Apple 按鈕只在 iOS 出現。
+    - 後端測試：假 Apple token 的簽章、aud、iss、過期都要檢查到。
 - **Android 不退步**：APK 大小差 ≤ 0.1 MB、check-apk-budget PASS、Android 登入頁實機截圖跟現在一樣。
 - **工作量**：約 1.5 天。
 
 ### M7：TestFlight 真機驗收（付費後）
 
 - **前提**：
-  - Q2 已付費。
-  - 第二輪決定：EAS 帳號與憑證、APNs key、找 1–2 位有 iPhone 的測試者。
+    - Q2 已付費。
+    - 第二輪決定：EAS 帳號與憑證、APNs key、找 1–2 位有 iPhone 的測試者。
 - **內容**：
-  - EAS Build 加 Submit。
-  - 後端部署 APNs（經同意）。
-  - 真機清單：一頁中文，照著做就好。項目包括登入、讀經、背景朗讀、鎖定畫面播放卡、來電中斷、好友推播、聚會提醒、QR 掃描、Face ID（管理員）、日記分享。
+    - EAS Build 加 Submit。
+    - 後端部署 APNs（經同意）。
+    - 真機清單：一頁中文，照著做就好。項目包括登入、讀經、背景朗讀、鎖定畫面播放卡、來電中斷、好友推播、聚會提醒、QR 掃描、Face ID（管理員）、日記分享。
 - **驗收**：
-  - 清單全 PASS，測試者回傳截圖。
-  - 比較 App Store Connect 上的安裝大小和 YouVersion 在 App Store 標示的大小。
-  - 兩個平台的版本號一起加。
+    - 清單全 PASS，測試者回傳截圖。
+    - 比較 App Store Connect 上的安裝大小和 YouVersion 在 App Store 標示的大小。
+    - 兩個平台的版本號一起加。
 - **工作量**：取決於測試者什麼時候有空。
 
 ### M8：App Store 不公開上架（Q3 選 B 時）
@@ -322,6 +324,7 @@
 
 **Q1：同意在 GitHub Actions 新增一個 secret，放 YouVersion app key，只給 iOS CI 用嗎？**
 我建議**同意**，理由有三：
+
 1. 讀經是核心功能，沒有 key 就無法在 iOS 上證明讀經器能用。
 2. 這把 key 本來就包在公開發布的 APK 裡：它是 `EXPO_PUBLIC_` 變數，Expo 文件說這類變數會以明文寫進編好的 App。
 3. fork 來的 PR 讀不到它，用它建出來的 .app 也不會上傳。
@@ -330,6 +333,7 @@ M2 開始時才需要。
 
 **Q2：Apple Developer Program（US$99/年，台幣以結帳畫面為準）要用誰的名義、什麼時候付？**
 我建議**用你個人的名義，等 M0–M3 在模擬器上全綠之後再付**。理由：
+
 - 錢要花在已經證明能跑的東西上。
 - 個人名義不需要 D-U-N-S 編號，最快。
 - 用教會（組織）名義要有 D-U-N-S、法人身分和網域 email，比較慢。
@@ -338,17 +342,20 @@ M2 開始時才需要。
 代價：App Store 上的賣方名稱會是你的法定姓名。M7 才需要。
 
 **Q3：iPhone 使用者最後要怎麼裝？**
+
 - (A) TestFlight 公開連結：先裝 TestFlight App；每 90 天我要重傳一次；第一次要經過測試審核。
 - (B) **App Store 不公開上架**：只有拿到連結的人找得到；像一般 App 一樣從 App Store 裝、會自動更新。
 - (C) App Store 公開上架。
 
 我建議 **(B)，中間先用 TestFlight 內部測試驗真機**。理由：
+
 - 用平台官方的派送和自動更新，不用再像 Android 那樣自己做更新提示。
 - 「只有教會的人拿得到連結」剛好符合使用對象。
 
 代價：(B) 和 (C) 都要加「用 Apple 登入」（M6），也要通過完整審核。
 
 **第二輪（先不用回答，到那個里程碑前再問）**
+
 - 要不要用 Appetize 讓你親手試（要把 App 傳到外部服務）。
 - 在你的 GCP/Firebase 建 iOS 登入設定。
 - EAS 帳號和 Apple 憑證放在哪裡。
