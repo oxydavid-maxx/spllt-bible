@@ -39,6 +39,8 @@ export function useReaderChrome() {
   // A selected verse opens the reader's own action sheet at the bottom of the scripture.
   const [verseSelected, setVerseSelected] = useState(false);
   const [verseClearSignal, setVerseClearSignal] = useState(0);
+  // A settings / chapter / version sheet is open (reported by YouVersionReader).
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
@@ -58,9 +60,10 @@ export function useReaderChrome() {
   // The reader's messages arrive through stable callbacks; they read the latest guards from here.
   const guards = useRef({ focused, screenReaderEnabled, popupOpen: false });
   guards.current = { focused, screenReaderEnabled, popupOpen: moreOpen || audioOpen || infoOpen };
-  // The tabs and the system navigation step aside while collapsed and while a verse's action sheet is
-  // open: the tab bar floats over the scripture, so it would otherwise cover the sheet's buttons.
-  const barsHidden = focused && (!toolsVisible || verseSelected);
+  // The tabs and the system navigation step aside while collapsed and while a verse's action sheet or a
+  // settings / chapter / version sheet is open: the tab bar floats over the scripture, so it would
+  // otherwise cover the sheet's buttons (the font row sat half under it, 2026-09-28).
+  const barsHidden = focused && (!toolsVisible || verseSelected || sheetOpen);
   useEffect(() => { setReaderImmersed(barsHidden); }, [barsHidden]);
   useEffect(() => {
     let active = true;
@@ -105,6 +108,7 @@ export function useReaderChrome() {
   }, [hideTools, showTools]);
   const handleCanvasEdge = useCallback(({ atEnd }: { atEnd: boolean }) => setAtChapterEnd(atEnd), []);
   const handleVerseSelection = useCallback((selected: boolean) => setVerseSelected(selected), []);
+  const handleSheetOpenChange = useCallback((open: boolean) => setSheetOpen(open), []);
   const clearVerseSelection = useCallback(() => { setVerseSelected(false); setVerseClearSignal(value => value + 1); }, []);
   // Back first closes a verse's action sheet, then brings collapsed tools back, and stays on the page
   // either way (YouVersion). With the tools visible and nothing selected, Back is untouched.
@@ -124,7 +128,7 @@ export function useReaderChrome() {
   const openInfo = useCallback(() => { setInfoOpen(true); setMoreOpen(false); setAudioOpen(false); showTools(); }, [showTools]);
   const closeInfo = useCallback(() => { setInfoOpen(false); showTools(); }, [showTools]);
   return { focused, toolsVisible: focused && toolsVisible, collapsed, barsHidden, atChapterEnd, verseSelected, verseClearSignal, settledInsets: settled.current, screenReaderEnabled, moreOpen, audioOpen, infoOpen,
-    hideTools, showTools, revealTools, handleCanvasScroll, handleCanvasEdge, handleVerseSelection, clearVerseSelection, openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo };
+    hideTools, showTools, revealTools, handleCanvasScroll, handleCanvasEdge, handleVerseSelection, handleSheetOpenChange, clearVerseSelection, openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo };
 }
 export interface FullscreenReaderLayoutProps {
   reader: ReactNode;

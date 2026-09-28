@@ -230,6 +230,18 @@ describe('reader layout A', () => {
     expect(header()).toBeDefined();
   });
 
+  // 2026-09-28 on device: the reading-settings sheet's font row sat half under the floating tab bar.
+  it('gives an open settings / chapter / version sheet the bottom: the tab bar steps aside while it is open', async () => {
+    const { getReaderImmersionSnapshot } = await import('../../src/ui/readerImmersionState');
+    await mount();
+    act(() => { chrome.handleSheetOpenChange(true); });
+    expect(getReaderImmersionSnapshot()).toBe(true);
+    expect(header()).toBeDefined();
+    act(() => { chrome.handleSheetOpenChange(false); });
+    expect(getReaderImmersionSnapshot()).toBe(false);
+    expect(header()).toBeDefined();
+  });
+
   it('closes a selected verse\'s sheet when the chapter changes', async () => {
     await mount();
     act(() => { chrome.handleVerseSelection(true); });

@@ -75,6 +75,7 @@ function loadInstalledSheets() {
 }
 
 let renderer: TestRenderer.ReactTestRenderer;
+let sheetReports: boolean[] = [];
 let controls: ReaderOverlayControls;
 let installed: ReturnType<typeof loadInstalledSheets>;
 async function mountReader() {
@@ -82,10 +83,11 @@ async function mountReader() {
     date: '2026-09-12', references: ['PSA.90'], appKey: 'test-key', versionId: 1392, book: 'PSA', chapter: '90',
     allowedVersionIds: [1392, 312], allowTechnicalProbe: true, fullscreen: true,
     renderScreen: (reader, next) => { controls = next; return reader; },
+    onSheetOpenChange: (open: boolean) => { sheetReports.push(open); },
   })); });
 }
 beforeEach(() => {
-  animated.reset(); boundary.readerMounts = 0; boundary.back = null;
+  animated.reset(); boundary.readerMounts = 0; boundary.back = null; sheetReports = [];
   installed = loadInstalledSheets();
   boundary.module = { ...installed, YouVersionProvider: installed.NativeSheetProvider,
     BibleReader: (props: Record<string, unknown>) => { React.useEffect(() => { boundary.readerMounts++; }, []); return React.createElement('OfficialReader', props); },
@@ -116,6 +118,7 @@ describe('installed SDK sheets on the app-owned bottom sheet', () => {
     act(() => controls[method]());
     finishAnimations();
     expect(isOpen(sheetOf(kind)), 'Opening must reach the sheet, not just set isOpen').toBe(true);
+    expect(sheetReports.at(-1), 'The screen hears that a sheet is open, so the tab bar can step aside').toBe(true);
     act(() => renderer.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityLabel === '完成設定，返回閱讀')[0].props.onPress());
     finishAnimations();
     expect(isOpen(sheetOf(kind))).toBe(false);
@@ -134,6 +137,7 @@ describe('installed SDK sheets on the app-owned bottom sheet', () => {
     finishAnimations();
     expect(isOpen(sheetOf(kind))).toBe(false);
     expect(boundary.back, 'A backdrop dismissal must reach the app so its back handler goes away').toBeNull();
+    expect(sheetReports.at(-1), 'and hears it closed again').toBe(false);
     expect(animated.state.running).toBe(0);
     expect(boundary.readerMounts).toBe(1);
   });
