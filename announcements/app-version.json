@@ -1,7 +1,7 @@
 {
-  "versionCode": 39,
-  "versionName": "0.5.18",
+  "versionCode": 40,
+  "versionName": "0.5.19",
   "url": "https://home.luminexhealthbiohack.com/public/jhuke-bible/",
   "mandatory": false,
-  "note": "積分頁可以在日曆上補登讀經；被加好友馬上看到；獎品提案要寫多少/多久；公告列出第一堂、第二堂和服事。"
+  "note": "經文朗讀切分頁、切 App、鎖螢幕都會繼續播；App 更省記憶體、更省電；獎品投票寫清楚還有幾天、哪天截止；閱讀設定面板不再被分頁列擋住。"
 }
