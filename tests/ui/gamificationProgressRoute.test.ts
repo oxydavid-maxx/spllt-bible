@@ -190,7 +190,7 @@ describe('progress gamification route', () => {
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label === '尚未確認操作 (1)')).toBe(true);
 
-    await act(async () => { appListeners[appListeners.length - 1]?.('background'); appListeners[appListeners.length - 1]?.('active'); await Promise.resolve(); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); [...appListeners].forEach((listener) => listener('active')); await Promise.resolve(); });
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label.startsWith('尚未確認操作'))).toBe(false);
     await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
@@ -237,8 +237,8 @@ describe('progress gamification route', () => {
     await act(async () => { list.props.onSelect(list.props.people[0]); });
     await act(async () => { renderer.root.findByType('ScoreProfile' as any).props.onOpenActions(); });
     await act(async () => { renderer.root.findByType('RewardControls' as any).props.onRedeem('reward-1'); });
-    await act(async () => { appListeners[appListeners.length - 1]?.('background'); rejectRedeem(new ApiError('timeout')); });
-    await act(async () => { appListeners[appListeners.length - 1]?.('active'); await Promise.resolve(); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); rejectRedeem(new ApiError('timeout')); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('active')); await Promise.resolve(); });
     await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); });
     const recordAction = renderer.root.findByType('ActionSheet' as any).props.actions.find((action: any) => action.label === '我的領取紀錄');
     await act(async () => { await recordAction.onPress(); });

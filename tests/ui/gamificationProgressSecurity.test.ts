@@ -78,7 +78,7 @@ describe('progress protected response lifecycle', () => {
     const actionSheet = renderer.root.findByType('ActionSheet' as any);
     const recordsAction = actionSheet.props.actions.find((action: any) => action.label === '我的領取紀錄');
     await act(async () => { void recordsAction.onPress(); });
-    await act(async () => { appListeners[appListeners.length - 1]?.('background'); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); });
     await act(async () => { resolveRedemptions([]); });
     expect(renderer.root.findAll((node) => String(node.type) === 'ActionSheet' && node.props.title === '領取紀錄')).toHaveLength(0);
   });
@@ -88,7 +88,7 @@ describe('progress protected response lifecycle', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
     const initialCalls = api.getProfile.mock.calls.length;
-    await act(async () => { appListeners[appListeners.length - 1]?.('background'); appListeners[appListeners.length - 1]?.('active'); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); [...appListeners].forEach((listener) => listener('active')); });
     await act(async () => { await Promise.resolve(); });
     expect(api.getProfile.mock.calls.length).toBeGreaterThan(initialCalls);
     // The refresh is the plain 3-argument call; range prefetches (4 arguments) may follow it.
@@ -113,7 +113,7 @@ describe('progress protected response lifecycle', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
     await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); await Promise.resolve(); });
-    await act(async () => { appListeners[appListeners.length - 1]?.('background'); resolvePending({ ownerMemberId: 'self', redemptions: [], reversals: [] }); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); resolvePending({ ownerMemberId: 'self', redemptions: [], reversals: [] }); });
     expect(api.getPeople).not.toHaveBeenCalledWith('all');
     expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）' && node.props.accessibilityState?.selected)).toHaveLength(0);
   });
