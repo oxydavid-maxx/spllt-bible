@@ -16,6 +16,7 @@ import { ReminderNotificationBridge } from '../src/services/ReminderNotification
 import { createReminderDeviceRevokeQueue } from '../src/services/reminderDeviceRevokeQueue';
 import { getReadingPlanId } from '../src/ui/readingSession';
 import { registerConfiguredFriendPushTask } from '../src/services/friendPush';
+import { configureChapterAudio } from '../src/services/chapterAudioStartup';
 
 // At module scope, as the meeting task once was: a push that wakes a closed app has to find the task
 // already defined. A phone without the native modules simply has no friend notifications.
@@ -25,6 +26,9 @@ export default function RootLayout() {
   const signedIn = canUseApp(useAuthSnapshot().status);
   const [reminderScheduler] = useState(() => createReminderScheduler());
   useEffect(() => { void reminderScheduler.cancelRetiredMeetingReminders().catch(() => undefined); }, [reminderScheduler]);
+  // Chapter narration keeps playing on other tabs, in other apps and on a locked screen; without this
+  // mode expo-audio pauses it as soon as the app leaves the foreground.
+  useEffect(() => { void configureChapterAudio().catch(() => undefined); }, []);
   const [reminderRevokeQueue] = useState(() => createReminderDeviceRevokeQueue({ secureStore: SecureStore, revoke: revokeConfiguredReminderDeviceBindingResult }));
   const [reminderRuntime] = useState(() => new ReminderRuntimeOwner({
     scheduler: reminderScheduler,

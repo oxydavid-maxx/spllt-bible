@@ -25,7 +25,7 @@ const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknow
 });
 
 /** requests the REAL ChapterAudioControls actually issued, in order */
-const recorded = vi.hoisted(() => ({ requests: [] as { versionId: number; usfm: string }[], cancels: 0, audioPlayCalls: 0, audioOwnerMounts: 0, journalSaves: [] as Array<Record<string, unknown>>, completionWrites: 0 }));
+const recorded = vi.hoisted(() => ({ requests: [] as { versionId: number; usfm: string }[], cancels: 0, audioPlayCalls: 0, audioPauseCalls: 0, audioOwnerMounts: 0, journalSaves: [] as Array<Record<string, unknown>>, completionWrites: 0 }));
 const completionController = vi.hoisted(() => ({
   record: { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: '2026-09-12', status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' },
   pending: false,
@@ -34,13 +34,15 @@ const completionController = vi.hoisted(() => ({
   requestUndo: vi.fn(),
   options: [] as Array<Record<string, unknown>>,
 }));
-const navigationState = vi.hoisted(() => ({ pathname: '/reader' }));
+const navigationState = vi.hoisted(() => ({ pathname: '/reader', focused: true }));
 const preferenceIO = vi.hoisted(() => {
   const data = new Map<string, string>();
   return { data, get: vi.fn(async (key: string) => data.get(key) ?? null), set: vi.fn(async (key: string, value: string) => { data.set(key, value); }),
     alerts: [] as Array<{ title: string; message?: string; buttons?: Array<{ text?: string; onPress?: () => void }> }> };
 });
-const readerAuth = vi.hoisted(() => ({ memberId: null as string | null, epoch: 0, status: 'signed-out' as string }));
+// expiresAt stays undefined unless a test needs a session that can actually start narration (the real
+// authSession reports null for a session without expiry).
+const readerAuth = vi.hoisted(() => ({ memberId: null as string | null, epoch: 0, status: 'signed-out' as string, expiresAt: undefined as null | undefined }));
 const readerSettings = vi.hoisted(() => ({ value: { fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 },
   listeners: new Set<(next: { fontSize: number; fontFamily: string; lineSpacing: number }) => void>() }));
 
@@ -53,7 +55,11 @@ vi.mock('expo-router', () => {
     router: { replace: vi.fn() },
     usePathname: () => navigationState.pathname,
     // Exercise the real focus effect bodies, including cleanup; only navigation's native boundary is doubled.
-    useFocusEffect: (effect: () => void | (() => void)) => R.useEffect(effect, [effect]),
+    // navigationState.focused = false is the Reader tab losing focus to another tab (its cleanup runs).
+    useFocusEffect: (effect: () => void | (() => void)) => {
+      const focused = navigationState.focused;
+      R.useEffect(() => (focused ? effect() : undefined), [effect, focused]);
+    },
     Tabs,
   };
 });
@@ -67,7 +73,7 @@ vi.mock('expo-audio', () => ({
     if (!ref.current) {
       recorded.audioOwnerMounts += 1;
       ref.current = {
-        play: () => { recorded.audioPlayCalls += 1; }, pause: () => undefined, replace: () => undefined,
+        play: () => { recorded.audioPlayCalls += 1; }, pause: () => { recorded.audioPauseCalls += 1; }, replace: () => undefined,
         addListener: () => ({ remove: () => undefined }),
         seekTo: async () => undefined, setPlaybackRate: () => undefined, remove: () => undefined,
         currentTime: 0, duration: 0, playing: false, isLoaded: false, isBuffering: false,
@@ -110,7 +116,7 @@ vi.mock('../../src/ui/CompletionAwardFeedback', () => ({
   CompletionAwardFeedback: ({ event }: { event: unknown }) => event ? React.createElement('CompletionAwardPreview', { event }) : null,
 }));
 vi.mock('../../src/services/authSession', () => ({
-  useAuthSnapshot: () => ({ status: readerAuth.status, session: readerAuth.memberId ? { memberId: readerAuth.memberId, sessionToken: 'memory-session' } : null, epoch: readerAuth.epoch }),
+  useAuthSnapshot: () => ({ status: readerAuth.status, session: readerAuth.memberId ? { memberId: readerAuth.memberId, sessionToken: 'memory-session' } : null, epoch: readerAuth.epoch, expiresAt: readerAuth.expiresAt }),
   getAuthSnapshot: () => ({ status: readerAuth.status, session: readerAuth.memberId ? { memberId: readerAuth.memberId, sessionToken: 'memory-session' } : null, epoch: readerAuth.epoch, expiresAt: null }),
   isCurrentAuthSession: (session: { memberId?: string } | null) => session?.memberId === readerAuth.memberId,
 }));
@@ -352,7 +358,7 @@ async function configureTodayReferences(references: string[]) {
 // position and reading date, which is test pollution rather than product behaviour.
 beforeEach(async () => {
   process.env.EXPO_PUBLIC_QINGMU_FIXTURE = 'true';
-  readerAuth.memberId = null; readerAuth.epoch = 0; readerAuth.status = 'signed-out';
+  readerAuth.memberId = null; readerAuth.epoch = 0; readerAuth.status = 'signed-out'; readerAuth.expiresAt = undefined;
   preferenceIO.data.clear(); preferenceIO.alerts.length = 0;
   preferenceIO.get.mockReset().mockImplementation(async key => preferenceIO.data.get(key) ?? null);
   preferenceIO.set.mockReset().mockImplementation(async (key, value) => { preferenceIO.data.set(key, value); });
@@ -360,6 +366,7 @@ beforeEach(async () => {
   recorded.requests.length = 0;
   recorded.cancels = 0;
   recorded.audioPlayCalls = 0;
+  recorded.audioPauseCalls = 0;
   recorded.audioOwnerMounts = 0;
   recorded.journalSaves.length = 0;
   completionController.record = { memberId: 'fixture:self', planId: 'church-2026-09', taskDate: BASE_DATE, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
@@ -370,6 +377,7 @@ beforeEach(async () => {
   completionController.options.length = 0;
   recorded.completionWrites = 0;
   navigationState.pathname = '/reader';
+  navigationState.focused = true;
   const db = await import('../../src/storage/mobileDatabase');
   (db.openQingmuReaderPositionStore() as unknown as { __reset: () => void }).__reset();
   const rs = await import('../../src/ui/readingSession');
@@ -428,6 +436,41 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
     expect(readerLayout(renderer).props.selectedDate).toBe(BASE_DATE);
     expect(audioChapter(renderer)).toBe(readerChapterBeforeDiaryDate);
     expect(recorded.audioOwnerMounts).toBe(ownerMountsBeforeDiary);
+    await act(async () => { renderer.unmount(); });
+  });
+
+  // 光佑 2026-09-28 (mock jhuke-audio-bg-mock-0928): narration keeps going on 公告 and 積分 too, not only on
+  // 日記. The Reader route stays mounted under every tab (freezeOnBlur: false), so its one audio owner
+  // simply stays active; nothing on those tabs shows a player.
+  it('keeps reading when the member leaves the Reader for another tab, and shows the same player on return', async () => {
+    readerAuth.memberId = 'fixture:self';
+    readerAuth.status = 'signed-in';
+    readerAuth.expiresAt = null;
+    let renderer!: TestRenderer.ReactTestRenderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(ReaderScreen)); for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+    const playButton = () => renderer.root.findAll((node: Node) => String(node.type) === 'Pressable'
+      && /^(播放|暫停).+語音$/.test(String(node.props.accessibilityLabel ?? '')))[0];
+    await act(async () => { playButton().props.onPress(); for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+    expect(recorded.audioPlayCalls).toBe(1);
+    const owners = recorded.audioOwnerMounts;
+    const pauses = recorded.audioPauseCalls;
+    const cancels = recorded.cancels;
+
+    for (const pathname of ['/progress', '/announcements']) {
+      navigationState.pathname = pathname;
+      navigationState.focused = false;
+      await act(async () => { renderer.update(React.createElement(ReaderScreen)); for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+      expect(readerLayout(renderer).props.audioOwnerActive).toBe(true);
+      expect(recorded.audioPauseCalls).toBe(pauses);
+      expect(recorded.cancels).toBe(cancels);
+    }
+
+    navigationState.pathname = '/reader';
+    navigationState.focused = true;
+    await act(async () => { renderer.update(React.createElement(ReaderScreen)); for (let step = 0; step < 8; step += 1) await Promise.resolve(); });
+    expect(recorded.audioOwnerMounts).toBe(owners);
+    expect(recorded.audioPauseCalls).toBe(pauses);
+    expect(playButton()).toBeDefined();
     await act(async () => { renderer.unmount(); });
   });
 

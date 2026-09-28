@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ZH_TW_BOOK_ABBREVIATIONS, ZH_TW_BOOK_NAMES, bookAbbreviationZhTw, formatChapterTitleZhTw, formatDailyReferenceRangeZhTw, formatReferenceListZhTw, formatReferenceZhTw } from '../src/domain/scriptureReference';
+import { ZH_TW_BOOK_ABBREVIATIONS, ZH_TW_BOOK_NAMES, bookAbbreviationZhTw, formatChapterNameZhTw, formatChapterTitleZhTw, formatDailyReferenceRangeZhTw, formatReferenceListZhTw, formatReferenceZhTw } from '../src/domain/scriptureReference';
 
 // 使用者 2026-09-11: App 顯示面一律使用台灣教會慣用繁體中文簡寫。
 // 內部識別 (USFM / API / 資料庫 / 同步 / 深連結) 保持原值,只改顯示。
@@ -93,6 +93,24 @@ describe('formatChapterTitleZhTw (full-screen reader single top title)', () => {
 
   it('accepts a lowercase or mixed-case book code defensively', () => {
     expect(formatChapterTitleZhTw('psa.90')).toBe('詩篇 90');
+  });
+});
+
+describe('formatChapterNameZhTw (system media card: notification shade and lock screen)', () => {
+  it('names the chapter with its unit, since the card has no reader header around it', () => {
+    expect(formatChapterNameZhTw('JHN.3')).toBe('約翰福音 3 章');
+    expect(formatChapterNameZhTw('2TI.2')).toBe('提摩太後書 2 章');
+  });
+
+  it('counts Psalms in 篇, the way a church reads them', () => {
+    expect(formatChapterNameZhTw('PSA.23')).toBe('詩篇 23 篇');
+    expect(formatChapterNameZhTw('psa.119')).toBe('詩篇 119 篇');
+  });
+
+  it('adds no unit where there is no chapter or no known book', () => {
+    expect(formatChapterNameZhTw('PSA')).toBe('詩篇');
+    expect(formatChapterNameZhTw('XYZ.1')).toBe('XYZ.1');
+    expect(formatChapterNameZhTw('')).toBe('');
   });
 });
 

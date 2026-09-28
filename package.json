@@ -27,6 +27,7 @@
     "@youversion/platform-react-native-expo-ui": "1.5.0",
     "expo": "~56.0.21",
     "expo-application": "~56.0.3",
+    "expo-asset": "~56.0.24",
     "expo-audio": "~56.0.13",
     "expo-camera": "~56.0.8",
     "expo-clipboard": "~56.0.4",
@@ -70,6 +71,15 @@
     "tsx": "^4.23.13",
     "typescript": "6.0.3",
     "vitest": "^3.2.7"
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-audio"
+        ]
+      }
+    }
   },
   "license": "MIT"
 }

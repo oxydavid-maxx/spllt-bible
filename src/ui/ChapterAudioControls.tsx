@@ -22,7 +22,7 @@
 import { createContext, forwardRef, useContext, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useAudioPlayer, type AudioStatus } from 'expo-audio';
+import { useAudioPlayer, type AudioLockScreenOptions, type AudioMetadata, type AudioStatus } from 'expo-audio';
 import { theme } from './Theme';
 import { isAuthorizedAudioEnabled, isQaTestAudioEnabled, resolveChapterAudioSession, verseAtPosition } from '../services/audioChapterResolver';
 import { createCapabilityCoordinator, type CapabilityCoordinator, type CapabilityOutcome } from '../services/contentCapabilityClient';
@@ -31,6 +31,7 @@ import { validateCapability } from '../domain/chapterAudioContract';
 import { createChapterBoundPlayback, type ChapterBoundPlayback } from '../services/expoAudioPlayback';
 import { createAudioSession } from '../services/audioSession';
 import { clearReaderAudioOwner, updateReaderAudioOwner, type ReaderAudioState } from '../services/readerAudioBridge';
+import { CHAPTER_AUDIO_LOCK_SCREEN_OPTIONS, chapterAudioArtwork, chapterAudioCardMetadata } from '../services/chapterAudioBackground';
 import { formatReferenceZhTw } from '../domain/scriptureReference';
 import type { AutoplayIntent } from '../services/readerAutoplayController';
 import type { ResolutionStatus } from '../domain/chapterAudioContract';
@@ -54,6 +55,12 @@ const BUILD_TIME_ENV: Record<string, string | undefined> = {
 // in this dependency layout. Keep the exact public event contract without weakening payload types.
 interface PlaybackStatusEmitter {
   addListener(event: 'playbackStatusUpdate', listener: (status: AudioStatus) => void): { remove(): void };
+}
+
+/** The system media card (notification shade + lock screen) on the same native player. */
+interface LockScreenPlayer {
+  setActiveForLockScreen?(active: boolean, metadata?: AudioMetadata, options?: AudioLockScreenOptions): void;
+  updateLockScreenMetadata?(metadata: AudioMetadata): void;
 }
 
 export interface ChapterAudioAutoplayContextValue {
@@ -311,7 +318,45 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
     autoplayRef.current.onPlayingVerse?.(chapter, verse);
   };
 
+  // The system media card (光佑 2026-09-28). It comes up when the member starts reading, follows the bound
+  // chapter from then on, and goes away only when reading ends for good: sign-out, a chapter with no
+  // narration, or this owner going away. A pause keeps it, so the reading can be resumed from the shade.
+  // Only the shared Reader owner drives it: the phone has one card, and two surfaces must not fight over it.
+  // The card is registered once and then UPDATED: registering starts expo-audio's playback service, which
+  // Android forbids from the background, while an update works on a locked screen (auto-advance).
+  const cardWanted = useRef(false);
+  const cardChapter = useRef<{ chapterUsfm: string; versionId: number | null } | null>(null);
+  const cardShown = useRef<string | null>(null);
+  const cardQueue = useRef<Promise<void>>(Promise.resolve());
+  const syncCard = () => {
+    if (!sharedOwner) return;
+    const lockScreen = player as unknown as LockScreenPlayer;
+    cardQueue.current = cardQueue.current.then(async () => {
+      const artworkUrl = await chapterAudioArtwork();
+      const target = cardWanted.current ? cardChapter.current : null;
+      const shownKey = target ? `${target.versionId ?? 'none'}::${target.chapterUsfm}` : null;
+      if (shownKey === cardShown.current) return;
+      try {
+        if (!target) lockScreen.setActiveForLockScreen?.(false);
+        else {
+          const metadata = chapterAudioCardMetadata(target.chapterUsfm, target.versionId, artworkUrl);
+          if (cardShown.current === null) lockScreen.setActiveForLockScreen?.(true, metadata, CHAPTER_AUDIO_LOCK_SCREEN_OPTIONS);
+          else lockScreen.updateLockScreenMetadata?.(metadata);
+        }
+        cardShown.current = shownKey;
+      } catch { /* the card is a convenience; it must never take the reading down with it */ }
+    });
+  };
+  useEffect(() => () => {
+    cardWanted.current = false;
+    if (cardShown.current === null) return;
+    cardShown.current = null;
+    try { (player as unknown as LockScreenPlayer).setActiveForLockScreen?.(false); } catch { /* released with the player */ }
+  }, [player]);
+
   const notifyPlaybackStarted = (chapter: string) => {
+    cardWanted.current = true;
+    syncCard();
     autoplayRef.current.onPlaybackStarted(chapter);
     callbacksRef.current.onPlaybackStarted?.(chapter);
   };
@@ -359,6 +404,8 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
     const bound = createChapterBoundPlayback(player as never, resolved.source.chapterUsfm);
     playbackRef.current = bound;
     playbackSelectionRef.current = `${key}::${resolved.source.uri}`;
+    cardChapter.current = { chapterUsfm: resolved.source.chapterUsfm, versionId };
+    if (cardWanted.current) syncCard();
     const bindingIsCurrent = () => bindingGeneration.current === generation && playbackRef.current === bound
       && !bound.disposed && scopeIsCurrent() && authIsCurrent();
     const reportPlaybackError = () => {
@@ -584,6 +631,11 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
   useEffect(() => () => {
     if (sharedOwner) clearReaderAudioOwner(bridgeOwnerId.current);
   }, [sharedOwner]);
+  useEffect(() => {
+    if ((active && authValid && !noAudio) || !cardWanted.current) return;
+    cardWanted.current = false;
+    syncCard();
+  }, [active, authValid, noAudio]);
 
   const reportedAutoUnavailable = useRef<number | null>(null);
   const currentUnavailableStatus = current?.kind === 'unavailable' ? current.status : undefined;

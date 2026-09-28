@@ -77,14 +77,19 @@ beforeEach(async () => {
 afterEach(() => { act(() => rendered?.unmount()); vi.restoreAllMocks(); });
 
 describe('Reader focus ownership at the real entry', () => {
-  it('restores system bars and stops the mounted audio controller when leaving Reader', () => {
+  // Leaving Reader used to deactivate its audio controller, which stopped the narration on every other
+  // tab. 光佑 2026-09-28: narration keeps going on other tabs, in other apps and on a locked screen, so
+  // the one mounted controller stays active while the system bars still return.
+  it('restores system bars when leaving Reader and keeps its one audio controller reading', () => {
     canvas();
     expect(all('ChapterAudioControls')[0].props.active).toBe(true);
+    const players = native.audioMounts;
     expect(all('StatusBar')).toHaveLength(1);
     act(() => { native.cleanups.forEach(cleanup => cleanup()); });
     expect(all('StatusBar')).toHaveLength(0);
     expect(all('NavigationBar')).toHaveLength(0);
-    expect(all('ChapterAudioControls')[0].props.active).toBe(false);
+    expect(all('ChapterAudioControls')[0].props.active).toBe(true);
+    expect(native.audioMounts).toBe(players);
     expect(native.mounts).toBe(1);
   });
 });

@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   appStateListener: null as null | ((value: string) => void),
   removeAppState: vi.fn(),
   revokeResult: vi.fn(async () => 'REVOKED' as 'REVOKED' | 'RETRY'),
+  configureAudio: vi.fn(async () => undefined),
 }));
 vi.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: (props: { children?: unknown }) => require('react').createElement('GestureRoot', props, props.children) }));
 vi.mock('react-native', () => ({ TextInput: 'TextInput', View: 'View', Text: 'Text', StyleSheet: { create: (x: unknown) => x }, AppState: { addEventListener: (_event: string, listener: (value: string) => void) => { state.appStateListener = listener; return { remove: state.removeAppState }; } } }));
@@ -40,6 +41,8 @@ vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ getPr
 // The update prompt also lives at Root and listens for the foreground; it has its own test, and here
 // it would take the one AppState listener this file captures for the reminder wiring.
 vi.mock('../../src/ui/UpdatePrompt', () => ({ UpdatePrompt: () => null }));
+// Background chapter audio is configured at Root; its own behaviour is in tests/services/chapterAudioBackground.test.ts.
+vi.mock('../../src/services/chapterAudioStartup', () => ({ configureChapterAudio: state.configureAudio }));
 
 import RootLayout from '../../app/_layout';
 import { setSelectedReadingDate, useReadingSession } from '../../src/ui/readingSession';
@@ -79,6 +82,13 @@ describe('formal Root notification wiring', () => {
     expect(renderer!.root.find(node => String(node.type) === 'Stack').props.readingDate).toBe('2026-09-14');
     expect(state.clear).toHaveBeenCalledOnce();
     expect(await state.handler.handleNotification(reading.notification)).toMatchObject({ shouldShowBanner: true });
+  });
+
+  it('configures background chapter audio once when the app starts, before any chapter can play', async () => {
+    await mount();
+    expect(state.configureAudio).toHaveBeenCalledOnce();
+    await update();
+    expect(state.configureAudio).toHaveBeenCalledOnce();
   });
 
   it('uses the same fresh meeting validation for a live click and clears listeners on Root unmount', async () => {

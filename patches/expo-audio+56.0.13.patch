@@ -1,0 +1,46 @@
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
+index 196a5d5..1e99bf3 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
+@@ -1,5 +1,6 @@
+ package expo.modules.audio.service
+ 
++import android.annotation.SuppressLint
+ import android.app.Notification
+ import android.app.NotificationChannel
+ import android.app.NotificationManager
+@@ -63,6 +64,16 @@ class AudioControlsService : MediaSessionService() {
+   var playsInSilentMode: Boolean = true
+   var playbackListener: Player.Listener? = null
+ 
++  // Qingmu (not upstream 56.0.13): the status-bar icon is the app's own monochrome mark,
++  // res/drawable*/notification_icon, which the expo-notifications config plugin generates from app.json.
++  // Without that resource this is media3's generic play glyph, as upstream.
++  private val smallIcon: Int by lazy { resolveSmallIcon() }
++
++  @SuppressLint("DiscouragedApi")
++  private fun resolveSmallIcon(): Int =
++    resources.getIdentifier("notification_icon", "drawable", packageName).takeIf { it != 0 }
++      ?: androidx.media3.session.R.drawable.media3_icon_circular_play
++
+   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+     ensureForegroundNotification()
+ 
+@@ -119,7 +130,7 @@ class AudioControlsService : MediaSessionService() {
+ 
+   private fun buildPlaceholderNotification(): Notification =
+     NotificationCompat.Builder(this, CHANNEL_ID)
+-      .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
++      .setSmallIcon(smallIcon)
+       .setContentTitle("‎")
+       .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+       .setSilent(true)
+@@ -175,7 +186,7 @@ class AudioControlsService : MediaSessionService() {
+     val session = mediaSession ?: return null
+ 
+     val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+-      .setSmallIcon(androidx.media3.session.R.drawable.media3_icon_circular_play)
++      .setSmallIcon(smallIcon)
+       // If the title is null or empty string android sets the notification to "<AppName> is running..." we want to keep the notification empty so we \u200E to keep the text empty.
+       .setContentTitle(currentMetadata?.title ?: "\u200E")
+       .setContentText(currentMetadata?.artist)

@@ -153,3 +153,18 @@ export function formatChapterTitleZhTw(chapterUsfm: string): string {
   if (parts.length === 1) return bookName;
   return `${bookName} ${parts[1]}`;
 }
+
+/**
+ * 系統媒體卡(通知列、鎖定畫面)上的章名,如「約翰福音 3 章」「詩篇 23 篇」。
+ *
+ * 就是閱讀器頂部標題 (formatChapterTitleZhTw) 加上單位:媒體卡旁邊沒有閱讀器的上下文,
+ * 光一個數字唸不成一句話。詩篇以「篇」計,其餘以「章」計。沒有章數或不認識的書卷不加單位,
+ * 原樣交給 formatChapterTitleZhTw 的規則。
+ */
+export function formatChapterNameZhTw(chapterUsfm: string): string {
+  const title = formatChapterTitleZhTw(chapterUsfm);
+  const parts = chapterUsfm?.trim().split('.') ?? [];
+  const book = parts[0]?.toUpperCase() ?? '';
+  if (parts.length < 2 || !ZH_TW_BOOK_NAMES[book]) return title;
+  return `${title} ${book === 'PSA' ? '篇' : '章'}`;
+}
