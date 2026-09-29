@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import * as RN from 'react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from './Theme';
 import { formatReferenceListZhTw } from '../domain/scriptureReference';
 
 const FEEDBACK_VISIBLE_MS = 900;
 
-// Optional native modules are read defensively: strict test mocks throw on unknown exports.
-function optionalAnimated(): typeof RN.Animated | null { try { return (RN as { Animated?: typeof RN.Animated }).Animated ?? null; } catch { return null; } }
+// Optional native modules are read defensively: strict test mocks throw on unknown exports. By name only:
+// `import * as RN` made Metro copy every react-native export, which on iOS builds PushNotificationIOS's
+// NativeEventEmitter with no native module and killed the release app at launch.
+function optionalAnimated(): typeof Animated | null { try { return Animated ?? null; } catch { return null; } }
 type AlertFn = (title: string, message?: string, buttons?: Array<{ text: string; style?: 'cancel' | 'default' | 'destructive'; onPress?: () => void }>) => void;
-function optionalAlert(): AlertFn | null { try { const alert = (RN as { Alert?: { alert?: AlertFn } }).Alert?.alert; return typeof alert === 'function' ? alert : null; } catch { return null; } }
+function optionalAlert(): AlertFn | null { try { const alert = (Alert as { alert?: AlertFn } | undefined)?.alert; return typeof alert === 'function' ? alert : null; } catch { return null; } }
 
 /** Confirm before undoing; the undo touches the ledger. Falls back to direct undo where Alert is unavailable (tests). */
 function confirmUndo(onUndo: () => void) {
