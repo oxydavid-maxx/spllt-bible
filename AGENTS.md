@@ -60,6 +60,8 @@
 6. 日記的「同時存到我選的資料夾」用的是 Android 的 StorageAccessFramework，iOS 沒有對應功能；iOS 版怎麼處理還在等決定（issue #23）。
 7. 面板和選單**不可**包在可以按的背景（`Pressable`）裡：iOS 把可以按的元件當成一整顆按鈕，裡面的選項對 VoiceOver 和 XCUITest 都看不到。用共用的 `src/ui/SheetBackdrop.tsx`，背景和面板並排。守衛測試：`tests/ui/sheetBackdrop.test.ts`。
 8. 關閉中的底部面板要對輔助工具隱藏（`src/ui/sheet/bottomSheet.tsx`），不然 VoiceOver 和自動化測試會點到看不見的按鈕。
+9. 推播：Android 用 FCM 的 data-only 訊息；iPhone 用 APNs 的可見通知，自訂資料放在 `body` 裡（expo-notifications 只把 `userInfo.body` 交給 JS）。後端的 `server/apnsSender.ts` 只有設了 `QINGMU_APNS_KEY_FILE`、`QINGMU_APNS_KEY_ID`、`QINGMU_APNS_TEAM_ID` 才會載入，所以舊的後端套件目錄也起得來（`tests/server/apnsLazyLoad.test.ts`）。模擬器用 `xcrun simctl push` 驗，流程 30、31。
+10. iOS 最多只能排 64 個本機通知，所以讀經提醒最多排 60 個（`MAX_PENDING_READING_REMINDERS`）。
 
 ## 測試慣例
 
