@@ -1,7 +1,7 @@
 {
-  "versionCode": 40,
-  "versionName": "0.5.19",
+  "versionCode": 41,
+  "versionName": "0.5.20",
   "url": "https://home.luminexhealthbiohack.com/public/jhuke-bible/",
   "mandatory": false,
-  "note": "經文朗讀切分頁、切 App、鎖螢幕都會繼續播；App 更省記憶體、更省電；獎品投票寫清楚還有幾天、哪天截止；閱讀設定面板不再被分頁列擋住。"
+  "note": "10/15、10/16 的詩篇 119 改回經文順序（讀經表原本排反了）：10/15 讀 1-88 節，10/16 讀 89-176 節。"
 }
