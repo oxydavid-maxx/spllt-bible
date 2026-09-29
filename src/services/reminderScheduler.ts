@@ -39,6 +39,13 @@ export interface ReminderNotificationAdapter {
 
 export const REMINDER_NOTIFICATION_CHANNEL_ID = 'qingmu-reading-reminders';
 
+/**
+ * iOS keeps a limited number of pending local notifications (commonly cited as 64), and a full year's plan
+ * would schedule every remaining day. Every activation reschedules, so 60 days ahead is always enough; the
+ * same cap applies on Android so the two platforms schedule the same reminders.
+ */
+export const MAX_PENDING_READING_REMINDERS = 60;
+
 export function buildNextReadingReminderSpec(memberId: string, readingTime: string, now = new Date(), schedule: readonly ReadingScheduleEntry[] = []): ReminderSpec | null {
   return buildUpcomingReadingReminderSpecs(memberId, readingTime, now, schedule)[0] ?? null;
 }
@@ -49,7 +56,8 @@ export function buildUpcomingReadingReminderSpecs(memberId: string, readingTime:
     .filter((entry) => validDateOnly(entry.taskDate) && entry.planId.trim().length > 0)
     .map((entry) => buildReadingSpec(memberId, entry.taskDate, entry.planId, readingTime, entry.scheduleRevision ?? 0))
     .filter((spec) => new Date(spec.triggerAt).getTime() > now.getTime())
-    .sort((left, right) => left.triggerAt.localeCompare(right.triggerAt));
+    .sort((left, right) => left.triggerAt.localeCompare(right.triggerAt))
+    .slice(0, MAX_PENDING_READING_REMINDERS);
 }
 
 function validDateOnly(value: string): boolean {

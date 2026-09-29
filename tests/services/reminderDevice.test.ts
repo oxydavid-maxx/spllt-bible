@@ -22,6 +22,14 @@ describe('native device delivery registration', () => {
     expect(calls).toEqual(['register:install-1:native-token', 'revoke:install-1']);
   });
 
+  it('registers an iOS APNs token as platform IOS', async () => {
+    const secureStore = store();
+    const register = vi.fn(async () => true);
+    await expect(registerReminderDevice({ secureStore, tokenSource: { getDevicePushTokenAsync: async () => ({ type: 'ios', data: 'a1b2c3' }) }, api: { registerReminderDeviceToken: register, revokeReminderDeviceToken: async () => true }, generateInstallationId: () => 'install-ios' }))
+      .resolves.toMatchObject({ registered: true, installationId: 'install-ios' });
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({ token: 'a1b2c3', platform: 'IOS' }));
+  });
+
   it('does not register an APNs token on the Android direct-FCM route', async () => {
     const secureStore = store();
     await expect(registerReminderDevice({ secureStore, tokenSource: { getDevicePushTokenAsync: async () => ({ type: 'apns', data: 'ios-token' }) }, api: { registerReminderDeviceToken: async () => true, revokeReminderDeviceToken: async () => true }, generateInstallationId: () => 'install-2' })).resolves.toMatchObject({ registered: false, installationId: null });

@@ -68,19 +68,21 @@ export function saveReminderPreferences(db: DatabaseSync, memberId: string, inpu
 
 export function registerDeviceDeliveryToken(db: DatabaseSync, input: {
   memberId: string; installationId: string; token: string; ownerGeneration: number;
+  /** ANDROID (FCM token) unless the device said IOS (APNs token). */
+  platform?: 'ANDROID' | 'IOS';
 }) {
   const now = new Date().toISOString();
   const result = db.prepare(`
     INSERT INTO device_delivery_tokens (installation_id, member_id, platform, token, owner_generation, binding_version, revoked_at, created_at, updated_at)
-    VALUES (?, ?, 'ANDROID', ?, ?, 1, NULL, ?, ?)
+    VALUES (?, ?, ?, ?, ?, 1, NULL, ?, ?)
     ON CONFLICT(installation_id) DO UPDATE SET member_id = excluded.member_id,
-      token = excluded.token, owner_generation = excluded.owner_generation,
+      platform = excluded.platform, token = excluded.token, owner_generation = excluded.owner_generation,
       binding_version = device_delivery_tokens.binding_version + 1,
       revoked_at = NULL, updated_at = excluded.updated_at
     WHERE excluded.owner_generation > device_delivery_tokens.owner_generation
        OR (excluded.owner_generation = device_delivery_tokens.owner_generation
            AND excluded.member_id = device_delivery_tokens.member_id)
-  `).run(input.installationId, input.memberId, input.token, input.ownerGeneration, now, now);
+  `).run(input.installationId, input.memberId, input.platform ?? 'ANDROID', input.token, input.ownerGeneration, now, now);
   const binding = db.prepare('SELECT binding_version, owner_generation FROM device_delivery_tokens WHERE installation_id = ?').get(input.installationId) as { binding_version: number; owner_generation: number };
   return { registered: Number(result.changes) > 0, bindingVersion: binding.binding_version, ownerGeneration: binding.owner_generation, remoteDeliveryStatus: 'REMOTE_PENDING' as const };
 }
