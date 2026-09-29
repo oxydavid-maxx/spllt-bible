@@ -1,7 +1,8 @@
+# The notice is one accessibility element read as "✓ <name> 已加你為好友", hence the leading ".*".
 # The friend alert reached the app in the foreground (addNotificationReceivedListener → publishFriendAdded).
 appId: org.qingmu.youth
 ---
 - extendedWaitUntil:
-    visible: "測試成員乙 已加你為好友"
+    visible: ".*測試成員乙 已加你為好友"
     timeout: 20000
-- takeScreenshot: ci-out/maestro/31-friend-push
+- takeScreenshot: 31-friend-push
