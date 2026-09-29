@@ -15,5 +15,5 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "測試成員甲"
     timeout: 30000
-- takeScreenshot: ci-out/maestro/00-smoke
+- takeScreenshot: 00-smoke
 - tapOn: "讀經入口"

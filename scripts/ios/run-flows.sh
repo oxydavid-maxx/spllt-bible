@@ -13,6 +13,7 @@ xcrun simctl install "$UDID" "$(cat "$OUT/app-path.txt")"
 echo "$UDID" > "$OUT/udid.txt"
 export MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
 echo '{}' > "$OUT/flows.json"
+: > "$OUT/.flows-start"
 record() { python3 -c "import json,sys;p='$OUT/flows.json';d=json.load(open(p));d[sys.argv[1]]=sys.argv[2];json.dump(d,open(p,'w'))" "$1" "$2"; }
 run_flow() {
   local flow=$1 name; name=$(basename "$flow" .yaml)
@@ -33,3 +34,6 @@ for flow in .maestro/ios/*.yaml; do
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
   esac
 done
+# Maestro writes takeScreenshot files under its own test output folder, not where the flow names them;
+# collect every PNG the flows produced so the artifact carries them.
+find . "$HOME/.maestro" -name '*.png' -newer "$OUT/.flows-start" -not -path './node_modules/*' -not -path "./$OUT/maestro/*" -exec cp {} "$OUT/maestro/" \; 2>/dev/null || true
