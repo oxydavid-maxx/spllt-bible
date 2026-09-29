@@ -2,10 +2,8 @@
 # Tab buttons are matched by their accessibility labels (app/(tabs)/_layout.tsx): 公告, 讀經入口, 積分, 靈修日記.
 appId: org.qingmu.youth
 ---
-- launchApp:
-    clearState: true
-    permissions:
-      notifications: allow
+# The app was just installed and granted notifications by run-flows.sh; no clearState, which would reinstall it.
+- launchApp
 - extendedWaitUntil:
     visible: "積分"
     timeout: 90000

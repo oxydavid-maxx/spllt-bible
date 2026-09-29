@@ -10,6 +10,9 @@ for i in $(seq 1 30); do curl -sf http://127.0.0.1:8788/api/health > /dev/null &
 UDID=$(xcrun simctl create qm-ci "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-4)
 xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
 xcrun simctl install "$UDID" "$(cat "$OUT/app-path.txt")"
+# The app asks for notifications at sign-in when reading reminders are on. Grant it here, once, before the
+# Maestro driver starts; the flows then launch without clearState (a reinstall would drop the grant).
+applesimutils --byId "$UDID" --bundle org.qingmu.youth --setPermissions notifications=YES
 echo "$UDID" > "$OUT/udid.txt"
 export MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
 echo '{}' > "$OUT/flows.json"
