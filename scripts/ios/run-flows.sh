@@ -27,7 +27,8 @@ run_flow() {
 for flow in .maestro/ios/*.yaml; do
   run_flow "$flow"
   case "$(basename "$flow" .yaml)" in
-    00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home ;;
+    # The smoke flow ends on the 讀經 tab; its accessibility tree is what the reader flows are written against.
+    00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home; maestro --device "$UDID" hierarchy > "$OUT/hierarchy-home.json" 2>/dev/null || true ;;
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
   esac
 done
