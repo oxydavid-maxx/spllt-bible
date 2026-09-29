@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { NotificationRequestInput } from 'expo-notifications';
 
 import { createReminderReconciler } from '../../src/services/reminderReconciler';
-import { buildNextReadingReminderSpec, buildUpcomingReadingReminderSpecs, createReminderScheduler, type ReminderNotificationAdapter, type ReminderSpec } from '../../src/services/reminderScheduler';
+import { buildNextReadingReminderSpec, buildUpcomingReadingReminderSpecs, createReminderScheduler, MAX_PENDING_READING_REMINDERS, type ReminderNotificationAdapter, type ReminderSpec } from '../../src/services/reminderScheduler';
 import { canonicalSeptemberPlan } from '../../src/domain/calendar';
 
 const schedule = canonicalSeptemberPlan.days.map((day) => ({ taskDate: day.date, planId: canonicalSeptemberPlan.planId }));
@@ -143,5 +143,19 @@ describe('local reminder scheduler', () => {
     expect((await scheduler.list())[0].triggerAt).toBe('1970-01-01T00:00:00.000Z');
     expect(await createReminderReconciler(scheduler).reconcile({ memberId: reading.memberId, readingEnabled: false, meetingEnabled: false, remoteDeliveryStatus: 'LOCAL_ONLY', reading: null, meeting: null })).toMatchObject({ cancelled: [reading.reminderId], created: [] });
     expect(fake.calls.cancel).toEqual(['legacy-ios']);
+  });
+});
+
+describe('pending reading reminders', () => {
+  it('schedules at most MAX_PENDING_READING_REMINDERS, the nearest first, on every platform', () => {
+    // iOS keeps a limited number of pending local notifications; a 105-day plan used to schedule all of them.
+    const schedule = Array.from({ length: 105 }, (_, index) => ({
+      taskDate: new Date(Date.UTC(2026, 9, 1 + index)).toISOString().slice(0, 10), planId: 'church-2026-09', scheduleRevision: 0,
+    }));
+    const specs = buildUpcomingReadingReminderSpecs('member-a', '06:30', new Date('2026-09-30T00:00:00Z'), schedule);
+    expect(MAX_PENDING_READING_REMINDERS).toBe(60);
+    expect(specs).toHaveLength(60);
+    expect(specs[0].taskDate).toBe('2026-10-01');
+    expect(specs.at(-1)!.taskDate).toBe('2026-11-29');
   });
 });
