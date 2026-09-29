@@ -133,6 +133,16 @@ ChapterAudioControls --verse N (timing)--> YouVersionReader --playingVerse, foll
 - 注入程式在 WebKit 的行為：S2 的測試若能在本機 Playwright WebKit 跑，就兩個引擎都跑；跑不了就記為殘餘。
 - **殘餘（誠實列出）**：iPhone 上真的手指滑動與朗讀反白，要等 YouVersion 金鑰放進 CI（ios-parity Q1），而且 fixture 要有帶逐節時間的測試音檔，才能寫 `1x-reader-follow` 的 Maestro 流程；否則留到 M7 TestFlight 真機驗收，加一條「朗讀跟著走」。
 
+### 6.5 結果（2026-09-29）
+
+| 項目 | 結果 |
+|---|---|
+| 本機 | `tsc` 通過；vitest 全套 1923 通過、2 略過（依設計） |
+| 刻意改壞 | 找段改回 `parseInt`、拿掉程式捲動標記、「暫停再播放」改成恢復跟隨、拿掉 ○ 不展開：每一個都有測試抓到 |
+| Android 實機（0.5.21 測試版，不發布） | `follow_check.py` 全部通過：5-6 在第 31 秒四行反白；跟著捲；滑開出現按鈕、20 秒不動；暫停再播放不動；按了回到上方；選經文放開、關掉後出現按鈕 |
+| 另外發現 | 同一個版本重裝後第一次開 App，讀經入口頁可能停在空白（`today.tsx` 的導向沒發生；換分頁就好）。0.5.20 到這版之間 `app/` 沒改到這段，真正升版（42→43）時沒有出現。另開問題追，不在本 PR |
+| 驗證方法的教訓 | 程式捲動之後，uiautomator 回報的 WebView 節點座標會落後而且有偏移；WebView 裡的位置改用截圖判斷（已寫進 AGENTS.md） |
+
 ## 7. 發版（不在這個 PR）
 
 - 合併、部署、發布都由光佑逐項同意。
