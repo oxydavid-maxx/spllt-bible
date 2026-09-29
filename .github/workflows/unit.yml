@@ -20,6 +20,14 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # The two real-browser tests (reader padding, immersion gestures) run in chrome-headless-shell, the engine
+      # they use on the development PC. The runner's full Chrome took ~12 s per test and missed timed gestures
+      # when the runner was busy; the shell takes ~1 s.
+      - name: chrome-headless-shell
+        run: |
+          shell_path=$(npx -y @puppeteer/browsers@3.2.3 install chrome-headless-shell@stable --path "$RUNNER_TEMP/chrome" | awk 'END {print $2}')
+          test -x "$shell_path"
+          echo "CHROME_PATH=$shell_path" >> "$GITHUB_ENV"
       - name: vitest
         run: |
           mkdir -p ci-out
