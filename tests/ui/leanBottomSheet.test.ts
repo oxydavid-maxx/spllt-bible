@@ -145,3 +145,19 @@ describe('app-owned bottom sheet (stands in for @gorhom/bottom-sheet)', () => {
     expect(anim.running).toBe(0);
   });
 });
+
+describe('closed sheets are out of the accessibility tree on every platform', () => {
+  const backdropWrapper = () => renderer.root.findAll((node) => node.props.testID === 'lean-bottom-sheet-backdrop')[0].parent!;
+  it('hides a closed sheet and its backdrop button, and exposes them once open', () => {
+    mount();
+    expect(sheet().props.accessibilityElementsHidden).toBe(true);
+    expect(sheet().props.importantForAccessibility).toBe('no-hide-descendants');
+    expect(backdropWrapper().props.accessibilityElementsHidden).toBe(true);
+    act(() => ref.current!.snapToIndex(0));
+    layContent(300);
+    finishAnimations();
+    expect(sheet().props.accessibilityElementsHidden).toBe(false);
+    expect(sheet().props.importantForAccessibility).toBe('auto');
+    expect(backdropWrapper().props.accessibilityElementsHidden).toBe(false);
+  });
+});

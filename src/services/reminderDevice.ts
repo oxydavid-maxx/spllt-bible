@@ -11,8 +11,17 @@ export interface ReminderDeviceTokenSource {
   getDevicePushTokenAsync: () => Promise<{ type: string; data: string }>;
 }
 
+/** expo-notifications reports an Android FCM token as 'android' (or 'fcm') and an iOS APNs token as 'ios'. */
+export type DevicePushPlatform = 'ANDROID' | 'IOS';
+export function devicePushPlatform(tokenType: string): DevicePushPlatform | null {
+  const type = tokenType.toLowerCase();
+  if (type === 'android' || type === 'fcm') return 'ANDROID';
+  if (type === 'ios') return 'IOS';
+  return null;
+}
+
 export interface ReminderDeviceApi {
-  registerReminderDeviceToken: (input: { installationId: string; token: string; platform?: 'ANDROID'; ownerGeneration?: number }) => Promise<boolean | { registered: boolean; bindingVersion?: number; ownerGeneration?: number }>;
+  registerReminderDeviceToken: (input: { installationId: string; token: string; platform?: DevicePushPlatform; ownerGeneration?: number }) => Promise<boolean | { registered: boolean; bindingVersion?: number; ownerGeneration?: number }>;
   revokeReminderDeviceToken: (installationId: string, bindingVersion?: number, ownerGeneration?: number) => Promise<boolean>;
 }
 export interface ReminderDeviceAuthority { isCurrent: () => boolean; canCommit?: () => boolean; }
@@ -124,8 +133,8 @@ export async function registerReminderDevice(options: { secureStore: ReminderDev
   if (options.ownerGeneration !== undefined && (!Number.isSafeInteger(options.ownerGeneration) || options.ownerGeneration < 0)) return { registered: false, installationId: null };
   const permissionToken = await options.tokenSource.getDevicePushTokenAsync();
   if (!isAuthorized()) return { registered: false, installationId: null };
-  const tokenType = permissionToken.type.toLowerCase();
-  if ((tokenType !== 'android' && tokenType !== 'fcm') || !permissionToken.data.trim()) return { registered: false, installationId: null };
+  const platform = devicePushPlatform(permissionToken.type);
+  if (!platform || !permissionToken.data.trim()) return { registered: false, installationId: null };
   const token = permissionToken.data.trim();
   const installationId = await ensureReminderInstallationId(options.secureStore, options.generateInstallationId, isAuthorized);
   if (!installationId || !isAuthorized()) return { registered: false, installationId };
@@ -135,7 +144,7 @@ export async function registerReminderDevice(options: { secureStore: ReminderDev
   if (existing && existing.installationId === installationId && existing.token === token && existing.ownerGeneration === options.ownerGeneration) {
     return { registered: true, installationId, bindingVersion: existing.bindingVersion, ownerGeneration: existing.ownerGeneration };
   }
-  const response = await options.api.registerReminderDeviceToken({ installationId, token, platform: 'ANDROID', ownerGeneration: options.ownerGeneration });
+  const response = await options.api.registerReminderDeviceToken({ installationId, token, platform, ownerGeneration: options.ownerGeneration });
   const registered = response === true || (response !== null && typeof response === 'object' && response.registered === true);
   const bindingVersion = response !== null && typeof response === 'object' ? response.bindingVersion : undefined;
   const ownerGeneration = response !== null && typeof response === 'object' ? response.ownerGeneration : options.ownerGeneration;

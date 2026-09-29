@@ -18,6 +18,7 @@
 - 一份程式碼。平台差異只能放在 config plugin（`plugins/`）、`app.json`／`app.config.js`，或 `Platform.OS` 分支，而且每一處都用註解寫原因。
 - `android/`、`ios/` 由 `expo prebuild` 產生，不進 git（`.gitignore` 只忽略最外層的這兩個資料夾）。要改原生設定只能寫 plugin。
 - 每個 PR 自動跑下面三個雲端驗證，三個都要綠。
+- 版本號：發版只改 `app.json` 的 `version` 和 `android.versionCode`。iOS 的 `buildNumber` 由 `app.config.js` 從 versionCode 算出來，不要在 `app.json` 另外寫（`tests/config/iosConfig.test.ts` 會擋）。
 
 ## 雲端驗證（`.github/workflows/`）
 
@@ -58,6 +59,10 @@
 4. `plugins/withGoogleSignInPods.js` 讓沒有 Google iOS 設定檔的建置也能通過 `pod install`。
 5. 會員登入後，如果讀經提醒是開的，App 會要求通知權限（兩個平台都一樣）。
 6. 日記的「同時存到我選的資料夾」只在 Android 顯示（`src/ui/journalFolderSync.ts`）：它靠 Android 的 StorageAccessFramework 取得長期的資料夾權限，iOS 沒有對應功能。iPhone 用「匯出全部」，系統分享面板可以存到「檔案」。iOS 流程 `41-journal` 會確認這件事。
+7. 面板和選單**不可**包在可以按的背景（`Pressable`）裡：iOS 把可以按的元件當成一整顆按鈕，裡面的選項對 VoiceOver 和 XCUITest 都看不到。用共用的 `src/ui/SheetBackdrop.tsx`，背景和面板並排。守衛測試：`tests/ui/sheetBackdrop.test.ts`。
+8. 關閉中的底部面板要對輔助工具隱藏（`src/ui/sheet/bottomSheet.tsx`），不然 VoiceOver 和自動化測試會點到看不見的按鈕。
+9. 推播：Android 用 FCM 的 data-only 訊息；iPhone 用 APNs 的可見通知，自訂資料放在 `body` 裡（expo-notifications 只把 `userInfo.body` 交給 JS）。後端的 `server/apnsSender.ts` 只有設了 `QINGMU_APNS_KEY_FILE`、`QINGMU_APNS_KEY_ID`、`QINGMU_APNS_TEAM_ID` 才會載入，所以舊的後端套件目錄也起得來（`tests/server/apnsLazyLoad.test.ts`）。模擬器用 `xcrun simctl push` 驗，流程 30、31。
+10. iOS 最多只能排 64 個本機通知，所以讀經提醒最多排 60 個（`MAX_PENDING_READING_REMINDERS`）。
 
 ## 測試慣例
 

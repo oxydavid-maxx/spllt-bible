@@ -1,3 +1,4 @@
+import type { DevicePushPlatform } from './reminderDevice';
 import type { CompletionCommand } from '../domain/completion';
 import type { CompletionStatus } from '../domain/types';
 import type { SyncResult } from '../storage/outbox';
@@ -322,7 +323,7 @@ export function createApiClient(options: ApiClientOptions) {
       if (!response.ok) return null;
       return (await response.json()) as ReminderSnapshot;
     },
-    async registerReminderDeviceToken(input: { installationId: string; token: string; platform?: 'ANDROID'; ownerGeneration?: number }): Promise<boolean | { registered: boolean; bindingVersion?: number; ownerGeneration?: number }> {
+    async registerReminderDeviceToken(input: { installationId: string; token: string; platform?: DevicePushPlatform; ownerGeneration?: number }): Promise<boolean | { registered: boolean; bindingVersion?: number; ownerGeneration?: number }> {
       const response = await fetchImpl(`${options.baseUrl}/api/me/reminders/device-token`, {
         method: 'POST',
         headers: {

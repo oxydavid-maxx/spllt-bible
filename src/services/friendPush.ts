@@ -1,4 +1,5 @@
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
+import { friendAddedNotificationText } from '../domain/friendNotificationText';
 import { candidateDataMaps, type ReminderBackgroundNotificationRegistrar, type ReminderTaskManager } from './reminderDelivery';
 import { REMINDER_DEVICE_OWNER_RECEIPT_KEY, isReminderDeviceBinding, type ReminderDeviceSecureStore } from './reminderDevice';
 
@@ -124,7 +125,7 @@ export async function presentFriendAddedNotification(event: FriendAddedEvent, de
   if (!isReminderDeviceBinding(receipt)) return;
   await dependencies.notifications.setNotificationChannelAsync(FRIEND_NOTIFICATION_CHANNEL_ID, { name: '好友', importance: 4 });
   await dependencies.notifications.scheduleNotificationAsync({
-    content: { title: '竹科聖經', body: `${event.friendName} 已加你為好友`, data: { kind: 'FRIEND_ADDED', memberId: receipt.memberId, friendMemberId: event.friendMemberId } },
+    content: { ...friendAddedNotificationText(event.friendName), data: { kind: 'FRIEND_ADDED', memberId: receipt.memberId, friendMemberId: event.friendMemberId } },
     trigger: { channelId: FRIEND_NOTIFICATION_CHANNEL_ID },
   });
 }
@@ -141,6 +142,9 @@ export interface FriendPushLoaders {
  * route on a phone: define first, then registerTaskAsync, or expo-notifications never calls it.
  */
 export async function registerConfiguredFriendPushTask(loaders: FriendPushLoaders = {}): Promise<void> {
+  // iOS friend pushes are alerts the system shows itself; a background task would need the remote-notification
+  // background mode, which the app does not use there. Android's data-only push still needs the task.
+  if (Platform.OS === 'ios') return;
   const loadTaskManager = loaders.loadTaskManager ?? (() => import('expo-task-manager') as unknown as Promise<ReminderTaskManager>);
   const loadNotifications = loaders.loadNotifications ?? (() => import('expo-notifications') as unknown as Promise<ReminderBackgroundNotificationRegistrar & FriendNotificationSource>);
   const loadSecureStore = loaders.loadSecureStore ?? (() => import('expo-secure-store'));

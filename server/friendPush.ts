@@ -1,4 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { friendAddedNotificationText } from '../src/domain/friendNotificationText';
+import type { ApnsAlertSender } from './apnsSender';
 
 /**
  * Telling the QR owner, by push, that somebody just added them.
@@ -22,17 +24,36 @@ function failureClass(error: unknown): string {
   return code ?? 'TRANSPORT_ERROR';
 }
 
-export async function notifyFriendAdded(db: DatabaseSync, send: PushDataSender, input: { ownerMemberId: string; friendMemberId: string }): Promise<{ sent: number; failed: number }> {
+/** One sender per platform; a platform without one is simply not pushed. */
+export interface FriendPushSenders { android?: PushDataSender; ios?: ApnsAlertSender }
+
+export async function notifyFriendAdded(db: DatabaseSync, senders: FriendPushSenders, input: { ownerMemberId: string; friendMemberId: string }): Promise<{ sent: number; failed: number }> {
   const friend = db.prepare('SELECT display_name FROM members WHERE id = ?').get(input.friendMemberId) as { display_name: string } | undefined;
-  const tokens = db.prepare("SELECT token FROM device_delivery_tokens WHERE member_id = ? AND platform = 'ANDROID' AND revoked_at IS NULL ORDER BY updated_at DESC")
-    .all(input.ownerMemberId) as Array<{ token: string }>;
+  const tokens = db.prepare('SELECT token, platform FROM device_delivery_tokens WHERE member_id = ? AND revoked_at IS NULL ORDER BY updated_at DESC')
+    .all(input.ownerMemberId) as Array<{ token: string; platform: string }>;
   if (!friend || tokens.length === 0) return { sent: 0, failed: 0 };
   const data = { event: 'FRIEND_ADDED', friendMemberId: input.friendMemberId, friendName: friend.display_name.trim().slice(0, MAX_FRIEND_NAME_LENGTH) || '好友' };
   let sent = 0;
   let failed = 0;
-  await Promise.all(tokens.map(async ({ token }) => {
-    try { await send(token, data); sent += 1; }
-    catch (error) { failed += 1; console.warn('FRIEND_PUSH_FAILED', failureClass(error)); }
+  await Promise.all(tokens.map(async ({ token, platform }) => {
+    try {
+      if (platform === 'IOS') {
+        if (!senders.ios) return;
+        // The system shows an iOS alert, so the words travel with it; the data is what the app routes a tap
+        // with (reminderNotificationEntry: kind + memberId) and what its foreground listener reads (event).
+        await senders.ios(token, { ...friendAddedNotificationText(data.friendName), data: { ...data, kind: 'FRIEND_ADDED', memberId: input.ownerMemberId }, collapseId: `friend:${input.friendMemberId}` });
+      } else if (platform === 'ANDROID') {
+        if (!senders.android) return;
+        await senders.android(token, data);
+      } else return;
+      sent += 1;
+    } catch (error) {
+      failed += 1;
+      console.warn('FRIEND_PUSH_FAILED', failureClass(error));
+      if (platform === 'IOS' && failureClass(error) === 'APNS_UNREGISTERED') {
+        db.prepare("UPDATE device_delivery_tokens SET revoked_at = ? WHERE token = ? AND platform = 'IOS' AND revoked_at IS NULL").run(new Date().toISOString(), token);
+      }
+    }
   }));
   return { sent, failed };
 }

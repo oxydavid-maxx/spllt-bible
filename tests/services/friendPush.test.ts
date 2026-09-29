@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { appState } = vi.hoisted(() => ({ appState: { currentState: 'active' as string } }));
-vi.mock('react-native', () => ({ AppState: appState }));
+const { appState, platform } = vi.hoisted(() => ({ appState: { currentState: 'active' as string }, platform: { OS: 'android' as string } }));
+vi.mock('react-native', () => ({ AppState: appState, Platform: platform }));
 
 import {
   FRIEND_NOTIFICATION_CHANNEL_ID, FRIEND_PUSH_TASK, consumeOpenFriendsList, parseFriendAdded, presentFriendAddedNotification,
@@ -104,6 +104,21 @@ describe('the task that runs for every push', () => {
       loadSecureStore: async () => store({}),
     });
     expect(order).toEqual([`define:${FRIEND_PUSH_TASK}`, `register:${FRIEND_PUSH_TASK}`]);
+  });
+
+  it('registers no background task on iOS, where the system shows the friend alert itself', async () => {
+    const order: string[] = [];
+    const { source } = notifications();
+    source.registerTaskAsync.mockImplementation(async (name: string) => { order.push(`register:${name}`); });
+    platform.OS = 'ios';
+    try {
+      await registerConfiguredFriendPushTask({
+        loadTaskManager: async () => ({ defineTask: (name: string) => { order.push(`define:${name}`); } }),
+        loadNotifications: async () => source,
+        loadSecureStore: async () => store({}),
+      });
+    } finally { platform.OS = 'android'; }
+    expect(order).toEqual([]);
   });
 
   it('reads the foreground from AppState by default', async () => {

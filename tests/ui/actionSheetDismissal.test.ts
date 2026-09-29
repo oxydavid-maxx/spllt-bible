@@ -59,8 +59,11 @@ describe('an overlay closes when you tap away from it, unless something would be
   it('does not close when the tap lands on the sheet itself', () => {
     const onClose = vi.fn();
     const tree = render({ onClose, dismissOnOutsideTap: true, children: React.createElement('Text', null, '內容') });
-    const swallow = tree.root.findAll((node) => String(node.type) === 'Pressable')[1];
-    swallow.props.onPress();
+    // The sheet sits beside the backdrop, not inside it, so a tap on the sheet has no path to onClose.
+    const content = tree.root.find((node) => String(node.type) === 'Text' && node.props.children === '內容');
+    const handlers: unknown[] = [];
+    for (let parent = content.parent; parent; parent = parent.parent) if (String(parent.type) === 'Pressable') handlers.push(parent.props.onPress);
+    expect(handlers).toEqual([]);
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -100,7 +103,7 @@ describe('the sheet is capped against something that has a height', () => {
 
   it('gives the wrapper to the element the scrim lays out', () => {
     // The cap is worthless on a node the layout never sizes, so the wrapper has to carry the style.
-    expect(source).toMatch(/onPress=\{\(\) => undefined\}\s+style=\{styles\.sheetWrap\}/);
+    expect(source).toMatch(/<SheetBackdrop[^>]*style=\{styles\.scrim\}><View style=\{styles\.sheetWrap\}>/);
   });
 
   it('lets the sheet shrink inside that cap instead of demanding its natural height', () => {

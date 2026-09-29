@@ -14,6 +14,7 @@ import { createReminderWorker, type ReminderWorkerTimer } from './reminderWorker
 import { createClaudeCli } from './claudeCli';
 import { createNominationAssistWorker } from './nominationAssist';
 import type { PushDataSender } from './friendPush';
+import type { ApnsAlertSender } from './apnsSender';
 import type { MeetingSender } from './remoteReminders';
 import { createOfficialBibleAdapter } from './officialBibleAdapter';
 import { deriveFormRegistrationKey } from './eventRegistrations';
@@ -24,7 +25,7 @@ async function readBody(request: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export function createHttpServer(options: { fixtureToken?: string; database?: ServerDatabase; reminderDelivery?: { enabled: boolean; send: MeetingSender }; pushData?: PushDataSender; reminderWorker?: { autostart?: boolean; now?: () => Date; intervalMs?: number; timer?: ReminderWorkerTimer } } = {}) {
+export function createHttpServer(options: { fixtureToken?: string; database?: ServerDatabase; reminderDelivery?: { enabled: boolean; send: MeetingSender }; pushData?: PushDataSender; pushIos?: ApnsAlertSender; reminderWorker?: { autostart?: boolean; now?: () => Date; intervalMs?: number; timer?: ReminderWorkerTimer } } = {}) {
   const config = runtimeConfig();
   const fixtureRoster = process.env.QINGMU_FIXTURE_ROSTER === 'two-member-week';
   const databaseFilename = process.env.QINGMU_DB_PATH;
@@ -95,6 +96,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   const reminderDelivery = options.reminderDelivery ?? remoteConfig.delivery;
   // Friend pushes need a configured sender and nothing else; the meeting dispatcher stays off.
   const pushData = options.pushData ?? remoteConfig.push ?? undefined;
+  const pushIos = options.pushIos ?? remoteConfig.pushIos ?? undefined;
   const disableMeetingReminders = process.env.QINGMU_DISABLE_MEETING_REMINDERS === 'true' || !options.fixtureToken;
   const autostart = disableMeetingReminders ? false : options.reminderWorker?.autostart ?? process.env.QINGMU_REMINDER_WORKER_AUTOSTART === 'true';
   const remoteStatus = reminderDelivery?.enabled && autostart ? 'REMOTE_READY' as const : 'REMOTE_PENDING' as const;
@@ -118,6 +120,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     autoProvisionGoogleMembers: Boolean(googleAudience && !options.fixtureToken),
     disableMeetingReminders,
     ...(pushData ? { pushData } : {}),
+    ...(pushIos ? { pushIos } : {}),
     adminMemberIds: process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean),
     adminGoogleSubjects,
     ...(fixtureRoster

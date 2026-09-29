@@ -1,0 +1,13 @@
+# Leaves 我的好友 QR open; scripts/ios/run-flows.sh then sends the production-shaped APNs payload.
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- tapOn: "積分"
+- tapOn: "開啟積分操作"
+- tapOn: "我的好友 QR"
+- extendedWaitUntil:
+    visible: "我的好友 QR.*"
+    timeout: 30000
