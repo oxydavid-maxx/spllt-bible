@@ -557,6 +557,7 @@ export default function ProgressScreen() {
           selectedDate={selectedDate}
           days={calendarDays}
           onSelect={(date) => withPick(() => setSelectedDate(date))}
+          note={getScheduledReading(selectedDate)?.note}
           onPreviousMonth={planSpan && calendarMonth > planSpan.first.slice(0, 7) ? () => setCalendarMonth(shiftMonth(calendarMonth, -1)) : undefined}
           onNextMonth={calendarMonth < lastMonth ? () => setCalendarMonth(shiftMonth(calendarMonth, 1)) : undefined}
           action={<View style={styles.completionAction}>

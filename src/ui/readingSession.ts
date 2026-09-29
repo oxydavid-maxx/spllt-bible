@@ -143,9 +143,9 @@ export function getReadingPlanSpan(): { first: string; last: string } | null {
 }
 
 /** A scheduled day from the plan the reading tab reads, for screens that name it the same way. */
-export function getScheduledReading(taskDate: string): { planId: string; references: string[] } | null {
+export function getScheduledReading(taskDate: string): { planId: string; references: string[]; note?: string } | null {
   const day = getReadingDay(activePlan, taskDate);
-  return day ? { planId: planIdByDate.get(taskDate) ?? activePlan.planId, references: [...day.references] } : null;
+  return day ? { planId: planIdByDate.get(taskDate) ?? activePlan.planId, references: [...day.references], ...(day.note ? { note: day.note } : {}) } : null;
 }
 
 function subscribe(listener: Listener): () => void {
