@@ -1,0 +1,33 @@
+# .github/workflows/unit.yml
+name: unit
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: unit-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  vitest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: vitest
+        run: |
+          mkdir -p ci-out
+          npx vitest run --reporter=json --outputFile=ci-out/vitest.json > ci-out/vitest.log 2>&1 || true
+          npx tsx scripts/ci/vitest-summary.ts ci-out/vitest.json ci-out/vitest-summary.json >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-summary
+          path: ci-out/vitest-summary.json
+          retention-days: 7
