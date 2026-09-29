@@ -155,8 +155,10 @@ const BottomSheet = forwardRef<BottomSheetMethods, BottomSheetProps>(function Bo
           testID="lean-bottom-sheet"
           pointerEvents={index === 0 ? 'auto' : 'none'}
           accessible={accessible}
-          accessibilityElementsHidden={accessibilityElementsHidden}
-          importantForAccessibility={importantForAccessibility}
+          // Closed sheets stay mounted (the SDK pre-warms their WebViews on iOS), so they must be hidden from
+          // VoiceOver / TalkBack explicitly. Android's SDK path already asked for this; now both platforms get it.
+          accessibilityElementsHidden={index !== 0 ? true : accessibilityElementsHidden ?? false}
+          importantForAccessibility={index !== 0 ? 'no-hide-descendants' : importantForAccessibility ?? 'auto'}
           onLayout={(event: LayoutChangeEvent) => { sheetHeightRef.current = event.nativeEvent.layout.height; }}
           style={[styles.sheet, style, { maxHeight: windowHeight - top, transform: [{ translateY }] }]}
         >
@@ -188,7 +190,8 @@ export function BottomSheetBackdrop({ style, pressBehavior = 'close' }: Backdrop
   if (!sheet) return null;
   const opacity = sheet.progress.interpolate({ inputRange: [0, 1], outputRange: [0, BACKDROP_OPACITY] });
   return (
-    <Animated.View pointerEvents={sheet.isOpen ? 'auto' : 'none'} style={[style, styles.backdrop, { opacity }]}>
+    <Animated.View pointerEvents={sheet.isOpen ? 'auto' : 'none'} style={[style, styles.backdrop, { opacity }]}
+      accessibilityElementsHidden={!sheet.isOpen} importantForAccessibility={sheet.isOpen ? 'auto' : 'no-hide-descendants'}>
       <Pressable
         testID="lean-bottom-sheet-backdrop"
         accessibilityRole="button"
