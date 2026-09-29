@@ -18,6 +18,7 @@
 - 一份程式碼。平台差異只能放在 config plugin（`plugins/`）、`app.json`／`app.config.js`，或 `Platform.OS` 分支，而且每一處都用註解寫原因。
 - `android/`、`ios/` 由 `expo prebuild` 產生，不進 git（`.gitignore` 只忽略最外層的這兩個資料夾）。要改原生設定只能寫 plugin。
 - 每個 PR 自動跑下面三個雲端驗證，三個都要綠。
+- 版本號：發版只改 `app.json` 的 `version` 和 `android.versionCode`。iOS 的 `buildNumber` 由 `app.config.js` 從 versionCode 算出來，不要在 `app.json` 另外寫（`tests/config/iosConfig.test.ts` 會擋）。
 
 ## 雲端驗證（`.github/workflows/`）
 
