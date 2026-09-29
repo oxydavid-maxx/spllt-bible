@@ -18,3 +18,9 @@ export function subscribeAppHidden(listener: (hidden: boolean) => void): () => v
   const subscription = AppState.addEventListener('change', (state) => listener(isHiddenAppState(state)));
   return () => subscription.remove();
 }
+
+/** Calls back each time the app becomes active (foreground). Returns the unsubscribe. */
+export function subscribeAppActive(listener: () => void): () => void {
+  const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') listener(); });
+  return () => subscription.remove();
+}

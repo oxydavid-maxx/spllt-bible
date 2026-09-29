@@ -413,14 +413,16 @@ export function AuthProvider({ children, loadProfile }: { children: ReactNode; l
   useEffect(() => { void flushAuthSessionRevocations(); }, [current.status, current.session?.sessionToken]);
   useEffect(() => {
     let alive = true;
-    let subscription: { remove(): void } | undefined;
-    void import('react-native').then(({ AppState }) => {
+    let unsubscribe: (() => void) | undefined;
+    // Lazily through appVisibility, never a dynamic import of react-native itself: that compiles to metroImportAll, which
+    // runs every react-native getter and on iOS kills the release app (PushNotificationIOS's NativeEventEmitter).
+    void import('./appVisibility').then(({ subscribeAppActive }) => {
       if (!alive) return;
-      subscription = AppState.addEventListener('change', state => {
-        if (alive && state === 'active') { void flushAuthSessionRevocations(); void upgradeLegacyAuthSession(); }
+      unsubscribe = subscribeAppActive(() => {
+        if (alive) { void flushAuthSessionRevocations(); void upgradeLegacyAuthSession(); }
       });
     }).catch(() => { /* A later provider mount will attach the native foreground listener. */ });
-    return () => { alive = false; subscription?.remove(); };
+    return () => { alive = false; unsubscribe?.(); };
   }, []);
   useEffect(() => { if (current.status === 'signed-in') void upgradeLegacyAuthSession(); }, [current.status, current.session?.sessionToken]);
   useEffect(() => {
