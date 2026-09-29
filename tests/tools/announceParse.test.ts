@@ -211,3 +211,11 @@ describe('the two decks of a week (光佑 2026-09-26: the 講道 deck and the �
       .toBe('https://drive.google.com/file/d/1H87b3pGJoVPsjicbZT588hURi2839nw4/view');
   });
 });
+
+describe('the dates a sign-up form states', () => {
+  it('reads M/D and 月日 forms, once each, and ignores dates inside URLs and times', async () => {
+    const { formDates } = await import('../../tools/announce/parse');
+    expect(formDates('聚會時間: 9/27（日）\u003c/span\u003e 再次 9/27；截止 10月4日 10:30 https://x.test/2026/09/27')).toEqual(['9/27', '10/4']);
+    expect(formDates('沒有日期的表單')).toEqual([]);
+  });
+});

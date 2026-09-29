@@ -1,0 +1,80 @@
+# AGENTS.md：在這個 repo 工作前先讀
+
+給人和 AI agent 共用的技術規則。Claude Code 會經由 `CLAUDE.md` 自動讀到這份。
+
+竹科聖經是 Expo SDK 56／React Native 0.85 的讀經 App：Android 已發布，iOS 移植進行中（[issue #23](https://github.com/oxydavid-maxx/spllt-bible/issues/23)）。後端在 `server/`（Node＋SQLite）。
+
+## 先讀順序
+
+1. 這份檔案。
+2. `.github/pull_request_template.md`：每個 PR 要勾的兩平台檢查。
+3. 進行中的計畫在 `docs/superpowers/plans/`（iOS：`2026-09-29-ios-parity*.md`）；設計決定在 `docs/design/`。
+4. `HANDOFF.md` 和 `docs/handoff/` 是 2026-09-23（0.5.9）以前的交接，當歷史參考。
+
+維護者的私人營運（發版簽章、正式後端、測試裝置）不放在這個公開 repo。
+
+## 兩個平台一起改
+
+- 一份程式碼。平台差異只能放在 config plugin（`plugins/`）、`app.json`／`app.config.js`，或 `Platform.OS` 分支，而且每一處都用註解寫原因。
+- `android/`、`ios/` 由 `expo prebuild` 產生，不進 git（`.gitignore` 只忽略最外層的這兩個資料夾）。要改原生設定只能寫 plugin。
+- 每個 PR 自動跑下面三個雲端驗證，三個都要綠。
+
+## 雲端驗證（`.github/workflows/`）
+
+| workflow | 做什麼 | 失敗時看哪個 artifact |
+|---|---|---|
+| `unit` | vitest 全套（ubuntu）。兩個真瀏覽器測試用 chrome-headless-shell | `unit-summary`：`vitest-summary.json`，每個失敗附一行原因 |
+| `android` | prebuild；原生設定和 main 差幾行；debug 簽章的 release APK；APK 守門（兩個 ARM 架構、沒有 .map、大小上限）；大小和 main 比 | `android-summary`：`android-summary.json`、`native-diff.txt` |
+| `ios` | `macos-26`＋Xcode 26.4.1；模擬器 Release 建置（ad-hoc 簽章）；守門（沒有 reanimated/worklets、Info.plist、沒有 .map）；Maestro 流程 `.maestro/ios/*.yaml`（假資料後端）；首頁閒置的 CPU、記憶體、網路請求 | `ios-summary`：`flows.json`、`ios-summary.json`、`maestro/<流程>-junit.txt`、`-screen.txt`、`-system.txt`、`-maestro-debug.txt`、`-backend.txt`、截圖 |
+
+- iOS 一輪大約 35–40 分鐘。本機能重現的先在本機重現；多個修正攢成一批再推。
+- 寫或修 Maestro 流程前，先讀 `<流程>-screen.txt`（失敗當下畫面上每個元素的標籤和位置），不要猜標籤。
+- 需要 YouVersion 金鑰的流程（檔名符合 `^1[0-9]-reader`）在沒有 secret 時記成 SKIP。
+- 量不到的數字一律判 FAIL，不會被當成 0 或通過。
+
+### 執行資源預算
+
+| 項目 | 上限 |
+|---|---|
+| 首頁閒置 CPU | ≤ 3% |
+| 讀經器閒置 CPU | ≤ 5% |
+| 記憶體 | ≤ 350 MB，而且不超過 main 的 1.10 倍 |
+| 閒置時的網路請求 | 0 |
+| iOS `.app` 大小 | 不超過 main 的 1.05 倍 |
+| Android APK 大小 | 不超過 main 的 1.002 倍 |
+
+### iOS 流程能穩定跑的前提
+
+- 通知權限由 `scripts/ios/run-flows.sh` 在安裝 App 後授權一次（用 Maestro 內建的 applesimutils）。流程**不要**用 `clearState`：它會重裝 App、丟掉授權，系統通知對話框會卡住 driver。
+- Maestro driver 開機後先暖機一次，之後所有呼叫都帶 `--no-reinstall-driver`。
+- 流程用無障礙標籤（`accessibilityLabel`）比對。標籤同名時用相對位置（`above:`）或座標。
+- 假資料後端的環境變數：`QINGMU_DEV_TOKEN`、`QINGMU_FIXTURE_ROSTER=two-member-week`、`QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self`（只帶 Bearer 的請求用這個成員）、`QINGMU_DB_PATH=:memory:`。前面接 `scripts/ios/count-proxy.ts`（8788 → 8787），記錄每個請求和回應狀態。
+
+## iOS 注意事項（都實際發生過）
+
+1. **不可** `import * as X from 'react-native'`，也**不可** `import('react-native')`。Metro 會跑過每個 getter，觸發 `PushNotificationIOS`，iOS release 版一開就閃退。守衛測試：`tests/config/noReactNativeWildcard.test.ts`。
+2. 更新提示（下載 APK）只在 Android 出現：`fetchUpdateState` 在非 Android 平台直接回傳「沒有更新」，也不發網路請求（App Store 審查 2.5.2 不允許引導去裝安裝檔）。
+3. 模擬器建置要 ad-hoc 簽章（`scripts/ios/build-simulator.sh`），不然沒有 keychain，SecureStore 會失敗。
+4. `plugins/withGoogleSignInPods.js` 讓沒有 Google iOS 設定檔的建置也能通過 `pod install`。
+5. 會員登入後，如果讀經提醒是開的，App 會要求通知權限（兩個平台都一樣）。
+6. 日記的「同時存到我選的資料夾」用的是 Android 的 StorageAccessFramework，iOS 沒有對應功能；iOS 版怎麼處理還在等決定（issue #23）。
+
+## 測試慣例
+
+- 先寫會失敗的測試，再改到通過。每修一類錯誤，加一條守衛測試擋住整類。
+- 跟日期有關的測試要固定日期：`vi.useFakeTimers({ toFake: ['Date'] })` 加上 `vi.setSystemTime(...)`。
+- 只能在特定環境跑的測試，用 `describe.skipIf(...)` 並註明原因。
+- 真瀏覽器測試（`tests/ui/fullscreenReaderPadding.test.ts`、`tests/ui/readerImmersionBridge.test.ts`）用 chrome-headless-shell；可以用 `CHROME_PATH` 指定。
+- 本機：`npm run typecheck` 加上改到的測試檔。全套 vitest 要跟 main 比失敗集合（有些歷史檢查在乾淨 clone 上本來就不會過，見 `CONTRIBUTING.md`）。
+
+## 編輯注意
+
+- **換行字元**：有些檔案刻意保留 CRLF（見 `.gitattributes`）。改檔要保留原本的換行；push 前比較 `git diff --stat` 和 `git diff --ignore-cr-at-eol --stat`，差很多就是換行被改了。
+- `patches/`（YouVersion SDK 擴充）用 patch-package 重新產生，不要手改 patch 檔。改到 `patches/` 或 lockfile，下次建置會重裝套件。
+- 後端要向下相容：舊版 App 還會連新的後端。
+- 不要放金鑰、正式資料或個資進 repo、log 或截圖。
+
+## Pull request
+
+- 一個 PR 做一件說得清楚的事。說明從 `git diff origin/main...HEAD` 寫，每一句宣稱都要能在 CI 摘要裡找到證據。
+- 合併、發布、部署由維護者決定。

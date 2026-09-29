@@ -119,6 +119,13 @@ describe('the calendar card', () => {
     expect(view.root.findAll((node) => (node.type as unknown) === 'Action')).toHaveLength(1);
   });
 
+  it('adds the plan\'s note under a day that has one, and only when the day is shown', () => {
+    const note = '讀經表原本把 10/15、10/16 的詩119 前後段排反了，這裡已改成照經文順序讀。';
+    expect(texts(render({ note }))).toEqual(expect.arrayContaining(['9/25（五）', '多1、多2、詩101', note]));
+    expect(texts(render())).not.toContain(note);
+    expect(texts(render({ note, selectedDate: '2026-09-29' }))).not.toContain(note);
+  });
+
   it('shows one line and no action for a day that cannot be completed', () => {
     for (const [date, line] of [['2026-09-10', '9/10（四）已超過 7 天，不能補登'], ['2026-09-20', '9/20（日）這天沒有讀經'], ['2026-09-29', '9/29（二）還沒到，當天再來打卡']]) {
       const view = render({ selectedDate: date });
