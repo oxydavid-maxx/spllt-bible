@@ -1,0 +1,10 @@
+# An iPhone never gets the sideload update dialog (src/services/updateCheck.ts): wait past its 20 s retry.
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- waitForAnimationToEnd:
+    timeout: 25000
+- assertNotVisible: "有新版本.*"

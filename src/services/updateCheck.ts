@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 /**
  * Whether a newer build exists, decided from a small file published beside the APK.
  *
@@ -98,7 +100,12 @@ export function compareToInstalled(published: PublishedVersion | null, installed
 export async function fetchUpdateState(
   installedVersionCode: number | null,
   fetchImpl: typeof fetch = fetch,
+  platform: string = Platform.OS,
 ): Promise<UpdateState> {
+  // The published build is a sideloaded APK. An iPhone updates from the App Store by itself, and App Review
+  // guideline 2.5.2 forbids pointing it at an installer, so iOS neither asks nor shows (UpdatePrompt,
+  // UpdateBanner and the announcements card all come through here).
+  if (platform !== 'android') return NO_UPDATE;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
