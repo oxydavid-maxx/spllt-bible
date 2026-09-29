@@ -63,7 +63,10 @@ afterEach(() => {
   }
 });
 
-describe('official Android release entry environment guard', () => {
+// build-android.ps1 is the Windows release entry: it only ever runs on 光佑's machine, and the Minify cases drive
+// a cmd.exe gradlew.bat. On the Linux CI runner every case starts pwsh to scan the source tree under a 20 s
+// timeout, and a case that passed in one run failed in the next. These run on Windows (locally and at RC).
+describe.skipIf(process.platform !== 'win32')('official Android release entry environment guard', () => {
   it.each(scalarForbidden.flatMap((name) => ['synthetic-sensitive-value', 'false', ' '].map((value) => ({ name, value }))))('rejects nonempty $name before native prerequisites without exposing the value', ({ name, value }) => {
     const f = fixture(), before = files(f.root); const result = run(f, { [name]: value });
     expect(result.status).toBe(17); expect(result.body.message).toContain(name); expect(result.body.message).not.toContain('native project');
@@ -126,9 +129,7 @@ describe('official Android release entry environment guard', () => {
     expect(result.body.message).toContain('Android native project is missing'); expect(result.body.noDotenv).toBe('0');
   });
 
-  // Drives the fixture's android\gradlew.bat, a cmd.exe batch file: build-android.ps1 is the Windows release entry
-  // (光佑's machine), so this one only means something on Windows. The CI unit job runs on Linux.
-  it.skipIf(process.platform !== 'win32').each([false, true])('records the actual Minify switch/arguments and prevents Expo dotenv contamination (minify=%s)', (minify) => {
+  it.each([false, true])('records the actual Minify switch/arguments and prevents Expo dotenv contamination (minify=%s)', (minify) => {
     const f = fixture(true); put(f.root, '.env.production', 'EXPO_PUBLIC_QINGMU_DEV_TOKEN=dotenv-injected\nEXPO_PUBLIC_QINGMU_FROM_DOTENV=true\n');
     put(f.root, 'private.env', `EXPO_PUBLIC_YOUVERSION_APP_KEY=${privateTestKey}\n`);
     const result = run(f, { EXPO_PUBLIC_YOUVERSION_APP_KEY: undefined, EXPO_NO_DOTENV: '0' }, minify ? '-Minify' : '');
