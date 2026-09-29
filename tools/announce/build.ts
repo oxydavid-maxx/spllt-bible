@@ -1,7 +1,7 @@
-import { fetchDriveFile, fetchFolderHtml, fetchSlidesText, fetchWorkbook } from './fetch';
+import { fetchDriveFile, fetchFolderHtml, fetchFormText, fetchSlidesText, fetchWorkbook } from './fetch';
 import { pptxSlideText, xlsxSheetRows } from './office';
 import {
-  classifyFile, findSignupUrl, isGoogleNative, listWeekFolders, nextAfter, parseFolderListing,
+  classifyFile, findSignupUrl, formDates, isGoogleNative, listWeekFolders, nextAfter, parseFolderListing,
   excelSerialToDate, headline, pickWeekFolder, readPlanRows, rowFor, sermonTitleFromName, shortDate, viewUrl,
   type DriveEntry, type PlanRow,
 } from './parse';
@@ -186,6 +186,37 @@ function speakersByWeek(workbook: Buffer): Map<string, string> {
   return speakers;
 }
 
+/**
+ * The sign-up link shown under the next gathering, and a one-line account of the decision.
+ *
+ * The next gathering's own folder is looked at first, then this week's deck (which sometimes already
+ * advertises next week). A form is offered only when its page states the next gathering's date: on
+ * 2026-09-29 the 10/4 notice linked the 9/27 form, taken from the 9/27 deck. A missing, unreadable or
+ * differently dated form means no link, which the phone shows as no sign-up button, never a wrong one.
+ */
+async function signupForNext(nextDate: string | null, folders: DriveEntry[], chosen: DriveEntry, thisWeekDeck: string): Promise<{ signup: string | null; signupCheck: string }> {
+  if (!nextDate) return { signup: null, signupCheck: 'no next gathering' };
+  const want = shortDate(nextDate);
+  let nextWeekDeck = '';
+  const nextFolder = folders.find((folder) => folder !== chosen && /^\d{8}/.test(folder.name) && isoWeek(folder.name) === nextDate);
+  if (nextFolder) {
+    const listing = await fetchFolderHtml(nextFolder.id);
+    // The next week's folder is optional: a failure here costs only the better link, never the notice.
+    if (listing !== null) nextWeekDeck = (await deckText(readWeekFiles(parseFolderListing(listing), nextDate).deck)) ?? '';
+  }
+  const candidates = [findSignupUrl(nextWeekDeck), findSignupUrl(thisWeekDeck)].filter((url, index, all): url is string => url !== null && all.indexOf(url) === index);
+  if (candidates.length === 0) return { signup: null, signupCheck: 'none in the decks' };
+  const rejected: string[] = [];
+  for (const url of candidates) {
+    const page = await fetchFormText(url);
+    if (page === null) { rejected.push(`${url} unreadable`); continue; }
+    const dates = formDates(page);
+    if (dates.includes(want)) return { signup: url, signupCheck: `ok ${want} ${url}` };
+    rejected.push(`${url} is for ${dates.length ? dates.join('、') : 'no stated date'}`);
+  }
+  return { signup: null, signupCheck: `omitted: next gathering ${want}; ${rejected.join('; ')}` };
+}
+
 export interface BuildOptions {
   today: string;
   parentFolder?: string;
@@ -193,7 +224,7 @@ export interface BuildOptions {
   previousWeek?: (week: string) => Announcement['past'][number] | null;
 }
 
-export async function buildAnnouncement(options: BuildOptions): Promise<{ announcement: Announcement | null; reason?: string; warnings?: string[] }> {
+export async function buildAnnouncement(options: BuildOptions): Promise<{ announcement: Announcement | null; reason?: string; warnings?: string[]; signupCheck?: string }> {
   const parent = options.parentFolder ?? PARENT_FOLDER;
   const html = await fetchFolderHtml(parent);
   if (html === null) return { announcement: null, reason: 'FOLDER_UNREACHABLE' };
@@ -226,7 +257,7 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
   const roles = upcoming ? rolesOn(xlsxSheetRows(sunday, '2026服事表'), upcoming.date) : [];
   const deck = await deckText(files.deck);
   if (deck === null) return { announcement: null, reason: 'DECK_UNREACHABLE' };
-  const signup = findSignupUrl(deck);
+  const { signup, signupCheck } = await signupForNext(upcoming?.date ?? null, folders, chosen, deck);
 
   // A block with nothing in it is omitted rather than rendered empty: the phone shows what exists.
   const sermon: SermonBlock | null = files.title || files.audio || files.slides || files.sermonSlides || thisWeekSermon
@@ -288,5 +319,6 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
       past,
     },
     ...(warnings.length ? { warnings } : {}),
+    signupCheck,
   };
 }
