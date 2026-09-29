@@ -4,10 +4,7 @@
 # reliable).
 appId: org.qingmu.youth
 ---
-- launchApp:
-    clearState: true
-    permissions:
-      notifications: allow
+- launchApp
 - extendedWaitUntil:
     visible: "積分"
     timeout: 90000
