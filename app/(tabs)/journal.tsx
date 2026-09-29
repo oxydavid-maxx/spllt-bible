@@ -11,6 +11,7 @@ import { describeFolderUri } from '../../src/domain/folderPath';
 import { shareJournalExport } from '../../src/ui/journalShare';
 import * as SecureStore from 'expo-secure-store';
 import { createJournalFolderMirror } from '../../src/services/journalFolderMirror';
+import { folderSyncSupported } from '../../src/ui/journalFolderSync';
 import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
 import { ReaderAudioBridgeButton } from '../../src/ui/ReaderAudioBridgeButton';
 import { formatReadingDateFull, formatReadingDateLabel } from '../../src/ui/ReadingDateNavigator';
@@ -223,13 +224,16 @@ export default function JournalScreen() {
         <Pressable accessibilityRole="button" accessibilityLabel="匯出靈修日記" onPress={() => { void exportAll(); }} style={styles.exportButton}>
           <Text style={styles.exportText}>匯出全部</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={mirrorFolder ? '更換同步資料夾' : '同時存到我選的資料夾'} onPress={() => { void chooseFolder(); }} style={styles.exportButton}>
-          <Text style={styles.exportText}>{mirrorFolder ? '更換同步資料夾' : '同時存到我選的資料夾'}</Text>
-        </Pressable>
-        {mirrorFolder ? <Text accessibilityLabel="同步資料夾" numberOfLines={1} style={styles.folderPath}>{describeFolderUri(mirrorFolder) ?? ''}</Text> : null}
-        {mirrorFolder ? <Pressable accessibilityRole="button" accessibilityLabel="停止同步到資料夾" onPress={() => { void mirror.forget(memberId).then(() => { setMirrorFolder(null); setResult('已停止同步；已經寫出去的檔案留在原地'); }); }} style={styles.stopButton}>
-          <Text style={styles.stopText}>停止同步</Text>
-        </Pressable> : null}
+        {/* iOS has no lasting folder grant; 匯出全部 opens the share sheet, which saves to Files. */}
+        {folderSyncSupported() ? <>
+          <Pressable accessibilityRole="button" accessibilityLabel={mirrorFolder ? '更換同步資料夾' : '同時存到我選的資料夾'} onPress={() => { void chooseFolder(); }} style={styles.exportButton}>
+            <Text style={styles.exportText}>{mirrorFolder ? '更換同步資料夾' : '同時存到我選的資料夾'}</Text>
+          </Pressable>
+          {mirrorFolder ? <Text accessibilityLabel="同步資料夾" numberOfLines={1} style={styles.folderPath}>{describeFolderUri(mirrorFolder) ?? ''}</Text> : null}
+          {mirrorFolder ? <Pressable accessibilityRole="button" accessibilityLabel="停止同步到資料夾" onPress={() => { void mirror.forget(memberId).then(() => { setMirrorFolder(null); setResult('已停止同步；已經寫出去的檔案留在原地'); }); }} style={styles.stopButton}>
+            <Text style={styles.stopText}>停止同步</Text>
+          </Pressable> : null}
+        </> : null}
         {result ? <Text accessibilityLiveRegion="polite" style={styles.result}>{result}</Text> : null}
       </View> : null}
     </KeyboardAvoidingView>

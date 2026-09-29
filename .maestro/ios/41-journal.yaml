@@ -1,7 +1,6 @@
-# 41-journal — the journal tab on iOS. Captures the page for the M5 mock (the folder-sync button is Android-only:
-# iOS has no persistent folder permission), and checks export stays reachable. The export footer appears once
-# the member has at least one saved entry, so the flow writes one first (ASCII: simulator typing of CJK is not
-# reliable).
+# 41-journal — the journal tab on iOS offers 匯出全部 and not the Android-only folder sync (src/ui/journalFolderSync.ts:
+# iOS has no lasting folder grant). The export footer appears once the member has a saved entry, so the flow
+# writes one first (ASCII: simulator typing of CJK is not reliable).
 appId: org.qingmu.youth
 ---
 - launchApp
@@ -23,4 +22,5 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "匯出靈修日記"
     timeout: 20000
+- assertNotVisible: "同時存到我選的資料夾"
 - takeScreenshot: 41-journal

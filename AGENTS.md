@@ -57,7 +57,7 @@
 3. 模擬器建置要 ad-hoc 簽章（`scripts/ios/build-simulator.sh`），不然沒有 keychain，SecureStore 會失敗。
 4. `plugins/withGoogleSignInPods.js` 讓沒有 Google iOS 設定檔的建置也能通過 `pod install`。
 5. 會員登入後，如果讀經提醒是開的，App 會要求通知權限（兩個平台都一樣）。
-6. 日記的「同時存到我選的資料夾」用的是 Android 的 StorageAccessFramework，iOS 沒有對應功能；iOS 版怎麼處理還在等決定（issue #23）。
+6. 日記的「同時存到我選的資料夾」只在 Android 顯示（`src/ui/journalFolderSync.ts`）：它靠 Android 的 StorageAccessFramework 取得長期的資料夾權限，iOS 沒有對應功能。iPhone 用「匯出全部」，系統分享面板可以存到「檔案」。iOS 流程 `41-journal` 會確認這件事。
 
 ## 測試慣例
 
