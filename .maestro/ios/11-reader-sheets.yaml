@@ -1,0 +1,42 @@
+# 11-reader-sheets — each reader sheet opens from 更多閱讀工具 and closes again: font settings (SDK overlay),
+# the version page (app page) and the chapter picker (SDK sheet on the app's bottom sheet).
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- tapOn: "讀經入口"
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible: "官方閱讀器還在準備中.*"
+    timeout: 60000
+- tapOn: "更多閱讀工具"
+- tapOn: "調整字體"
+- extendedWaitUntil:
+    visible: "完成設定，返回閱讀"
+    timeout: 15000
+- tapOn: "完成設定，返回閱讀"
+- extendedWaitUntil:
+    notVisible: "完成設定，返回閱讀"
+    timeout: 10000
+- tapOn: "更多閱讀工具"
+- tapOn: "選擇譯本"
+- extendedWaitUntil:
+    visible: "關閉譯本選擇"
+    timeout: 15000
+- tapOn: "關閉譯本選擇"
+- extendedWaitUntil:
+    notVisible: "關閉譯本選擇"
+    timeout: 10000
+- tapOn: "更多閱讀工具"
+- tapOn: "選擇其他章節"
+- extendedWaitUntil:
+    visible: "關閉面板"
+    timeout: 15000
+- tapOn: "關閉面板"
+- extendedWaitUntil:
+    notVisible: "關閉面板"
+    timeout: 10000

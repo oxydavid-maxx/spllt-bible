@@ -30,7 +30,7 @@
 
 - iOS 一輪大約 35–40 分鐘。本機能重現的先在本機重現；多個修正攢成一批再推。
 - 寫或修 Maestro 流程前，先讀 `<流程>-screen.txt`（失敗當下畫面上每個元素的標籤和位置），不要猜標籤。
-- 需要 YouVersion 金鑰的流程（檔名符合 `^1[0-9]-reader`）在沒有 secret 時記成 SKIP。
+- 讀經器和朗讀的流程（檔名符合 `^(1[0-9]-reader|2[0-9]-audio)`）要用 GitHub secret `YOUVERSION_APP_KEY`；沒有這個 secret 時記成 SKIP。CI 的朗讀用當場產生的 120 秒測試音（`scripts/ios/make-tone.py`）。
 - 量不到的數字一律判 FAIL，不會被當成 0 或通過。
 
 ### 執行資源預算

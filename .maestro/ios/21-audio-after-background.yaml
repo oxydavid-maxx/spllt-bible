@@ -1,0 +1,15 @@
+# 21-audio-after-background — after 20 s in the background (run-flows.sh) narration is still playing, and it keeps
+# playing across a tab switch. If iOS had paused it, the button would read 播放 again. No launchApp: this flow
+# continues the app state that 20 left.
+appId: org.qingmu.youth
+---
+- extendedWaitUntil:
+    visible: "暫停.*語音"
+    timeout: 15000
+- tapOn: "積分"
+- tapOn: "讀經入口"
+- assertVisible: "暫停.*語音"
+- tapOn: "暫停.*語音"
+- extendedWaitUntil:
+    visible: "播放.*語音"
+    timeout: 10000

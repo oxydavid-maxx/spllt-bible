@@ -1,0 +1,25 @@
+# 12-reader-verse — tapping a verse opens the verse panel, and the panel's on-screen close button lets it go
+# (iPhone has no back key). The tap point is inside the chapter text, between the toolbar and the actions.
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- tapOn: "讀經入口"
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible: "官方閱讀器還在準備中.*"
+    timeout: 60000
+- tapOn:
+    point: "50%,40%"
+- extendedWaitUntil:
+    visible: "關閉面板"
+    timeout: 15000
+- takeScreenshot: 12-reader-verse
+- tapOn: "關閉面板"
+- extendedWaitUntil:
+    notVisible: "關閉面板"
+    timeout: 10000

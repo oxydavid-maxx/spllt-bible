@@ -43,6 +43,8 @@ for flow in .maestro/ios/*.yaml; do
     # The smoke flow ends on the 讀經 tab; its accessibility tree is what the reader flows are written against.
     00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home > "$OUT/maestro/measure-home.txt" 2>&1; maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/hierarchy-home.json" 2>/dev/null || true ;;
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
+    # Narration must keep playing while the app is in the background: park it behind Settings for 20 s.
+    20-audio-start) xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null ;;
     30-friend-push-open) npx tsx scripts/ios/make-friend-apns.ts "$OUT/friend.apns" && xcrun simctl push "$UDID" org.qingmu.youth "$OUT/friend.apns" ;;
   esac
 done
