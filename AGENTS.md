@@ -87,6 +87,7 @@
 - **換行字元**：有些檔案刻意保留 CRLF（見 `.gitattributes`）。改檔要保留原本的換行；push 前比較 `git diff --stat` 和 `git diff --ignore-cr-at-eol --stat`，差很多就是換行被改了。
 - `patches/`（YouVersion SDK 擴充）用 patch-package 重新產生，不要手改 patch 檔。改到 `patches/` 或 lockfile，下次建置會重裝套件。
 - 後端要向下相容：舊版 App 還會連新的後端。
+- 發版腳本用 Node（tsx）執行，它們載入的 App 模組（例如 `src/services/updateCheck.ts`、`src/config/installLink.ts`）不可 import `react-native`：Node 解析不了它，發版檢查會直接壞掉。平台判斷由 App 裡的呼叫端傳入。守衛測試：`tests/tools/releaseScriptsLoad.test.ts`。
 - 不要放金鑰、正式資料或個資進 repo、log 或截圖。
 
 ## Pull request

@@ -1,6 +1,6 @@
 import * as Application from 'expo-application';
 import { useEffect, useState } from 'react';
-import { AppState, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { fetchUpdateState, NO_UPDATE, type UpdateState } from '../services/updateCheck';
 import { theme } from './Theme';
 
@@ -23,7 +23,7 @@ export function installedVersionCode(): number | null {
  * cannot install the new build still gets today's reading.
  */
 export function UpdatePrompt({
-  check = () => fetchUpdateState(installedVersionCode()),
+  check = () => fetchUpdateState(installedVersionCode(), Platform.OS),
   open = (url: string) => { void Linking.openURL(url).catch(() => undefined); },
 }: {
   check?: () => Promise<UpdateState>;

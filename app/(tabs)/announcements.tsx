@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -80,7 +80,7 @@ export default function AnnouncementsScreen() {
   const [update, setUpdate] = useState<UpdateState>(NO_UPDATE);
   const loadUpdate = useCallback(() => {
     let active = true;
-    void fetchUpdateState(installedVersionCode()).then((next) => { if (active) setUpdate(next); });
+    void fetchUpdateState(installedVersionCode(), Platform.OS).then((next) => { if (active) setUpdate(next); });
     return () => { active = false; };
   }, []);
   useFocusEffect(loadUpdate);
