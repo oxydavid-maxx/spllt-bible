@@ -13,6 +13,14 @@ xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "proce
 xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "process == \"$EXE\"" 2>/dev/null   | grep -Ei 'Transport Security|cleartext|NSURLError|kCFErrorDomain|Task <|nw_connection|127\.0\.0\.1|8788' | tail -n 40 > "$DIR/$NAME-network.txt" || true
 { echo "== server.log (tail)"; tail -n 30 "$OUT/server.log" 2>/dev/null; echo "== requests.log: answers with 4xx/5xx"; grep " = [45][0-9][0-9] " "$OUT/requests.log" 2>/dev/null | tail -n 20; echo "== requests.log (tail)"; tail -n 16 "$OUT/requests.log" 2>/dev/null; echo "== health now"; curl -s -o /dev/null -w '%{http_code}
 ' http://127.0.0.1:8788/api/health; } > "$DIR/$NAME-backend.txt" 2>&1
+# When the app never came up there is no app log. What Maestro itself recorded (its reason is not always on
+# the console), the junit failure text, and what the system said about launching or ending the app.
+grep -o '<failure[^>]*>[^<]*' "$DIR/$NAME.xml" > "$DIR/$NAME-junit.txt" 2>/dev/null || true
+DEBUG=$(ls -td "$HOME"/.maestro/tests/*/ 2>/dev/null | head -1)
+[ -n "$DEBUG" ] && tail -n 80 "$DEBUG/maestro.log" > "$DIR/$NAME-maestro-debug.txt" 2>/dev/null
+{ echo "== launchctl"; xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -F org.qingmu.youth; echo "== system (launch, termination)";
+  xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate 'eventMessage CONTAINS "org.qingmu.youth"' 2>/dev/null \
+  | grep -Ei 'launch|terminat|exit|kill|jetsam|watchdog|crash|denied|fail' | tail -n 40; } > "$DIR/$NAME-system.txt" 2>&1
 REPORT=$(ls -t "$HOME/Library/Logs/DiagnosticReports/" 2>/dev/null | grep -F "$EXE" | head -1)
 if [ -n "$REPORT" ]; then
   python3 - "$HOME/Library/Logs/DiagnosticReports/$REPORT" > "$DIR/$NAME-crash.txt" <<'PY'
