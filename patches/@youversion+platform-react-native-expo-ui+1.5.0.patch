@@ -67,7 +67,7 @@ index 333d445..f4ff602 100644
 +Project patch: patches/@youversion+platform-react-native-expo-ui+1.5.0.patch
 +Project receipt: docs/receipts/sdk-reader-settings-extension-20260912.json
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js b/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js
-index 10cc5be..574c1db 100644
+index 10cc5be..d395a6e 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js
 @@ -8,9 +8,19 @@ import { decodeFontFamilyFromDom } from '../lib/reader-fonts';
@@ -75,7 +75,7 @@ index 10cc5be..574c1db 100644
  const sanitizeCssValue = (value) => value?.replace(/[{};]/g, '').trim();
  export default function BibleReaderDOM(props) {
 -    const { appKey, apiHost, installationId, fetchBibleContent, highlights, verseActions, onVerseSelect, clearSelectionSignal, theme = 'light', book, chapter, versionId, onBookChange, onChapterChange, onVersionChange, onChapterPickerPress, onVersionPickerPress, onSignInPress, onSignOutPress, userInfo, onFootnotePress, showToolbar = true, onOpenBibleThemeSettings, onExternalLinkPress, fontSize, fontFamily, lineSpacing, onFontSizeChange, onFontFamilyChange, onLineSpacingChange, backgroundColor, foregroundColor, bottomScrollPadding = 0, permittedVersionIds, excludedVersionIds, permittedLanguageTags, locale, } = props;
-+    const { appKey, apiHost, installationId, fetchBibleContent, highlights, verseActions, onVerseSelect, clearSelectionSignal, retrySignal, qingmuPlayingVerse = null, qingmuFollow = false, qingmuFollowRequest = 0, qingmuReduceMotion = false, theme = 'light', book, chapter, versionId, onBookChange, onChapterChange, onVersionChange, onChapterPickerPress, onVersionPickerPress, onSignInPress, onSignOutPress, userInfo, onFootnotePress, showToolbar = true, onOpenBibleThemeSettings, onExternalLinkPress, fontSize, fontFamily, lineSpacing, onFontSizeChange, onFontFamilyChange, onLineSpacingChange, backgroundColor, foregroundColor, bottomScrollPadding = 0, permittedVersionIds, excludedVersionIds, permittedLanguageTags, locale, } = props;
++    const { appKey, apiHost, installationId, fetchBibleContent, highlights, verseActions, onVerseSelect, clearSelectionSignal, retrySignal, theme = 'light', book, chapter, versionId, onBookChange, onChapterChange, onVersionChange, onChapterPickerPress, onVersionPickerPress, onSignInPress, onSignOutPress, userInfo, onFootnotePress, showToolbar = true, onOpenBibleThemeSettings, onExternalLinkPress, fontSize, fontFamily, lineSpacing, onFontSizeChange, onFontFamilyChange, onLineSpacingChange, backgroundColor, foregroundColor, bottomScrollPadding = 0, permittedVersionIds, excludedVersionIds, permittedLanguageTags, locale, qingmuPlayingVerse = null, qingmuFollow = false, qingmuFollowRequest = 0, qingmuReduceMotion = false, } = props;
      applySDKConfig({ appKey, apiHost, installationId });
      registerBibleContentAction({ apiHost, fetchBibleContent });
 +    // Qingmu read-along (see README): the narration state goes onto the document, where the host's
