@@ -790,7 +790,7 @@ describe('iOS app config', () => {
       "infoPlist": { "ITSAppUsesNonExemptEncryption": false }
     }
     ```
-  - `expo-camera` 選項加 `"microphonePermission": "竹科聖經不會錄音；這是相機元件要求的系統說明"`。
+  - `expo-camera` 選項加 `"microphonePermission": "竹科聖經不會錄音；這是系統元件要求的說明"`。
   - `expo-audio` 選項加同一句 `"microphonePermission"`。
   - `"expo-local-authentication"` 改成 `["expo-local-authentication", { "faceIDPermission": "允許竹科聖經用 Face ID 解鎖管理功能" }]`。
   - `"expo-secure-store"` 改成 `["expo-secure-store", { "faceIDPermission": "允許竹科聖經用 Face ID 解鎖管理功能" }]`。
