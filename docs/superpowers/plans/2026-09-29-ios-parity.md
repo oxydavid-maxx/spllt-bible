@@ -1,6 +1,7 @@
 # 竹科聖經 iOS 同等移植：詳細執行計畫（2026-09-29）
 
 > **狀態：計畫，尚未開工。** 光佑說「開始」才動程式。本檔不改程式、不開 PR、不動 CI。
+> **第二版（2026-09-29）：** 依光佑回覆加入 §2.1「兩個平台一起改、一起進版」，並把 Android 的 PR 驗證也移到雲端；更正通知盤點（§3 第 11–14 列）；在 §9.0 記錄他的回覆與軟體層授權。
 > **基準：** main `b2fc416`（Android 0.5.19）。交接來源是本機 `.handoff/ios-porting-20260929/KICKOFF.md`（不在 git）。
 > **可編輯正本：** 本檔 `docs/superpowers/plans/2026-09-29-ios-parity.md`（分支 `feat/ios-plan`）。手機頁由本檔產生，內容以本檔為準。
 
@@ -27,9 +28,23 @@
 | Android 守門 | 現況 | 每個 PR 怎麼證明沒退步 |
 |---|---|---|
 | vitest 全套 | 1859 通過、2 略過、0 失敗 | 新增 GitHub Actions `unit` job（ubuntu，免費），每個 PR 自動跑全套。本機只跑受影響的測試（`vitest related`），合併候選再跑一次全套，比對「base 失敗集合 vs 分支失敗集合」。 |
-| Android 原生設定 | prebuild 產生 | 動到共用檔（`app.json`、`app.config.js`、`package.json`、lockfile）的 PR：在 qm-ios 自己的資料夾，base 和分支各跑一次 `expo prebuild --platform android --no-install`，比對 AndroidManifest、build.gradle、資源。差異必須是空的，或只有預期的那幾行。 |
-| APK 守門（大小、Firebase、背景播放 manifest、無 reanimated/worklets） | `scripts/check-apk-budget.ts` | 動到共用檔的 PR：用既有的 `build.py <commit>` 建候選 APK（不發布、不裝手機），check-apk-budget 必須 PASS，APK 大小差 ≤ 0.1 MB。**每次 Android 建置前先跟光佑說一聲**，因為教會後端也在同一台電腦上。 |
+| Android 原生設定 | prebuild 產生 | 每個 PR 都由雲端 `android` job 跑 prebuild，並把產生的 AndroidManifest、build.gradle、資源跟 main 比對。差異必須是空的，或只有預期的那幾行。 |
+| APK 守門（大小、Firebase、背景播放 manifest、無 reanimated/worklets） | `scripts/check-apk-budget.ts` | 每個 PR 都由雲端 `android` job 建一顆測試 APK（用 debug 簽章，不碰你的私有金鑰），跑 check-apk-budget；Firebase 那一項在雲端略過，因為設定檔是私有的。APK 大小差要 ≤ 0.1 MB。正式候選照舊在本機用 `build.py <commit>` 跑完整守門（含 Firebase），**跑之前先跟光佑說一聲**，因為教會後端也在同一台電腦上。 |
 | Android 發版流程 | `build.py`、`publish.py`、`verify-install-link.ts`、`check-apk-budget.ts` | 這些腳本都不改。iOS worktree 用自己的 `node_modules`（自己跑 `npm ci`），不 junction 到 `C:\w\q`，也不在 `C:\w\q` 跑 npm ci 或 prebuild。 |
+
+### 2.1 兩個平台一起改、一起進版（光佑 2026-09-29 要求）
+
+原則：兩邊能一起走的前提有三個——**預設走同一條程式路徑**、**每次改動在合併前自動驗過兩個平台**、**發版時從同一個 commit 出兩個安裝檔**。三個缺一個，兩邊就會慢慢分岔。這也是用 Expo 這類跨平台框架開發時的標準做法。
+
+| 項目 | 做法 | 現在就改 |
+|---|---|---|
+| 程式 | 同一份程式碼。平台差異只准放在 `Platform.OS` 分支和設定外掛，而且每一處都要寫明原因。新功能預設兩邊都跑。 | M0 起執行；PR 模板加勾選項「兩個平台都驗過／差異已說明」 |
+| 驗證 | 每個 PR 在雲端同時跑三個 job：`unit`（共用邏輯）、`android`（Android 設定與測試 APK 守門）、`ios`（iOS 模擬器）。三個都綠才能合併。 | M0 |
+| 版本 | 同一個版本號（`expo.version`）、`ios.buildNumber`＝`android.versionCode`、同一個 tag `vX.Y.Z`。 | M1 |
+| 發版 | 同一個 commit 出兩個安裝檔：Android 照舊用本機 `build.py`（簽章金鑰不離開你的電腦），iOS 用 EAS。發版腳本檢查兩個安裝檔的 commit 與版本號一致，不一致就擋下。 | M7 |
+| 後端 | 同一套 API。推播內容由同一個函式產生，送出時才依手機平台分流：Android 走 Google FCM，iPhone 走 Apple APNs。 | M4 |
+| 版本檔 | `app-version.json` 維持一份，Android 區塊照舊，另加 `ios` 區塊；舊版 App 會忽略新區塊。 | M5 |
+| 安裝與更新 | 現在：Android＝自家網站，iPhone＝App Store。等 Play 開發者帳號好了，Android 也走商店，兩邊都由商店自動更新，同一個 tag 同時送出；到時候自製的更新提示就可以退休。 | 之後另案 |
 
 ## 3. 功能對照表
 
@@ -47,10 +62,10 @@
 | 8 | 好友 QR | 產生 QR。掃描用 `CameraView.launchScanner`。 | iOS 已經有另一條路：畫面內的 `<CameraView>` 掃描（`FriendQrPanel.tsx:92`），也有單元測試。 | 中。模擬器沒有相機。 | 產生 QR 並截圖。掃描那段只能靠單元測試。 | 用真相機掃另一支手機的 QR |
 | 9 | 公告 | 純 JS 加網路 | 預期不用改 | 低 | Maestro 開公告頁、截圖 | — |
 | 10 | 日記 | 寫、存、分享匯出、鏡射到資料夾（Android SAF） | 寫、存、分享已可用（`journalShare.ts` 已設 iOS 檔案類型）。**「鏡射到資料夾」在 iOS 會失敗**（`journalFolderMirror.ts:46`）：iOS 上改成「存到檔案」或隱藏這個按鈕（UI 變更，要做 mock）。 | 中 | Maestro：寫日記、儲存，出現「✓ 已儲存」；分享面板有打開。 | 分享到 LINE 或「檔案」App |
-| 11 | 讀經提醒（本機通知） | 本機排程 | iOS 可以排程，但系統對待發通知有數量上限（常見說法是 64 個，**未驗證**）。現在排程沒有上限（`reminderScheduler.ts:46`），iOS 改成只排最近 N 則，開 App 時再補排。 | 中 | 單元測試數量上限。模擬器排一則 1 分鐘後的提醒，確認通知出現。 | — |
-| 12 | 聚會提醒（遠端推播） | 後端送 FCM data-only 訊息，App 的背景任務負責顯示。 | 見 §6：後端直送 APNs alert。App 接受 iOS token，登記時 platform＝IOS。 | **高** | 後端單元測試：本機假 APNs http2 伺服器檢查標頭與內容。模擬器用 `xcrun simctl push` 送同樣的 payload：通知要出現，點了要開到正確頁。 | 真 APNs 送達 |
-| 13 | 好友加入即時推播 | 同上 | 同上。另外，背景處理會讀 SecureStore，iOS 預設「解鎖時才能讀」，鎖螢幕時會讀不到（`friendPush.ts:122`）：相關的鍵改成「開機解鎖過一次後就能讀」（AFTER_FIRST_UNLOCK，只影響 iOS）。 | **高** | 同上 | 鎖螢幕時收到通知 |
-| 14 | 更新提示 | `UpdatePrompt` 讀 app-version.json，開 APK 安裝頁。 | iOS 沒設 buildNumber，所以**每個 iOS 使用者都會被叫去 APK 頁**，這也違反 App Store 2.5.2。改成 iOS 不顯示。App Store 本身會自動更新，之後要的話可改成連到 App Store。 | **高**（一定被拒審） | 單元測試：Platform＝ios 時不顯示、不開網址。Maestro 確認開 App 時不出現更新視窗。 | — |
+| 11 | 讀經提醒（早上 06:30，本機通知） | 手機自己排好的鬧鐘式通知，不經過伺服器（`reminderScheduler.ts:69`） | iOS 可以排程，但系統對待發通知有數量上限（常見說法是 64 個，**未驗證**）。現在排程沒有上限（`reminderScheduler.ts:46`），iOS 改成只排最近 N 則，開 App 時再補排。 | 中 | 單元測試數量上限。模擬器排一則 1 分鐘後的提醒，確認通知出現。 | — |
+| 12 | 聚會提醒（遠端推播） | 程式有，但**正式環境目前是關的**（`server/http.ts` 註解：meeting dispatcher stays off）。 | 兩邊一起維持關閉；哪天要開，兩個平台同一個 PR 一起開。 | 低 | — | — |
+| 13 | 好友加入即時推播（**目前唯一真正從伺服器送出的推播**） | 後端送 FCM data-only 訊息，App 的背景任務負責顯示。 | 見 §6：後端直送 APNs alert。App 接受 iOS token，登記時 platform＝IOS。另外，背景處理會讀 SecureStore，iOS 預設「解鎖時才能讀」，鎖螢幕時會讀不到（`friendPush.ts:122`）：相關的鍵改成「開機解鎖過一次後就能讀」（AFTER_FIRST_UNLOCK，只影響 iOS）。 | **高** | 後端單元測試：本機假 APNs http2 伺服器檢查標頭與內容。模擬器用 `xcrun simctl push` 送同樣的 payload：通知要出現，點了要開到正確頁。 | 真 APNs 送達、鎖螢幕時收到 |
+| 14 | 更新提示（**不是推播**：開 App 時自己去查版本檔） | `UpdatePrompt` 讀 app-version.json，開 APK 安裝頁。 | iOS 沒設 buildNumber，所以**每個 iOS 使用者都會被叫去 APK 頁**，這也違反 App Store 2.5.2。改成 iOS 不顯示。App Store 本身會自動更新，之後要的話可改成連到 App Store。 | **高**（一定被拒審） | 單元測試：Platform＝ios 時不顯示、不開網址。Maestro 確認開 App 時不出現更新視窗。 | — |
 | 15 | 管理員解鎖（生物辨識） | expo-local-authentication | 補中文 Face ID 說明字串（不設的話會是英文預設）。 | 低 | 設定測試讀 Info.plist | 真機 Face ID |
 | 16 | 帳號刪除入口 | 文案是寫給 Google Play 的（`accountSurfaceComponent.tsx:11`） | App Store 也要求 App 內能刪帳號。文案改成兩個平台通用。 | 低 | 單元測試文案 | — |
 | 17 | 安裝與更新 | 自家網站側載 APK | iOS 只能走 TestFlight 或 App Store（§7） | — | — | — |
@@ -123,6 +138,13 @@
 **`.github/workflows/unit.yml`**（ubuntu-latest，免費）
 
 - 每個 PR 跑 vitest 全套，輸出通過、略過、失敗數和失敗清單。
+
+**`.github/workflows/android.yml`**（ubuntu-latest，免費）
+
+- 每個 PR 跑 `expo prebuild --platform android`，把原生設定跟 main 比對，再用 Gradle 建一顆測試 APK。
+- 不設 `qingmuRelease`，所以會用 debug 簽章：簽章設定只在帶這個旗標時才讀私有金鑰（`plugins/withQingmuReleaseSigning.js:16`），私有金鑰不上雲端。
+- 用 check-apk-budget 檢查 ABI、大小、source map、背景播放 manifest、無 reanimated/worklets；Firebase 那一項標「略過（私有設定檔）」。
+- 好處：Android 的 PR 驗證改在雲端跑，不再佔用你電腦的 CPU 和記憶體（教會後端在同一台）。正式發版照舊在本機。
 
 **`.github/workflows/ios.yml`**（`macos-26`，釘 Xcode 26.4.1，也就是 EAS 預設版本那一線）
 
@@ -202,12 +224,13 @@
 
 每個里程碑都是一個可以單獨合併的 PR，而且不會讓 Android 退步。工作量是我的粗估。
 
-### M0：CI 骨架（iOS 編得過、開得起來）
+### M0：雲端 CI 骨架（兩個平台每個 PR 都自動驗；iOS 編得過、開得起來）
 
-- **內容**：`unit.yml`、`ios.yml`、`.maestro/smoke.yaml`、`scripts/ios/`（守門和摘要腳本），外加追蹤 issue。
+- **內容**：`unit.yml`、`android.yml`、`ios.yml`、`.maestro/smoke.yaml`、`scripts/ios/`（守門和摘要腳本）、PR 模板（兩平台勾選項），外加追蹤 issue。
 - **動到的共用檔**：無，只新增檔案。
 - **驗收**：
-    - PR 上 unit 和 ios 兩個 workflow 都綠，摘要 I1–I5 全 PASS。
+    - PR 上 unit、android、ios 三個 workflow 都綠，摘要 I1–I5 全 PASS。
+    - 雲端測試 APK 的大小、ABI、manifest 和本機 0.5.19 候選一致（差 ≤ 0.1 MB）。
     - 有首頁截圖。
     - 記下 .app 大小基準和 CI 耗時。
 - **Android 不退步**：`git diff --stat` 只有新增檔。unit.yml 的結果要跟本機一樣是 1859/2/0；不一樣的話列出差異清單，屬於環境差異的就標註，不改產品程式。
@@ -322,6 +345,22 @@
 
 ## 9. 要光佑決定的事（第 1 輪，3 題）
 
+### 9.0 光佑 2026-09-29 的回覆（紀錄）
+
+- **兩個平台以後一定一起改** → 新增 §2.1，並把 Android 的 PR 驗證也搬到雲端（M0）。
+- **通知盤點**：他以為只有早上讀經提醒和改版通知。實際情況：早上提醒是手機自己排的（不是推播）；改版通知是開 App 時查版本檔（也不是推播）；真正從伺服器送出的只有「好友加入」一種；聚會提醒在正式環境是關的。
+- **驗證方式**：確認照舊用腳本回報 PASS/FAIL，不再手動反覆截圖。
+- **軟體層授權**：軟體層的決定交給 AI 判斷，條件是符合第一性原理、是業界開發 Android/iOS App 的成熟做法，而且要省 token、CPU、記憶體和 APK 大小。這**不等於開工核准**；開工仍然等他說「開始」。
+
+| 軟體層決定 | 業界主流？ | token | 你電腦的 CPU/記憶體 | 手機記憶體 | APK 大小 |
+|---|---|---|---|---|---|
+| 同一份程式碼（Expo CNG），差異只放 `Platform.OS` 和設定外掛 | 是，Expo 官方做法 | — | — | 不變 | 不變 |
+| 雲端 CI（GitHub Actions）：每個 PR 驗兩個平台，Maestro 自動點畫面 | 是 | 只讀一行摘要，失敗才看截圖 | **變少**：Android 的 PR 驗證也移到雲端 | — | 有守門，會擋變大 |
+| 推播：後端直送 APNs，iPhone 不加 Firebase SDK | 是（Apple 官方的伺服器推播方式） | — | 後端多一個小模組 | iPhone 少一套 SDK | Android 不變 |
+| 用 Apple 登入（要上 App Store 才需要） | 是，Apple 規定 | — | — | 很小 | Android 端排除，不變（守門驗證） |
+| iOS 簽章與上傳用 EAS | 是，Expo 官方 | — | 在雲端建置，不佔你的電腦 | — | — |
+| 不帶回 reanimated | 延續 0.5.19 的決定 | — | — | 省約 155 MB（Android 實測） | 不變 |
+
 **Q1：同意在 GitHub Actions 新增一個 secret，放 YouVersion app key，只給 iOS CI 用嗎？**
 我建議**同意**，理由有三：
 
@@ -332,6 +371,8 @@
 M2 開始時才需要。
 
 **Q2：Apple Developer Program（US$99/年，台幣以結帳畫面為準）要用誰的名義、什麼時候付？**
+先講清楚一件事：**沒有這個帳號，任何一支 iPhone 都裝不了這個 App**，不只是推播的問題。TestFlight 和 App Store 都只開放給會員。免費帳號只能透過 Mac 上的 Xcode 裝到最多 3 台自己的裝置，而且 7 天後就失效；你沒有 Mac，這條路本來就走不通，也不適合給青少年用。反過來說，沒有帳號時，程式開發和模擬器驗證（M0–M5）全部都做得到。
+
 我建議**用你個人的名義，等 M0–M3 在模擬器上全綠之後再付**。理由：
 
 - 錢要花在已經證明能跑的東西上。
