@@ -17,8 +17,9 @@ appId: org.qingmu.youth
 - tapOn:
     point: "50%,22%"
 - inputText: "Thanks for today"
-- hideKeyboard
-- tapOn: "儲存日記"
+# Maestro's hideKeyboard finds no dismiss action on a multiline input; a tap on the page (the ScrollView keeps
+# only handled taps) closes the keyboard and saves the entry on blur, as a member would.
+- tapOn: "歷史記錄"
 - extendedWaitUntil:
     visible: "匯出靈修日記"
     timeout: 20000
