@@ -28,7 +28,8 @@ const guards = {
   }),
   I4: files.problems,
 };
-writeFileSync(join(out, 'guards.json'), JSON.stringify({ appBytes: files.appBytes, guards }));
+// Recorded, not judged: what App Transport Security allows decides whether the CI fixture backend (http://127.0.0.1) is reachable.
+writeFileSync(join(out, 'guards.json'), JSON.stringify({ appBytes: files.appBytes, guards, ats: plist.NSAppTransportSecurity ?? null }));
 const rows = Object.entries(guards).map(([id, problems]) => `| ${id} | ${problems.length === 0 ? 'PASS' : 'FAIL'} | ${problems.join('；')} |`);
 console.log([...rows, `| .app 大小 | 資訊 | ${(files.appBytes / 1e6).toFixed(1)} MB |`].join('\n'));
 process.exit(Object.values(guards).every((problems) => problems.length === 0) ? 0 : 1);
