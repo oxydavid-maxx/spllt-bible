@@ -12,10 +12,15 @@ appId: org.qingmu.youth
     visible: "積分"
     timeout: 90000
 - tapOn: "靈修日記"
+# The editor and the tab share the label 靈修日記 (iOS does not expose a placeholder); the editor is the one
+# above 歷史記錄.
 - extendedWaitUntil:
-    visible: "今天想記下的"
+    visible: "歷史記錄"
     timeout: 30000
-- tapOn: "今天想記下的"
+- tapOn:
+    text: "靈修日記"
+    above:
+      text: "歷史記錄"
 - inputText: "Thanks for today"
 - hideKeyboard
 - tapOn: "儲存日記"
