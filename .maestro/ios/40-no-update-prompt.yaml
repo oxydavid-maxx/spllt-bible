@@ -5,6 +5,8 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "積分"
     timeout: 90000
-- waitForAnimationToEnd:
+- extendedWaitUntil:
+    visible: "有新版本.*"
     timeout: 25000
+    optional: true
 - assertNotVisible: "有新版本.*"
