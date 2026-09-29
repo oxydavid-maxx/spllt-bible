@@ -64,7 +64,7 @@
 | 10 | 日記 | 寫、存、分享匯出、鏡射到資料夾（Android SAF） | 寫、存、分享已可用（`journalShare.ts` 已設 iOS 檔案類型）。**「鏡射到資料夾」在 iOS 會失敗**（`journalFolderMirror.ts:46`）：iOS 上改成「存到檔案」或隱藏這個按鈕（UI 變更，要做 mock）。 | 中 | Maestro：寫日記、儲存，出現「✓ 已儲存」；分享面板有打開。 | 分享到 LINE 或「檔案」App |
 | 11 | 讀經提醒（早上 06:30，本機通知） | 手機自己排好的鬧鐘式通知，不經過伺服器（`reminderScheduler.ts:69`） | iOS 可以排程，但系統對待發通知有數量上限（常見說法是 64 個，**未驗證**）。現在排程沒有上限（`reminderScheduler.ts:46`），iOS 改成只排最近 N 則，開 App 時再補排。 | 中 | 單元測試數量上限。模擬器排一則 1 分鐘後的提醒，確認通知出現。 | — |
 | 12 | 聚會提醒（遠端推播） | 程式有，但**正式環境目前是關的**（`server/http.ts` 註解：meeting dispatcher stays off）。 | 兩邊一起維持關閉；哪天要開，兩個平台同一個 PR 一起開。 | 低 | — | — |
-| 13 | 好友加入即時推播（**目前唯一真正從伺服器送出的推播**） | 後端送 FCM data-only 訊息，App 的背景任務負責顯示。 | 見 §6：後端直送 APNs alert。App 接受 iOS token，登記時 platform＝IOS。另外，背景處理會讀 SecureStore，iOS 預設「解鎖時才能讀」，鎖螢幕時會讀不到（`friendPush.ts:122`）：相關的鍵改成「開機解鎖過一次後就能讀」（AFTER_FIRST_UNLOCK，只影響 iOS）。 | **高** | 後端單元測試：本機假 APNs http2 伺服器檢查標頭與內容。模擬器用 `xcrun simctl push` 送同樣的 payload：通知要出現，點了要開到正確頁。 | 真 APNs 送達、鎖螢幕時收到 |
+| 13 | 好友加入即時推播（**目前唯一真正從伺服器送出的推播**） | 後端送 FCM data-only 訊息，App 的背景任務負責顯示。 | 見 §6：後端直送 APNs alert。App 接受 iOS token，登記時 platform＝IOS。iOS 的通知由系統直接顯示，不需要在背景讀資料。 | **高** | 後端單元測試：本機假 APNs http2 伺服器檢查標頭與內容。模擬器用 `xcrun simctl push` 送同樣的 payload：通知要出現，點了要開到正確頁。 | 真 APNs 送達、鎖螢幕時收到 |
 | 14 | 更新提示（**不是推播**：開 App 時自己去查版本檔） | `UpdatePrompt` 讀 app-version.json，開 APK 安裝頁。 | iOS 沒設 buildNumber，所以**每個 iOS 使用者都會被叫去 APK 頁**，這也違反 App Store 2.5.2。改成 iOS 不顯示。App Store 本身會自動更新，之後要的話可改成連到 App Store。 | **高**（一定被拒審） | 單元測試：Platform＝ios 時不顯示、不開網址。Maestro 確認開 App 時不出現更新視窗。 | — |
 | 15 | 管理員解鎖（生物辨識） | expo-local-authentication | 補中文 Face ID 說明字串（不設的話會是英文預設）。 | 低 | 設定測試讀 Info.plist | 真機 Face ID |
 | 16 | 帳號刪除入口 | 文案是寫給 Google Play 的（`accountSurfaceComponent.tsx:11`） | App Store 也要求 App 內能刪帳號。文案改成兩個平台通用。 | 低 | 單元測試文案 | — |
@@ -195,7 +195,7 @@
 
 | 方案 | 做法 | 好處 | 壞處 |
 |---|---|---|---|
-| **A 後端直送 APNs（建議）** | App 用 expo-notifications 拿 APNs token。後端用 Node http2，加上已經在用的 `jose` 簽 ES256 JWT（Apple 規定每 20–60 分鐘換一次），送到 `api.push.apple.com`。 | App 不加 Firebase iOS SDK，不增加大小和啟動時間；少一個第三方；推播路徑一目了然。 | 後端要多寫一個 sender（約 100 行加測試）。 |
+| **A 後端直送 APNs（建議）** | App 用 expo-notifications 拿 APNs token。後端用成熟套件 `@parse/node-apn`（npm 每週約 45 萬次下載）送到 Apple，不自己寫 HTTP/2 和 JWT。 | App 不加 Firebase iOS SDK，不增加大小和啟動時間；少一個第三方；推播路徑一目了然。 | 伺服器多一個套件，lockfile 會變，所以 Android 打包下次要重裝依賴（事先告知）。 |
 | B Firebase iOS SDK | App 加 `@react-native-firebase/messaging` 拿 FCM token，後端照舊送 FCM，APNs key 上傳到 Firebase。 | 後端幾乎不用改 | App 多一套原生 SDK（大小、啟動、設定檔）；lockfile 會變，Android 打包要重裝依賴；一樣要付費帳號和 APNs key。 |
 | C APNs token 轉 FCM | Instance ID `batchImport` | — | 已淘汰：2026-10-01 起新專案不能用，2027-09-29 關閉。不採用。 |
 
@@ -224,6 +224,8 @@
 
 每個里程碑都是一個可以單獨合併的 PR，而且不會讓 Android 退步。工作量是我的粗估。
 
+逐步做法（檔案、測試、程式碼、指令）在 `docs/superpowers/plans/2026-09-29-ios-parity-phase1-implementation.md`。寫那份時確認了三件事：Google iOS 設定移到 Phase 2；推播的 `mode` 不必設（Expo 文件說 archive 時 Xcode 會切成 production）；背景朗讀在 iOS 不用改產品程式，只要驗。
+
 ### M0：雲端 CI 骨架（兩個平台每個 PR 都自動驗；iOS 編得過、開得起來）
 
 - **內容**：`unit.yml`、`android.yml`、`ios.yml`、`.maestro/smoke.yaml`、`scripts/ios/`（守門和摘要腳本）、PR 模板（兩平台勾選項），外加追蹤 issue。
@@ -242,10 +244,7 @@
 - **內容**：
     - `app.json` 的 `ios` 區塊：buildNumber、`supportsTablet: false`、`infoPlist.ITSAppUsesNonExemptEncryption: false`。
     - 權限說明字串全部中文。相機已經有；Face ID 要補；麥克風：兩個套件都會自動加英文預設字串，改成誠實的中文說明。
-    - expo-notifications 的 `mode` 依建置類型設定。
-    - `app.config.js` 修 Google 設定：Android 檔和 iOS plist 要能同時存在；只有 Android 檔時，輸出跟現在逐字相同。
     - 只有測試建置才加本機網路例外（如果 M0 證明需要）。
-    - `NavigationBar` 加平台判斷。
 - **動到的共用檔**：`app.json`、`app.config.js`。
 - **驗收**：`tests/config/iosConfig.test.ts` 先紅後綠；CI 的 I3 全 PASS；buildNumber＝versionCode 的測試通過。
 - **Android 不退步**：prebuild diff 是空的；`build.py` 建出候選 APK，check-apk-budget PASS，大小差 ≤ 0.1 MB。
@@ -279,9 +278,8 @@
 
 - **內容**：
     - App：接受 iOS token，登記 IOS 和 APNs 環境。
-    - App：背景會讀的 SecureStore 鍵改成 AFTER_FIRST_UNLOCK（只影響 iOS）。
     - App：iOS 本機提醒加數量上限。
-    - 後端：APNs sender、路由、資料庫。
+    - 後端：用 `@parse/node-apn` 送 APNs，依 token 平台分流，好友通知文字 App 和伺服器共用。
 - **驗收**：
     - 後端單元測試（假 APNs http2 伺服器）通過。
     - Android FCM 請求快照沒變。
@@ -356,7 +354,7 @@
 |---|---|---|---|---|---|
 | 同一份程式碼（Expo CNG），差異只放 `Platform.OS` 和設定外掛 | 是，Expo 官方做法 | — | — | 不變 | 不變 |
 | 雲端 CI（GitHub Actions）：每個 PR 驗兩個平台，Maestro 自動點畫面 | 是 | 只讀一行摘要，失敗才看截圖 | **變少**：Android 的 PR 驗證也移到雲端 | — | 有守門，會擋變大 |
-| 推播：後端直送 APNs，iPhone 不加 Firebase SDK | 是（Apple 官方的伺服器推播方式） | — | 後端多一個小模組 | iPhone 少一套 SDK | Android 不變 |
+| 推播：後端用 `@parse/node-apn` 直送 APNs，iPhone 不加 Firebase SDK | 是（Apple 官方的伺服器推播方式） | — | 後端多一個成熟套件 | iPhone 少一套 SDK | Android 不變 |
 | 用 Apple 登入（要上 App Store 才需要） | 是，Apple 規定 | — | — | 很小 | Android 端排除，不變（守門驗證） |
 | iOS 簽章與上傳用 EAS | 是，Expo 官方 | — | 在雲端建置，不佔你的電腦 | — | — |
 | 不帶回 reanimated | 延續 0.5.19 的決定 | — | — | 省約 155 MB（Android 實測） | 不變 |
