@@ -23,6 +23,7 @@ run_flow() {
     grep -q '<testcase' "$OUT/maestro/$name.xml" 2>/dev/null && break
   done
   record "$name" FAIL
+  bash scripts/ios/collect-failure.sh "$UDID" "$name"
 }
 for flow in .maestro/ios/*.yaml; do
   run_flow "$flow"

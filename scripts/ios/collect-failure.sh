@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# scripts/ios/collect-failure.sh <udid> <flow-name> — small, readable evidence for a failed flow:
+# the Maestro log tail, the app's own error lines, and the crash report's exception + crashed-thread frames.
+UDID=$1; NAME=$2; OUT=${OUT:-ci-out}; DIR="$OUT/maestro"; mkdir -p "$DIR"
+APP=$(cat "$OUT/app-path.txt")
+EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
+tail -n 40 "$DIR/$NAME.log" > "$DIR/$NAME-maestro-tail.txt" 2>/dev/null || true
+xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "process == \"$EXE\"" 2>/dev/null \
+  | grep -Ei 'error|exception|fatal|terminat|crash|unhandled|invariant|not bundled|red ?box' | tail -n 60 > "$DIR/$NAME-app-log.txt" || true
+REPORT=$(ls -t "$HOME/Library/Logs/DiagnosticReports/" 2>/dev/null | grep -F "$EXE" | head -1)
+if [ -n "$REPORT" ]; then
+  python3 - "$HOME/Library/Logs/DiagnosticReports/$REPORT" > "$DIR/$NAME-crash.txt" <<'PY'
+import json, sys
+text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+header, _, body = text.partition('\n')
+try:
+    report = json.loads(body)
+except ValueError:
+    print(text[:4000]); sys.exit(0)
+print('exception:', json.dumps(report.get('exception')))
+print('termination:', json.dumps(report.get('termination'))[:600])
+print('asi:', json.dumps(report.get('asi'))[:1500])
+images = report.get('usedImages', [])
+for thread in report.get('threads', []):
+    if thread.get('triggered'):
+        for frame in thread.get('frames', [])[:25]:
+            image = images[frame.get('imageIndex', 0)].get('name', '?') if images else '?'
+            print(f"  {image}  {frame.get('symbol', '?')}")
+PY
+fi

@@ -77,4 +77,5 @@ jobs:
             ci-out/*.json
             ci-out/xcodebuild-errors.txt
             ci-out/maestro/**/*.png
+            ci-out/maestro/*.txt
           retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
