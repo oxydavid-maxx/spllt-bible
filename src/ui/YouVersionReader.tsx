@@ -10,6 +10,7 @@ import { buildYouVersionReaderConfig, resolveReaderContentApiHost } from './youV
 import { getYouVersionContentMetadata } from '../config/youVersionContent';
 import { buildReaderDomBridge, readReaderUiMessage, readReaderCanvasScrollEvent, readReaderCanvasRevealEvent, readReaderCanvasEdgeEvent, READER_SETTINGS_MESSAGE, READER_CANVAS_SCROLL_MESSAGE, READER_CANVAS_REVEAL_MESSAGE, READER_CANVAS_EDGE_MESSAGE, type ReaderCanvasInsets, type ReaderRevealReason } from './readerSettingsBridge';
 import { useReaderPreferencesBinding, type ReaderPreferencesBinding } from './useReaderPreferencesBinding';
+import { readReadAlongMessage, type ReadAlongPosition } from './readAlongBridge';
 import { BibleContentPreloadHost } from './BibleContentPreloadHost';
 import { ChapterAudioAutoplayContext, type ChapterAudioAutoplayContextValue } from './ChapterAudioControls';
 import { createReaderAutoplayController, type AutoplayChapter, type AutoplayIntent } from '../services/readerAutoplayController';
@@ -32,7 +33,7 @@ function chapterForReference(reference: string): string | null {
   return match ? `${match[1]}.${match[2]}` : null;
 }
 
-export function YouVersionReader({ date, references, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasReveal, onCanvasScroll, onCanvasEdge, canvasInsets, onVerseSelectionChange, onSheetOpenChange, clearVerseSelectionSignal = 0, retrySignal = 0, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied, narrationSpeed = 1 }: { date: string; references: string[]; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasReveal?: (reason: ReaderRevealReason) => void; onCanvasScroll?: (event: { direction: 'up' | 'down'; deltaY: number }) => void; onCanvasEdge?: (event: { atEnd: boolean }) => void; canvasInsets?: ReaderCanvasInsets; onVerseSelectionChange?: (selected: boolean) => void; onSheetOpenChange?: (open: boolean) => void; clearVerseSelectionSignal?: number; retrySignal?: number; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void; narrationSpeed?: number }) {
+export function YouVersionReader({ date, references, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasReveal, onCanvasScroll, onCanvasEdge, canvasInsets, onVerseSelectionChange, onSheetOpenChange, followNarration = false, followRequest = 0, reduceMotion = false, onNarrationChange, onFollowRelease, onFollowPosition, clearVerseSelectionSignal = 0, retrySignal = 0, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied, narrationSpeed = 1 }: { date: string; references: string[]; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasReveal?: (reason: ReaderRevealReason) => void; onCanvasScroll?: (event: { direction: 'up' | 'down'; deltaY: number }) => void; onCanvasEdge?: (event: { atEnd: boolean }) => void; canvasInsets?: ReaderCanvasInsets; onVerseSelectionChange?: (selected: boolean) => void; onSheetOpenChange?: (open: boolean) => void; followNarration?: boolean; followRequest?: number; reduceMotion?: boolean; onNarrationChange?: (verse: number | null) => void; onFollowRelease?: () => void; onFollowPosition?: (position: ReadAlongPosition) => void; clearVerseSelectionSignal?: number; retrySignal?: number; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void; narrationSpeed?: number }) {
   const [readerModule, setReaderModule] = useState<YouVersionReaderUiModule | null>(null);
   const preferencesBinding = useReaderPreferencesBinding(readerModule, readerPreferences);
   const [error, setError] = useState<string | null>(null);
@@ -245,6 +246,12 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
     injectedJavaScript: buildReaderDomBridge(fullscreen, hasVersionMetadata, insetTop === undefined || insetBottom === undefined ? undefined : { top: insetTop, bottom: insetBottom }),
     onMessage: (event: { nativeEvent: { data: string } }) => {
       const data = event.nativeEvent.data;
+      const readAlongMessage = readReadAlongMessage(data);
+      if (readAlongMessage) {
+        if (readAlongMessage.kind === 'release') onFollowRelease?.();
+        else onFollowPosition?.(readAlongMessage.position);
+        return;
+      }
       const message = readReaderUiMessage(data);
       if (message === READER_SETTINGS_MESSAGE) overlayControls.openSettings();
       else if (!fullscreen) return;
@@ -259,7 +266,14 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
         if (edge) onCanvasEdge?.(edge);
       }
     },
-  }), [fullscreen, hasVersionMetadata, insetTop, insetBottom, onCanvasReveal, onCanvasScroll, onCanvasEdge, overlayControls]);
+  }), [fullscreen, hasVersionMetadata, insetTop, insetBottom, onCanvasReveal, onCanvasScroll, onCanvasEdge, onFollowRelease, onFollowPosition, overlayControls]);
+  // Read-along: the verse narrated in the chapter on screen, reported so the screen knows whether there
+  // is anything to return to (回到朗讀處), and the system's reduce-motion setting for the follow scroll.
+  const narratedVerse = playingVerse && playingVerse.chapter === displayedChapter ? playingVerse.verse : null;
+  const narrationReport = useRef(onNarrationChange);
+  narrationReport.current = onNarrationChange;
+  useEffect(() => { narrationReport.current?.(narratedVerse); }, [narratedVerse]);
+  useEffect(() => () => { narrationReport.current?.(null); }, []);
   // The screen gives an open sheet the bottom (the floating tab bar would cover it).
   const sheetOpenReport = useRef(onSheetOpenChange);
   sheetOpenReport.current = onSheetOpenChange;
@@ -312,7 +326,7 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
         {safeIndex < references.length - 1 && <Pressable accessibilityRole="button" accessibilityLabel="下一段指定經文" onPress={() => setActiveReferenceIndex(safeIndex + 1)} style={styles.nextButton}><Text style={styles.nextButtonText}>下一段 ›</Text></Pressable>}
       </View>}
         <View style={fullscreen ? styles.fullscreen : styles.passage}>
-          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} onFootnotePress={async (data) => { setFootnote({ verseNum: data.verseNum, notes: data.notes, reference: data.reference }); }} onVerseSelect={onVerseSelectionChange ? async (selection) => { onVerseSelectionChange(selection.verses.length > 0); } : undefined} clearSelectionSignal={clearVerseSelectionSignal} retrySignal={retrySignal} onCopy={(data) => { void copyVerses(data); }} showToolbar={!fullscreen} theme="light" playingVerse={playingVerse && playingVerse.chapter === displayedChapter ? playingVerse.verse : null} />
+          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} onFootnotePress={async (data) => { setFootnote({ verseNum: data.verseNum, notes: data.notes, reference: data.reference }); }} onVerseSelect={onVerseSelectionChange ? async (selection) => { onVerseSelectionChange(selection.verses.length > 0); } : undefined} clearSelectionSignal={clearVerseSelectionSignal} retrySignal={retrySignal} onCopy={(data) => { void copyVerses(data); }} showToolbar={!fullscreen} theme="light" playingVerse={narratedVerse} followNarration={fullscreen && followNarration} followRequest={followRequest} reduceMotion={reduceMotion} />
         </View>
       {!fullscreen && <Text style={styles.attribution} numberOfLines={2}>{attributionMode === 'compact'
         ? `${contentMetadata?.translationName ?? `YouVersion ${versionId}`}／${contentMetadata?.publisher ?? '官方內容'}`

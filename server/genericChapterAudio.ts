@@ -29,6 +29,22 @@ function matchedChapter(timing: unknown, usfm: string): boolean {
     return typeof row?.usfm === 'string' && row.usfm.toUpperCase().startsWith(`${usfm}.`);
   });
 }
+/**
+ * The first verse of one contiguous span of THIS chapter: PSA.105.5, PSA.105.5-6, or the merged-unit
+ * form PSA.105.5+PSA.105.6 that some recordings use where the text merges verses. Anything else is null.
+ */
+function firstVerseOf(value: string, usfm: string): number | null {
+  let first: number | null = null, last = 0;
+  for (const part of value.trim().toUpperCase().split('+')) {
+    const match = /^([A-Z0-9]{2,5}\.[0-9]{1,3})\.([0-9]{1,3})(?:-([0-9]{1,3}))?$/.exec(part);
+    if (!match || match[1] !== usfm) return null;
+    const start = Number(match[2]), end = Number(match[3] ?? match[2]);
+    if (end < start || (first !== null && start !== last + 1)) return null;
+    first ??= start;
+    last = end;
+  }
+  return first;
+}
 /** Per-verse timing of THIS recording for THIS chapter; malformed or foreign rows are dropped, never guessed. */
 export function verseTimingOf(timing: unknown, usfm: string): VerseTiming[] {
   if (!Array.isArray(timing)) return [];
@@ -36,9 +52,8 @@ export function verseTimingOf(timing: unknown, usfm: string): VerseTiming[] {
   for (const value of timing) {
     const row = object(value);
     if (!row || typeof row.usfm !== 'string') continue;
-    const match = /^([A-Z0-9]{2,5}\.[0-9]{1,3})\.([0-9]{1,3})$/.exec(row.usfm.trim().toUpperCase());
-    if (!match || match[1] !== usfm) continue;
-    const verse = Number(match[2]);
+    const verse = firstVerseOf(row.usfm, usfm);
+    if (verse === null) continue;
     const start = Number(row.start);
     const end = Number(row.end);
     if (!Number.isInteger(verse) || verse < 1 || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start) continue;
