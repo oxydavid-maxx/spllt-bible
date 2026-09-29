@@ -1,0 +1,26 @@
+# 41-journal — the journal tab on iOS offers 匯出全部 and not the Android-only folder sync (src/ui/journalFolderSync.ts:
+# iOS has no lasting folder grant). The export footer appears once the member has a saved entry, so the flow
+# writes one first (ASCII: simulator typing of CJK is not reliable).
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- tapOn: "靈修日記"
+# The editor is found by position: by label it collides with the 靈修日記 tab, and iOS exposes no placeholder.
+# (If this misses, the failure leaves the screen's labels in 41-journal-screen.txt.)
+- extendedWaitUntil:
+    visible: "歷史記錄"
+    timeout: 30000
+- tapOn:
+    point: "50%,22%"
+- inputText: "Thanks for today"
+# Maestro's hideKeyboard finds no dismiss action on a multiline input; a tap on the page (the ScrollView keeps
+# only handled taps) closes the keyboard and saves the entry on blur, as a member would.
+- tapOn: "歷史記錄"
+- extendedWaitUntil:
+    visible: "匯出靈修日記"
+    timeout: 20000
+- assertNotVisible: "同時存到我選的資料夾"
+- takeScreenshot: 41-journal
