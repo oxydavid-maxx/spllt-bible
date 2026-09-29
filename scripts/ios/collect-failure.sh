@@ -22,7 +22,7 @@ DEBUG=$(ls -td "$HOME"/.maestro/tests/*/ 2>/dev/null | head -1)
   xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate 'eventMessage CONTAINS "org.qingmu.youth"' 2>/dev/null \
   | grep -Ei 'launch|terminat|exit|kill|jetsam|watchdog|crash|denied|fail' | tail -n 40; } > "$DIR/$NAME-system.txt" 2>&1
 # The screen the flow stopped on, as the labels Maestro can match: one line per element that has any text.
-maestro --device "$UDID" hierarchy 2>/dev/null | python3 -c '
+maestro --device "$UDID" hierarchy --no-reinstall-driver 2>/dev/null | python3 -c '
 import json, sys
 def walk(node):
     a = node.get("attributes", {})

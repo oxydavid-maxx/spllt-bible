@@ -17,6 +17,10 @@ xcrun simctl install "$UDID" "$(cat "$OUT/app-path.txt")"
 # (clearState reinstalls the app), some runs still showed the system prompt and lost the driver.
 maestro --version > /dev/null 2>&1
 "$HOME/.maestro/deps/applesimutils" --byId "$UDID" --bundle org.qingmu.youth --setPermissions notifications=YES
+# Start the Maestro driver once, with a long window, and keep it for every flow (--no-reinstall-driver; by
+# default each call reinstalls it). On a slow runner the first boot took 6 min and the driver then missed
+# two 180 s windows; later starts are quick.
+MAESTRO_DRIVER_STARTUP_TIMEOUT=600000 maestro --device "$UDID" hierarchy --no-reinstall-driver > /dev/null 2>&1 || echo "maestro driver warm-up failed"
 echo "$UDID" > "$OUT/udid.txt"
 export MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
 echo '{}' > "$OUT/flows.json"
@@ -26,7 +30,7 @@ run_flow() {
   local flow=$1 name; name=$(basename "$flow" .yaml)
   if [ -n "${REQUIRES_KEY_PATTERN:-}" ] && [[ "$name" =~ $REQUIRES_KEY_PATTERN ]] && [ -z "${EXPO_PUBLIC_YOUVERSION_APP_KEY:-}" ]; then record "$name" SKIP; return; fi
   for attempt in 1 2; do
-    maestro --device "$UDID" test "$flow" --format junit --output "$OUT/maestro/$name.xml" > "$OUT/maestro/$name.log" 2>&1 && { record "$name" "$([ $attempt = 1 ] && echo PASS || echo RERUN-PASS)"; return; }
+    maestro --device "$UDID" test --no-reinstall-driver "$flow" --format junit --output "$OUT/maestro/$name.xml" > "$OUT/maestro/$name.log" 2>&1 && { record "$name" "$([ $attempt = 1 ] && echo PASS || echo RERUN-PASS)"; return; }
     # Retry only when the driver never started (no test case in the report); an assertion failure is final.
     grep -q '<testcase' "$OUT/maestro/$name.xml" 2>/dev/null && break
   done
@@ -37,7 +41,7 @@ for flow in .maestro/ios/*.yaml; do
   run_flow "$flow"
   case "$(basename "$flow" .yaml)" in
     # The smoke flow ends on the 讀經 tab; its accessibility tree is what the reader flows are written against.
-    00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home > "$OUT/maestro/measure-home.txt" 2>&1; maestro --device "$UDID" hierarchy > "$OUT/hierarchy-home.json" 2>/dev/null || true ;;
+    00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home > "$OUT/maestro/measure-home.txt" 2>&1; maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/hierarchy-home.json" 2>/dev/null || true ;;
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
   esac
 done
