@@ -9,6 +9,8 @@ interface CalendarInput {
     date?: string;
     source_rows?: unknown;
     references?: unknown;
+    revision?: unknown;
+    note?: unknown;
   }>;
 }
 
@@ -43,6 +45,8 @@ export function loadReadingPlan(raw: unknown): ReadingPlan {
       date: day.date,
       sourceRows: asStringArray(day.source_rows, 'source_rows'),
       references: asStringArray(day.references, 'references'),
+      ...(Number.isSafeInteger(day.revision) && (day.revision as number) > 1 ? { revision: day.revision as number } : {}),
+      ...(typeof day.note === 'string' && day.note.trim() ? { note: day.note } : {}),
     };
   });
 
