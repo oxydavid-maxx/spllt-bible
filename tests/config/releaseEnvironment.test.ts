@@ -126,7 +126,9 @@ describe('official Android release entry environment guard', () => {
     expect(result.body.message).toContain('Android native project is missing'); expect(result.body.noDotenv).toBe('0');
   });
 
-  it.each([false, true])('records the actual Minify switch/arguments and prevents Expo dotenv contamination (minify=%s)', (minify) => {
+  // Drives the fixture's android\gradlew.bat, a cmd.exe batch file: build-android.ps1 is the Windows release entry
+  // (光佑's machine), so this one only means something on Windows. The CI unit job runs on Linux.
+  it.skipIf(process.platform !== 'win32').each([false, true])('records the actual Minify switch/arguments and prevents Expo dotenv contamination (minify=%s)', (minify) => {
     const f = fixture(true); put(f.root, '.env.production', 'EXPO_PUBLIC_QINGMU_DEV_TOKEN=dotenv-injected\nEXPO_PUBLIC_QINGMU_FROM_DOTENV=true\n');
     put(f.root, 'private.env', `EXPO_PUBLIC_YOUVERSION_APP_KEY=${privateTestKey}\n`);
     const result = run(f, { EXPO_PUBLIC_YOUVERSION_APP_KEY: undefined, EXPO_NO_DOTENV: '0' }, minify ? '-Minify' : '');
