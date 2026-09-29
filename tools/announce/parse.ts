@@ -187,6 +187,22 @@ export function findSignupUrl(text: string): string | null {
   return match ? match[0] : null;
 }
 
+/**
+ * The dates a sign-up form states (`9/27`, `9／27`, `10月4日`), as `M/D`, each once, in order.
+ * Digits that belong to a longer number (a URL's 2026/09/27, a time) are not dates. The daily job
+ * offers a form under the next gathering only when the form names that gathering's date: the 10/4
+ * notice once linked the 9/27 form, taken from that week's deck (2026-09-29).
+ */
+export function formDates(text: string): string[] {
+  const found: string[] = [];
+  const pattern = /(?<![\d/／])(1[0-2]|0?[1-9])\s*(?:[/／]|月)\s*(3[01]|[12]\d|0?[1-9])(?![\d:：])/g;
+  for (const match of text.matchAll(pattern)) {
+    const date = `${Number(match[1])}/${Number(match[2])}`;
+    if (!found.includes(date)) found.push(date);
+  }
+  return found;
+}
+
 /** `9/27`, the way it is said out loud, from `2026-09-27`. */
 export function shortDate(iso: string): string {
   const [, month, day] = iso.split('-');

@@ -1,6 +1,8 @@
 # 青牧讀經 App handoff
 
-這是新session的最小入口。先讀：
+> **2026-09-29 起，新 session 先讀 [AGENTS.md](AGENTS.md)**：兩個平台怎麼改、雲端驗證、iOS 注意事項。以下是 2026-09-23（0.5.9）的交接，當歷史參考。
+
+以下為當時的入口。先讀：
 
 **2026-09-23 最新狀態：** 先讀 [0.5.9 接手單 r4](docs/handoff/HANDOFF-20260923-r4.md) 與 [code review 摘要](docs/reviews/2026-09-22.md)。本機受限證據保存在 Git 忽略的 `.handoff/work-20260923/`；不要公開日記、測試 session 或相機畫面。
 

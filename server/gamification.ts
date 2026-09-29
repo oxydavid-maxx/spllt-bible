@@ -283,17 +283,22 @@ export function seedReadingDays(db: DatabaseSync, days: readonly ReadingDaySeed[
 
 /** The plan the app runs on (September, then the church sheet through 12/31), all under PLAN_ID. */
 export function defaultReadingDays(): ReadingDaySeed[] {
-  return canonicalReadingPlan.days.map((day) => ({ taskDate: day.date, planId: PLAN_ID, references: [...day.references] }));
+  return canonicalReadingPlan.days.map((day) => ({ taskDate: day.date, planId: PLAN_ID, references: [...day.references], sourceRevision: day.revision ?? 1 }));
 }
 
 /**
- * Adds the plan dates a database does not have yet and never rewrites one it has. Production was
- * seeded with September only; this is how it gains October to December on its next start.
+ * Adds the plan dates a database does not have yet, and takes a corrected day whose revision is
+ * above the stored one; a row at the same or a higher revision is never rewritten. Production was
+ * seeded with September only, then with the sheet's 10/15 and 10/16 at revision 1; this is how it
+ * gains October to December, and later the Psalm 119 correction, on its next start.
  */
-export function addMissingReadingDays(db: DatabaseSync, days: readonly ReadingDaySeed[]): void {
-  const present = new Set((db.prepare('SELECT task_date FROM reading_days').all() as Array<{ task_date: string }>).map((row) => row.task_date));
-  const missing = days.filter((day) => !present.has(day.taskDate));
-  if (missing.length > 0) seedReadingDays(db, missing);
+export function syncReadingDays(db: DatabaseSync, days: readonly ReadingDaySeed[]): void {
+  const stored = new Map((db.prepare('SELECT task_date, source_revision FROM reading_days').all() as Array<{ task_date: string; source_revision: number }>).map((row) => [row.task_date, row.source_revision]));
+  const changed = days.filter((day) => {
+    const revision = stored.get(day.taskDate);
+    return revision === undefined || (day.sourceRevision ?? 1) > revision;
+  });
+  if (changed.length > 0) seedReadingDays(db, changed);
 }
 
 export function readReadingDays(db: DatabaseSync, from: string, to: string, today: string, memberId: string): { taskDate: string; planId: string; references: string[]; sourceRevision: number; sourceDigest: string; status: CompletionMutationInput['status']; revision: number; canComplete: boolean }[] {
