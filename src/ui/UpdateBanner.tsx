@@ -1,7 +1,7 @@
 import * as Application from 'expo-application';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { fetchUpdateState, NO_UPDATE, type UpdateState } from '../services/updateCheck';
 import { theme } from './Theme';
 
@@ -27,7 +27,7 @@ export function UpdateBanner() {
   useEffect(() => {
     let active = true;
     const installed = Application.nativeBuildVersion ? Number(Application.nativeBuildVersion) : null;
-    void fetchUpdateState(Number.isFinite(installed) ? installed : null).then((next) => {
+    void fetchUpdateState(Number.isFinite(installed) ? installed : null, Platform.OS).then((next) => {
       if (active) setState(next);
     });
     return () => { active = false; };

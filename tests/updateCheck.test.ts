@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
 import { compareToInstalled, fetchUpdateState, NO_UPDATE, readPublishedVersion } from '../src/services/updateCheck';
 
 const good = { versionCode: 25, versionName: '0.5.4', url: 'https://example.org/app.apk' };
@@ -60,32 +59,32 @@ describe('comparing against the build that is running', () => {
 
 describe('asking, when the network is what it is', () => {
   it('reports the update on a good response', async () => {
-    expect(await fetchUpdateState(24, respondWith(good))).toMatchObject({ available: true });
+    expect(await fetchUpdateState(24, 'android', respondWith(good))).toMatchObject({ available: true });
   });
 
   it('stays quiet on a non-200', async () => {
-    expect(await fetchUpdateState(24, respondWith(good, false))).toEqual(NO_UPDATE);
+    expect(await fetchUpdateState(24, 'android', respondWith(good, false))).toEqual(NO_UPDATE);
   });
 
   it('stays quiet when the body is not the shape we publish', async () => {
-    expect(await fetchUpdateState(24, respondWith({ latest: '0.5.4' }))).toEqual(NO_UPDATE);
+    expect(await fetchUpdateState(24, 'android', respondWith({ latest: '0.5.4' }))).toEqual(NO_UPDATE);
   });
 
   it('stays quiet when the request throws', async () => {
     const failing = vi.fn(async () => { throw new Error('offline'); }) as unknown as typeof fetch;
-    expect(await fetchUpdateState(24, failing)).toEqual(NO_UPDATE);
+    expect(await fetchUpdateState(24, 'android', failing)).toEqual(NO_UPDATE);
   });
 
   it('stays quiet when the body is not JSON at all', async () => {
     const broken = vi.fn(async () => ({ ok: true, json: async () => { throw new SyntaxError('<html>'); } })) as unknown as typeof fetch;
-    expect(await fetchUpdateState(24, broken)).toEqual(NO_UPDATE);
+    expect(await fetchUpdateState(24, 'android', broken)).toEqual(NO_UPDATE);
   });
 });
 
 describe('outside Android', () => {
   it('never asks and never offers the sideload page', async () => {
     const fetchImpl = vi.fn();
-    await expect(fetchUpdateState(24, fetchImpl as unknown as typeof fetch, 'ios')).resolves.toEqual(NO_UPDATE);
+    await expect(fetchUpdateState(24, 'ios', fetchImpl as unknown as typeof fetch)).resolves.toEqual(NO_UPDATE);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
