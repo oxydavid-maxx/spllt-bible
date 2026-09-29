@@ -6,6 +6,9 @@ export interface ReadingDay {
   planId?: string;
   sourceRows: string[];
   references: string[];
+  /** Set only where the plan corrected the church sheet (data/reading-plan-2026.json). */
+  revision?: number;
+  note?: string;
 }
 
 export interface ReadingPlan {
