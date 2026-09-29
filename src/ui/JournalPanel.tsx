@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SheetBackdrop } from './SheetBackdrop';
 import { useAndroidKeyboardVisible } from './useAndroidKeyboardVisible';
 import { useJournalEntry } from './useJournalEntry';
 import { theme } from './Theme';
@@ -46,8 +47,8 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
 
   return <Modal transparent animationType="slide" visible={visible} onRequestClose={close}>
     <KeyboardAvoidingView style={styles.keyboardRoot} behavior="padding" enabled={Platform.OS !== 'android' || keyboardUp}>
-    <Pressable accessibilityRole="button" accessibilityLabel="關閉靈修日記" onPress={close} style={styles.scrim}>
-      <Pressable onPress={() => undefined} style={styles.sheet} accessibilityViewIsModal>
+    <SheetBackdrop label="關閉靈修日記" onPress={close} style={styles.scrim}>
+      <View style={styles.sheet} accessibilityViewIsModal>
         <View style={styles.header}>
           <Text accessibilityRole="header" style={styles.title}>{`靈修日記 ${dateLabel}`}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="完成" onPress={close} hitSlop={8} style={styles.done}>
@@ -81,8 +82,8 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
               ? <Text style={styles.note}>尚未上傳</Text>
               : null}
         </ScrollView>
-      </Pressable>
-    </Pressable>
+      </View>
+    </SheetBackdrop>
     </KeyboardAvoidingView>
   </Modal>;
 }
