@@ -16,8 +16,11 @@ module.exports = ({ config }) => {
     ...(hasIosServices ? { iosGoogleServicesFile: iosServices } : {}),
   };
   const nextConfig = { ...config };
+  // iOS builds carry the Android versionCode as their build number, so one bump in app.json releases both
+  // platforms with the same number.
+  nextConfig.ios = { ...config.ios, buildNumber: String(config.android?.versionCode ?? 1) };
   if (hasAndroidServices) nextConfig.android = { ...config.android, googleServicesFile: androidServices };
-  if (hasIosServices) nextConfig.ios = { ...config.ios, googleServicesFile: iosServices };
+  if (hasIosServices) nextConfig.ios = { ...nextConfig.ios, googleServicesFile: iosServices };
   if (Object.keys(serviceOptions).length > 0) {
     plugins.push(['react-native-nitro-google-signin', serviceOptions]);
   } else if (iosUrlScheme) {
