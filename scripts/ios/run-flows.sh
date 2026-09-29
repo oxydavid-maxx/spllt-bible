@@ -12,7 +12,11 @@ xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
 xcrun simctl install "$UDID" "$(cat "$OUT/app-path.txt")"
 # The app asks for notifications at sign-in when reading reminders are on. Grant it here, once, before the
 # Maestro driver starts; the flows then launch without clearState (a reinstall would drop the grant).
-applesimutils --byId "$UDID" --bundle org.qingmu.youth --setPermissions notifications=YES
+# Maestro ships a pinned applesimutils and unpacks it to ~/.maestro/deps on every start (maestro-cli App.kt,
+# Dependencies.install), so no third-party Homebrew tap is needed. With Maestro granting per launch instead
+# (clearState reinstalls the app), some runs still showed the system prompt and lost the driver.
+maestro --version > /dev/null 2>&1
+"$HOME/.maestro/deps/applesimutils" --byId "$UDID" --bundle org.qingmu.youth --setPermissions notifications=YES
 echo "$UDID" > "$OUT/udid.txt"
 export MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
 echo '{}' > "$OUT/flows.json"
