@@ -59,6 +59,8 @@
 4. `plugins/withGoogleSignInPods.js` 讓沒有 Google iOS 設定檔的建置也能通過 `pod install`。
 5. 會員登入後，如果讀經提醒是開的，App 會要求通知權限（兩個平台都一樣）。
 6. 日記的「同時存到我選的資料夾」用的是 Android 的 StorageAccessFramework，iOS 沒有對應功能；iOS 版怎麼處理還在等決定（issue #23）。
+7. 面板和選單**不可**包在可以按的背景（`Pressable`）裡：iOS 把可以按的元件當成一整顆按鈕，裡面的選項對 VoiceOver 和 XCUITest 都看不到。用共用的 `src/ui/SheetBackdrop.tsx`，背景和面板並排。守衛測試：`tests/ui/sheetBackdrop.test.ts`。
+8. 關閉中的底部面板要對輔助工具隱藏（`src/ui/sheet/bottomSheet.tsx`），不然 VoiceOver 和自動化測試會點到看不見的按鈕。
 
 ## 測試慣例
 

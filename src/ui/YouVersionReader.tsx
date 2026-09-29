@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, BackHandler, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SheetBackdrop } from './SheetBackdrop';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createYouVersionAdapter } from '../services/youVersionAdapter';
 import type { YouVersionReaderUiModule } from '../services/youVersionAdapter';
@@ -340,16 +341,16 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   };
 
   const footnotePanel = footnote ? <Modal transparent animationType="fade" visible onRequestClose={closeFootnote}>
-    <Pressable accessibilityRole="button" accessibilityLabel="關閉註腳" onPress={closeFootnote} style={styles.footnoteScrim}>
-      <Pressable onPress={() => undefined} style={styles.footnoteHost} accessibilityViewIsModal>
+    <SheetBackdrop label="關閉註腳" onPress={closeFootnote} style={styles.footnoteScrim}>
+      <View style={styles.footnoteHost} accessibilityViewIsModal>
         {/* The bottom edge keeps the notes above a three-button navigation bar, which otherwise
             covered everything under the title (2026-09-26). */}
         <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.footnoteSheet}>
         <View style={styles.footnoteHeader}><Text accessibilityRole="header" style={styles.footnoteTitle}>{`${footnote.reference ?? formatReferenceZhTw(references[activeReferenceIndex] ?? '')} 第 ${footnote.verseNum} 節 註腳`}</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={closeFootnote} hitSlop={8} style={styles.footnoteClose}><Text style={styles.footnoteCloseText}>關閉</Text></Pressable></View>
         <ScrollView contentContainerStyle={styles.footnoteBody}>{footnote.notes.map((note, index) => <Text key={index} style={styles.footnoteNote}>{`${String.fromCharCode(97 + index)}. ${stripHtml(note)}`}</Text>)}</ScrollView>
         </SafeAreaView>
-      </Pressable>
-    </Pressable>
+      </View>
+    </SheetBackdrop>
   </Modal> : null;
   return (
     <ChapterAudioAutoplayContext.Provider value={autoplayContext}>

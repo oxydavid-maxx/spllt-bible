@@ -18,7 +18,7 @@ const rn = vi.hoisted(() => ({
   ActivityIndicator: primitive('ActivityIndicator'), TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'),
   Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'),
   ...animated.modules(primitive),
-  Platform: { OS: 'android' }, useWindowDimensions: () => ({ width: 390, height: 844 }),
+  Platform: { OS: 'android' as 'android' | 'ios' }, useWindowDimensions: () => ({ width: 390, height: 844 }),
   StyleSheet: { create: (x: unknown) => x, flatten: (x: unknown) => Object.assign({}, ...[x].flat(Infinity)), absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 } },
   BackHandler: { addEventListener: (_: string, cb: () => boolean) => { boundary.back = cb; return { remove: () => { boundary.back = null; } }; } },
 }));
@@ -99,7 +99,11 @@ beforeEach(() => {
 });
 afterEach(() => { if (renderer) act(() => renderer.unmount()); vi.restoreAllMocks(); });
 
-describe('installed SDK sheets on the app-owned bottom sheet', () => {
+// The SDK's native-sheet.js takes a different branch per platform (suppressInactiveSheet is Android-only; iOS keeps
+// inactive sheets mounted and visible to pre-warm them), so the same lifecycle runs on both.
+describe.each(['android', 'ios'] as const)('installed SDK sheets on the app-owned bottom sheet (%s)', (os) => {
+  beforeEach(() => { rn.Platform.OS = os; });
+  afterEach(() => { rn.Platform.OS = 'android'; });
   it('opens a sheet whose SDK open request arrived before its content was measured', async () => {
     await act(async () => { renderer = TestRenderer.create(React.createElement(installed.BibleReaderSettingsSheet, { isSettingsSheetOpen: true, onClose() {} })); });
     expect(isOpen(leanSheets()[0])).toBe(false);
@@ -112,8 +116,15 @@ describe('installed SDK sheets on the app-owned bottom sheet', () => {
   ] as const)('opens %s and keeps that host mounted through done / back / backdrop dismissals', async (method, kind) => {
     await mountReader();
     const inertHosts = renderer.root.findAll(node => typeof node.type === 'string' && node.props.testID === 'native-sheet-inert-host');
-    expect(inertHosts).toHaveLength(3);
-    expect(inertHosts.every(node => node.props.pointerEvents === 'none' && node.props.importantForAccessibility === 'no-hide-descendants')).toBe(true);
+    if (os === 'android') {
+      expect(inertHosts).toHaveLength(3);
+      expect(inertHosts.every(node => node.props.pointerEvents === 'none' && node.props.importantForAccessibility === 'no-hide-descendants')).toBe(true);
+    } else {
+      expect(inertHosts).toHaveLength(3);
+      expect(inertHosts.every(node => node.props.pointerEvents === 'box-none' && !node.props.accessibilityElementsHidden),
+        'iOS keeps the closed host live so its WebView pre-warms at full size (native-sheet.js, ADR 0006)').toBe(true);
+    }
+    expect(leanSheets().every(sheet => sheet.props.accessibilityElementsHidden === true), 'closed sheets are hidden from VoiceOver / TalkBack').toBe(true);
     deliverNativeLayouts();
     act(() => controls[method]());
     finishAnimations();
@@ -125,15 +136,25 @@ describe('installed SDK sheets on the app-owned bottom sheet', () => {
     act(() => controls[method]());
     finishAnimations();
     expect(isOpen(sheetOf(kind))).toBe(true);
-    act(() => { expect(boundary.back?.()).toBe(true); });
+    // An iPhone has no back button; there the sheet's own done button is the second way out.
+    act(() => {
+      if (os === 'android') expect(boundary.back?.()).toBe(true);
+      else renderer.root.findAll(node => typeof node.type === 'string' && node.props.accessibilityLabel === '完成設定，返回閱讀')[0].props.onPress();
+    });
     finishAnimations();
     expect(isOpen(sheetOf(kind))).toBe(false);
     act(() => controls[method]());
     finishAnimations();
     expect(isOpen(sheetOf(kind))).toBe(true);
-    const backdrop = renderer.root.findAll(node => typeof node.type === 'string' && node.props.testID === 'lean-bottom-sheet-backdrop');
-    expect(backdrop).toHaveLength(1);
-    act(() => backdrop[0].props.onPress());
+    const backdrops = renderer.root.findAll(node => typeof node.type === 'string' && node.props.testID === 'lean-bottom-sheet-backdrop');
+    // Android drops a closed sheet's backdrop; iOS keeps all three mounted, transparent, untouchable and hidden
+    // from VoiceOver. Either way exactly one backdrop — the open sheet's — takes a tap.
+    const wrapperOf = (node: TestRenderer.ReactTestInstance) => { let at = node.parent; while (at && at.props.pointerEvents === undefined) at = at.parent; return at; };
+    const live = backdrops.filter(node => wrapperOf(node)?.props.pointerEvents === 'auto');
+    expect(live).toHaveLength(1);
+    if (os === 'android') expect(backdrops).toHaveLength(1);
+    else expect(backdrops.filter(node => wrapperOf(node)?.props.pointerEvents !== 'auto').every(node => wrapperOf(node)?.props.accessibilityElementsHidden === true)).toBe(true);
+    act(() => live[0].props.onPress());
     finishAnimations();
     expect(isOpen(sheetOf(kind))).toBe(false);
     expect(boundary.back, 'A backdrop dismissal must reach the app so its back handler goes away').toBeNull();
