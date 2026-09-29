@@ -230,7 +230,8 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   const nextIndex = assignedIndex >= 0 && assignedIndex < references.length - 1 ? assignedIndex + 1 : -1;
   const atEnd = !chrome.collapsed && chrome.atChapterEnd;
   // The last chapter read to its end: the same ○ grows into the day's completion call (one button, one record).
-  const completionExpanded = atEnd && assignedIndex >= 0 && nextIndex < 0 && !completed && !completionActionDisabled && !completionFailed;
+  // Not while 回到朗讀處 holds the bottom-left: on a 360 dp phone the grown ○ would run into it.
+  const completionExpanded = atEnd && assignedIndex >= 0 && nextIndex < 0 && !completed && !completionActionDisabled && !completionFailed && !chrome.returnToNarrationVisible;
   const nextReference = atEnd && nextIndex >= 0 ? references[nextIndex] : undefined;
   const currentChipLabel = assignedIndex >= 0 ? formatReferenceZhTw(references[assignedIndex]) : `自由 ${formatReferenceZhTw(chapterUsfm)}`;
   const actionBottom = TAB_BAR + insets.bottom + GAP;

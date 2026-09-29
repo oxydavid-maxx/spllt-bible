@@ -455,6 +455,22 @@ describe('fullscreen reader layout and chrome', () => {
     expect(text()).not.toContain('繼續讀');
   });
 
+  // Read-along (2026-09-29): 回到朗讀處 sits bottom-left on the ○ ▶ row; on a 360 dp phone the grown ○
+  // would run into it, so ○ stays compact while the button is up.
+  it('keeps ○ compact while 回到朗讀處 is shown at the chapter end, and grows it again once the narration is followed', async () => {
+    currentChapter = 'PSA.91';
+    activeReferenceIndex = 1;
+    await mount();
+    act(() => { chrome.handleCanvasEdge({ atEnd: true }); });
+    expect(text()).toContain('完成今日讀經');
+    act(() => { chrome.handleNarration(12); chrome.handleFollowRelease(); });
+    expect(text()).toContain('回到朗讀處');
+    expect(text()).not.toContain('完成今日讀經');
+    act(() => { chrome.returnToNarration(); });
+    expect(text()).not.toContain('回到朗讀處');
+    expect(text()).toContain('完成今日讀經');
+  });
+
   it.each([false, true])('keeps common controls accessibility-visible with TalkBack=%s', async enabled => {
     native.screenReader = enabled;
     await mount();

@@ -64,6 +64,16 @@
 9. 推播：Android 用 FCM 的 data-only 訊息；iPhone 用 APNs 的可見通知，自訂資料放在 `body` 裡（expo-notifications 只把 `userInfo.body` 交給 JS）。後端的 `server/apnsSender.ts` 只有設了 `QINGMU_APNS_KEY_FILE`、`QINGMU_APNS_KEY_ID`、`QINGMU_APNS_TEAM_ID` 才會載入，所以舊的後端套件目錄也起得來（`tests/server/apnsLazyLoad.test.ts`）。模擬器用 `xcrun simctl push` 驗，流程 30、31。
 10. iOS 最多只能排 64 個本機通知，所以讀經提醒最多排 60 個（`MAX_PENDING_READING_REMINDERS`）。
 
+## 朗讀跟著走（read-along，兩個平台共用）
+
+設計與驗證：`docs/superpowers/plans/2026-09-29-read-along-follow.md`。
+
+- 朗讀反白和跟隨捲動只有一個負責者：WebView 裡的 `src/ui/readAlongBridge.ts`。App 端的跟隨狀態在 `src/ui/readAlongFollow.ts`。**不要**再把朗讀反白放進 SDK 的 highlights 管道：SDK 用 `parseInt(v)` 上色，找不到「5-6」裡的第 6 節（詩105:5-6 曾整段不反白）。
+- 找經文一律用「包含第 N 節的那一段」：`v` 可能是 `5-6`，一節跨段時會有好幾個同 `v` 的元素。
+- 「手動」只認手指拖動和選取經文，不認捲動事件：SDK 換章、字級改變都會自己捲動。
+- 程式自己捲動時，工具列收合程式會略過（`window.__qingmuFollowScrolling`），不收合也不展開。
+- 真機驗證時，WebView 裡的位置以截圖為準：程式捲動之後，uiautomator 回報的 WebView 節點座標會落後而且有偏移。原生按鈕（▶、回到朗讀處）照常用無障礙標籤。
+
 ## 測試慣例
 
 - 先寫會失敗的測試，再改到通過。每修一類錯誤，加一條守衛測試擋住整類。
