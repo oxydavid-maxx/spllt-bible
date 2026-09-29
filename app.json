@@ -64,7 +64,6 @@
     },
     "ios": {
       "bundleIdentifier": "org.qingmu.youth",
-      "buildNumber": "40",
       "supportsTablet": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
