@@ -3,12 +3,13 @@ import { createServiceAccountAccessTokenProvider, resolveFcmCredentialFile } fro
 import { createFcmSender } from './fcmSender';
 import type { MeetingSender } from './remoteReminders';
 import type { PushDataSender } from './friendPush';
-import { createApnsSender, type ApnsAlertSender } from './apnsSender';
+import type { ApnsAlertSender, createApnsSender } from './apnsSender';
 
 /**
  * iPhone pushes: Apple's token-based provider API needs only the .p8 key file (kept on the backend machine,
- * never in git), its key id and the team id. Independent of FCM. The provider is created on the first send,
- * so a server that never pushes an iPhone never opens an APNs connection.
+ * never in git), its key id and the team id. Independent of FCM. The library is loaded and the provider created
+ * on the first send, so a server that never pushes an iPhone neither opens an APNs connection nor needs
+ * @parse/node-apn in its dependency folder.
  */
 function createApnsConfiguration(env: Record<string, string | undefined>): ApnsAlertSender | null {
   const keyFile = env.QINGMU_APNS_KEY_FILE?.trim();
@@ -16,10 +17,11 @@ function createApnsConfiguration(env: Record<string, string | undefined>): ApnsA
   const teamId = env.QINGMU_APNS_TEAM_ID?.trim();
   if (!keyFile || !keyId || !teamId) return null;
   try { if (!statSync(keyFile).isFile()) return null; } catch { return null; }
-  let sender: ReturnType<typeof createApnsSender> | null = null;
-  return (token, alert) => {
-    sender ??= createApnsSender({ keyFile, keyId, teamId, topic: 'org.qingmu.youth', production: env.QINGMU_APNS_PRODUCTION !== 'false' });
-    return sender.send(token, alert);
+  let sender: Promise<ReturnType<typeof createApnsSender>> | null = null;
+  return async (token, alert) => {
+    sender ??= import('./apnsSender').then(({ createApnsSender: create }) =>
+      create({ keyFile, keyId, teamId, topic: 'org.qingmu.youth', production: env.QINGMU_APNS_PRODUCTION !== 'false' }));
+    return (await sender).send(token, alert);
   };
 }
 export function createRemoteConfiguration(env: Record<string, string | undefined> = process.env): { status: 'REMOTE_PENDING' | 'REMOTE_READY'; senderConfigured: boolean; dispatcherEnabled: boolean; pendingReasons: string[]; delivery: { enabled: true; send: MeetingSender } | null; push: PushDataSender | null; pushIos: ApnsAlertSender | null } {
