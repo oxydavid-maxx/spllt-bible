@@ -1,0 +1,17 @@
+# .maestro/ios/00-smoke.yaml
+# Tab buttons are matched by their accessibility labels (app/(tabs)/_layout.tsx): 公告, 讀經入口, 積分, 靈修日記.
+appId: org.qingmu.youth
+---
+# The app was just installed and granted notifications by run-flows.sh; no clearState, which would reinstall it.
+- launchApp
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- assertVisible: "公告"
+- assertVisible: "靈修日記"
+- tapOn: "積分"
+- extendedWaitUntil:
+    visible: "測試成員甲"
+    timeout: 30000
+- takeScreenshot: 00-smoke
+- tapOn: "讀經入口"

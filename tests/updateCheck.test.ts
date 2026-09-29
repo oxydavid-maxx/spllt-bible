@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
 import { compareToInstalled, fetchUpdateState, NO_UPDATE, readPublishedVersion } from '../src/services/updateCheck';
 
 const good = { versionCode: 25, versionName: '0.5.4', url: 'https://example.org/app.apk' };
@@ -77,5 +79,13 @@ describe('asking, when the network is what it is', () => {
   it('stays quiet when the body is not JSON at all', async () => {
     const broken = vi.fn(async () => ({ ok: true, json: async () => { throw new SyntaxError('<html>'); } })) as unknown as typeof fetch;
     expect(await fetchUpdateState(24, broken)).toEqual(NO_UPDATE);
+  });
+});
+
+describe('outside Android', () => {
+  it('never asks and never offers the sideload page', async () => {
+    const fetchImpl = vi.fn();
+    await expect(fetchUpdateState(24, fetchImpl as unknown as typeof fetch, 'ios')).resolves.toEqual(NO_UPDATE);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

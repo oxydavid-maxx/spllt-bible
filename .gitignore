@@ -3,8 +3,8 @@ __pycache__/
 .expo/
 dist/
 build/
-android/
-ios/
+/android/
+/ios/
 coverage/
 reports/
 artifacts-preserved/

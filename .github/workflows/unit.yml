@@ -1,0 +1,46 @@
+# .github/workflows/unit.yml
+name: unit
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: unit-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  vitest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The two real-browser tests (reader padding, immersion gestures) run in chrome-headless-shell, the engine
+      # they use on the development PC. The runner's full Chrome took ~12 s per test and missed timed gestures
+      # when the runner was busy; the shell takes ~1 s.
+      - name: chrome-headless-shell
+        run: |
+          # Ubuntu 24.04 runners block the unprivileged user namespaces Chrome's sandbox needs (AppArmor); the
+          # apt Chrome ships its own AppArmor profile, a downloaded shell does not. Puppeteer's CI guidance: lift it.
+          echo 0 | sudo tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns > /dev/null
+          shell_path=$(npx -y @puppeteer/browsers@3.2.3 install chrome-headless-shell@stable --path "$RUNNER_TEMP/chrome" | awk 'END {print $2}')
+          test -x "$shell_path"
+          echo "CHROME_PATH=$shell_path" >> "$GITHUB_ENV"
+      - name: vitest
+        run: |
+          mkdir -p ci-out
+          npx vitest run --reporter=json --outputFile=ci-out/vitest.json > ci-out/vitest.log 2>&1 || true
+          npx tsx scripts/ci/vitest-summary.ts ci-out/vitest.json ci-out/vitest-summary.json >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-summary
+          path: |
+            ci-out/vitest-summary.json
+            ci-out/vitest.json
+          retention-days: 7

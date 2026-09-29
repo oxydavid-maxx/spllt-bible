@@ -1,0 +1,74 @@
+# .github/workflows/android.yml
+name: android
+on:
+  pull_request:
+    paths: ['app/**', 'src/**', 'plugins/**', 'patches/**', 'package.json', 'package-lock.json', 'app.json', 'app.config.js', 'metro*.js', 'react-native.config.js', 'babel.config.js', 'scripts/ci/**', '.github/workflows/android.yml']
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - name: prebuild (branch)
+        run: npx expo prebuild --platform android --no-install --clean
+      - name: native diff vs main
+        if: github.event_name == 'pull_request'
+        run: |
+          git worktree add ../base origin/main
+          if git diff --quiet origin/main -- package-lock.json patches; then ln -s "$PWD/node_modules" ../base/node_modules; else (cd ../base && npm ci); fi
+          (cd ../base && npx expo prebuild --platform android --no-install --clean)
+          mkdir -p ci-out
+          diff -r ../base/android/app/src/main android/app/src/main > ci-out/native-diff.txt || true
+          for f in app/build.gradle build.gradle gradle.properties settings.gradle; do diff ../base/android/$f android/$f >> ci-out/native-diff.txt || true; done
+          grep -c '^diff\|^[<>]' ci-out/native-diff.txt > ci-out/native-diff-count.txt || echo 0 > ci-out/native-diff-count.txt
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            /usr/local/lib/android/sdk/ndk/27.1.12297006
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json', 'patches/**', 'app.json', 'app.config.js', 'plugins/**') }}
+          restore-keys: gradle-${{ runner.os }}-
+      - name: assembleRelease (debug-signed; no -PqingmuRelease, so no private keystore)
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" -PreactNativeArchitectures=arm64-v8a,armeabi-v7a -Pexpo.useLegacyPackaging=true
+      - name: APK guards
+        run: |
+          mkdir -p ci-out
+          npx tsx scripts/ci/android-apk-check.ts android/app/build/outputs/apk/release/app-release.apk arm64-v8a,armeabi-v7a 90 ci-out/android-summary.json "$(cat ci-out/native-diff-count.txt 2>/dev/null || echo 0)" >> "$GITHUB_STEP_SUMMARY"
+      - name: size vs main
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN=$(gh run list --workflow android.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -n "$RUN" ]; then gh run download "$RUN" --name android-summary --dir ci-out/base || true; fi
+          npx tsx scripts/ci/compare-baseline.ts ci-out/android-summary.json ci-out/base/android-summary.json apkBytes 1.002 "APK 大小" >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-summary
+          path: |
+            ci-out/android-summary.json
+            ci-out/native-diff.txt
+          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}

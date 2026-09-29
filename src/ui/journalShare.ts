@@ -36,9 +36,8 @@ export async function shareJournalExport(document: string): Promise<ShareOutcome
   } catch { /* fall through to the text routes */ }
 
   try {
-    const { Share } = await import('react-native');
-    const result = await Share.share({ message: document });
-    if (result.action !== Share.dismissedAction) return 'shared';
+    const { shareTextSheet } = await import('./systemShare');
+    if (await shareTextSheet(document)) return 'shared';
   } catch { /* fall through to the clipboard */ }
 
   try {

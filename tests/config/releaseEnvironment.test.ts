@@ -63,7 +63,10 @@ afterEach(() => {
   }
 });
 
-describe('official Android release entry environment guard', () => {
+// build-android.ps1 is the Windows release entry: it only ever runs on 光佑's machine, and the Minify cases drive
+// a cmd.exe gradlew.bat. On the Linux CI runner every case starts pwsh to scan the source tree under a 20 s
+// timeout, and a case that passed in one run failed in the next. These run on Windows (locally and at RC).
+describe.skipIf(process.platform !== 'win32')('official Android release entry environment guard', () => {
   it.each(scalarForbidden.flatMap((name) => ['synthetic-sensitive-value', 'false', ' '].map((value) => ({ name, value }))))('rejects nonempty $name before native prerequisites without exposing the value', ({ name, value }) => {
     const f = fixture(), before = files(f.root); const result = run(f, { [name]: value });
     expect(result.status).toBe(17); expect(result.body.message).toContain(name); expect(result.body.message).not.toContain('native project');

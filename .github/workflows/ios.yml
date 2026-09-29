@@ -1,0 +1,81 @@
+# .github/workflows/ios.yml
+name: ios
+on:
+  pull_request:
+    paths: ['app/**', 'src/**', 'plugins/**', 'patches/**', 'package.json', 'package-lock.json', 'app.json', 'app.config.js', 'metro*.js', 'react-native.config.js', 'babel.config.js', 'server/**', '.maestro/**', 'scripts/ios/**', 'scripts/ci/**', '.github/workflows/ios.yml']
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  simulator:
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      OUT: ci-out
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_QINGMU_FIXTURE: 'true'
+      EXPO_PUBLIC_QINGMU_DEV_TOKEN: ci-fixture-token
+      EXPO_PUBLIC_QINGMU_API_BASE_URL: http://127.0.0.1:8788
+      EXPO_PUBLIC_QINGMU_TEST_DATE: '2026-09-02'
+      EXPO_PUBLIC_QINGMU_QA_TEST_AUDIO: 'true'
+      EXPO_PUBLIC_QINGMU_QA_AUDIO_URI: http://127.0.0.1:8790/jhn13.wav
+      # Empty until 光佑 approves Q1; the reader flows then report 略過（無 key）.
+      EXPO_PUBLIC_YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
+      IOS_REQUIRED_CHINESE_STRINGS: NSCameraUsageDescription
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: sudo xcode-select -s /Applications/Xcode_26.4.1.app
+      - run: npm ci
+      - run: npx expo prebuild --platform ios --no-install --clean
+      - uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ hashFiles('package-lock.json', 'patches/**', 'app.json', 'app.config.js') }}
+      - run: cd ios && pod install
+      - run: echo '| 守門 | 結果 | 備註 |' >> "$GITHUB_STEP_SUMMARY" && echo '|---|---|---|' >> "$GITHUB_STEP_SUMMARY"
+      - run: bash scripts/ios/build-simulator.sh
+      - run: npx tsx scripts/ios/guards.ts >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: install Maestro 2.10.0
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION=2.10.0 bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: flows and runtime budgets
+        env:
+          REQUIRES_KEY_PATTERN: '^1[0-9]-reader'
+        run: bash scripts/ios/run-flows.sh
+      - name: summary
+        if: always()
+        run: npx tsx scripts/ios/summary.ts >> "$GITHUB_STEP_SUMMARY"
+      - name: size and memory vs main
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN=$(gh run list --workflow ios.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -n "$RUN" ]; then gh run download "$RUN" --name ios-summary --dir ci-out/base || true; fi
+          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json appBytes 1.05 "R5 .app 大小" >> "$GITHUB_STEP_SUMMARY"
+          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json footprintMB 1.10 "R3 記憶體 vs main" >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-summary
+          path: |
+            ci-out/*.json
+            ci-out/xcodebuild-errors.txt
+            ci-out/maestro/**/*.png
+            ci-out/maestro/*.txt
+          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}

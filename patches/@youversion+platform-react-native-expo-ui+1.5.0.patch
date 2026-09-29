@@ -207,6 +207,29 @@ index e6974a0..6694bc3 100644
              // Yielded, not displaced. A prompt that takes over the sheet host
              // would fire this sheet's `onClose`, which clears the selection the
              // prompt's own answer still needs.
+diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/native/youversion-provider.js b/node_modules/@youversion/platform-react-native-expo-ui/build/native/youversion-provider.js
+index 52f2021..df6609c 100644
+--- a/node_modules/@youversion/platform-react-native-expo-ui/build/native/youversion-provider.js
++++ b/node_modules/@youversion/platform-react-native-expo-ui/build/native/youversion-provider.js
+@@ -1,14 +1,16 @@
+ import { jsx as _jsx } from "react/jsx-runtime";
+ import { YouVersionProvider as CoreYouVersionProvider, } from '@youversion/platform-react-native-expo-core';
+ import {} from 'react';
+-import * as ReactNative from 'react-native';
++// qingmu: a named import. `import * as` makes Metro copy every react-native export, and on iOS that builds
++// PushNotificationIOS's NativeEventEmitter with no native module, which kills a release app.
++import { useColorScheme } from 'react-native';
+ import { ThemeContext } from '../hooks/use-theme';
+ import { LocaleProvider } from '../i18n/locale-context';
+ import { resolveTheme } from '../lib/resolve-theme';
+ import { useBrandFonts } from '../theme/use-fonts';
+ import { NativeSheetProvider } from './native-sheet';
+ export function YouVersionProvider({ appKey, apiHost, theme = 'system', locale, auth, permittedVersionIds, excludedVersionIds, permittedLanguageTags, fallback, hookOverrides, children, }) {
+-    const colorScheme = ReactNative.useColorScheme();
++    const colorScheme = useColorScheme();
+     const resolvedTheme = resolveTheme(theme, colorScheme);
+     useBrandFonts(appKey, apiHost);
+     return (_jsx(CoreYouVersionProvider, { appKey: appKey, apiHost: apiHost, auth: auth, fallback: fallback, hookOverrides: hookOverrides, permittedVersionIds: permittedVersionIds, excludedVersionIds: excludedVersionIds, permittedLanguageTags: permittedLanguageTags, children: _jsx(LocaleProvider, { locale: locale, children: _jsx(ThemeContext.Provider, { value: resolvedTheme, children: _jsx(NativeSheetProvider, { children: children }) }) }) }));
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts
 index bcd2248..c2292b8 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/stores/reader-settings-store.d.ts

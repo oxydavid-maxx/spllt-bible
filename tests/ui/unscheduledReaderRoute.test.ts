@@ -96,7 +96,11 @@ async function simulateReaderRefocus() { await act(async () => {
     boundary.focusEffects.set(callback, typeof nextCleanup === 'function' ? nextCleanup : undefined);
   }
 }); }
+// The reader offers 完成讀經 only within COMPLETION_WINDOW_DAYS of the real Taipei date (reader.tsx), and these
+// tests pick fixed September dates. With the clock unpinned they expired on 2026-09-29, when 09-22 aged out.
+const PINNED_NOW = new Date('2026-09-23T04:00:00Z');
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(PINNED_NOW);
   boundary.positions.clear(); boundary.preferences.clear(); boundary.requests = []; boundary.sdkLoads = 0; boundary.completions.mockReset(); boundary.flush.mockReset().mockResolvedValue([]); boundary.completionRecord = null; boundary.alert.mockClear(); boundary.openURL.mockClear(); boundary.focusEffects.clear();
   boundary.completions.mockImplementation((command: { memberId: string; planId: string; taskDate: string; desiredStatus: 'COMPLETED' | 'NOT_COMPLETED'; expectedRevision: number }) => {
     boundary.completionRecord = { memberId: command.memberId, planId: command.planId, taskDate: command.taskDate, status: command.desiredStatus, revision: command.expectedRevision + 1, syncStatus: 'PENDING_SAVE' };
@@ -106,7 +110,7 @@ beforeEach(() => {
   boundary.sdk = { ...loadReaderSettingsSdk().api, YouVersionProvider: primitive('OfficialProvider'), BibleReader: primitive('OfficialReader'), BibleReaderSettingsSheet: primitive('SettingsSheet'), BibleChapterPickerSheet: primitive('ChapterSheet'), BibleVersionPickerSheet: primitive('VersionSheet') };
   vi.spyOn(console, 'error').mockImplementation((...args) => { const message = String(args[0] ?? ''); if (!message.includes('react-test-renderer is deprecated') && !message.includes('testing environment is not configured to support act')) throw new Error(message); });
 });
-afterEach(() => { if (rendered) act(() => rendered.unmount()); vi.restoreAllMocks(); });
+afterEach(() => { if (rendered) act(() => rendered.unmount()); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('real unscheduled-day route initializes a free Bible reader', () => {
   it('opens JHN.1 and resolves the same audio identity on actual Sunday without inventing a task', async () => {

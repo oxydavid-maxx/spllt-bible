@@ -107,11 +107,13 @@ it('applies compact padding to the actual fullscreen scroll container, regardles
     const page = join(work, 'fixture.html');
     writeFileSync(page, html);
     const chromePath = process.env.CHROME_PATH ?? resolveDumpDomBinary();
+    // A real browser run takes ~12 s on a shared CI runner next to the other test workers; 20 s timed out
+    // there once in twelve runs, so the ceiling is 60 s.
     const output = execFileSync(chromePath, [
       '--headless=new', '--disable-gpu', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--disable-extensions',
       '--no-first-run', '--no-default-browser-check', '--host-resolver-rules=MAP * ~NOTFOUND',
       `--user-data-dir=${join(work, 'profile')}`, '--virtual-time-budget=2500', '--dump-dom', pathToFileURL(page).href,
-    ], { encoding: 'utf8', timeout: 20000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    ], { encoding: 'utf8', timeout: 60000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     const raw = output.match(/<pre id="result">([^<]+)<\/pre>/)?.[1];
     expect(raw, 'Chromium must execute all actual-CSS fixtures').toBeDefined();
     const measured = JSON.parse(raw!) as { index: number; top: string; bottom: string; left: string; right: string; titleOffset: number; unchanged: boolean; scrolls: boolean; overflow: string; sheetPadding: string; footerDisplay: string }[];
@@ -134,4 +136,4 @@ it('applies compact padding to the actual fullscreen scroll container, regardles
     // Remove only this test's resolved directory under the known temp root.
     if (resolve(work).startsWith(`${temporaryRoot}\\qingmu-reader-css-`)) rmSync(work, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }
-}, 30000);
+}, 90000);
