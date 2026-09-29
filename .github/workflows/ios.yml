@@ -27,7 +27,7 @@ jobs:
       EXPO_PUBLIC_QINGMU_QA_AUDIO_URI: http://127.0.0.1:8790/jhn13.wav
       # Empty until 光佑 approves Q1; the reader flows then report 略過（無 key）.
       EXPO_PUBLIC_YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
-      IOS_REQUIRED_CHINESE_STRINGS: NSCameraUsageDescription
+      IOS_REQUIRED_CHINESE_STRINGS: NSCameraUsageDescription,NSMicrophoneUsageDescription,NSFaceIDUsageDescription
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
