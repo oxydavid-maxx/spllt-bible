@@ -5,6 +5,8 @@ UDID=$1; NAME=$2; OUT=${OUT:-ci-out}; DIR="$OUT/maestro"; mkdir -p "$DIR"
 APP=$(cat "$OUT/app-path.txt")
 EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
 tail -n 40 "$DIR/$NAME.log" > "$DIR/$NAME-maestro-tail.txt" 2>/dev/null || true
+# The whole fatal JS error: message plus every stack frame (the filtered lines below keep only its first line).
+xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "process == \"$EXE\"" 2>/dev/null   | awk '/Unhandled JS Exception|Terminating app due to uncaught exception/ {grab=90} grab > 0 {print; grab--}' | head -n 120 > "$DIR/$NAME-js-fatal.txt" || true
 xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "process == \"$EXE\"" 2>/dev/null \
   | grep -Ei 'error|exception|fatal|terminat|crash|unhandled|invariant|not bundled|red ?box' | tail -n 60 > "$DIR/$NAME-app-log.txt" || true
 REPORT=$(ls -t "$HOME/Library/Logs/DiagnosticReports/" 2>/dev/null | grep -F "$EXE" | head -1)
