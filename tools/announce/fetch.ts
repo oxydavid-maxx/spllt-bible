@@ -33,6 +33,11 @@ export async function fetchFolderHtml(folderId: string): Promise<string | null> 
   return await get(`https://drive.google.com/embeddedfolderview?id=${folderId}#list`, 'text') as string | null;
 }
 
+/** A sign-up form's public page (forms.gle short links redirect to it), read only for the dates it states. */
+export async function fetchFormText(url: string): Promise<string | null> {
+  return await get(url, 'text') as string | null;
+}
+
 /** Whether a link opens for someone who is not signed in to Google, the way most members open it. */
 export async function linkAccess(url: string): Promise<'open' | 'needs-sign-in' | 'missing' | 'unknown'> {
   const controller = new AbortController();

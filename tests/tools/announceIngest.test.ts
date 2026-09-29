@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildAnnouncement, PARENT_FOLDER, PROGRAM_WORKBOOK, SUNDAY_WORKBOOK, type Announcement } from '../../tools/announce/build';
 
-const sources = vi.hoisted(() => ({ fetchFolderHtml: vi.fn(), fetchWorkbook: vi.fn(), fetchSlidesText: vi.fn(), fetchDriveFile: vi.fn(), fetchDocText: vi.fn(), linkAccess: vi.fn(async () => 'open'), publish: vi.fn(), review: vi.fn(async () => ({ sensible: true })) }));
+const sources = vi.hoisted(() => ({ fetchFolderHtml: vi.fn(), fetchWorkbook: vi.fn(), fetchSlidesText: vi.fn(), fetchDriveFile: vi.fn(), fetchDocText: vi.fn(), fetchFormText: vi.fn(), linkAccess: vi.fn(async () => 'open'), publish: vi.fn(), review: vi.fn(async () => ({ sensible: true })) }));
 vi.mock('../../tools/announce/fetch', () => sources);
 vi.mock('../../tools/announce/publisher', () => ({ publishAnnouncement: sources.publish }));
 vi.mock('../../tools/announce/review', () => ({ reviewAnnouncement: sources.review }));
@@ -39,6 +39,7 @@ beforeEach(() => {
   sources.fetchFolderHtml.mockImplementation(async (id: string) => ({ [PARENT_FOLDER]: parent, week20: current, week13: listing(['fresh13', '20260913.mp3']) })[id] ?? null);
   sources.fetchWorkbook.mockImplementation(async (id: string) => id === PROGRAM_WORKBOOK ? normalProgram : normalSunday);
   sources.fetchSlidesText.mockResolvedValue(''); sources.fetchDriveFile.mockResolvedValue(null);
+  sources.fetchFormText.mockResolvedValue(null);
   sources.publish.mockReturnValue('published');
 });
 const roots: string[] = [];
@@ -160,5 +161,55 @@ describe('the daily run (光佑 2026-09-27: once a day, and no tokens when nothi
     expect(sources.review).not.toHaveBeenCalled();
     expect((await runIndex({ ...built, standing: { 地址: '搬家了' } }, undefined, { review: true })).code).toBe(0);
     expect(sources.review).toHaveBeenCalledTimes(1);
+  });
+});
+
+// 2026-09-29 (光佑): the 10/4 notice linked the 9/27 sign-up form. The link came from THIS week's
+// deck but was shown under the NEXT gathering. A form is only offered when it states that date.
+describe('the sign-up link belongs to the next gathering', () => {
+  const THIS_DECK = 'T'.repeat(44), NEXT_DECK = 'N'.repeat(44);
+  const thisWeekForm = 'https://forms.gle/ThisWeek20', nextWeekForm = 'https://forms.gle/NextWeek27';
+  const formPage = (date: string) => `<html><title>青年崇拜報名表</title><div>聚會時間: ${date}（日）</div></html>`;
+  function withDecks(options: { nextFolder?: boolean; thisDeckLink?: string; nextDeckLink?: string; forms: Record<string, string | null> }) {
+    const parentListing = options.nextFolder ? listing(['week27', '20260927'], ['week20', '20260920'], ['week13', '20260913']) : parent;
+    const currentListing = current + (options.thisDeckLink ? listing([THIS_DECK, '20260920青崇(全)PPT']) : '');
+    const folders: Record<string, string> = { [PARENT_FOLDER]: parentListing, week20: currentListing, week13: listing(['fresh13', '20260913.mp3']) };
+    if (options.nextFolder) folders.week27 = options.nextDeckLink ? listing([NEXT_DECK, '20260927青崇(全)PPT']) : '';
+    sources.fetchFolderHtml.mockImplementation(async (id: string) => folders[id] ?? null);
+    sources.fetchSlidesText.mockImplementation(async (id: string) => id === THIS_DECK ? `報名 QR code：${options.thisDeckLink}` : id === NEXT_DECK ? `報名：${options.nextDeckLink}` : '');
+    sources.fetchFormText.mockImplementation(async (url: string) => options.forms[url] ?? null);
+  }
+
+  it("does not offer this week's form under the next gathering", async () => {
+    withDecks({ thisDeckLink: thisWeekForm, forms: { [thisWeekForm]: formPage('9/20') } });
+    const result = await buildAnnouncement({ today: '2026-09-22' });
+    expect(result.announcement?.next).toMatchObject({ date: '9/27', signup: null });
+    expect(result.signupCheck).toContain('9/20');
+  });
+
+  it("uses the next gathering's own deck when its folder is already there", async () => {
+    withDecks({ nextFolder: true, thisDeckLink: thisWeekForm, nextDeckLink: nextWeekForm, forms: { [thisWeekForm]: formPage('9/20'), [nextWeekForm]: formPage('9/27') } });
+    const result = await buildAnnouncement({ today: '2026-09-22' });
+    expect(result.announcement?.next?.signup).toBe(nextWeekForm);
+    expect(result.signupCheck).toMatch(/^ok 9\/27 /);
+  });
+
+  it("keeps a link from this week's deck when that form is for the next gathering", async () => {
+    withDecks({ thisDeckLink: nextWeekForm, forms: { [nextWeekForm]: formPage('9/27') } });
+    expect((await buildAnnouncement({ today: '2026-09-22' })).announcement?.next?.signup).toBe(nextWeekForm);
+  });
+
+  it('offers no link when the form cannot be read, rather than an unchecked one', async () => {
+    withDecks({ thisDeckLink: nextWeekForm, forms: {} });
+    const result = await buildAnnouncement({ today: '2026-09-22' });
+    expect(result.announcement?.next?.signup).toBeNull();
+    expect(result.signupCheck).toContain('unreadable');
+  });
+
+  it('says in the daily log what it decided about the link', async () => {
+    withDecks({ thisDeckLink: thisWeekForm, forms: { [thisWeekForm]: formPage('9/20') } });
+    const result = await runIndex(previous);
+    expect(result.output).toMatch(/SIGNUP: omitted: .*9\/20/);
+    expect(sources.publish.mock.calls.at(-1)?.[1].next.signup).toBeNull();
   });
 });

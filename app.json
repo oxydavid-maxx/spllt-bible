@@ -2,7 +2,7 @@
   "expo": {
     "name": "竹科聖經",
     "slug": "qingmu-youth",
-    "version": "0.5.19",
+    "version": "0.5.20",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "org.qingmu.youth",
@@ -19,6 +19,7 @@
         "expo-camera",
         {
           "cameraPermission": "允許竹科聖經掃描好友 QR 碼",
+          "microphonePermission": "竹科聖經不會錄音；這是系統元件要求的說明",
           "recordAudioAndroid": false
         }
       ],
@@ -26,11 +27,22 @@
         "expo-audio",
         {
           "enableBackgroundPlayback": true,
+          "microphonePermission": "竹科聖經不會錄音；這是系統元件要求的說明",
           "recordAudioAndroid": false
         }
       ],
-      "expo-local-authentication",
-      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "允許竹科聖經用 Face ID 解鎖管理功能"
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "允許竹科聖經用 Face ID 解鎖管理功能"
+        }
+      ],
       "expo-font",
       "expo-status-bar",
       [
@@ -44,14 +56,18 @@
     ],
     "android": {
       "package": "org.qingmu.youth",
-      "versionCode": 40,
+      "versionCode": 41,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       }
     },
     "ios": {
-      "bundleIdentifier": "org.qingmu.youth"
+      "bundleIdentifier": "org.qingmu.youth",
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "extra": {
       "contentMode": "C_PENDING_ACCESS",

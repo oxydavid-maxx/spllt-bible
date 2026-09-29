@@ -7,6 +7,7 @@ import { buildReadingPlan2026, planCellReferences, planDaysFromCells, type PlanC
 import { createDatabase } from '../../server/db';
 import { defaultReadingDays } from '../../server/gamification';
 import { createApiHandler } from '../../server/routes';
+import { getScheduledReading } from '../../src/ui/readingSession';
 
 // 光佑 gave the whole 2026 plan on 2026-09-26 (2026讀經計劃_Vr.xlsx). The app had only September, so on
 // 10/1 the reader fell back to 9/1 and the server refused October completions and progress.
@@ -49,6 +50,30 @@ describe('the 2026 plan from the church sheet', () => {
     expect(getInitialReadingDate(plan, '2026-10-04')).toBe('2026-10-04');
     expect(getInitialReadingDate(plan, '2027-01-02')).toBe('2026-12-31');
   });
+
+  // The sheet put Psalm 119's second half on 10/15 and its first half on 10/16; the plan's owner
+  // confirmed on 2026-09-29 that it was a layout slip.
+  it('reads Psalm 119 in order on 10/15 and 10/16, says why, and changes nothing else in the sheet', () => {
+    const day = (date: string) => canonicalReadingPlan.days.find((entry) => entry.date === date);
+    expect(day('2026-10-15')?.references).toEqual(['PSA.119.1-88']);
+    expect(day('2026-10-16')?.references).toEqual(['PSA.119.89-176']);
+    for (const date of ['2026-10-15', '2026-10-16']) {
+      expect(day(date)?.note).toBe('讀經表原本把 10/15、10/16 的詩119 前後段排反了，這裡已改成照經文順序讀。');
+      expect(day(date)?.revision).toBe(2);
+      // The 積分 calendar takes the note from the reading tab's plan.
+      expect(getScheduledReading(date)?.note).toBe(day(date)?.note);
+    }
+    // The source file stays a faithful copy of the sheet; the correction lives in the builder.
+    expect(cells.days.find((entry) => entry.date === '2026-10-15')?.fresh).toBe('詩119篇89-176節');
+    const sheetOnly = new Map(planDaysFromCells(cells.days).map((entry) => [entry.date, entry.references]));
+    const differing = canonicalReadingPlan.days.filter((entry) => JSON.stringify(sheetOnly.get(entry.date)) !== JSON.stringify(entry.references)).map((entry) => entry.date);
+    expect(differing).toEqual(['2026-10-15', '2026-10-16']);
+    expect(canonicalReadingPlan.days.filter((entry) => entry.note !== undefined || entry.revision !== undefined).map((entry) => entry.date)).toEqual(['2026-10-15', '2026-10-16']);
+    const revisions = new Map(defaultReadingDays().map((seed) => [seed.taskDate, seed.sourceRevision]));
+    expect(revisions.get('2026-10-15')).toBe(2);
+    expect(revisions.get('2026-10-16')).toBe(2);
+    expect(revisions.get('2026-10-14')).toBe(1);
+  });
 });
 
 describe('a server that was seeded with September only', () => {
@@ -85,6 +110,36 @@ describe('a server that was seeded with September only', () => {
       expect(progress.body).toMatchObject({ personal: { status: 'COMPLETED' } });
     } finally {
       db.close();
+    }
+  });
+
+  it('takes the Psalm 119 correction on restart when it holds the sheet\'s order, once, and touches no other row', () => {
+    const root = mkdtempSync(join(tmpdir(), 'qm-plan-'));
+    roots.push(root);
+    const filename = join(root, 'qingmu.sqlite');
+    const members = [{ id: 'google:self', displayName: '小明', groupId: 'A' }];
+    // Production as seeded on 2026-09-26: every day at revision 1, 10/15 and 10/16 as the sheet had them.
+    const sheetOrder: Record<string, string[]> = { '2026-10-15': ['PSA.119.89-176'], '2026-10-16': ['PSA.119.1-88'] };
+    const asSeeded = defaultReadingDays().map((seed) => ({ taskDate: seed.taskDate, planId: seed.planId, references: sheetOrder[seed.taskDate] ?? seed.references }));
+    const before = createDatabase({ filename, members, readingDays: asSeeded });
+    const rowsBefore = before.db.prepare('SELECT * FROM reading_days ORDER BY task_date').all() as Array<Record<string, unknown>>;
+    before.close();
+
+    const corrected = createDatabase({ filename, members });
+    const rowsAfter = corrected.db.prepare('SELECT * FROM reading_days ORDER BY task_date').all() as Array<Record<string, unknown>>;
+    corrected.close();
+    const changed = rowsAfter.filter((row, index) => JSON.stringify(row) !== JSON.stringify(rowsBefore[index]));
+    expect(rowsAfter).toHaveLength(rowsBefore.length);
+    expect(changed.map((row) => [row.task_date, row.references_json, row.source_revision])).toEqual([
+      ['2026-10-15', '["PSA.119.1-88"]', 2],
+      ['2026-10-16', '["PSA.119.89-176"]', 2],
+    ]);
+
+    const again = createDatabase({ filename, members });
+    try {
+      expect(again.db.prepare('SELECT * FROM reading_days ORDER BY task_date').all()).toEqual(rowsAfter);
+    } finally {
+      again.close();
     }
   });
 });

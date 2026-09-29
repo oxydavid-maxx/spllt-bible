@@ -65,7 +65,9 @@ async function main(): Promise<number> {
   const today = dateFlag >= 0 ? argv[dateFlag + 1] : taipeiToday();
 
   const fallbackFiles = new Map<string, string | null>();
-  const { announcement, reason, warnings } = await buildAnnouncement({ today, previousWeek: (week) => previousWeek(week, fallbackFiles) });
+  const { announcement, reason, warnings, signupCheck } = await buildAnnouncement({ today, previousWeek: (week) => previousWeek(week, fallbackFiles) });
+  // Every run says what it decided about the sign-up link, so a stale or missing one shows in the log.
+  if (signupCheck) process.stdout.write(`SIGNUP: ${signupCheck}\n`);
   if (!announcement) {
     process.stdout.write(`NOT PUBLISHED: ${reason}\n`);
     return 1;
