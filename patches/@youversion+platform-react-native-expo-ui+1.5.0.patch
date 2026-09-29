@@ -1,8 +1,8 @@
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/README.md b/node_modules/@youversion/platform-react-native-expo-ui/README.md
-index 333d445..49165d9 100644
+index 333d445..f4ff602 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/README.md
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/README.md
-@@ -58,3 +58,52 @@ The UI `YouVersionProvider` forwards the same optional version filter lists as c
+@@ -58,3 +58,63 @@ The UI `YouVersionProvider` forwards the same optional version filter lists as c
  This SDK is licensed under [Apache 2.0](./LICENSE).
  
  Licensing information for the Bible versions is available at the [YouVersion Platform](https://platform.youversion.com/) site.
@@ -40,6 +40,17 @@ index 333d445..49165d9 100644
 +The compact header now hides the SDK heading outright, so a missing book list never leaves a
 +spinner in its place. See sdkReaderRecovery.test.ts.
 +
++### Read-along extension (Qingmu, 2026-09-29)
++
++`BibleReader` accepts `playingVerse?: number | null`, `followNarration?: boolean`,
++`followRequest?: number` and `reduceMotion?: boolean`. They cross to the DOM reader and are written
++onto its document as `data-qingmu-playing-verse`, `data-qingmu-follow`, `data-qingmu-follow-request`
++and `data-qingmu-reduce-motion`. The host's injected script (the app's `src/ui/readAlongBridge.ts`)
++paints the verse unit that holds the narrated verse, keeps it in view while following, and scrolls to
++it whenever `followRequest` changes. The narration no longer goes through the highlights channel:
++`mergePlayingVerseHighlight` and `PLAYING_VERSE_HIGHLIGHT_COLOR` are gone, because the SDK paints a
++highlight by `parseInt` of the verse attribute and so never found verse 6 inside the unit "5-6".
++
 +### Maintenance and original-file hash guard
 +
 +Only apply to package version 1.5.0 with these exact original SHA-256 values.
@@ -56,19 +67,31 @@ index 333d445..49165d9 100644
 +Project patch: patches/@youversion+platform-react-native-expo-ui+1.5.0.patch
 +Project receipt: docs/receipts/sdk-reader-settings-extension-20260912.json
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js b/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js
-index 10cc5be..59a06cf 100644
+index 10cc5be..574c1db 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/dom/bible-reader.js
-@@ -8,7 +8,7 @@ import { decodeFontFamilyFromDom } from '../lib/reader-fonts';
+@@ -8,9 +8,19 @@ import { decodeFontFamilyFromDom } from '../lib/reader-fonts';
  import { YouVersionProvider } from '../lib/web-yv-provider';
  const sanitizeCssValue = (value) => value?.replace(/[{};]/g, '').trim();
  export default function BibleReaderDOM(props) {
 -    const { appKey, apiHost, installationId, fetchBibleContent, highlights, verseActions, onVerseSelect, clearSelectionSignal, theme = 'light', book, chapter, versionId, onBookChange, onChapterChange, onVersionChange, onChapterPickerPress, onVersionPickerPress, onSignInPress, onSignOutPress, userInfo, onFootnotePress, showToolbar = true, onOpenBibleThemeSettings, onExternalLinkPress, fontSize, fontFamily, lineSpacing, onFontSizeChange, onFontFamilyChange, onLineSpacingChange, backgroundColor, foregroundColor, bottomScrollPadding = 0, permittedVersionIds, excludedVersionIds, permittedLanguageTags, locale, } = props;
-+    const { appKey, apiHost, installationId, fetchBibleContent, highlights, verseActions, onVerseSelect, clearSelectionSignal, retrySignal, theme = 'light', book, chapter, versionId, onBookChange, onChapterChange, onVersionChange, onChapterPickerPress, onVersionPickerPress, onSignInPress, onSignOutPress, userInfo, onFootnotePress, showToolbar = true, onOpenBibleThemeSettings, onExternalLinkPress, fontSize, fontFamily, lineSpacing, onFontSizeChange, onFontFamilyChange, onLineSpacingChange, backgroundColor, foregroundColor, bottomScrollPadding = 0, permittedVersionIds, excludedVersionIds, permittedLanguageTags, locale, } = props;
++    const { appKey, apiHost, installationId, fetchBibleContent, highlights, verseActions, onVerseSelect, clearSelectionSignal, retrySignal, qingmuPlayingVerse = null, qingmuFollow = false, qingmuFollowRequest = 0, qingmuReduceMotion = false, theme = 'light', book, chapter, versionId, onBookChange, onChapterChange, onVersionChange, onChapterPickerPress, onVersionPickerPress, onSignInPress, onSignOutPress, userInfo, onFootnotePress, showToolbar = true, onOpenBibleThemeSettings, onExternalLinkPress, fontSize, fontFamily, lineSpacing, onFontSizeChange, onFontFamilyChange, onLineSpacingChange, backgroundColor, foregroundColor, bottomScrollPadding = 0, permittedVersionIds, excludedVersionIds, permittedLanguageTags, locale, } = props;
      applySDKConfig({ appKey, apiHost, installationId });
      registerBibleContentAction({ apiHost, fetchBibleContent });
++    // Qingmu read-along (see README): the narration state goes onto the document, where the host's
++    // injected script reads it. One effect, so one mutation batch carries a follow request with it.
++    useEffect(() => {
++        const root = document.documentElement;
++        const set = (name, value) => (value === null ? root.removeAttribute(`data-qingmu-${name}`) : root.setAttribute(`data-qingmu-${name}`, String(value)));
++        set('playing-verse', Number.isInteger(qingmuPlayingVerse) && qingmuPlayingVerse > 0 ? qingmuPlayingVerse : null);
++        set('follow', qingmuFollow ? 1 : 0);
++        set('follow-request', Number.isFinite(qingmuFollowRequest) ? qingmuFollowRequest : 0);
++        set('reduce-motion', qingmuReduceMotion ? 1 : 0);
++    }, [qingmuPlayingVerse, qingmuFollow, qingmuFollowRequest, qingmuReduceMotion]);
      // Once per mount, not per render: there is no token to keep in sync any more,
-@@ -68,12 +68,12 @@ export default function BibleReaderDOM(props) {
+     // only residue an older SDK version left in this WebView's `localStorage`
+     // (disk-backed on iOS, so it outlives both sign-out and relaunch).
+@@ -68,12 +78,12 @@ export default function BibleReaderDOM(props) {
      // fontSize/fontFamily use controlled props (not CSS overrides like bg/fg)
      // because the in-WebView toolbar also mutates them — controlled props keep
      // MMKV and the Web SDK's internal state in sync bidirectionally.
@@ -84,29 +107,24 @@ index 10cc5be..59a06cf 100644
                              void onBookChange(nextBook);
                          }
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
-index c48ec7c..d28e766 100644
+index c48ec7c..3594859 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/index.d.ts
-@@ -4,4 +4,8 @@ export { useSignOutGuard } from './native';
+@@ -4,4 +4,7 @@ export { useSignOutGuard } from './native';
  export { useTokens } from './hooks';
  export { getTokens } from './theme';
  export type { Tokens } from './theme';
 +/** Qingmu extension; these APIs are not supplied by upstream SDK 1.5.0/1.6.0. */
-+export { mergePlayingVerseHighlight, PLAYING_VERSE_HIGHLIGHT_COLOR } from './native/bible-reader';
 +export { getReaderSettings, getDefaultReaderSettings, setReaderSettings, subscribeReaderSettings } from './stores/reader-settings-store';
 +export type { ReaderSettingsSnapshot } from './stores/reader-settings-store';
  //# sourceMappingURL=index.d.ts.map
 \ No newline at end of file
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/index.js b/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
-index b47510f..4b2315a 100644
+index b47510f..034eb75 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/index.js
-@@ -2,6 +2,10 @@ import { ensureDomImpls } from './native/register-dom-impls';
- ensureDomImpls();
- export { BibleCard, BibleChapterPickerSheet, BibleReader, BibleReaderSettingsSheet, BibleTextView, BibleVersionPickerSheet, VerseOfTheDay, YouVersionAuthButton, YouVersionProvider, } from './native';
+@@ -4,4 +4,6 @@ export { BibleCard, BibleChapterPickerSheet, BibleReader, BibleReaderSettingsShe
  export { useSignOutGuard } from './native';
-+// Qingmu extension: transient reading highlight helper (see README).
-+export { mergePlayingVerseHighlight, PLAYING_VERSE_HIGHLIGHT_COLOR } from './native/bible-reader';
  export { useTokens } from './hooks';
  export { getTokens } from './theme';
 +// Qingmu extension; maintained by the host project for pinned SDK 1.5.0.
@@ -137,24 +155,25 @@ index 4d1e6a4..a20ded1 100644
      });
  }
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts
-index 103616e..1a61638 100644
+index 103616e..51455af 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.d.ts
-@@ -1,3 +1,4 @@
-+import type { Highlight } from '@youversion/platform-react-native-expo-core';
- import type { BibleReaderShareData, BibleVersionPickerPressData, FootnoteData } from '@youversion/platform-react-ui';
- import type { Ref } from 'react';
- import { type ReactNode } from 'react';
-@@ -51,11 +52,21 @@ export type BibleReaderProps = Omit<DomBibleReaderProps, 'appKey' | 'highlights'
+@@ -51,11 +51,25 @@ export type BibleReaderProps = Omit<DomBibleReaderProps, 'appKey' | 'highlights'
       * screen; render an offline or pending hint rather than an error toast.
       */
      onHighlightError?: (error: HighlightWriteError) => void;
 +    /**
-+     * Qingmu extension. Verse number currently being narrated in the displayed chapter, painted as a
-+     * transient light-grey highlight through the controlled highlights channel. `null` paints nothing.
-+     * Never scrolls the reader.
++     * Qingmu extension (read-along). Verse number currently being narrated in the displayed chapter.
++     * Written onto the reader document as `data-qingmu-playing-verse`; the host's injected script paints
++     * the verse unit that holds it (5 and 6 both light "5-6"). `null` paints nothing.
 +     */
 +    playingVerse?: number | null;
++    /** Qingmu extension (read-along): while true the host script keeps the narrated verse in view. */
++    followNarration?: boolean;
++    /** Qingmu extension (read-along): change this number to scroll to the narrated verse now. */
++    followRequest?: number;
++    /** Qingmu extension (read-along): jump instead of animating the scroll. */
++    reduceMotion?: boolean;
 +    /** Qingmu extension: change this number to retry a chapter that failed to load. */
 +    retrySignal?: number;
      /**
@@ -164,46 +183,30 @@ index 103616e..1a61638 100644
      ref?: Ref<BibleReaderHandle>;
  };
 -export declare function BibleReader({ theme, book: controlledBook, defaultBook, onBookChange, chapter: controlledChapter, defaultChapter, onChapterChange, versionId: controlledVersionId, defaultVersionId, onVersionChange, showToolbar, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, clearSelectionSignal, onCopy: consumerOnCopy, onShare: consumerOnShare, onHighlightError, backgroundColor, foregroundColor, dom, ref, }: BibleReaderProps): ReactNode;
-+export declare const PLAYING_VERSE_HIGHLIGHT_COLOR: string;
-+export declare function mergePlayingVerseHighlight(highlights: Highlight[], scope: { versionId: number | undefined; book: string | undefined; chapter: string | undefined; playingVerse: number | null | undefined }): Highlight[];
-+export declare function BibleReader({ theme, book: controlledBook, defaultBook, onBookChange, chapter: controlledChapter, defaultChapter, onChapterChange, versionId: controlledVersionId, defaultVersionId, onVersionChange, showToolbar, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, playingVerse, retrySignal, clearSelectionSignal, onCopy: consumerOnCopy, onShare: consumerOnShare, onHighlightError, backgroundColor, foregroundColor, dom, ref, }: BibleReaderProps): ReactNode;
++export declare function BibleReader({ theme, book: controlledBook, defaultBook, onBookChange, chapter: controlledChapter, defaultChapter, onChapterChange, versionId: controlledVersionId, defaultVersionId, onVersionChange, showToolbar, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, playingVerse, followNarration, followRequest, reduceMotion, retrySignal, clearSelectionSignal, onCopy: consumerOnCopy, onShare: consumerOnShare, onHighlightError, backgroundColor, foregroundColor, dom, ref, }: BibleReaderProps): ReactNode;
  //# sourceMappingURL=bible-reader.d.ts.map
 \ No newline at end of file
 diff --git a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js
-index e6974a0..6694bc3 100644
+index e6974a0..02dc76d 100644
 --- a/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js
 +++ b/node_modules/@youversion/platform-react-native-expo-ui/build/native/bible-reader.js
-@@ -54,7 +54,24 @@ const NO_PROMPT = { kind: 'none' };
- function sameScope(a, b) {
+@@ -55,6 +55,10 @@ function sameScope(a, b) {
      return a.versionId === b.versionId && a.book === b.book && a.chapter === b.chapter;
  }
-+/**
-+ * Qingmu extension (not upstream 1.5.0/1.6.0): paint the verse the narrator is reading as a
-+ * transient highlight. Reuses the controlled highlights channel so the DOM reader paints it exactly
-+ * like a user highlight and never scrolls. The entry is derived, never written to the user's
-+ * highlights; a user highlight on the same verse is shadowed only while that verse is playing.
-+ */
-+export const PLAYING_VERSE_HIGHLIGHT_COLOR = 'd5ddd8';
-+export function mergePlayingVerseHighlight(highlights, { versionId, book, chapter, playingVerse }) {
-+    if (!Number.isInteger(playingVerse) || playingVerse < 1 || !Number.isInteger(versionId) || !book || !chapter) return highlights;
-+    const passageId = `${book}.${chapter}.${playingVerse}`;
-+    const rest = highlights.filter((entry) => !(entry.version_id === versionId && entry.passage_id === passageId));
-+    return [...rest, { version_id: versionId, passage_id: passageId, color: PLAYING_VERSE_HIGHLIGHT_COLOR }];
-+}
  export function BibleReader({ theme, book: controlledBook, defaultBook = DEFAULT_BOOK, onBookChange, chapter: controlledChapter, defaultChapter = DEFAULT_CHAPTER, onChapterChange, versionId: controlledVersionId, defaultVersionId = DEFAULT_BIBLE_VERSION_ID, onVersionChange, showToolbar = true, onChapterPickerPress: consumerOnChapterPickerPress, onVersionPickerPress: consumerOnVersionPickerPress, onFootnotePress: consumerOnFootnotePress, onVerseSelect, 
-+// Qingmu extension: transient reading highlight (see README).
-+playingVerse = null, 
++// Qingmu extension: read-along. The host's injected script paints and follows the narrated verse (see README).
++playingVerse = null, followNarration = false, followRequest = 0, reduceMotion = false, 
 +// Qingmu extension: bump to retry a chapter that failed to load (see README).
 +retrySignal = 0, 
  // Defaulted to `0` so a number always crosses the bridge from first mount.
  // The Web SDK treats the value it sees at mount as a baseline and clears the
  // selection on every change after that. Leaving this `undefined` means a
-@@ -379,7 +396,7 @@ clearSelectionSignal = 0, onCopy: consumerOnCopy, onShare: consumerOnShare, onHi
+@@ -379,7 +383,7 @@ clearSelectionSignal = 0, onCopy: consumerOnCopy, onShare: consumerOnShare, onHi
          ...dom,
          style: StyleSheet.flatten([dom?.style, { flex: 1 }]),
      }), [dom]);
 -    return (_jsxs(_Fragment, { children: [_jsx(View, { style: { flex: 1 }, children: _jsx(BibleReaderDOM, { ...authProps, appKey: context.appKey, apiHost: context.apiHost, installationId: context.installationId, fetchBibleContent: context.fetchBibleContent, permittedVersionIds: context.permittedVersionIds, excludedVersionIds: context.excludedVersionIds, permittedLanguageTags: context.permittedLanguageTags, locale: lng, highlights: highlights, verseActions: VERSE_ACTIONS, onVerseSelect: handleVerseSelect, clearSelectionSignal: clearSelectionSignal + internalClearCount, onSignInPress: signIn, onSignOutPress: guardedSignOut, userInfo: userInfo, theme: resolvedTheme, book: book, chapter: chapter, versionId: versionId, fontSize: fontSize, fontFamily: encodeFontFamilyForDom(fontFamily), lineSpacing: lineSpacing, onFontSizeChange: setFontSize, onFontFamilyChange: setFontFamily, onLineSpacingChange: setLineSpacing, onOpenBibleThemeSettings: Platform.OS !== 'web' ? handleOpenBibleThemeSettings : undefined, onBookChange: handleBookChange, onChapterChange: handleChapterChange, onVersionChange: handleVersionChange, showToolbar: showToolbar, onChapterPickerPress: handleChapterPickerPress, onVersionPickerPress: handleVersionPickerPress, onFootnotePress: onFootnotePress, onExternalLinkPress: Platform.OS !== 'web' ? onExternalLinkPress : undefined, backgroundColor: backgroundColor, foregroundColor: foregroundColor, bottomScrollPadding: bottomScrollPadding, dom: readerDom }) }), Platform.OS !== 'web' && (_jsx(BibleReaderSettingsSheet, { isSettingsSheetOpen: isSettingsSheetOpen, onClose: () => setIsSettingsSheetOpen(false) })), Platform.OS !== 'web' && (_jsx(BibleVerseActionSheet
-+    return (_jsxs(_Fragment, { children: [_jsx(View, { style: { flex: 1 }, children: _jsx(BibleReaderDOM, { ...authProps, appKey: context.appKey, apiHost: context.apiHost, installationId: context.installationId, fetchBibleContent: context.fetchBibleContent, permittedVersionIds: context.permittedVersionIds, excludedVersionIds: context.excludedVersionIds, permittedLanguageTags: context.permittedLanguageTags, locale: lng, highlights: mergePlayingVerseHighlight(highlights, { versionId, book, chapter, playingVerse }), verseActions: VERSE_ACTIONS, onVerseSelect: handleVerseSelect, clearSelectionSignal: clearSelectionSignal + internalClearCount, retrySignal: retrySignal, onSignInPress: signIn, onSignOutPress: guardedSignOut, userInfo: userInfo, theme: resolvedTheme, book: book, chapter: chapter, versionId: versionId, fontSize: fontSize, fontFamily: encodeFontFamilyForDom(fontFamily), lineSpacing: lineSpacing, onFontSizeChange: setFontSize, onFontFamilyChange: setFontFamily, onLineSpacingChange: setLineSpacing, onOpenBibleThemeSettings: Platform.OS !== 'web' ? handleOpenBibleThemeSettings : undefined, onBookChange: handleBookChange, onChapterChange: handleChapterChange, onVersionChange: handleVersionChange, showToolbar: showToolbar, onChapterPickerPress: handleChapterPickerPress, onVersionPickerPress: handleVersionPickerPress, onFootnotePress: onFootnotePress, onExternalLinkPress: Platform.OS !== 'web' ? onExternalLinkPress : undefined, backgroundColor: backgroundColor, foregroundColor: foregroundColor, bottomScrollPadding: bottomScrollPadding, dom: readerDom }) }), Platform.OS !== 'web' && (_jsx(BibleReaderSettingsSheet, { isSettingsSheetOpen: isSettingsSheetOpen, onClose: () => setIsSettingsSheetOpen(false) })), Platform.OS !== 'web' && (_jsx(BibleVerseActionSheet
++    return (_jsxs(_Fragment, { children: [_jsx(View, { style: { flex: 1 }, children: _jsx(BibleReaderDOM, { ...authProps, appKey: context.appKey, apiHost: context.apiHost, installationId: context.installationId, fetchBibleContent: context.fetchBibleContent, permittedVersionIds: context.permittedVersionIds, excludedVersionIds: context.excludedVersionIds, permittedLanguageTags: context.permittedLanguageTags, locale: lng, highlights: highlights, qingmuPlayingVerse: Number.isInteger(playingVerse) && playingVerse > 0 ? playingVerse : null, qingmuFollow: followNarration === true, qingmuFollowRequest: Number.isFinite(followRequest) ? followRequest : 0, qingmuReduceMotion: reduceMotion === true, verseActions: VERSE_ACTIONS, onVerseSelect: handleVerseSelect, clearSelectionSignal: clearSelectionSignal + internalClearCount, retrySignal: retrySignal, onSignInPress: signIn, onSignOutPress: guardedSignOut, userInfo: userInfo, theme: resolvedTheme, book: book, chapter: chapter, versionId: versionId, fontSize: fontSize, fontFamily: encodeFontFamilyForDom(fontFamily), lineSpacing: lineSpacing, onFontSizeChange: setFontSize, onFontFamilyChange: setFontFamily, onLineSpacingChange: setLineSpacing, onOpenBibleThemeSettings: Platform.OS !== 'web' ? handleOpenBibleThemeSettings : undefined, onBookChange: handleBookChange, onChapterChange: handleChapterChange, onVersionChange: handleVersionChange, showToolbar: showToolbar, onChapterPickerPress: handleChapterPickerPress, onVersionPickerPress: handleVersionPickerPress, onFootnotePress: onFootnotePress, onExternalLinkPress: Platform.OS !== 'web' ? onExternalLinkPress : undefined, backgroundColor: backgroundColor, foregroundColor: foregroundColor, bottomScrollPadding: bottomScrollPadding, dom: readerDom }) }), Platform.OS !== 'web' && (_jsx(BibleReaderSettingsSheet, { isSettingsSheetOpen: isSettingsSheetOpen, onClose: () => setIsSettingsSheetOpen(false) })), Platform.OS !== 'web' && (_jsx(BibleVerseActionSheet
              // Yielded, not displaced. A prompt that takes over the sheet host
              // would fire this sheet's `onClose`, which clears the selection the
              // prompt's own answer still needs.

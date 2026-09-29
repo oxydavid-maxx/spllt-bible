@@ -176,7 +176,8 @@ describe('injected canvas gesture bridge', () => {
     const postMessage = vi.fn();
     let now = 1000;
     const document = {
-      documentElement: { setAttribute: vi.fn() }, getElementById: () => null, head: { appendChild: vi.fn() }, createElement: () => ({}),
+      // getAttribute: the read-along part reads the narration state native writes onto <html>.
+      documentElement: { setAttribute: vi.fn(), getAttribute: () => null }, getElementById: () => null, head: { appendChild: vi.fn() }, createElement: () => ({}),
       querySelector: () => null, querySelectorAll: () => [], body: {},
       addEventListener: (type: string, callback: (event: any) => void) => { listeners.set(type, [...(listeners.get(type) ?? []), callback]); },
     };

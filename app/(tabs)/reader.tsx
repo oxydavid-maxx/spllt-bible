@@ -348,6 +348,12 @@ export default function ReaderScreen() {
       onCanvasEdge={chrome.handleCanvasEdge}
       onVerseSelectionChange={chrome.handleVerseSelection}
       onSheetOpenChange={chrome.handleSheetOpenChange}
+      followNarration={chrome.readAlong.following}
+      followRequest={chrome.readAlong.request}
+      reduceMotion={chrome.reduceMotion}
+      onNarrationChange={chrome.handleNarration}
+      onFollowRelease={chrome.handleFollowRelease}
+      onFollowPosition={chrome.handleFollowPosition}
       clearVerseSelectionSignal={chrome.verseClearSignal}
       retrySignal={retrySignal}
       canvasInsets={readerCanvasInsets(chrome.settledInsets)}

@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Alert, BackHandler, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SheetBackdrop } from './SheetBackdrop';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -13,6 +13,9 @@ import { formatReadingDateHeader, formatReadingDateLabel } from './ReadingDateNa
 import { setReaderImmersed } from './readerImmersionState';
 import type { ReaderOverlayControls } from './YouVersionReader';
 import type { ReaderCanvasInsets, ReaderRevealReason } from './readerSettingsBridge';
+import type { ReadAlongPosition } from './readAlongBridge';
+import { initialReadAlong, readAlong, showReturnToNarration } from './readAlongFollow';
+import { useReduceMotion } from './useReduceMotion';
 import { READER_SPEEDS } from '../services/readerSpeedPreference';
 import { taipeiDate } from '../domain/gamificationV1';
 
@@ -108,7 +111,19 @@ export function useReaderChrome() {
     else showTools();
   }, [hideTools, showTools]);
   const handleCanvasEdge = useCallback(({ atEnd }: { atEnd: boolean }) => setAtChapterEnd(atEnd), []);
-  const handleVerseSelection = useCallback((selected: boolean) => setVerseSelected(selected), []);
+  // Read-along (2026-09-29): the page follows the narrated verse until a finger drag or a verse
+  // selection lets go; only 回到朗讀處 follows again. See readAlongFollow.ts.
+  const [readAlongState, dispatchReadAlong] = useReducer(readAlong, initialReadAlong);
+  const reduceMotion = useReduceMotion();
+  const handleNarration = useCallback((verse: number | null) => dispatchReadAlong({ type: 'narration', verse }), []);
+  const handleFollowRelease = useCallback(() => dispatchReadAlong({ type: 'release' }), []);
+  const handleFollowPosition = useCallback((position: ReadAlongPosition) => dispatchReadAlong({ type: 'position', position }), []);
+  const returnToNarration = useCallback(() => dispatchReadAlong({ type: 'request' }), []);
+  const handleReadAlongChapter = useCallback(() => dispatchReadAlong({ type: 'chapter' }), []);
+  const handleVerseSelection = useCallback((selected: boolean) => {
+    setVerseSelected(selected);
+    if (selected) dispatchReadAlong({ type: 'select' });
+  }, []);
   const handleSheetOpenChange = useCallback((open: boolean) => setSheetOpen(open), []);
   const clearVerseSelection = useCallback(() => { setVerseSelected(false); setVerseClearSignal(value => value + 1); }, []);
   // Back first closes a verse's action sheet, then brings collapsed tools back, and stays on the page
@@ -128,8 +143,11 @@ export function useReaderChrome() {
   const closeAudio = useCallback(() => { setAudioOpen(false); showTools(); }, [showTools]);
   const openInfo = useCallback(() => { setInfoOpen(true); setMoreOpen(false); setAudioOpen(false); showTools(); }, [showTools]);
   const closeInfo = useCallback(() => { setInfoOpen(false); showTools(); }, [showTools]);
+  const returnToNarrationVisible = focused && showReturnToNarration(readAlongState, verseSelected || sheetOpen);
   return { focused, toolsVisible: focused && toolsVisible, collapsed, barsHidden, atChapterEnd, verseSelected, verseClearSignal, settledInsets: settled.current, screenReaderEnabled, moreOpen, audioOpen, infoOpen,
-    hideTools, showTools, revealTools, handleCanvasScroll, handleCanvasEdge, handleVerseSelection, handleSheetOpenChange, clearVerseSelection, openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo };
+    readAlong: readAlongState, returnToNarrationVisible, reduceMotion,
+    hideTools, showTools, revealTools, handleCanvasScroll, handleCanvasEdge, handleVerseSelection, handleSheetOpenChange, clearVerseSelection, openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo,
+    handleNarration, handleFollowRelease, handleFollowPosition, returnToNarration, handleReadAlongChapter };
 }
 export interface FullscreenReaderLayoutProps {
   reader: ReactNode;
@@ -173,7 +191,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   const [versionPageOpen, setVersionPageOpen] = useState(false);
   const audioControlRef = useRef<ChapterAudioControlsHandle | null>(null);
   const curatedVersions = versionOptions !== undefined && onSelectVersion !== undefined;
-  const { handleCanvasEdge, clearVerseSelection } = chrome;
+  const { handleCanvasEdge, clearVerseSelection, handleReadAlongChapter } = chrome;
   const verseSelected = useRef(chrome.verseSelected);
   verseSelected.current = chrome.verseSelected;
   useEffect(() => { if (!chrome.moreOpen) setVersionPageOpen(false); }, [chrome.moreOpen]);
@@ -183,10 +201,12 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   }, [chrome.focused]);
   // A new chapter starts away from its end (the reader reports the end again once its text is laid
   // out), and a verse selected in the old chapter no longer applies, so its sheet closes.
+  // A new chapter is read from its start, following the narration again.
   useEffect(() => {
     handleCanvasEdge({ atEnd: false });
+    handleReadAlongChapter();
     if (verseSelected.current) clearVerseSelection();
-  }, [chapterUsfm, handleCanvasEdge, clearVerseSelection]);
+  }, [chapterUsfm, handleCanvasEdge, clearVerseSelection, handleReadAlongChapter]);
   const closeVersionPage = () => { setVersionPageOpen(false); chrome.closeMore(); };
   const openOfficial = (open: () => void) => { chrome.closeMore(); open(); };
   const openYouVersion = () => {
@@ -306,6 +326,22 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={false} readerAction active={audioOwnerActive} sharedOwner />
         </View>
       </View>
+      {/* Read-along let go (a finger drag or a selected verse): the only way back, bottom-left, clear of ▶. */}
+      {chrome.returnToNarrationVisible ? <View pointerEvents="box-none" style={[styles.returnRow, { left: theme.spacing.lg + insets.left, bottom: actionBottom }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="回到朗讀處"
+          accessibilityHint="捲到正在朗讀的經文，並繼續跟著朗讀捲動"
+          onPress={chrome.returnToNarration}
+          android_ripple={{ color: theme.colors.primarySoft }}
+          style={styles.returnToNarration}
+        >
+          {chrome.readAlong.position === 'above' || chrome.readAlong.position === 'below'
+            ? <MaterialCommunityIcons name={chrome.readAlong.position === 'above' ? 'arrow-up' : 'arrow-down'} size={20} color={theme.colors.primary} />
+            : null}
+          <Text style={styles.returnToNarrationText}>回到朗讀處</Text>
+        </Pressable>
+      </View> : null}
       {feedback}
       <Modal transparent animationType="fade" visible={chrome.moreOpen} onRequestClose={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore}>
         {chrome.moreOpen && <SheetBackdrop label="關閉更多閱讀工具" onPress={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore} style={styles.scrim}><View style={styles.sheetHost}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
@@ -460,6 +496,9 @@ const styles = StyleSheet.create({
   audioCell: { width: ACTION, height: ACTION, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: ACTION / 2, backgroundColor: theme.colors.primary, ...floating },
   disabled: { opacity: 0.4 },
   stepAside: { display: 'none' },
+  returnRow: { position: 'absolute', zIndex: 3, height: ACTION, justifyContent: 'center' },
+  returnToNarration: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.lg, borderRadius: 24, backgroundColor: theme.colors.white, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, ...floating },
+  returnToNarrationText: { color: theme.colors.primary, fontSize: 16, lineHeight: 22, fontWeight: '800' },
   speedRow: { flexDirection: 'row', gap: theme.spacing.sm },
   speedChoice: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong },
   speedChoiceSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },

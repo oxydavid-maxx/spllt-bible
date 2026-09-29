@@ -117,7 +117,7 @@ it('paints the unit that holds the narrated verse, follows it inside the reading
       '--headless=new', '--disable-gpu', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--disable-extensions',
       '--no-first-run', '--no-default-browser-check', '--host-resolver-rules=MAP * ~NOTFOUND', '--touch-events=enabled',
       `--user-data-dir=${join(work, 'profile')}`, '--virtual-time-budget=8000', '--dump-dom', pathToFileURL(page).href,
-    ], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    ], { encoding: 'utf8', timeout: 60000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     const raw = output.match(/<pre id="result">([^<]+)<\/pre>/)?.[1];
     expect(raw, 'Chromium must run the read-along fixture').toBeDefined();
     const run = JSON.parse(raw!.replace(/&quot;/g, '"').replace(/&amp;/g, '&')) as {
@@ -162,7 +162,8 @@ it('paints the unit that holds the narrated verse, follows it inside the reading
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
-});
+  // Headless Chromium takes a second alone and far longer while the whole suite shares the CPU.
+}, 90_000);
 
 it('reads only well-formed read-along messages', () => {
   expect(readReadAlongMessage(JSON.stringify({ type: 'qingmu.reader.follow.release', data: null }))).toEqual({ kind: 'release' });
