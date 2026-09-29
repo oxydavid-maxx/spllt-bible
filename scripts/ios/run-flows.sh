@@ -2,7 +2,7 @@
 # scripts/ios/run-flows.sh — fixture backend + counting proxy + simulator + Maestro (one flow per call).
 set -uo pipefail
 OUT=${OUT:-ci-out}; mkdir -p "$OUT/maestro"; : > "$OUT/requests.log"
-QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 \
+QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 \
   npx tsx server/http.ts > "$OUT/server.log" 2>&1 &
 npx tsx scripts/ios/count-proxy.ts 8788 8787 "$OUT/requests.log" &
 python3 scripts/ios/make-tone.py "$OUT/audio/jhn13.wav" 2>/dev/null && (cd "$OUT/audio" && python3 -m http.server 8790 --bind 127.0.0.1 > /dev/null 2>&1 &) || true

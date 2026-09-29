@@ -9,11 +9,14 @@ export function authenticate(
   headers: Record<string, string | undefined>,
   fixtureToken: string,
   memberExists: (memberId: string) => boolean,
+  /** Development fixture only: the member for a request that sends the token without x-qingmu-member-id, as the
+   * points client does (a production session carries its member). Unset keeps such a request UNKNOWN_MEMBER. */
+  defaultMemberId?: string,
 ): AuthContext | AuthFailure {
   const authorization = headers.authorization ?? headers.Authorization;
   const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token || token !== fixtureToken) return { status: 401, error: 'AUTH_REQUIRED' };
-  const memberId = headers['x-qingmu-member-id'];
+  const memberId = headers['x-qingmu-member-id'] ?? defaultMemberId;
   if (!memberId || !memberExists(memberId)) return { status: 403, error: 'UNKNOWN_MEMBER' };
   return { memberId, mode: 'development-fixture' };
 }

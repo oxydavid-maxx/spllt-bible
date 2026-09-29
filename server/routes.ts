@@ -63,6 +63,8 @@ export interface ApiHandlerOptions {
   instanceId?: string;
   authMode?: 'fixture' | 'google-only';
   fixtureToken?: string;
+  /** Development fixture only (authBoundary.authenticate): the member for a token-only request. */
+  fixtureDefaultMemberId?: string;
   productionGoogleAuth?: ProductionGoogleAuth;
   sessionSecret?: string;
   contentGate?: {
@@ -457,7 +459,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
     }
     const auth = options.productionGoogleAuth && options.sessionSecret
       ? await authenticateSessionOrGoogle(request.headers, options.productionGoogleAuth, options.sessionSecret, sessions)
-      : authenticate(request.headers, options.fixtureToken ?? '', (id) => memberExists(options.db.db, id));
+      : authenticate(request.headers, options.fixtureToken ?? '', (id) => memberExists(options.db.db, id), options.fixtureDefaultMemberId);
     if ('status' in auth) return isGamificationPath(url.pathname) ? gamificationError({ status: auth.status, code: auth.error }) : json(auth.status, { error: auth.error });
     if (memberExists(options.db.db, auth.memberId) && !isMemberEnabled(options.db.db, auth.memberId)) return isGamificationPath(url.pathname) ? gamificationError({ status: 401, code: 'AUTH_INVALID' }) : json(401, { error: 'ACCOUNT_DISABLED' });
     if (request.method === 'POST' && url.pathname === '/api/session/device' && options.productionGoogleAuth && options.sessionSecret) {

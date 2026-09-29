@@ -148,7 +148,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
               }
             : {}),
         }
-      : { fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token' }),
+      : { fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token', ...(process.env.QINGMU_FIXTURE_DEFAULT_MEMBER?.trim() ? { fixtureDefaultMemberId: process.env.QINGMU_FIXTURE_DEFAULT_MEMBER.trim() } : {}) }),
   });
   const officialBible = createOfficialBibleAdapter();
   const server = createServer(async (request, response) => {
