@@ -116,3 +116,49 @@ describe('the FCM message a friend push becomes', () => {
     expect(body.message.notification).toBeUndefined();
   });
 });
+
+describe('an iPhone hears about a new friend by an APNs alert', () => {
+  function setupBoth(ios: (token: string, alert: { title: string; body: string; data: Record<string, string>; collapseId?: string }) => Promise<void>) {
+    const android: Array<{ token: string; data: Record<string, string> }> = [];
+    const database = createDatabase({ members: [{ id: 'member-owner', displayName: '光佑', groupId: 'g' }, { id: 'member-scanner', displayName: '小明', groupId: 'g' }] });
+    databases.push(database);
+    const api = createApiHandler({ db: database, fixtureToken: 'test-token', now: () => new Date('2026-09-27T04:00:00.000Z'),
+      pushData: async (token, data) => { android.push({ token, data }); return { messageId: 'm' }; }, pushIos: ios });
+    const headers = (memberId: string) => ({ authorization: 'Bearer test-token', 'x-qingmu-member-id': memberId });
+    const qrToken = async (memberId: string) => new URL(String((await api({ method: 'POST', url: '/api/friends/qr', headers: headers(memberId), body: '{}' })).body.payload)).searchParams.get('token')!;
+    const claim = async (memberId: string, token: string) => api({ method: 'POST', url: '/api/friends/claim', headers: headers(memberId), body: JSON.stringify({ operationId: randomUUID(), token }) });
+    return { database, api, headers, qrToken, claim, android };
+  }
+
+  it('sends the iPhone the shared words and the data the app routes a tap with; Android data is unchanged', async () => {
+    const alerts: Array<{ token: string; alert: { title: string; body: string; data: Record<string, string>; collapseId?: string } }> = [];
+    const { database, qrToken, claim, android } = setupBoth(async (token, alert) => { alerts.push({ token, alert }); });
+    registerDeviceDeliveryToken(database.db, { memberId: 'member-owner', installationId: 'install-iphone', token: 'apns-hex', ownerGeneration: 1, platform: 'IOS' });
+    registerDeviceDeliveryToken(database.db, { memberId: 'member-owner', installationId: 'install-pixel', token: 'fcm-token', ownerGeneration: 1 });
+    await claim('member-scanner', await qrToken('member-owner'));
+    await settle();
+    expect(android).toEqual([{ token: 'fcm-token', data: { event: 'FRIEND_ADDED', friendMemberId: 'member-scanner', friendName: '小明' } }]);
+    expect(alerts).toEqual([{ token: 'apns-hex', alert: {
+      title: '竹科聖經', body: '小明 已加你為好友', collapseId: 'friend:member-scanner',
+      data: { event: 'FRIEND_ADDED', friendMemberId: 'member-scanner', friendName: '小明', kind: 'FRIEND_ADDED', memberId: 'member-owner' },
+    } }]);
+  });
+
+  it('revokes an iPhone token APNs reports as unregistered', async () => {
+    const { database, qrToken, claim } = setupBoth(async () => { throw new Error('APNS_UNREGISTERED'); });
+    registerDeviceDeliveryToken(database.db, { memberId: 'member-owner', installationId: 'install-iphone', token: 'apns-gone', ownerGeneration: 1, platform: 'IOS' });
+    await claim('member-scanner', await qrToken('member-owner'));
+    await settle();
+    const row = database.db.prepare('SELECT revoked_at FROM device_delivery_tokens WHERE token = ?').get('apns-gone') as { revoked_at: string | null };
+    expect(row.revoked_at).not.toBeNull();
+  });
+
+  it('registers an iPhone through the device-token route as platform IOS', async () => {
+    const { database, api, headers } = setupBoth(async () => undefined);
+    const response = await api({ method: 'POST', url: '/api/me/reminders/device-token', headers: { ...headers('member-owner'), 'content-type': 'application/json' },
+      body: JSON.stringify({ installation_id: 'install-iphone', token: 'apns-hex', platform: 'IOS', owner_generation: 1 }) });
+    expect(response.status).toBe(200);
+    const row = database.db.prepare('SELECT platform FROM device_delivery_tokens WHERE installation_id = ?').get('install-iphone') as { platform: string };
+    expect(row.platform).toBe('IOS');
+  });
+});

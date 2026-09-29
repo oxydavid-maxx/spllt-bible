@@ -16,6 +16,7 @@ import { closeRound, createNomination, decideNomination, ensureNominationSchema,
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
 import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
 import { notifyFriendAdded, type PushDataSender } from './friendPush';
+import type { ApnsAlertSender } from './apnsSender';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
 import {
   GAMIFICATION_POLICY_VERSION,
@@ -85,6 +86,8 @@ export interface ApiHandlerOptions {
   formSyncIdentity?: FormSyncIdentity;
   /** Data-only FCM to a member's registered devices. Absent means app events are simply not pushed. */
   pushData?: PushDataSender;
+  /** APNs alerts to a member's registered iPhones. Absent means iPhones are simply not pushed. */
+  pushIos?: ApnsAlertSender;
   now?: () => Date;
 }
 
@@ -614,8 +617,8 @@ export function createApiHandler(options: ApiHandlerOptions) {
         if (isGamificationError(result)) return gamificationError(result);
         // Only the claim that made the friendship announces it; a replayed operation or a second scan
         // of an existing friend says nothing. Not awaited: the push never shapes this answer.
-        if (!replay && result.friendshipCreated === true && typeof result.memberId === 'string' && options.pushData) {
-          void notifyFriendAdded(options.db.db, options.pushData, { ownerMemberId: result.memberId, friendMemberId: auth.memberId }).catch(() => { console.warn('FRIEND_PUSH_FAILED', 'NOTIFY_ERROR'); });
+        if (!replay && result.friendshipCreated === true && typeof result.memberId === 'string' && (options.pushData || options.pushIos)) {
+          void notifyFriendAdded(options.db.db, { android: options.pushData, ios: options.pushIos }, { ownerMemberId: result.memberId, friendMemberId: auth.memberId }).catch(() => { console.warn('FRIEND_PUSH_FAILED', 'NOTIFY_ERROR'); });
         }
         return gamificationJson(200, result);
       }
@@ -725,8 +728,8 @@ export function createApiHandler(options: ApiHandlerOptions) {
         if (request.method === 'POST' && url.pathname === '/api/me/reminders/device-token') {
           const body = parseBody(request.body);
           const ownerGeneration = body.owner_generation === undefined ? 0 : body.owner_generation;
-          if (typeof body.installation_id !== 'string' || !body.installation_id.trim() || typeof body.token !== 'string' || !body.token.trim() || body.platform !== 'ANDROID' || typeof ownerGeneration !== 'number' || !Number.isSafeInteger(ownerGeneration) || ownerGeneration < 0) return json(400, { error: 'INVALID_DEVICE_TOKEN' });
-          return json(200, { ...registerDeviceDeliveryToken(options.db.db, { memberId: auth.memberId, installationId: body.installation_id.trim(), token: body.token.trim(), ownerGeneration }), remoteDeliveryStatus: remoteStatus });
+          if (typeof body.installation_id !== 'string' || !body.installation_id.trim() || typeof body.token !== 'string' || !body.token.trim() || (body.platform !== 'ANDROID' && body.platform !== 'IOS') || typeof ownerGeneration !== 'number' || !Number.isSafeInteger(ownerGeneration) || ownerGeneration < 0) return json(400, { error: 'INVALID_DEVICE_TOKEN' });
+          return json(200, { ...registerDeviceDeliveryToken(options.db.db, { memberId: auth.memberId, installationId: body.installation_id.trim(), token: body.token.trim(), ownerGeneration, platform: body.platform as 'ANDROID' | 'IOS' }), remoteDeliveryStatus: remoteStatus });
         }
         if (request.method === 'POST' && url.pathname === '/api/me/reminders/device-token/revoke') {
           const body = parseBody(request.body);
