@@ -12,7 +12,7 @@ xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "proce
 # Network evidence: what ATS / URL loading said, whether the fixture backend is up, and what reached it.
 xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "process == \"$EXE\"" 2>/dev/null   | grep -Ei 'Transport Security|cleartext|NSURLError|kCFErrorDomain|Task <|nw_connection|127\.0\.0\.1|8788' | tail -n 40 > "$DIR/$NAME-network.txt" || true
 { echo "== server.log (tail)"; tail -n 30 "$OUT/server.log" 2>/dev/null; echo "== requests.log: answers with 4xx/5xx"; grep " = [45][0-9][0-9] " "$OUT/requests.log" 2>/dev/null | tail -n 20; echo "== requests.log (tail)"; tail -n 16 "$OUT/requests.log" 2>/dev/null; echo "== health now"; curl -s -o /dev/null -w '%{http_code}
-' http://127.0.0.1:8788/api/health; } > "$DIR/$NAME-backend.txt" 2>&1
+' --cacert "$OUT/tls/ca.pem" https://localhost:8788/api/health; } > "$DIR/$NAME-backend.txt" 2>&1
 # When the app never came up there is no app log. What Maestro itself recorded (its reason is not always on
 # the console), the junit failure text, and what the system said about launching or ending the app.
 grep -o '<failure[^>]*>[^<]*' "$DIR/$NAME.xml" > "$DIR/$NAME-junit.txt" 2>/dev/null || true

@@ -1,5 +1,5 @@
 # 11-reader-sheets — each reader sheet opens from 更多閱讀工具 and closes again: font settings (SDK overlay),
-# the version page (app page) and the chapter picker (SDK sheet on the app's bottom sheet).
+# the version page (app page) and the chapter picker (SDK overlay; the overlay's close is 完成設定，返回閱讀).
 appId: org.qingmu.youth
 ---
 - launchApp
@@ -34,9 +34,9 @@ appId: org.qingmu.youth
 - tapOn: "更多閱讀工具"
 - tapOn: "選擇其他章節"
 - extendedWaitUntil:
-    visible: "關閉面板"
+    visible: "書卷"
     timeout: 15000
-- tapOn: "關閉面板"
+- tapOn: "完成設定，返回閱讀"
 - extendedWaitUntil:
-    notVisible: "關閉面板"
+    notVisible: "書卷"
     timeout: 10000

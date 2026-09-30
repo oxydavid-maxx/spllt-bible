@@ -49,7 +49,7 @@
 - 通知權限由 `scripts/ios/run-flows.sh` 在安裝 App 後授權一次（用 Maestro 內建的 applesimutils）。流程**不要**用 `clearState`：它會重裝 App、丟掉授權，系統通知對話框會卡住 driver。
 - Maestro driver 開機後先暖機一次，之後所有呼叫都帶 `--no-reinstall-driver`。
 - 流程用無障礙標籤（`accessibilityLabel`）比對。標籤同名時用相對位置（`above:`）或座標。
-- 假資料後端的環境變數：`QINGMU_DEV_TOKEN`、`QINGMU_FIXTURE_ROSTER=two-member-week`、`QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self`（只帶 Bearer 的請求用這個成員）、`QINGMU_DB_PATH=:memory:`。前面接 `scripts/ios/count-proxy.ts`（8788 → 8787），記錄每個請求和回應狀態。
+- 假資料後端的環境變數：`QINGMU_DEV_TOKEN`、`QINGMU_FIXTURE_ROSTER=two-member-week`、`QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self`（只帶 Bearer 的請求用這個成員）、`QINGMU_DB_PATH=:memory:`。前面接 `scripts/ios/count-proxy.ts`（HTTPS 8788 → 8787），記錄每個請求和回應狀態。App 用 `https://localhost:8788`：讀經器只從 https 的 API 網址取經文，所以 CI 每次產生一張只裝進模擬器的臨時根憑證（`scripts/ios/make-ci-tls.sh`）。
 
 ## iOS 注意事項（都實際發生過）
 

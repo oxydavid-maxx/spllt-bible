@@ -21,7 +21,8 @@ jobs:
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_QINGMU_FIXTURE: 'true'
       EXPO_PUBLIC_QINGMU_DEV_TOKEN: ci-fixture-token
-      EXPO_PUBLIC_QINGMU_API_BASE_URL: http://127.0.0.1:8788
+      # HTTPS like production (scripts/ios/run-flows.sh): the reader loads Bible text only through an https API base.
+      EXPO_PUBLIC_QINGMU_API_BASE_URL: https://localhost:8788
       EXPO_PUBLIC_QINGMU_TEST_DATE: '2026-09-02'
       EXPO_PUBLIC_QINGMU_QA_TEST_AUDIO: 'true'
       EXPO_PUBLIC_QINGMU_QA_AUDIO_URI: http://127.0.0.1:8790/jhn13.wav
