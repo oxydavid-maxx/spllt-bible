@@ -14,6 +14,9 @@ export function createSheetDrag({ translateY, height, close, running, canDrag }:
   canDrag: () => boolean;
 }) {
   return PanResponder.create({
+    // Modal claims unhandled starts, so waiting until move would lose the whole gesture.
+    // Bubble (not capture) lets a child close button handle its own tap first.
+    onStartShouldSetPanResponder: () => canDrag(),
     onMoveShouldSetPanResponder: (_event, gesture) => canDrag() && gesture.dy > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
     onPanResponderGrant: () => { running.current?.stop(); running.current = null; },
     onPanResponderMove: (_event, gesture) => { if (canDrag()) translateY.setValue(Math.max(0, gesture.dy)); },

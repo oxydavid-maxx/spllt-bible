@@ -123,6 +123,15 @@ describe('the full reading plan shared by both entry points', () => {
     expect(animated.state.configs.every((config: any) => config.useNativeDriver === true)).toBe(true);
   });
 
+  it('claims a header touch before the native Modal can take the responder and swallow later moves', async () => {
+    await mount();
+    const pan = tree!.root.findByProps({ testID: 'reading-plan-drag-handle' }).props.panConfig;
+    const touch = { dx: 0, dy: 0, vy: 0 };
+    expect(pan.onStartShouldSetPanResponder({}, touch)).toBe(false);
+    act(() => tree!.root.findByType('Modal' as never).props.onShow());
+    expect(pan.onStartShouldSetPanResponder({}, touch), 'Modal claims unhandled starts; the header must claim the start, not wait for a move').toBe(true);
+  });
+
   it('keeps list scrolling separate, returns a short drag, and accepts a downward flick', async () => {
     await mount();
     act(() => tree!.root.findByType('Modal' as never).props.onShow());
