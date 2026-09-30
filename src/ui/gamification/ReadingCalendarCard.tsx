@@ -60,7 +60,7 @@ export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect
           accessibilityLabel={`${date} ${STATE_LABEL[state]}${date === today ? ' 今天' : ''}`}
           accessibilityState={{ selected }}
           onPress={() => onSelect(date)}
-          style={[styles.cell, state === 'completed' && styles.cellDone, state === 'future' && styles.cellFuture, date === today && styles.cellToday, selected && styles.cellSelected]}
+          style={[styles.cell, state === 'completed' && styles.cellDone, date > today && styles.cellFuture, date === today && styles.cellToday, selected && styles.cellSelected]}
         >
           <Text style={[styles.cellText, state === 'completed' && styles.cellTextDone, selected && styles.cellTextSelected]}>{Number(date.slice(8, 10))}</Text>
         </Pressable></View>;
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   cellFuture: { opacity: 0.45 },
   cellToday: { borderWidth: 2, borderColor: theme.colors.primaryDeep },
   // Clay, the app's "needs you" colour: this is the day the button below acts on.
-  cellSelected: { borderWidth: 3, borderColor: theme.colors.accent },
+  cellSelected: { borderWidth: 3, borderColor: theme.colors.accent, opacity: 1 },
   cellText: { color: theme.colors.ink, fontSize: theme.type.caption.size, fontWeight: '700' },
   cellTextDone: { color: theme.colors.white },
   cellTextSelected: { fontWeight: '900' },

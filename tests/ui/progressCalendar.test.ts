@@ -132,6 +132,16 @@ describe('the 積分 page opens on its calendar', () => {
     }
   });
 
+  it('shows only the no-reading explanation for a future Sunday, with no completion action or passages', async () => {
+    await mount();
+    await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '下個月' }).props.onPress(); await Promise.resolve(); });
+    await act(async () => cell('2026-10-04').props.onPress());
+    expect(texts()).toContain('10/4（日）這天沒有讀經');
+    expect(texts()).not.toContain('詩1');
+    expect(texts().join('')).not.toContain('10/4（日）還沒到');
+    expect(buttons()).toHaveLength(0);
+  });
+
   it('offers the undo on a finished day, through the same controller', async () => {
     await mount();
     await act(async () => { cell('2026-09-26').props.onPress(); });

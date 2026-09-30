@@ -53,8 +53,8 @@ export function dayHeading(date: string): string {
 }
 
 export function dayState(date: string, today: string, day: CalendarDay | undefined): DayState {
-  if (date > today) return 'future';
   if (!day) return 'rest';
+  if (date > today) return 'future';
   if (day.completed) return 'completed';
   return isWithinCompletionWindow(date, today) && day.canComplete ? 'open' : 'expired';
 }
