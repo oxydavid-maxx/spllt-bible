@@ -13,6 +13,33 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     notVisible: "官方閱讀器還在準備中.*"
     timeout: 60000
+- tapOn: "整份讀經計畫"
+- extendedWaitUntil:
+    visible: "關閉計畫"
+    timeout: 15000
+# A content swipe must scroll the list; the separate header drag dismisses it.
+- swipe:
+    direction: UP
+    duration: 500
+- assertVisible: "關閉計畫"
+- takeScreenshot: 11-plan-scrolled
+- swipe:
+    from:
+      text: "整份讀經計畫"
+    direction: DOWN
+    duration: 600
+- extendedWaitUntil:
+    notVisible: "關閉計畫"
+    timeout: 10000
+- takeScreenshot: 11-plan-dismissed
+- tapOn: "整份讀經計畫"
+- extendedWaitUntil:
+    visible: "關閉計畫"
+    timeout: 15000
+- tapOn: "關閉計畫"
+- extendedWaitUntil:
+    notVisible: "關閉計畫"
+    timeout: 10000
 - tapOn: "更多閱讀工具"
 - tapOn: "調整字體"
 - extendedWaitUntil:

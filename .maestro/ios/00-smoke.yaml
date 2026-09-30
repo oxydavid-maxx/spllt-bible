@@ -9,7 +9,25 @@ appId: org.qingmu.youth
     timeout: 90000
 - assertVisible: "公告"
 - assertVisible: "靈修日記"
-- tapOn: "積分"
+# Tabs are already exposed while Today is replacing itself with Reader. Wait for the
+# destination; the tab hierarchy alone is not readiness.
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 30000
+# A changing reader (network/voice state) is not proof of a successful tab change.
+# Use the destination hierarchy for bounded navigation, not screenshot animation
+# polling: that lost the cold-start XCUITest connection in run 36748404417.
+- repeat:
+    times: 3
+    while:
+      notVisible: "開啟積分操作"
+    commands:
+      - tapOn:
+          text: "積分"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "開啟積分操作"
+    timeout: 15000
 - extendedWaitUntil:
     visible: "測試成員甲"
     timeout: 30000

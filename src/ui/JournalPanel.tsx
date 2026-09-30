@@ -71,16 +71,6 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
           {offered ? <Pressable accessibilityRole="button" accessibilityLabel="插入剛複製的經文" onPress={() => { entry.appendQuote(offered); setOffered(null); onQuoteConsumed?.(); }} style={styles.quoteOffer}>
             <Text numberOfLines={2} style={styles.quoteOfferText}>{`插入剛複製的經文：${offered}`}</Text>
           </Pressable> : null}
-          {entry.conflict
-            ? <View style={styles.conflict}>
-                <Text style={styles.conflictText}>這一天的日記在其他裝置上已更新，你的內容尚未上傳。</Text>
-                <Pressable accessibilityRole="button" accessibilityLabel="仍要儲存" onPress={entry.resolveConflict} style={styles.conflictAction}>
-                  <Text style={styles.conflictActionText}>仍要儲存</Text>
-                </Pressable>
-              </View>
-            : entry.syncStatus === 'PENDING_SAVE'
-              ? <Text style={styles.note}>尚未上傳</Text>
-              : null}
         </ScrollView>
       </View>
     </SheetBackdrop>
@@ -100,9 +90,4 @@ const styles = StyleSheet.create({
   input: { minHeight: 180, color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   quoteOffer: { minHeight: theme.control.tap, justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs },
   quoteOfferText: { color: theme.colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  note: { color: theme.colors.muted, fontSize: theme.type.caption.size },
-  conflict: { gap: theme.spacing.xs },
-  conflictText: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  conflictAction: { minHeight: theme.control.tap, alignItems: 'flex-start', justifyContent: 'center' },
-  conflictActionText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
 });

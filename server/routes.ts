@@ -9,7 +9,7 @@ import { createSessionToken } from './session';
 import { parseCapabilityQuery } from './contentCapabilities';
 import { createChapterAudioResolver, prewarmChapterAudio } from './genericChapterAudio';
 import { getMemberGroupProfile } from './groups';
-import { ensureJournalSchema, getJournalEntry, listJournalEntries, saveJournalEntry } from './journal';
+import { ensureJournalSchema, getJournalEntry, listJournalEntries } from './journal';
 import { ensureEventRegistrationSchema, formRegistrationKeyMatches, formSyncIdentityMatches, getEventRegistrationView, readFormRegistrationPush, replaceEventRegistrations, type FormSyncIdentity } from './eventRegistrations';
 import { getCommunityProgress } from './communityProgress';
 import { closeRound, createNomination, decideNomination, ensureNominationSchema, listNominationHistory, listNominations, listNominationsForAdmin, openRound, resolveSuggestion, setVote, updateNominationQuantity, withdrawNomination, type NominationDecision } from './rewardNominations';
@@ -536,14 +536,8 @@ export function createApiHandler(options: ApiHandlerOptions) {
           return isGamificationError(entry) ? gamificationError(entry) : gamificationJson(200, entry as unknown as Record<string, unknown>);
         }
         if (request.method === 'PUT') {
-          const payload = parseBody(request.body);
-          const saved = saveJournalEntry(options.db.db, auth.memberId, taskDate, {
-            operationId: String(payload.operationId ?? ''),
-            expectedRevision: typeof payload.expectedRevision === 'number' ? payload.expectedRevision : -1,
-            planId: String(payload.planId ?? ''),
-            body: typeof payload.body === 'string' ? payload.body : '',
-          }, now().getTime());
-          return isGamificationError(saved) ? gamificationError(saved) : gamificationJson(200, saved);
+          // journal.md「決定」: journals stay on the phone. GET remains for 0.5.21 compatibility.
+          return gamificationJson(405, { error: { code: 'JOURNAL_LOCAL_ONLY' } });
         }
       }
       if (request.method === 'GET' && url.pathname === '/api/points/community') {

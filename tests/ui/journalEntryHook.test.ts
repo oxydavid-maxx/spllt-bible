@@ -148,16 +148,13 @@ describe('a day of writing survives every way it could be dropped', () => {
     expect(store.get({ memberId: 'member-self', taskDate: '2026-09-12' })?.body).toBe('資料夾壞掉也不能掉字');
   });
 
-  it('reports a conflict so the panel can offer to save anyway, and never blanks the text', async () => {
-    vi.useRealTimers();
+  it('reports locally saved writing without a server conflict or upload state', async () => {
     store.save({ memberId: 'member-self', planId: 'church-2026-09', taskDate: '2026-09-12', body: '這台寫的', operationId: 'seed', expectedRevision: 0 });
-    // The flush has been told another device already wrote this day.
-    await store.flush(async () => ({ ok: false, outcome: 'CONFLICT', revision: 3 }), 'member-self');
-    vi.useFakeTimers();
-
     const hook = mountHook('2026-09-12');
     expect(hook.view().body).toBe('這台寫的');
-    expect(hook.view().conflict).toBe(true);
+    expect(hook.view().saveStatus).toBe('saved');
+    expect(hook.view()).not.toHaveProperty('conflict');
+    expect(hook.view()).not.toHaveProperty('syncStatus');
   });
 });
 

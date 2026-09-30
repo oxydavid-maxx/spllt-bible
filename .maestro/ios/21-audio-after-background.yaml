@@ -6,7 +6,20 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "暫停.*語音"
     timeout: 15000
-- tapOn: "積分"
+- runFlow:
+    when:
+      visible: "展開閱讀工具"
+    commands:
+      - tapOn: "展開閱讀工具"
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 10000
+- tapOn:
+    text: "積分"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "開啟積分操作"
+    timeout: 15000
 - tapOn: "讀經入口"
 - assertVisible: "暫停.*語音"
 - tapOn: "暫停.*語音"

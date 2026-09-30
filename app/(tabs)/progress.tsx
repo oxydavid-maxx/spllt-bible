@@ -1,6 +1,6 @@
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
 import { getAuthSnapshot, isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
 import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type NominationBoardView, type ScoreChartQuery, type ScoreChartRange, type CommunityProgressView, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
@@ -24,7 +24,8 @@ import type { CompletionAwardEvent, CompletionSyncEvent } from '../../src/servic
 import { applyCompletionSyncToProfile } from '../../src/ui/completionProfileSync';
 import { CompletionTodayButton } from '../../src/ui/CompletionTodayButton';
 import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
-import { getReadingPlanId, getReadingPlanSpan, getScheduledReading } from '../../src/ui/readingSession';
+import { getReadingPlanId, getReadingPlanSpan, getScheduledReading, setSelectedReadingDate } from '../../src/ui/readingSession';
+import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
 import type { CompletionRecord } from '../../src/domain/completion';
 import { ReadingCalendarCard } from '../../src/ui/gamification/ReadingCalendarCard';
@@ -34,6 +35,7 @@ import { consumeOpenFriendsList, subscribeFriendAdded, subscribeOpenFriendsList,
 type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'admin-rewards' | 'redeem' | 'redemptions' | 'pending' | 'nominations' | 'open-round' | null;
 
 export default function ProgressScreen() {
+  const [planOpen, setPlanOpen] = useState(false);
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
   const client = useMemo(() => session ? createGamificationApiClient({ baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [session?.memberId, session?.sessionToken]);
@@ -125,6 +127,7 @@ export default function ProgressScreen() {
   const isViewLive = useCallback((generation: number) => Boolean(focusedRef.current && appActive.current && viewGeneration.current === generation && session && isCurrentAuthSession(session)), [session]);
   const stopPrefetch = useCallback(() => { if (prefetchTimer.current !== null) clearTimeout(prefetchTimer.current); prefetchTimer.current = null; }, []);
   const clearProtectedState = useCallback((preserveScanner = false, preserveOwnProfile = false, preserveOwnView = false) => {
+    setPlanOpen(false);
     requestGeneration.current += 1; viewGeneration.current += 1; profileRequest.current += 1; nominationRead.current += 1;
     nominationPending.current = null; stopPrefetch(); client?.cancelReads?.();
     const currentProfile = profileRef.current;
@@ -557,7 +560,7 @@ export default function ProgressScreen() {
           selectedDate={selectedDate}
           days={calendarDays}
           onSelect={(date) => withPick(() => setSelectedDate(date))}
-          note={getScheduledReading(selectedDate)?.note}
+          onOpenReadingPlan={() => setPlanOpen(true)}
           onPreviousMonth={planSpan && calendarMonth > planSpan.first.slice(0, 7) ? () => setCalendarMonth(shiftMonth(calendarMonth, -1)) : undefined}
           onNextMonth={calendarMonth < lastMonth ? () => setCalendarMonth(shiftMonth(calendarMonth, 1)) : undefined}
           action={<View style={styles.completionAction}>
@@ -588,6 +591,7 @@ export default function ProgressScreen() {
       onChooseReward={() => void loadRewards()}
     /> : null}
     <CompletionAwardFeedback event={completionAward} onFinished={(operationId) => setCompletionAward((current) => current?.operationId === operationId ? null : current)} />
+    <ReadingPlanSheet visible={planOpen} onClose={() => setPlanOpen(false)} onSelectDate={date => { setSelectedReadingDate(date); router.replace('/reader'); }} />
     <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: openQrSheet }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards('admin-rewards'); } }] : []), ...(capabilities?.canManageRewards && !nominations?.round ? [{ label: '開一輪獎品提案', onPress: () => setSheet('open-round') }] : []), ...(nominations?.round ? [{ label: '獎品提案', onPress: () => setSheet('nominations') }] : [])]} />
     <ActionSheet visible={sheet === 'nominations'} title={nominations?.round?.title ?? '獎品提案'} onClose={() => setSheet(null)}>
       {nominationBusy ? <Text accessibilityLiveRegion="polite" style={styles.note}>處理中…</Text> : null}

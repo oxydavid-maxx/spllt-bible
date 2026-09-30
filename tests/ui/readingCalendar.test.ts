@@ -46,6 +46,11 @@ describe('what the selected day says', () => {
     expect(dayState('2026-09-21', TODAY, day())).toBe('open');
     expect(dayState('2026-09-20', TODAY, day())).toBe('expired');
   });
+
+  it('explains a future rest day as no reading, without promising a future check-in', () => {
+    expect(dayState('2026-10-04', '2026-09-30', undefined)).toBe('rest');
+    expect(dayMessage('2026-10-04', dayState('2026-10-04', '2026-09-30', undefined))).toBe('10/4（日）這天沒有讀經');
+  });
 });
 
 describe('the day selected when the page opens', () => {
@@ -113,17 +118,20 @@ describe('the calendar card', () => {
     expect(cell(view, '2026-09-25').props.accessibilityState).toEqual({ selected: true });
   });
 
+  it('keeps a selected future day clearly marked while other future dates remain muted', () => {
+    const view = render({ selectedDate: '2026-09-29' });
+    expect(flat(cell(view, '2026-09-29').props.style).opacity).toBe(1);
+    expect(flat(cell(view, '2026-09-30').props.style).opacity).toBe(0.45);
+  });
+
   it('puts the selected day, its passages and the action under the grid', () => {
     const view = render();
     expect(texts(view)).toEqual(expect.arrayContaining(['9/25（五）', '多1、多2、詩101']));
     expect(view.root.findAll((node) => (node.type as unknown) === 'Action')).toHaveLength(1);
   });
 
-  it('adds the plan\'s note under a day that has one, and only when the day is shown', () => {
-    const note = '讀經表原本把 10/15、10/16 的詩119 前後段排反了，這裡已改成照經文順序讀。';
-    expect(texts(render({ note }))).toEqual(expect.arrayContaining(['9/25（五）', '多1、多2、詩101', note]));
-    expect(texts(render())).not.toContain(note);
-    expect(texts(render({ note, selectedDate: '2026-09-29' }))).not.toContain(note);
+  it('does not display a correction explanation (reading-plan.md 決定)', () => {
+    expect(texts(render()).join('')).not.toContain('讀經表原本');
   });
 
   it('shows one line and no action for a day that cannot be completed', () => {

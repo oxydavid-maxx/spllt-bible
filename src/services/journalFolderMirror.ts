@@ -8,7 +8,7 @@ import { buildMirrorFile, decideMirrorWrite, mirrorFileName } from '../domain/jo
  * in the app; for someone who already keeps their thinking in a folder that syncs — a vault, a
  * notes app, anything backed by plain files — this drops the entry straight in as Markdown.
  *
- * It is a mirror and behaves like one. Writing never blocks or fails a journal save: the server has
+ * It is a mirror and behaves like one. Writing never blocks or fails a journal save: the phone has
  * already taken the entry, so a folder that has gone missing, been revoked, or filled up is an
  * inconvenience to report later, not a reason to lose what somebody just typed.
  *
@@ -107,7 +107,7 @@ export function createJournalFolderMirror(storage: ReaderPreferencesStorage): Jo
         await fileSystem.writeAsStringAsync!(target, file.contents);
         return { ok: true, wrote: true };
       } catch {
-        // A revoked grant, a removed SD card, a full disk. The entry is already safe on the server.
+        // A revoked grant, a removed SD card, a full disk. The entry is already safe on the phone.
         return { ok: false, reason: 'WRITE_FAILED' };
       }
     },

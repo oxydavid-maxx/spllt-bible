@@ -3,8 +3,6 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { randomUUID } from 'expo-crypto';
 import { useAuthSnapshot } from '../../src/services/authSession';
-import { runtimeConfig } from '../../src/config/runtime';
-import { createJournalApiClient } from '../../src/services/journalApiClient';
 import { openQingmuJournalStore } from '../../src/storage/mobileDatabase';
 import { buildJournalExport, countExportableDays } from '../../src/domain/journalExport';
 import { describeFolderUri } from '../../src/domain/folderPath';
@@ -25,19 +23,8 @@ import { theme } from '../../src/ui/Theme';
 /**
  * Every entry in one place: read back, reopen to edit, take the whole thing away.
  *
- * The list is local-first. The device already holds what was written here, so it renders instantly
- * and works with no signal; the server copy is merged in afterwards for anything written on another
- * phone. Export reads the same merged list, which is why it is on this screen rather than buried in
- * account settings — this is where the journal lives.
+ * Writing and export use this phone's store only. The privacy decision is in journal.md.
  */
-
-const RANGE_DAYS = 400;
-
-function rangeEndingToday(): { from: string; to: string } {
-  const today = new Date(`${taipeiDate()}T12:00:00.000Z`);
-  const from = new Date(today.getTime() - RANGE_DAYS * 24 * 60 * 60 * 1000);
-  return { from: from.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) };
-}
 
 export default function JournalScreen() {
   const auth = useAuthSnapshot();
@@ -133,25 +120,6 @@ export default function JournalScreen() {
     changeEditorDate(next.toISOString().slice(0, 10));
   };
 
-  // The server copy only adds days written elsewhere; a local entry always wins, because it may be
-  // newer and is certainly what the person in front of the screen last typed.
-  useEffect(() => {
-    if (!memberId || !session) return;
-    let current = true;
-    const client = createJournalApiClient({
-      baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl,
-      token: session.sessionToken,
-      memberId,
-    });
-    const { from, to } = rangeEndingToday();
-    void client.listEntries(from, to).then((remote) => {
-      if (!current || !remote) return;
-      openQingmuJournalStore().adoptRemote(memberId, remote, getReadingPlanId(to) ?? 'church-2026-09');
-      reload();
-    });
-    return () => { current = false; };
-  }, [memberId, session, reload]);
-
   const exportAll = async () => {
     flushEditor();
     const currentEntries = memberId ? openQingmuJournalStore().list(memberId) : entries;
@@ -182,6 +150,7 @@ export default function JournalScreen() {
       </View>
       {memberId === null ? <Text style={styles.empty}>登入後才能查看和保存自己的日記。</Text> : null}
       <ScrollView contentContainerStyle={styles.pageContent} keyboardShouldPersistTaps="handled">
+        <Text style={styles.note}>日記只存在這支手機，不會上傳。換手機或重裝前，請先「匯出全部」。</Text>
         <TextInput
           accessibilityLabel="靈修日記"
           multiline
@@ -199,12 +168,6 @@ export default function JournalScreen() {
         {pendingQuote ? <Pressable accessibilityRole="button" accessibilityLabel="插入剛複製的經文" onPress={() => { entry.appendQuote(pendingQuote); consumePendingJournalQuote(); }} style={styles.quoteOffer}>
           <Text numberOfLines={2} style={styles.quoteOfferText}>{`插入剛複製的經文：${pendingQuote}`}</Text>
         </Pressable> : null}
-        {entry.conflict ? <View style={styles.conflict}>
-          <Text style={styles.conflictText}>這一天的日記在其他裝置上已更新，你的內容尚未上傳。</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="仍要儲存" onPress={entry.resolveConflict} style={styles.conflictAction}>
-            <Text style={styles.conflictActionText}>仍要儲存</Text>
-          </Pressable>
-        </View> : entry.syncStatus === 'PENDING_SAVE' ? <Text accessibilityLiveRegion="polite" style={styles.note}>尚未上傳</Text> : null}
         <Text accessibilityRole="header" style={styles.historyHeading}>歷史記錄</Text>
         {entries.length === 0
           ? <Text style={styles.empty}>還沒有其他日記。寫下第一篇後，會保存在這裡。</Text>
@@ -254,11 +217,7 @@ const styles = StyleSheet.create({
   editor: { minHeight: 180, color: theme.colors.ink, backgroundColor: theme.colors.surface, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, padding: theme.spacing.md, borderRadius: theme.radius.card },
   quoteOffer: { minHeight: theme.control.tap, justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs },
   quoteOfferText: { color: theme.colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  note: { color: theme.colors.muted, fontSize: theme.type.caption.size },
-  conflict: { gap: theme.spacing.xs },
-  conflictText: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  conflictAction: { minHeight: theme.control.tap, alignItems: 'flex-start', justifyContent: 'center' },
-  conflictActionText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  note: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   historyHeading: { color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800', paddingTop: theme.spacing.xs },
   row: { minHeight: theme.control.tap, justifyContent: 'center', backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, gap: theme.spacing.xxs },
   selectedRow: { borderWidth: theme.control.hairline, borderColor: theme.colors.primary },

@@ -28,11 +28,14 @@ import { useCompletionController } from '../../src/services/useCompletionControl
 import type { CompletionAwardEvent } from '../../src/services/completionController';
 import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
 import { useReaderRetrySignal } from '../../src/ui/readerRetrySignal';
+import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 
 let handledTodayReaderTabPressRevision = 0;
 
 export default function ReaderScreen() {
   const chrome = useReaderChrome();
+  const [planOpen, setPlanOpen] = useState(false);
+  useEffect(() => { if (!chrome.focused) setPlanOpen(false); }, [chrome.focused]);
   // A chapter that failed to load while this tab was out of sight retries when it comes back.
   const retrySignal = useReaderRetrySignal(chrome.focused);
   const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession();
@@ -323,7 +326,7 @@ export default function ReaderScreen() {
       <Text accessibilityLiveRegion="polite">正在載入閱讀設定…</Text>
     </SafeAreaView>
   );
-  return (
+  return (<>
     <YouVersionReader
       key={selectedDate}
       references={references}
@@ -381,6 +384,7 @@ export default function ReaderScreen() {
           previousDate={previousDate}
           nextDate={nextDate}
           onSelectDate={setSelectedReadingDate}
+          onOpenReadingPlan={() => { chrome.showTools(); setPlanOpen(true); }}
           completed={completed}
           completionDisabled={completionDisabled}
           completionPending={completionPending}
@@ -407,5 +411,6 @@ export default function ReaderScreen() {
         />
       )}
     />
-  );
+    <ReadingPlanSheet visible={planOpen && chrome.focused} onClose={() => setPlanOpen(false)} onSelectDate={setSelectedReadingDate} />
+  </>);
 }

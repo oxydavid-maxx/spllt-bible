@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Review 120. THREE-LAYER integration on the ACTUAL caller:
 //   ReaderScreen (real)  ->  YouVersionReader (real)  ->  ChapterAudioControls (real)  ->  capability request
@@ -362,9 +362,20 @@ async function configureTodayReferences(references: string[]) {
   return { session, today };
 }
 
+const FIXTURE_NOW = '2026-09-30T04:00:00.000Z';
+
 // FILE-level reset. A describe-scoped beforeEach left later suites reading the previous suite's saved
 // position and reading date, which is test pollution rather than product behaviour.
+it('uses a fixed September today for the September-plan fixture on every host date', async () => {
+  const { taipeiDate } = await import('../../src/domain/gamificationV1');
+  expect(taipeiDate()).toBe('2026-09-30');
+});
+
 beforeEach(async () => {
+  // This suite supplies a September-only plan. A real October clock changes completion
+  // eligibility; failed assertions then leave renderers mounted and pollute later audio cases.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(FIXTURE_NOW));
   process.env.EXPO_PUBLIC_QINGMU_FIXTURE = 'true';
   readerAuth.memberId = null; readerAuth.epoch = 0; readerAuth.status = 'signed-out'; readerAuth.expiresAt = undefined;
   preferenceIO.data.clear(); preferenceIO.alerts.length = 0;
@@ -402,6 +413,8 @@ beforeEach(async () => {
   rs.setJournalEntryDate(BASE_DATE);
   rs.consumePendingJournalQuote();
 });
+
+afterEach(() => { vi.useRealTimers(); });
 
 describe('the chapter the audio asks for follows the ACTUAL reader selection (120 R1)', () => {
   const originalError = console.error;
@@ -505,7 +518,10 @@ describe('the chapter the audio asks for follows the ACTUAL reader selection (12
   });
 
   it('refreshes Diary history after the first debounced save', async () => {
+    // Replace the Date-only clock with a full timer clock for this debounce-specific case.
+    vi.useRealTimers();
     vi.useFakeTimers();
+    vi.setSystemTime(new Date(FIXTURE_NOW));
     readerAuth.memberId = 'fixture:self';
     readerAuth.status = 'signed-in';
     navigationState.pathname = '/journal';

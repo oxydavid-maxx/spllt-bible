@@ -28,8 +28,7 @@ export interface ReadingCalendarCardProps {
   onNextMonth?: () => void;
   /** The selected day's completion button, with anything it needs to say about syncing. */
   action?: ReactNode;
-  /** The plan's note on the selected day, where the app corrected the church sheet. */
-  note?: string;
+  onOpenReadingPlan?: () => void;
 }
 
 function monthLabel(month: string): string {
@@ -37,7 +36,7 @@ function monthLabel(month: string): string {
   return `${year}年${Number(value)}月`;
 }
 
-export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, action, note }: ReadingCalendarCardProps) {
+export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, action, onOpenReadingPlan }: ReadingCalendarCardProps) {
   const selectedDay = days.get(selectedDate);
   const selectedState = dayState(selectedDate, today, selectedDay);
   const message = dayMessage(selectedDate, selectedState);
@@ -61,21 +60,22 @@ export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect
           accessibilityLabel={`${date} ${STATE_LABEL[state]}${date === today ? ' 今天' : ''}`}
           accessibilityState={{ selected }}
           onPress={() => onSelect(date)}
-          style={[styles.cell, state === 'completed' && styles.cellDone, state === 'future' && styles.cellFuture, date === today && styles.cellToday, selected && styles.cellSelected]}
+          style={[styles.cell, state === 'completed' && styles.cellDone, date > today && styles.cellFuture, date === today && styles.cellToday, selected && styles.cellSelected]}
         >
           <Text style={[styles.cellText, state === 'completed' && styles.cellTextDone, selected && styles.cellTextSelected]}>{Number(date.slice(8, 10))}</Text>
         </Pressable></View>;
       })}
     </View>
     <View style={styles.selected}>
-      {message ? <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text> : <>
+      {selectedDay ? <>
         <View style={styles.dayLine}>
           <Text style={styles.heading}>{dayHeading(selectedDate)}</Text>
           {passages ? <Text style={styles.passages}>{passages}</Text> : null}
+          {onOpenReadingPlan ? <Pressable accessibilityRole="button" accessibilityLabel="整份計畫" onPress={onOpenReadingPlan} style={styles.planLink}><Text style={styles.planLinkText}>整份計畫 ›</Text></Pressable> : null}
         </View>
-        {note ? <Text style={styles.passages}>{note}</Text> : null}
-        {action}
-      </>}
+      </> : null}
+      {message ? <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text> : action}
+      {!selectedDay && onOpenReadingPlan ? <Pressable accessibilityRole="button" accessibilityLabel="整份計畫" onPress={onOpenReadingPlan} style={styles.planLink}><Text style={styles.planLinkText}>整份計畫 ›</Text></Pressable> : null}
     </View>
   </View>;
 }
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   cellFuture: { opacity: 0.45 },
   cellToday: { borderWidth: 2, borderColor: theme.colors.primaryDeep },
   // Clay, the app's "needs you" colour: this is the day the button below acts on.
-  cellSelected: { borderWidth: 3, borderColor: theme.colors.accent },
+  cellSelected: { borderWidth: 3, borderColor: theme.colors.accent, opacity: 1 },
   cellText: { color: theme.colors.ink, fontSize: theme.type.caption.size, fontWeight: '700' },
   cellTextDone: { color: theme.colors.white },
   cellTextSelected: { fontWeight: '900' },
@@ -104,5 +104,7 @@ const styles = StyleSheet.create({
   dayLine: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: theme.spacing.sm },
   heading: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
   passages: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  planLink: { marginLeft: 'auto', minHeight: theme.control.tap, justifyContent: 'center' },
+  planLinkText: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
   message: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
 });

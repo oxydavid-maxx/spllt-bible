@@ -14,13 +14,11 @@
  * would fight its own scrolling.
  */
 import { createContext, forwardRef, useCallback, useContext, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, PanResponder, Pressable, StyleSheet, View, useWindowDimensions, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { createSheetDrag, SHEET_CLOSE_MS } from './sheetDrag';
 
 const OPEN_MS = 250;
-const CLOSE_MS = 200;
-const DRAG_CLOSE_FRACTION = 0.25;
-const DRAG_CLOSE_VELOCITY = 0.5;
 const BACKDROP_OPACITY = 0.5;
 
 type Index = -1 | 0;
@@ -94,7 +92,7 @@ const BottomSheet = forwardRef<BottomSheetMethods, BottomSheetProps>(function Bo
     const from = targetRef.current;
     targetRef.current = target;
     callbacksRef.current.onAnimate?.(from, target);
-    const config = { duration: target === 0 ? OPEN_MS : CLOSE_MS, easing: target === 0 ? Easing.out(Easing.cubic) : Easing.in(Easing.quad), useNativeDriver: true };
+    const config = { duration: target === 0 ? OPEN_MS : SHEET_CLOSE_MS, easing: target === 0 ? Easing.out(Easing.cubic) : Easing.in(Easing.quad), useNativeDriver: true };
     const animation = Animated.parallel([
       Animated.timing(translateY, { ...config, toValue: target === 0 ? 0 : closedOffset }),
       Animated.timing(progress, { ...config, toValue: target === 0 ? 1 : 0 }),
@@ -132,17 +130,10 @@ const BottomSheet = forwardRef<BottomSheetMethods, BottomSheetProps>(function Bo
   }, [animateTo]);
 
   const sheetHeightRef = useRef(0);
-  const pan = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_event, gesture) => gesture.dy > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
-    onPanResponderMove: (_event, gesture) => { translateY.setValue(Math.max(0, gesture.dy)); },
-    onPanResponderRelease: (_event, gesture) => {
-      const height = sheetHeightRef.current || contentHeightRef.current || windowHeight;
-      if (gesture.dy > height * DRAG_CLOSE_FRACTION || gesture.vy > DRAG_CLOSE_VELOCITY) { close(); return; }
-      const back = Animated.timing(translateY, { toValue: 0, duration: CLOSE_MS, easing: Easing.out(Easing.quad), useNativeDriver: true });
-      runningRef.current = back;
-      back.start(() => { if (runningRef.current === back) runningRef.current = null; });
-    },
-    onPanResponderTerminate: () => { translateY.setValue(0); },
+  const pan = useMemo(() => createSheetDrag({
+    translateY, close, running: runningRef,
+    height: () => sheetHeightRef.current || contentHeightRef.current || windowHeight,
+    canDrag: () => targetRef.current === 0,
   }), [close, translateY, windowHeight]);
 
   const context = useMemo<SheetContextValue>(() => ({ progress, isOpen: index === 0, close, reportContentHeight }), [progress, index, close, reportContentHeight]);

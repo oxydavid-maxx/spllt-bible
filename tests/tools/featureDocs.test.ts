@@ -21,4 +21,14 @@ describe('feature list', () => {
   it('gives every spec a decisions section', () => {
     expect(specs.filter((name) => !/^## 決定/m.test(readFileSync(`docs/features/${name}`, 'utf8')))).toEqual([]);
   });
+
+  it('documents the delivered 0.5.22 behavior and the journal privacy guard', () => {
+    const plan = readFileSync('docs/features/reading-plan.md', 'utf8');
+    const journal = readFileSync('docs/features/journal.md', 'utf8');
+    expect(list).not.toContain('## 規劃中（0.5.22）');
+    expect(plan).not.toContain('## 規劃中（0.5.22）');
+    expect(plan).toContain('ReadingPlanSheet');
+    expect(journal).toContain('tests/tools/journalPrivacy.test.ts');
+    expect(journal).not.toContain('src/services/journalApiClient.ts');
+  });
 });

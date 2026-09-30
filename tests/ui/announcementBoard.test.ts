@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const { primitive } = vi.hoisted(() => ({
   primitive: (name: string) => (props: Record<string, unknown>) => require('react').createElement(name, props, props.children as never),
@@ -15,6 +15,9 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { AnnouncementBoard } from '../../src/ui/AnnouncementBoard';
 import type { Announcement } from '../../src/services/announcementClient';
+
+beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-30T04:00:00Z')); });
+afterAll(() => vi.useRealTimers());
 
 const FULL: Announcement = {
   week: '2026-09-20',
@@ -80,8 +83,25 @@ describe('the notice board', () => {
 
     expect(line?.props.children).toBe('9/13 · ' + longSpeaker);
     expect(line?.props.numberOfLines).toBeUndefined();
-    expect(line?.props.style).toMatchObject({ flexGrow: 1, flexBasis: 140, minWidth: 140 });
+    let row = line?.parent;
+    while (row && String(row.type) !== 'View') row = row.parent;
+    expect(row?.props.style).toMatchObject({ flexDirection: 'column', alignItems: 'stretch' });
+    expect(line?.props.style.minWidth).toBeUndefined();
     expect(board.wrapRows()).not.toHaveLength(0);
+  });
+
+  it('puts even a single link below its date and includes the year outside the current Taipei year', () => {
+    const board = render({ ...FULL, past: [
+      { ...FULL.past[0], week: '2025-12-13', speaker: null },
+      { ...FULL.past[0], week: '2026-09-13', title: '本週信息', audio: 'https://example.invalid/audio' },
+    ] });
+    for (const label of ['2025/12/13', '9/13 · 中亮 · 本週信息']) {
+      const line = board.textNodes().find(node => node.props.children === label);
+      expect(line).toBeDefined();
+      let row = line!.parent;
+      while (row && String(row.type) !== 'View') row = row.parent;
+      expect(row?.props.style).toMatchObject({ flexDirection: 'column', alignItems: 'stretch' });
+    }
   });
 
   it('opens each sermon link, the 講道 and 報告 decks under their own names', () => {

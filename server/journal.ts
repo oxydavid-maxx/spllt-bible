@@ -1,26 +1,19 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { isValidDateOnly } from '../src/domain/gamificationV1';
-import { readMutationReceipt, transaction, writeMutationReceipt, type GamificationError } from './gamification';
+import type { GamificationError } from './gamification';
 
 /**
- * A member's own devotional journal.
+ * Read-only compatibility for 0.5.21's unused journal download.
  *
  * This lives in its own module, away from the gamification helpers, on purpose. A journal earns no
  * points and must never be joined into a score, a people list, or an audit view. Keeping the table
  * out of `ensureGamificationSchema` means a future query that wants to reach it has to add an import
  * here, which is a line a reviewer will see.
  *
- * Two rules hold everything else up:
- *
- *   1. Every function takes the CALLER's member id and nothing else. There is no parameter for
- *      "whose journal", so there is no code path to point at someone else and therefore nothing to
- *      guard. An administrator calling these functions reads their own page.
- *   2. The body never enters the bookkeeping tables. The mutation receipt stores the revision and
- *      the timestamp, never the text, because the receipt table is exactly where a future debugging
- *      or support tool would think to look.
+ * journal.md「決定」: new writing never reaches this server. Keep the caller-only GET shape so
+ * older installed apps can still open their journal page; retain any legacy data without deleting it.
  */
 
-const MAX_BODY_LENGTH = 4000;
 /** An export wants a year. Anything wider is a mistake or a scrape, not a member reading back. */
 const MAX_RANGE_DAYS = 400;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -30,13 +23,6 @@ export interface JournalEntry {
   body: string;
   revision: number;
   updatedAt: number | null;
-}
-
-export interface JournalSaveCommand {
-  operationId: string;
-  expectedRevision: number;
-  planId: string;
-  body: string;
 }
 
 export function ensureJournalSchema(db: DatabaseSync): void {
@@ -94,56 +80,4 @@ export function listJournalEntries(db: DatabaseSync, memberId: string, from: str
   return {
     entries: rows.map((row) => ({ taskDate: row.task_date, body: row.body, revision: row.revision, updatedAt: row.updated_at })),
   };
-}
-
-/**
- * Save one day's entry.
- *
- * The conflict response deliberately carries only the revision, never the other device's text. The
- * client does not merge and does not silently overwrite: it keeps what the member typed, marks the
- * row unsynced, and offers one explicit "save anyway". Handing back the competing text here would
- * invite exactly the auto-overwrite this is meant to prevent.
- */
-export function saveJournalEntry(
-  db: DatabaseSync,
-  memberId: string,
-  taskDate: string,
-  command: JournalSaveCommand,
-  nowMs: number,
-): Record<string, unknown> | GamificationError {
-  if (!isValidDateOnly(taskDate)) return { status: 400, code: 'INVALID_DATE' };
-  if (typeof command.operationId !== 'string' || !command.operationId.trim()) return { status: 400, code: 'INVALID_JOURNAL' };
-  if (typeof command.body !== 'string' || typeof command.planId !== 'string' || !command.planId.trim()) return { status: 400, code: 'INVALID_JOURNAL' };
-  if (!Number.isSafeInteger(command.expectedRevision) || command.expectedRevision < 0) return { status: 400, code: 'INVALID_JOURNAL' };
-  if ([...command.body].length > MAX_BODY_LENGTH) return { status: 400, code: 'JOURNAL_TOO_LONG' };
-
-  ensureJournalSchema(db);
-  // The receipt is keyed on the caller plus the operation id, and its payload fingerprint covers the
-  // body, so replaying the same save returns the same answer while reusing the id for different text
-  // is reported as the mistake it is.
-  const fingerprint = { scope: 'journal', taskDate, expectedRevision: command.expectedRevision, body: command.body };
-  const receipt = readMutationReceipt(db, memberId, command.operationId, fingerprint);
-  if (receipt && 'code' in receipt) return receipt;
-  if (receipt) return receipt.result;
-
-  return transaction(db, () => {
-    const current = db
-      .prepare('SELECT revision, created_at FROM journal_entries WHERE member_id = ? AND task_date = ?')
-      .get(memberId, taskDate) as { revision: number; created_at: number } | undefined;
-    const currentRevision = current?.revision ?? 0;
-    if (currentRevision !== command.expectedRevision) {
-      return { status: 409, code: 'JOURNAL_CHANGED', details: { revision: currentRevision } } satisfies GamificationError;
-    }
-    const revision = currentRevision + 1;
-    db.prepare(`INSERT INTO journal_entries(member_id, task_date, plan_id, body, revision, created_at, updated_at, last_operation_id)
-      VALUES(?,?,?,?,?,?,?,?)
-      ON CONFLICT(member_id, task_date) DO UPDATE SET plan_id = excluded.plan_id, body = excluded.body,
-        revision = excluded.revision, updated_at = excluded.updated_at, last_operation_id = excluded.last_operation_id`)
-      .run(memberId, taskDate, command.planId, command.body, revision, current?.created_at ?? nowMs, nowMs, command.operationId);
-
-    // Revision and timestamp only. The text stays in journal_entries and nowhere else.
-    const result = { taskDate, revision, updatedAt: nowMs };
-    writeMutationReceipt(db, memberId, command.operationId, 'JOURNAL_SAVE', fingerprint, 'journal', `${memberId}:${taskDate}`, result, nowMs);
-    return result;
-  });
 }
