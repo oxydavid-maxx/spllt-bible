@@ -1,5 +1,6 @@
 # 12-reader-verse — tapping a verse selects it (the verse bar with Copy and Share appears), and tapping the same
-# verse again lets it go (iPhone has no back key). The tap point is inside the chapter text.
+# verse again lets it go (iPhone has no back key). Use the observed verse-one accessibility
+# label: daily chapters wrap differently, so a fixed screen point can land between lines.
 appId: org.qingmu.youth
 ---
 - launchApp
@@ -11,16 +12,16 @@ appId: org.qingmu.youth
     visible: "更多閱讀工具"
     timeout: 30000
 - extendedWaitUntil:
-    notVisible: "官方閱讀器還在準備中.*"
+    visible: '^1[\s\u00a0]*$'
     timeout: 60000
 - tapOn:
-    point: "50%,40%"
+    text: '^1[\s\u00a0]*$'
 - extendedWaitUntil:
     visible: "Copy"
     timeout: 15000
 - takeScreenshot: 12-reader-verse
 - tapOn:
-    point: "50%,40%"
+    text: '^1[\s\u00a0]*$'
 - extendedWaitUntil:
     notVisible: "Copy"
     timeout: 10000
