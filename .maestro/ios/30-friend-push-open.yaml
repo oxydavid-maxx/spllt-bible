@@ -2,10 +2,22 @@
 appId: org.qingmu.youth
 ---
 - launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible: "展開閱讀工具"
+    commands:
+      - tapOn: "展開閱讀工具"
 - extendedWaitUntil:
     visible: "積分"
     timeout: 90000
-- tapOn: "積分"
+- tapOn:
+    text: "積分"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "開啟積分操作"
+    timeout: 15000
 - tapOn: "開啟積分操作"
 - tapOn: "我的好友 QR"
 - extendedWaitUntil:

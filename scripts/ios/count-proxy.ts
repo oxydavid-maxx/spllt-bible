@@ -8,16 +8,27 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import { createServer, request, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createTlsServer } from 'node:https';
+import { redactEvidence } from './sanitize-evidence';
 
 const [listen, target, log, certFile, keyFile] = process.argv.slice(2);
 const forward = (incoming: IncomingMessage, outgoing: ServerResponse) => {
-  appendFileSync(log, `${Date.now()} ${incoming.method} ${incoming.url}\n`);
+  const safePath = redactEvidence(incoming.url ?? '', [process.env.EXPO_PUBLIC_YOUVERSION_APP_KEY ?? '']);
+  appendFileSync(log, `${Date.now()} ${incoming.method} ${safePath}\n`);
   const upstream = request({ host: '127.0.0.1', port: Number(target), path: incoming.url, method: incoming.method, headers: incoming.headers }, (response) => {
     const status = response.statusCode ?? 502;
     outgoing.writeHead(status, response.headers);
     let head = '';
     response.on('data', (chunk: Buffer) => { if (status >= 400 && head.length < 160) head += chunk.toString('utf8'); });
-    response.on('end', () => appendFileSync(log, `${Date.now()} = ${status} ${incoming.url}${status >= 400 ? ` ${head.slice(0, 160)}` : ''}\n`));
+    response.on('end', () => {
+      // Error bodies can echo a URL or credential. Keep only a machine error code, not free text.
+      let code = '';
+      try {
+        const body = JSON.parse(head);
+        const value = body?.error?.code ?? body?.error;
+        if (typeof value === 'string' && /^[A-Z][A-Z0-9_]{1,79}$/.test(value)) code = ` ${value}`;
+      } catch { /* status and sanitized path remain enough to locate the failed request */ }
+      appendFileSync(log, redactEvidence(`${Date.now()} = ${status} ${safePath}${code}\n`, [process.env.EXPO_PUBLIC_YOUVERSION_APP_KEY ?? '']));
+    });
     response.pipe(outgoing);
   });
   upstream.on('error', () => { outgoing.writeHead(502); outgoing.end(); });
