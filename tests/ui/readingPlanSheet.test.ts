@@ -2,6 +2,7 @@ import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const animated = vi.hoisted(() => (require('../doubles/animatedDouble.cjs') as { createAnimatedDouble(): any }).createAnimatedDouble());
 const boundary = vi.hoisted(() => ({
   auth: { status: 'signed-in', session: { memberId: 'self', sessionToken: 'token' }, epoch: 1 },
   getReadingDays: vi.fn(),
@@ -10,6 +11,7 @@ const boundary = vi.hoisted(() => ({
   primitive: (name: string) => (props: any) => require('react').createElement(name, props, props.children),
 }));
 vi.mock('react-native', () => ({
+  ...animated.modules(boundary.primitive),
   Modal: boundary.primitive('Modal'), Pressable: boundary.primitive('Pressable'),
   View: boundary.primitive('View'), Text: boundary.primitive('Text'),
   ScrollView: require('react').forwardRef((props: any, ref: any) => {
@@ -17,6 +19,7 @@ vi.mock('react-native', () => ({
     return require('react').createElement('ScrollView', props, props.children);
   }),
   StyleSheet: { create: (value: unknown) => value, absoluteFill: {} },
+  useWindowDimensions: () => ({ width: 390, height: 800 }),
 }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaProvider: boundary.primitive('SafeAreaProvider'), SafeAreaView: boundary.primitive('SafeAreaView') }));
 vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => boundary.auth, getAuthSnapshot: () => boundary.auth, isCurrentAuthSession: () => true }));
@@ -38,6 +41,7 @@ async function mount(visible = true) {
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 }
 beforeEach(() => {
+  animated.reset();
   boundary.auth = { status: 'signed-in', session: { memberId: 'self', sessionToken: 'token' }, epoch: 1 };
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-09-30T04:00:00Z'));
@@ -97,6 +101,46 @@ describe('the full reading plan shared by both entry points', () => {
     act(() => row('2026-10-15').props.onPress());
     expect(onClose).toHaveBeenCalledOnce();
     expect(onSelectDate).toHaveBeenCalledExactlyOnceWith('2026-10-15');
+  });
+
+  it('follows a header drag and dismisses once after the slide finishes, without selecting a date', async () => {
+    await mount();
+    act(() => tree!.root.findByType('Modal' as never).props.onShow());
+    const sheet = tree!.root.findByProps({ testID: 'reading-plan-sheet' });
+    const handle = tree!.root.findByProps({ testID: 'reading-plan-drag-handle' });
+    act(() => sheet.props.onLayout({ nativeEvent: { layout: { height: 400 } } }));
+    const pan = handle.props.panConfig;
+    expect(pan.onMoveShouldSetPanResponder({}, { dx: 2, dy: 12, vy: 0 })).toBe(true);
+    act(() => pan.onPanResponderMove({}, { dx: 2, dy: 120, vy: 0.1 }));
+    expect(flat(sheet.props.style).transform[0].translateY.value).toBe(120);
+    act(() => pan.onPanResponderRelease({}, { dx: 2, dy: 120, vy: 0.1 }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(pan.onMoveShouldSetPanResponder({}, { dx: 0, dy: 20, vy: 1 })).toBe(false);
+    act(() => animated.finishAll());
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(onSelectDate).not.toHaveBeenCalled();
+    expect(animated.state.running).toBe(0);
+    expect(animated.state.configs.every((config: any) => config.useNativeDriver === true)).toBe(true);
+  });
+
+  it('keeps list scrolling separate, returns a short drag, and accepts a downward flick', async () => {
+    await mount();
+    act(() => tree!.root.findByType('Modal' as never).props.onShow());
+    const sheet = tree!.root.findByProps({ testID: 'reading-plan-sheet' });
+    const pan = tree!.root.findByProps({ testID: 'reading-plan-drag-handle' }).props.panConfig;
+    act(() => sheet.props.onLayout({ nativeEvent: { layout: { height: 400 } } }));
+    const scroll = tree!.root.findByType('ScrollView' as never);
+    for (let node: typeof scroll | null = scroll; node; node = node.parent) expect(node.props.panConfig).toBeUndefined();
+    expect(pan.onMoveShouldSetPanResponder({}, { dx: 20, dy: 4, vy: 0 })).toBe(false);
+    expect(pan.onMoveShouldSetPanResponder({}, { dx: 0, dy: -20, vy: -1 })).toBe(false);
+    act(() => pan.onPanResponderMove({}, { dx: 0, dy: 40, vy: 0.1 }));
+    act(() => pan.onPanResponderRelease({}, { dx: 0, dy: 40, vy: 0.1 }));
+    act(() => animated.finishAll());
+    expect(flat(sheet.props.style).transform[0].translateY.value).toBe(0);
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => pan.onPanResponderRelease({}, { dx: 0, dy: 20, vy: 0.8 }));
+    act(() => animated.finishAll());
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it('keeps pending local completion and shows the offline limit when the server cannot answer', async () => {

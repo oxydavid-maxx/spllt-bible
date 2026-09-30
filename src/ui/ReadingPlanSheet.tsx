@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { createApiClient, type ReadingDaySnapshot } from '../services/apiClient';
 import { getAuthSnapshot, useAuthSnapshot } from '../services/authSession';
@@ -10,6 +10,7 @@ import { formatReferenceListZhTw } from '../domain/scriptureReference';
 import { getReadingPlan } from './readingSession';
 import { formatReadingDateLabel, formatReadingDateWithWeekday } from './ReadingDateNavigator';
 import { SheetBackdrop } from './SheetBackdrop';
+import { createSheetDrag, SHEET_CLOSE_MS } from './sheet/sheetDrag';
 import { theme } from './Theme';
 
 interface Props {
@@ -38,6 +39,33 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
   const targetY = useRef<number | null>(null);
   const contentHeight = useRef(0);
   const modalShown = useRef(false);
+  const { height: windowHeight } = useWindowDimensions();
+  const [translateY] = useState(() => new Animated.Value(0));
+  const sheetHeight = useRef(0);
+  const closing = useRef(false);
+  const running = useRef<Animated.CompositeAnimation | null>(null);
+  const closeCallback = useRef(onClose);
+  closeCallback.current = onClose;
+  const dismiss = useCallback(() => {
+    if (closing.current) return;
+    closing.current = true;
+    running.current?.stop();
+    const animation = Animated.timing(translateY, {
+      toValue: sheetHeight.current || windowHeight, duration: SHEET_CLOSE_MS,
+      easing: Easing.in(Easing.quad), useNativeDriver: true,
+    });
+    running.current = animation;
+    animation.start(({ finished }) => {
+      if (running.current === animation) running.current = null;
+      if (finished) closeCallback.current();
+    });
+  }, [translateY, windowHeight]);
+  const pan = useMemo(() => createSheetDrag({
+    translateY, close: dismiss, running,
+    height: () => sheetHeight.current || windowHeight,
+    canDrag: () => modalShown.current && !closing.current,
+  }), [dismiss, translateY, windowHeight]);
+  useEffect(() => () => { running.current?.stop(); running.current = null; }, []);
   const viewportHeight = useRef(0);
   const positioned = useRef(false);
   const scrollToToday = () => {
@@ -96,14 +124,16 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
   const last = days[days.length - 1]?.date;
   const summary = first && last ? `${formatReadingDateLabel(first)}–${formatReadingDateLabel(last)}，共 ${days.length} 天，已讀 ${days.filter(day => day.completed).length} 天` : '目前沒有讀經計畫';
 
-  return <Modal visible transparent animationType="slide" onShow={() => { modalShown.current = true; scrollToToday(); }} onRequestClose={onClose}>
-    <SafeAreaProvider><SheetBackdrop label="關閉整份讀經計畫" onPress={onClose} style={styles.scrim}>
-      <View style={styles.sheetWrap}>
+  return <Modal visible transparent animationType="slide" onShow={() => { modalShown.current = true; scrollToToday(); }} onRequestClose={dismiss}>
+    <SafeAreaProvider><SheetBackdrop label="關閉整份讀經計畫" onPress={dismiss} style={styles.scrim}>
+      <Animated.View testID="reading-plan-sheet" onLayout={event => { sheetHeight.current = event.nativeEvent.layout.height; }} style={[styles.sheetWrap, { transform: [{ translateY }] }]}>
         <SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']} accessibilityViewIsModal>
-          <View style={styles.grab} />
-          <View style={styles.header}>
-            <Text accessibilityRole="header" style={styles.title}>整份讀經計畫</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="關閉計畫" onPress={onClose} style={styles.close}><Text style={styles.closeText}>關閉</Text></Pressable>
+          <View testID="reading-plan-drag-handle" {...pan.panHandlers}>
+            <View style={styles.grab} />
+            <View style={styles.header}>
+              <Text accessibilityRole="header" style={styles.title}>整份讀經計畫</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="關閉計畫" onPress={dismiss} style={styles.close}><Text style={styles.closeText}>關閉</Text></Pressable>
+            </View>
           </View>
           <Text accessibilityLiveRegion="polite" style={styles.subtitle}>{summary}</Text>
           {visible.loading ? <Text style={styles.notice}>正在更新完成記錄…</Text> : visible.offline ? <Text style={styles.notice}>尚未連上更新，先顯示這支手機的完成記錄。</Text> : null}
@@ -116,7 +146,7 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
                 ...(index === 0 || days[index - 1].date.slice(0, 7) !== month ? [<Text key={month} accessibilityRole="header" style={styles.month}>{`${Number(month.slice(5))} 月`}</Text>] : []),
                 <Pressable key={day.date} accessibilityRole="button" accessibilityLabel={`讀 ${day.date} ${passages}${isToday ? ' 今天' : ''}${day.completed ? ' 已完成' : ''}`}
                   onLayout={day.date === targetDate ? event => { targetY.current = event.nativeEvent.layout.y; scrollToToday(); } : undefined}
-                  onPress={() => { onClose(); onSelectDate(day.date); }} style={[styles.row, isToday && styles.today]}>
+                  onPress={() => { if (!closing.current) { onClose(); onSelectDate(day.date); } }} style={[styles.row, isToday && styles.today]}>
                   <Text style={[styles.date, isToday && styles.todayText]}>{formatReadingDateWithWeekday(day.date)}</Text>
                   <Text style={[styles.passages, isToday && styles.todayText]}>{passages}</Text>
                   <View style={styles.status}>
@@ -128,7 +158,7 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
             })}
           </ScrollView>
         </SafeAreaView>
-      </View>
+      </Animated.View>
     </SheetBackdrop></SafeAreaProvider>
   </Modal>;
 }
