@@ -30,7 +30,7 @@
 
 - iOS 一輪大約 35–40 分鐘。本機能重現的先在本機重現；多個修正攢成一批再推。
 - 寫或修 Maestro 流程前，先讀 `<流程>-screen.txt`（失敗當下畫面上每個元素的標籤和位置），不要猜標籤。
-- 需要 YouVersion 金鑰的流程（檔名符合 `^1[0-9]-reader`）在沒有 secret 時記成 SKIP。
+- 讀經器和朗讀的流程（檔名符合 `^(1[0-9]-reader|2[0-9]-audio)`）要用 GitHub secret `YOUVERSION_APP_KEY`；沒有這個 secret 時記成 SKIP。CI 的朗讀跟正式版一樣由後端取得（`EXPO_PUBLIC_QINGMU_AUDIO_AUTHORIZED=true`）。
 - 量不到的數字一律判 FAIL，不會被當成 0 或通過。
 
 ### 執行資源預算
@@ -49,7 +49,7 @@
 - 通知權限由 `scripts/ios/run-flows.sh` 在安裝 App 後授權一次（用 Maestro 內建的 applesimutils）。流程**不要**用 `clearState`：它會重裝 App、丟掉授權，系統通知對話框會卡住 driver。
 - Maestro driver 開機後先暖機一次，之後所有呼叫都帶 `--no-reinstall-driver`。
 - 流程用無障礙標籤（`accessibilityLabel`）比對。標籤同名時用相對位置（`above:`）或座標。
-- 假資料後端的環境變數：`QINGMU_DEV_TOKEN`、`QINGMU_FIXTURE_ROSTER=two-member-week`、`QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self`（只帶 Bearer 的請求用這個成員）、`QINGMU_DB_PATH=:memory:`。前面接 `scripts/ios/count-proxy.ts`（8788 → 8787），記錄每個請求和回應狀態。
+- 假資料後端的環境變數：`QINGMU_DEV_TOKEN`、`QINGMU_FIXTURE_ROSTER=two-member-week`、`QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self`（只帶 Bearer 的請求用這個成員）、`QINGMU_DB_PATH=:memory:`。前面接 `scripts/ios/count-proxy.ts`（HTTPS 8788 → 8787），記錄每個請求和回應狀態。App 用 `https://localhost:8788`：讀經器只從 https 的 API 網址取經文，所以 CI 每次產生一張只裝進模擬器的臨時根憑證（`scripts/ios/make-ci-tls.sh`）。
 
 ## iOS 注意事項（都實際發生過）
 

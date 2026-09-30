@@ -1,0 +1,16 @@
+# 20-audio-start — narration of the day's chapter starts in the reader (backend chapter audio, as in production).
+# run-flows.sh then sends the app to the background for 20 s before 21.
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- tapOn: "讀經入口"
+- extendedWaitUntil:
+    visible: "播放.*語音"
+    timeout: 60000
+- tapOn: "播放.*語音"
+- extendedWaitUntil:
+    visible: "暫停.*語音"
+    timeout: 30000

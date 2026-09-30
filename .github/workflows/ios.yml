@@ -21,12 +21,15 @@ jobs:
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_QINGMU_FIXTURE: 'true'
       EXPO_PUBLIC_QINGMU_DEV_TOKEN: ci-fixture-token
-      EXPO_PUBLIC_QINGMU_API_BASE_URL: http://127.0.0.1:8788
+      # HTTPS like production (scripts/ios/run-flows.sh): the reader loads Bible text only through an https API base.
+      EXPO_PUBLIC_QINGMU_API_BASE_URL: https://localhost:8788
       EXPO_PUBLIC_QINGMU_TEST_DATE: '2026-09-02'
-      EXPO_PUBLIC_QINGMU_QA_TEST_AUDIO: 'true'
-      EXPO_PUBLIC_QINGMU_QA_AUDIO_URI: http://127.0.0.1:8790/jhn13.wav
       # Empty until 光佑 approves Q1; the reader flows then report 略過（無 key）.
       EXPO_PUBLIC_YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
+      # The reader opens only with this exactly 'true' (app/(tabs)/reader.tsx), as in every release build.
+      EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE: 'true'
+      # Narration comes from the backend's chapter audio, as in production; any day's chapter plays.
+      EXPO_PUBLIC_QINGMU_AUDIO_AUTHORIZED: 'true'
       IOS_REQUIRED_CHINESE_STRINGS: NSCameraUsageDescription,NSMicrophoneUsageDescription,NSFaceIDUsageDescription
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +58,7 @@ jobs:
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       - name: flows and runtime budgets
         env:
-          REQUIRES_KEY_PATTERN: '^1[0-9]-reader'
+          REQUIRES_KEY_PATTERN: '^(1[0-9]-reader|2[0-9]-audio)'
         run: bash scripts/ios/run-flows.sh
       - name: summary
         if: always()
@@ -68,7 +71,7 @@ jobs:
           RUN=$(gh run list --workflow ios.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
           if [ -n "$RUN" ]; then gh run download "$RUN" --name ios-summary --dir ci-out/base || true; fi
           npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json appBytes 1.05 "R5 .app 大小" >> "$GITHUB_STEP_SUMMARY"
-          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json footprintMB 1.10 "R3 記憶體 vs main" >> "$GITHUB_STEP_SUMMARY"
+          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json footprintMB 1.10 "R3 記憶體 vs main" same-flows >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         uses: actions/upload-artifact@v4
         with:

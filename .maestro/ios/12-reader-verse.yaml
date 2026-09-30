@@ -1,0 +1,26 @@
+# 12-reader-verse — tapping a verse selects it (the verse bar with Copy and Share appears), and tapping the same
+# verse again lets it go (iPhone has no back key). The tap point is inside the chapter text.
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- tapOn: "讀經入口"
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible: "官方閱讀器還在準備中.*"
+    timeout: 60000
+- tapOn:
+    point: "50%,40%"
+- extendedWaitUntil:
+    visible: "Copy"
+    timeout: 15000
+- takeScreenshot: 12-reader-verse
+- tapOn:
+    point: "50%,40%"
+- extendedWaitUntil:
+    notVisible: "Copy"
+    timeout: 10000

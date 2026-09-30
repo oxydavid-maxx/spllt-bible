@@ -1,0 +1,17 @@
+# 10-reader-open — with the YouVersion key the reader loads the day's chapter: the "not ready" line is gone and
+# no error card shows. run-flows.sh then measures the reader's idle CPU (R2). Skipped without the key.
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- tapOn: "讀經入口"
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible: "官方閱讀器還在準備中.*"
+    timeout: 60000
+- assertNotVisible: "重新載入"
+- takeScreenshot: 10-reader-open

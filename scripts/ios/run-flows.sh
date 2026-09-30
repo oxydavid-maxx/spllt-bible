@@ -4,11 +4,14 @@ set -uo pipefail
 OUT=${OUT:-ci-out}; mkdir -p "$OUT/maestro"; : > "$OUT/requests.log"
 QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 \
   npx tsx server/http.ts > "$OUT/server.log" 2>&1 &
-npx tsx scripts/ios/count-proxy.ts 8788 8787 "$OUT/requests.log" &
-python3 scripts/ios/make-tone.py "$OUT/audio/jhn13.wav" 2>/dev/null && (cd "$OUT/audio" && python3 -m http.server 8790 --bind 127.0.0.1 > /dev/null 2>&1 &) || true
-for i in $(seq 1 30); do curl -sf http://127.0.0.1:8788/api/health > /dev/null && break; sleep 1; done
+# The app talks to the backend over HTTPS, as in production: the reader takes its Bible content host only
+# from an https API base. A throwaway CA, trusted only inside this simulator, signs a localhost certificate.
+bash scripts/ios/make-ci-tls.sh "$OUT/tls"
+npx tsx scripts/ios/count-proxy.ts 8788 8787 "$OUT/requests.log" "$OUT/tls/leaf.pem" "$OUT/tls/leaf.key" &
+for i in $(seq 1 30); do curl -sf --cacert "$OUT/tls/ca.pem" https://localhost:8788/api/health > /dev/null && break; sleep 1; done
 UDID=$(xcrun simctl create qm-ci "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-4)
 xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
+xcrun simctl keychain "$UDID" add-root-cert "$OUT/tls/ca.pem"
 xcrun simctl install "$UDID" "$(cat "$OUT/app-path.txt")"
 # The app asks for notifications at sign-in when reading reminders are on. Grant it here, once, before the
 # Maestro driver starts; the flows then launch without clearState (a reinstall would drop the grant).
@@ -43,6 +46,8 @@ for flow in .maestro/ios/*.yaml; do
     # The smoke flow ends on the 讀經 tab; its accessibility tree is what the reader flows are written against.
     00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home > "$OUT/maestro/measure-home.txt" 2>&1; maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/hierarchy-home.json" 2>/dev/null || true ;;
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
+    # Narration must keep playing while the app is in the background: park it behind Settings for 20 s.
+    20-audio-start) xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null ;;
     30-friend-push-open) npx tsx scripts/ios/make-friend-apns.ts "$OUT/friend.apns" && xcrun simctl push "$UDID" org.qingmu.youth "$OUT/friend.apns" ;;
   esac
 done
