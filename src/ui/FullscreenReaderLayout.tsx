@@ -164,6 +164,7 @@ export interface FullscreenReaderLayoutProps {
   previousDate?: string;
   nextDate?: string;
   onSelectDate: (date: string) => void;
+  onOpenReadingPlan?: () => void;
   completed?: boolean;
   completionDisabled?: boolean;
   completionPending?: boolean;
@@ -185,7 +186,7 @@ export interface FullscreenReaderLayoutProps {
   narrationSpeed?: number;
   onSelectNarrationSpeed?: (speed: number) => void;
 }
-export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerActive = chrome.focused, selectionSource = 'ASSIGNED', activeReferenceIndex = 0, chapterUsfm, versionId, references, onSelectReference, selectedDate, previousDate, nextDate, onSelectDate, completed = false, completionDisabled = false, completionPending = false, completionFailed = false, completionLabel, completionFeedback, onComplete, onUndo, noPlanMessage, statusMessage, canOpenYouVersion = false, onOpenYouVersion, versionOptions, onSelectVersion, metadata, accountEntry, loginGate, updateBanner, narrationSpeed = 1, onSelectNarrationSpeed }: FullscreenReaderLayoutProps) {
+export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerActive = chrome.focused, selectionSource = 'ASSIGNED', activeReferenceIndex = 0, chapterUsfm, versionId, references, onSelectReference, selectedDate, previousDate, nextDate, onSelectDate, onOpenReadingPlan, completed = false, completionDisabled = false, completionPending = false, completionFailed = false, completionLabel, completionFeedback, onComplete, onUndo, noPlanMessage, statusMessage, canOpenYouVersion = false, onOpenYouVersion, versionOptions, onSelectVersion, metadata, accountEntry, loginGate, updateBanner, narrationSpeed = 1, onSelectNarrationSpeed }: FullscreenReaderLayoutProps) {
   const insets = chrome.settledInsets;
   const { width: windowWidth, fontScale } = useWindowDimensions();
   const [versionPageOpen, setVersionPageOpen] = useState(false);
@@ -271,7 +272,10 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
               {previousDate && showAdjacentDateLabels ? <Text numberOfLines={1} style={styles.sideDateText}>{formatReadingDateLabel(previousDate)}</Text> : null}
             </Pressable>
           </View>
-          <Text accessibilityRole="header" accessibilityLabel={`目前閱讀日期${selectedDateHeader}`} numberOfLines={1} ellipsizeMode="tail" style={styles.dateTitle}>{selectedDateHeader}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="整份讀經計畫" accessibilityHint={`目前閱讀日期${selectedDateHeader}`} onPress={onOpenReadingPlan} disabled={!onOpenReadingPlan} style={styles.planDate}>
+            <Text accessibilityRole="header" accessibilityLabel={`目前閱讀日期${selectedDateHeader}`} numberOfLines={1} ellipsizeMode="tail" style={styles.dateTitle}>{selectedDateHeader}</Text>
+            <Text style={styles.dateCaret}>▾</Text>
+          </Pressable>
           <View style={[styles.headerSide, styles.trailingSide]}>
             <Pressable accessibilityRole="button" accessibilityLabel="下一個排定讀經日" accessibilityHint={nextDate ? `前往${formatReadingDateLabel(nextDate)}` : undefined} disabled={!nextDate} onPress={() => nextDate && onSelectDate(nextDate)} style={[styles.dateStep, styles.nextDateStep, !nextDate && styles.disabled]}>
               {nextDate && showAdjacentDateLabels ? <Text numberOfLines={1} style={styles.sideDateText}>{formatReadingDateLabel(nextDate)}</Text> : null}
@@ -462,6 +466,8 @@ const styles = StyleSheet.create({
   dateRow: { minHeight: ROW, flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
   dateTitle: { flex: 1, minWidth: 0, color: theme.colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '600', textAlign: 'center' },
   headerSide: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' },
+  planDate: { flex: 1, minWidth: 0, minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  dateCaret: { color: theme.colors.primary, fontSize: theme.type.micro.size, paddingLeft: theme.spacing.xxs },
   trailingSide: { justifyContent: 'flex-end' },
   dateStep: { minWidth: 48, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
   nextDateStep: { justifyContent: 'flex-end' },

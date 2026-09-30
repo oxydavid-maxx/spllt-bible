@@ -53,12 +53,12 @@ describe('the 2026 plan from the church sheet', () => {
 
   // The sheet put Psalm 119's second half on 10/15 and its first half on 10/16; the plan's owner
   // confirmed on 2026-09-29 that it was a layout slip.
-  it('reads Psalm 119 in order on 10/15 and 10/16, says why, and changes nothing else in the sheet', () => {
+  it('keeps Psalm 119 in order without displaying a correction explanation (reading-plan.md 決定)', () => {
     const day = (date: string) => canonicalReadingPlan.days.find((entry) => entry.date === date);
     expect(day('2026-10-15')?.references).toEqual(['PSA.119.1-88']);
     expect(day('2026-10-16')?.references).toEqual(['PSA.119.89-176']);
     for (const date of ['2026-10-15', '2026-10-16']) {
-      expect(day(date)?.note).toBe('讀經表原本把 10/15、10/16 的詩119 前後段排反了，這裡已改成照經文順序讀。');
+      expect(day(date)?.note).toBeUndefined();
       expect(day(date)?.revision).toBe(2);
       // The 積分 calendar takes the note from the reading tab's plan.
       expect(getScheduledReading(date)?.note).toBe(day(date)?.note);

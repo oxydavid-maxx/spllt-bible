@@ -81,6 +81,7 @@ let completionLabel: string | undefined;
 let onComplete: (() => void) | undefined;
 let onUndo: (() => void) | undefined;
 let onSelectDate: (date: string) => void;
+const onOpenReadingPlan = vi.fn();
 let noPlanMessage: string | undefined;
 let statusMessage: string | undefined;
 let canOpenYouVersion = false;
@@ -94,7 +95,7 @@ function Harness() {
   return React.createElement(FullscreenReaderLayout, {
     reader: React.createElement('BibleReader'), controls, chrome,
     chapterUsfm: currentChapter, versionId: chosenVersion, references: assignedReferences, selectionSource, activeReferenceIndex,
-    selectedDate, previousDate, nextDate, onSelectDate,
+    selectedDate, previousDate, nextDate, onSelectDate, onOpenReadingPlan,
     completed, completionDisabled, completionPending, completionFailed, completionLabel, onComplete, onUndo, onSelectReference,
     noPlanMessage, statusMessage, canOpenYouVersion, accountEntry: accountNode, loginGate: loginGateNode, updateBanner: updateNode,
     onOpenYouVersion,
@@ -113,6 +114,15 @@ const surface = () => all('BibleReader')[0].parent!;
 async function mount() { await act(async () => { renderer = TestRenderer.create(React.createElement(Harness)); }); }
 
 describe('fullscreen reader layout and chrome', () => {
+  it('opens the full plan from the date without moving the reader or its audio owner', async () => {
+    await mount();
+    const reader = all('BibleReader')[0];
+    act(() => button('整份讀經計畫').props.onPress());
+    expect(onOpenReadingPlan).toHaveBeenCalledOnce();
+    expect(onSelectDate).not.toHaveBeenCalled();
+    expect(all('BibleReader')[0]).toBe(reader);
+    expect(text()).toContain('▾');
+  });
   it('explains continuous reading in More, including current-state labels and playback boundaries', async () => {
     await mount();
     act(() => { button('更多閱讀工具').props.onPress(); });
@@ -182,7 +192,7 @@ describe('fullscreen reader layout and chrome', () => {
     expect(styleOf(chipsRow)).toMatchObject({ minHeight: 48 });
     expect(styleOf(dateRow).flexWrap).not.toBe('wrap');
     expect(dateRow.findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel)).toEqual([
-      '上一個排定讀經日', '下一個排定讀經日',
+      '上一個排定讀經日', '整份讀經計畫', '下一個排定讀經日',
     ]);
     expect(dateRow.findAll(node => String(node.type) === 'Text').map(node => node.props.children)).toContain(formatReadingDateHeader(selectedDate, taipeiDate()));
     expect(chipsRow.findAll(node => node.props.accessibilityLabel === '更多閱讀工具')).toHaveLength(1);

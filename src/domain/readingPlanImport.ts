@@ -67,16 +67,14 @@ export function planDaysFromCells(days: readonly PlanCellDay[]): PlanFileDay[] {
   });
 }
 
-const PSALM_119_NOTE = '讀經表原本把 10/15、10/16 的詩119 前後段排反了，這裡已改成照經文順序讀。';
-
 /**
  * Where the app reads differently from the sheet, which data/source keeps as it is. The sheet put
  * Psalm 119's second half on 10/15 and its first half on 10/16; the plan's owner confirmed a layout
  * slip on 2026-09-29.
  */
-const SHEET_CORRECTIONS: Record<string, { fresh: string; note: string }> = {
-  '2026-10-15': { fresh: '詩119篇1-88節', note: PSALM_119_NOTE },
-  '2026-10-16': { fresh: '詩119篇89-176節', note: PSALM_119_NOTE },
+const SHEET_CORRECTIONS: Record<string, { fresh: string }> = {
+  '2026-10-15': { fresh: '詩119篇1-88節' },
+  '2026-10-16': { fresh: '詩119篇89-176節' },
 };
 
 /**
@@ -100,7 +98,8 @@ export function buildReadingPlan2026(
         return correction ? { ...day, fresh: correction.fresh } : day;
       })).map((day) => {
         const correction = SHEET_CORRECTIONS[day.date];
-        return correction ? { ...day, revision: 2, note: correction.note } : day;
+        // 2026-09-30: keep the correction, but do not show a correction explanation to members.
+        return correction ? { ...day, revision: 2 } : day;
       }),
     ],
   };

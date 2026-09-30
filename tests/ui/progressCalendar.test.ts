@@ -21,10 +21,12 @@ const { primitive, api, auth, readingDays, completion } = vi.hoisted(() => ({
   readingDays: vi.fn(),
   completion: { options: [] as Array<{ planId: string; taskDate: string; canComplete: boolean; onConfirmed?: (event: unknown) => void }>, complete: vi.fn(), requestUndo: vi.fn() },
 }));
+const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined, deleteItemAsync: async () => undefined }));
 vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: vi.fn(() => ({ remove: vi.fn() })) }, Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline') }; });
-vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | void) => { require('react').useEffect(callback, []); } }));
+vi.mock('expo-router', () => ({ router: navigation, useFocusEffect: (callback: () => (() => void) | void) => { require('react').useEffect(callback, []); } }));
+vi.mock('../../src/ui/ReadingPlanSheet', () => ({ ReadingPlanSheet: (props: any) => props.visible ? require('react').createElement('ReadingPlanSheet', props) : null }));
 vi.mock('expo-local-authentication', () => ({ authenticateAsync: vi.fn(async () => ({ success: true })) }));
 vi.mock('../../src/services/authSession', () => ({ getAuthSnapshot: () => auth, isCurrentAuthSession: () => true, registerAuthLifecycleListener: () => vi.fn(), useAuthSnapshot: () => auth }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ GamificationApiError: class extends Error {}, createGamificationApiClient: () => api }));
@@ -84,6 +86,16 @@ const buttons = () => renderer!.root.findAll(isCompletionButton);
 const lastOptions = () => completion.options[completion.options.length - 1];
 
 describe('the 積分 page opens on its calendar', () => {
+  it('opens the shared plan from any calendar day and switches to the chosen reading date', async () => {
+    await mount();
+    await act(async () => cell('2026-09-29').props.onPress());
+    act(() => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '整份計畫')[0].props.onPress());
+    const sheet = renderer!.root.findByType('ReadingPlanSheet' as never);
+    act(() => { sheet.props.onClose(); sheet.props.onSelectDate('2026-10-15'); });
+    expect(navigation.replace).toHaveBeenCalledExactlyOnceWith('/reader');
+    expect((await import('../../src/ui/readingSession')).getReadingSessionSnapshot().selectedDate).toBe('2026-10-15');
+    expect(renderer!.root.findAllByType('ReadingPlanSheet' as never)).toHaveLength(0);
+  });
   it('scrolls as one page: calendar, prize banner, reward goal, trend, community — with no button above it', async () => {
     await mount();
     const scroll = renderer!.root.findByType('ScrollView' as never);
@@ -115,6 +127,8 @@ describe('the 積分 page opens on its calendar', () => {
       await act(async () => { cell(date).props.onPress(); });
       expect(texts()).toContain(line);
       expect(buttons()).toHaveLength(0);
+      if (date !== '2026-09-20') expect(texts()).toContain('詩1');
+      else expect(texts()).not.toContain('詩1');
     }
   });
 

@@ -137,6 +137,11 @@ export function getReadingPlanId(taskDate: string): string | null {
   return planIdByDate.get(taskDate) ?? null;
 }
 
+/** The full active schedule shared by the reader and the plan sheet. */
+export function getReadingPlan(): ReadingPlanSnapshot {
+  return activePlan;
+}
+
 /** First and last scheduled dates of the active plan: the months there is anything to show. */
 export function getReadingPlanSpan(): { first: string; last: string } | null {
   return activePlan.dates.length > 0 ? { first: activePlan.dates[0], last: activePlan.dates[activePlan.dates.length - 1] } : null;
