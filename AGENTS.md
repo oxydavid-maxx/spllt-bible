@@ -7,11 +7,22 @@
 ## 先讀順序
 
 1. 這份檔案。
-2. `.github/pull_request_template.md`：每個 PR 要勾的兩平台檢查。
-3. 進行中的計畫在 `docs/superpowers/plans/`（iOS：`2026-09-29-ios-parity*.md`）；設計決定在 `docs/design/`。
-4. `HANDOFF.md` 和 `docs/handoff/` 是 2026-09-23（0.5.9）以前的交接，當歷史參考。
+2. `docs/features/README.md`：功能清單，App 現在做什麼、每個功能的詳細規格在哪。
+3. `.github/pull_request_template.md`：每個 PR 要勾的兩平台檢查。
+4. 進行中的計畫在 `docs/superpowers/plans/`（iOS：`2026-09-29-ios-parity*.md`）；設計決定在 `docs/design/`。
+5. `HANDOFF.md` 和 `docs/handoff/` 是 2026-09-23（0.5.9）以前的交接，當歷史參考。
 
 維護者的私人營運（發版簽章、正式後端、測試裝置）不放在這個公開 repo。
+
+## 功能清單與規格（`docs/features/`）
+
+- `docs/features/README.md` 列出使用者看得到的每個功能，一個功能一列，連到它的規格檔（`docs/features/<功能區>.md`）。
+- 規格寫「App 現在怎麼做」：什麼情況 → 看到什麼，含離線、錯誤和平台差異。討論過程和決定留在 `docs/design/`、`docs/superpowers/plans/`，規格連過去，不重抄。
+- **新增或改變功能的 PR，同一個 PR 更新清單和規格。** 還沒做完的功能寫在規格的「規劃中」段落。
+- 每份規格都有「決定（為什麼這樣做）」段，刻意不做的事放最前面。維護者在對話裡做的決定，由同一個 PR 寫進去。
+- **看到像「沒做完」或「怪怪的」地方，先讀那份規格的「決定」段**；沒有記錄就問維護者是不是刻意的，不要直接當成 bug 修。commit 說明記錄的是當時實作者的打算，不是決定的來源：日記「不上傳伺服器」是隱私決定，早期 commit 說明卻寫伺服器是本體，曾因此被誤判成 bug。
+- 守衛測試 `tests/tools/featureDocs.test.ts`：每個規格檔都要被清單連到、都要有「決定」段，清單也不能連到不存在的檔案。
+- 這個 repo 是公開的：規格裡不放成員名字、帳號、金鑰和私人網址。
 
 ## 兩個平台一起改
 
