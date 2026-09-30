@@ -71,7 +71,7 @@ jobs:
           RUN=$(gh run list --workflow ios.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
           if [ -n "$RUN" ]; then gh run download "$RUN" --name ios-summary --dir ci-out/base || true; fi
           npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json appBytes 1.05 "R5 .app 大小" >> "$GITHUB_STEP_SUMMARY"
-          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json footprintMB 1.10 "R3 記憶體 vs main" >> "$GITHUB_STEP_SUMMARY"
+          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json footprintMB 1.10 "R3 記憶體 vs main" same-flows >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         uses: actions/upload-artifact@v4
         with:
