@@ -79,7 +79,7 @@
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| 靈修日記 | 每天一篇，只有自己看得到；在讀經頁複製的經文可以一鍵插入 | 分頁列「日記」 | Android、iOS | [journal.md](journal.md) |
+| 靈修日記 | 每天一篇，**只存在自己的手機，不上傳伺服器**（隱私決定）；在讀經頁複製的經文可以一鍵插入 | 分頁列「日記」 | Android、iOS | [journal.md](journal.md) |
 | 歷史記錄 | 列出寫過的日子，點一天回去編輯 | 日記頁 | Android、iOS | [journal.md](journal.md) |
 | 匯出全部 | 把全部日記整理成一份 Markdown，用系統分享存起來或傳出去 | 日記頁「匯出全部」 | Android、iOS | [journal.md](journal.md) |
 | 同時存到我選的資料夾 | 每次存檔另外寫一份 Markdown 到自選資料夾 | 日記頁 | 只有 Android | [journal.md](journal.md) |

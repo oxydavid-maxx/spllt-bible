@@ -62,6 +62,22 @@
   - `UpdateBanner`：讀經精讀器（`app/(tabs)/reader.tsx`）更多閱讀工具面板裡的一行提示，可以按「稍後」關掉本次顯示。
 - **只有 Android 會看到任何更新提示**：`fetchUpdateState` 一開頭就檢查 `Platform.OS !== 'android'`，是的話直接回「沒有更新」且**不發任何網路請求**——這是為了符合 App Store 2.5.2（不能引導使用者去裝會改變功能的安裝檔）；iOS 交給 App Store 自己的自動更新。
 
+## 決定（為什麼這樣做）
+
+**刻意不做：**
+
+- **不提供「用 Apple 登入」**：這是要上 App Store 才需要補的（Apple 規則 4.8 要求同等的替代登入方式），已規劃在 iOS 移植計畫的 Phase 2/M6，不是這次漏做。（來源：[../superpowers/plans/2026-09-29-ios-parity.md](../superpowers/plans/2026-09-29-ios-parity.md) §1 第 5 項、M6）
+- **iOS 完全不顯示 App 更新提示，也不會為了檢查版本發出任何網路請求**：Android 才需要側載安裝檔更新；引導使用者去裝安裝檔在 iOS 上會違反 App Store 審查規則 2.5.2。（來源：[../../AGENTS.md](../../AGENTS.md) iOS 注意事項第 2 點）
+- **不收集 Email、密碼，只存 Google 帳號給的識別碼**；也不收集位置、通訊錄、相片影片、廣告識別碼，沒有廣告或使用行為分析工具。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)）
+
+- **Google 登入第一次找不到對應帳號時會自動建立會員**，不用先請維護者手動開帳號；但「誰是管理者」不會因為誰先登入就自動取得——管理者身分是維護者在私有部署設定裡另外指定的，不會進公開原始碼。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §3.4）
+- **申請刪除帳號與資料，兩個平台顯示同一份文案**，走「App 內連結＋寄信」兩條路，不是只給 Android 看的說法，也沒有另外做一個線上申請系統。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)「刪除帳號與資料」）
+
+**待確認（沒有記錄，請維護者確認是否刻意）：**
+
+- 公告分頁的更新卡片不會因為關閉全螢幕更新提示而跟著消失：規格裡記著「2026-09-27 的產品決定」，但沒有找到對應的 design/plan 文件記錄原因。
+- `avatarUrl` 目前一律回傳 `null`，帳戶相關畫面因此顯示不出 Google 頭像：這是刻意的隱私決定，還是還沒接上的功能，沒有找到記錄。
+
 ## 平台差異
 
 - 更新提示：iOS 完全不出現（見上），這一點有 iOS 自動化流程 `.maestro/ios/40-no-update-prompt.yaml` 專門驗證「等過 20 秒重試視窗仍然看不到『有新版本』字樣」。

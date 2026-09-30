@@ -15,4 +15,10 @@ describe('feature list', () => {
   it('links only specs that exist', () => {
     expect([...linked].filter((name) => !specs.includes(name))).toEqual([]);
   });
+
+  // The journal stays on the phone for privacy, a decision that lived only in conversation until an audit
+  // read the unused upload code as an unfinished bug. Each spec says why, not only what.
+  it('gives every spec a decisions section', () => {
+    expect(specs.filter((name) => !/^## 決定/m.test(readFileSync(`docs/features/${name}`, 'utf8')))).toEqual([]);
+  });
 });

@@ -56,6 +56,17 @@
 - 就算重新打開，聚會提醒目前只會送到 Android 裝置：伺服器尋找待送對象時只查 `platform='ANDROID'` 的裝置登記（`server/remoteReminders.ts:40`）。iOS 的裝置登記雖然可以用 `platform: 'IOS'` 存進資料庫（`server/routes.ts:731`），但聚會提醒的送出邏輯沒有接上 iOS。
 - 後端有一個背景 worker（`server/reminderWorker.ts`，每 15 秒一次）會找到期的聚會提醒並透過 FCM 送出，但要環境變數 `QINGMU_REMINDER_WORKER_AUTOSTART=true` 才會啟動（`server/remoteConfiguration.ts:35-44`）。
 
+## 決定（為什麼這樣做）
+
+**刻意不做：**
+
+- **聚會提醒目前不對外開放**：精簡功能時的產品決定，把小組/RPG、LINE、通話與聚會提醒等入口都收起來，主導覽只留讀經、積分；程式碼還留著，只是還沒清乾淨。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.1 CL01、§4.7）
+- **讀經提醒最多只排 60 則，不是排到系統上限**：iOS 系統本身待發通知有數量上限（常見說法是 64 個），特意留一點餘裕。（來源：[../../AGENTS.md](../../AGENTS.md) iOS 注意事項第 10 點）
+- **iPhone 的推播一律送「看得到的通知」，不像 Android 那樣用背景資料訊息**：`expo-notifications` 在 iOS 上只把 `userInfo.body` 交給 JS，而且 iOS 對背景資料推播的優先權低、系統可能直接不送達。（來源：[../../AGENTS.md](../../AGENTS.md) iOS 注意事項第 9 點；[../superpowers/plans/2026-09-29-ios-parity.md](../superpowers/plans/2026-09-29-ios-parity.md) §1 第 3 項）
+
+- **iPhone 推播由後端直接送 APNs（用現成套件），App 不加裝 Firebase iOS SDK**：避免多裝一套原生 SDK 拖慢啟動、增加安裝檔大小。（來源：[../superpowers/plans/2026-09-29-ios-parity.md](../superpowers/plans/2026-09-29-ios-parity.md) §6 方案 A）
+- **舊的聚會通知或小組深連結被點到時，一律導向讀經入口，不會重新打開已經移除的功能**。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §4.7）
+
 ## 平台差異
 
 | 項目 | Android | iOS |

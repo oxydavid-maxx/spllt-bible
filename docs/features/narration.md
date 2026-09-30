@@ -96,6 +96,17 @@
 - 朗讀網址只接受 `https://` 開頭、格式正確的網址，本機檔案、`data:`、`javascript:`、不安全的 `http://` 通通會被擋下，絕不會被拿去播放（`chapterAudioContract.ts` 的 `isApprovedStreamUri`）。
 - 這一章的朗讀來源如果已經過了 App 自己設的重新確認期限，即使當時能播，也會先重新跟後端確認一次才能繼續播放/倒帶，但不會因此把正在播的聲音停掉（過期只擋「開始/跳轉」，不擋「停止」）。
 
+## 決定（為什麼這樣做）
+
+**刻意不做：**
+
+- **連讀不會自動完成、不自動得分，也不會跳到別天**：只照今天排定的順序往前播，最後一段念完就停，不是自動打卡機制。（來源：[../design/reader-page.md](../design/reader-page.md) §2 已定案「連讀」）
+- **停手不動、或暫停後再按播放，都不會自動恢復跟隨**：一定要按「回到朗讀處」，刻意不做「跟著跟著自己又跳走」的效果。（來源：[../superpowers/plans/2026-09-29-read-along-follow.md](../superpowers/plans/2026-09-29-read-along-follow.md) §1）
+- **日記頁的朗讀鍵不會自己開始播放，只是同一段朗讀的遙控器**：讀經和日記來回切換時，同一段朗讀不能中斷。（來源：[../design/reader-page.md](../design/reader-page.md) §2 已定案「日記」）
+
+- **播放鍵的版位固定 48×48dp，不管載入中/可播放/沒有朗讀是哪個狀態，位置都不跳動**：也不會因為顯示說明文字而推走旁邊的按鈕，避免畫面閃動。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.1 CL12、§4.6）
+- **朗讀反白改由 App 自己的注入程式上色，不再借用 SDK 使用者標記的管道**：SDK 用 `parseInt(v)` 判斷節號，「5-6」這種合併節會被當成「5」，找不到第 6 節而整段不反白。（來源：[../superpowers/plans/2026-09-29-read-along-follow.md](../superpowers/plans/2026-09-29-read-along-follow.md) §2、§3.1）
+
 ## 平台差異
 
 來源：`docs/superpowers/plans/2026-09-29-read-along-follow.md` §3.5、`AGENTS.md`

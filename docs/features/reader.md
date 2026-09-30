@@ -111,6 +111,22 @@
 - 更多閱讀工具 → 「在 YouVersion 開啟此章」：先暫停朗讀（若正在播放），再用系統瀏覽器/YouVersion App 開啟 `https://www.bible.com/bible/{版本ID}/{書卷}.{章}` 這個公開連結，同時把目前位置存成一筆閱讀記錄；只有目前章節能合法轉成這個連結格式時（版本 ID、書卷縮寫、章數字都合法）這個按鈕才會啟用；開啟失敗顯示「目前無法開啟本章，請稍後再試」。
 - 更多閱讀工具 → 「版本資訊」：顯示目前譯本的名稱、出版單位、版權聲明，以及（若有）朗讀版權聲明和一個外部「開啟官方版本資訊」連結；尚未載入 metadata 時顯示「版本資訊尚未載入」。
 
+## 決定（為什麼這樣做）
+
+**刻意不做：**
+
+- **不建立另一套聖經 renderer**：官方 SDK 只透過既有 bridge 注入 CSS/JS 來改版面，不重寫或另外畫經文。（來源：[../superpowers/plans/2026-09-25-reader-layout-a-immersive.md](../superpowers/plans/2026-09-25-reader-layout-a-immersive.md) Global Constraints）
+- **不會預先載入整本聖經或所有譯本**：背景只抓當天實際用得到的章節，同一時間最多 2 筆並行請求。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §4.5）
+- **不用第三方 `@gorhom/bottom-sheet`（連帶 reanimated/worklets）**：改用 App 自己的輕量底部面板。原因有兩個：這一組套件在 RN 0.85 上多吃約 155 MB 原生記憶體，還讓畫面執行緒每格都在跑動畫迴圈；而且 iOS 上把可以按的元件包成一整顆背景時，裡面的選項對 VoiceOver 和自動化測試都看不到。（來源：[../design/lean-reader-sheets.md](../design/lean-reader-sheets.md)；[../../AGENTS.md](../../AGENTS.md) iOS 注意事項第 7 點）
+
+- **沉浸模式收合時，頁首「原地收合」成進度細條，不搬到底部**：起因是舊版一般狀態進度在頁首、沉浸時卻跑到底部細條，位置前後不一致。（來源：[../design/reader-page.md](../design/reader-page.md) §5.1）
+- **書名整個畫面只出現一次，放在章節籤**：範圍列、內文標題、底部膠囊都各顯示一次是設計錯誤，已定案改掉。（來源：[../design/reader-page.md](../design/reader-page.md) §2 已定案「書名」）
+- **經文快取明訂 30 分鐘的新鮮期，不留給 SDK 自己決定預設保存期限**：避免 SDK 沒設定時自己套用不可預期的快取時間。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §4.4）
+
+**待確認（沒有記錄，請維護者確認是否刻意）：**
+
+- owner 帳號目前存的行距是 2.0（新帳號預設是 1.7），是否為本人特意設定過，沒有記錄，暫不擅自清掉。（來源：[../design/reader-page.md](../design/reader-page.md) §6）
+
 ## 平台差異
 
 - 更新提示（下載新版 APK 的橫幅）只在 Android 出現；`FullscreenReaderLayout` 把 `UpdateBanner` 放進「更多閱讀工具」清單中，但橫幅本身在非 Android 平台一律回報「沒有更新」且不發任何網路請求（`AGENTS.md` 第 54-66 行第 2 條；`app/(tabs)/reader.tsx` 傳入 `updateBanner={<UpdateBanner />}`）。

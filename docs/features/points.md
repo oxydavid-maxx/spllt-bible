@@ -114,6 +114,21 @@
 - 目前程式碼中 `maskForViewer`（把非本人的暱稱遮成「O＋中間字＋O」的形式）已實作，但目前沒有任何畫面呼叫它——好友清單與排名目前是直接顯示暱稱全名，未套用遮蔽（見「已知限制與待辦」）。
 - 本機積分快取只會存「自己」的資料，且存檔與讀取兩處都各自檢查一次 `memberId` 是否等於目前登入帳號，換帳號時不會把前一個人的積分秀給下一個登入的人看到（`createProfileCache`，`profileCache.ts:20-46`）。
 
+## 決定（為什麼這樣做）
+
+**刻意不做：**
+
+- **不做聊天、共同任務、獎品庫存系統、推播好友動態、獨立管理網站**：這波功能收斂時就把這些排除在範圍外，維護者在同一個 App 裡設定獎品和現場兌換。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.1）
+- **加好友不需要對方同意，掃到有效 QR 就立刻雙向成立**：沒有等待接受的步驟。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.1 CL10）
+- **錢包餘額不會季度歸零，也沒有使用期限**：沒兌換掉的分數全部保留。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.1 CL06）
+- **好友之間沒有聊天或私訊，也不交換電話、LINE 等聯絡資料**：這是給青少年用的功能，刻意把好友關係限制在「看得到彼此讀經進度」而已。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)「兒童與青少年」）
+- **管理者身分不是「誰先登入誰就是」**：由維護者在私有部署設定裡逐一指定，不會進公開原始碼；後端每次管理請求都靠這份綁定檢查授權。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §3.4）
+
+- **進度用「已累積/所需」的分數格式呈現（例如「72/120 分」），不寫「還差幾分」「持續累積中」等鼓勵口號**：這是精簡文案的產品決定。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.5）
+- **兌換與撤銷兌換不影響走勢圖或總積分**：兩本帳故意分開算，讓兌換不會使歷史紀錄「倒退」。（來源：[../design/score-profile-chart.md](../design/score-profile-chart.md)「Aggregation rules」）
+- **舊版伺服器沒有回傳圖表資料時，退回誠實的「近六個月」六格簡表，不會把月資料誤讀成日資料**。（來源：[../design/score-profile-chart.md](../design/score-profile-chart.md)「UI behavior」）
+- **好友 QR 的相機掃描畫面不會被存檔或上傳；AI 估價只會拿到提名的「多少/多久」與說明文字，不會附上提名者的姓名或帳號資料**。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)）
+
 ## 平台差異
 
 - 好友 QR 掃描：Android 用系統內建的條碼掃描器（`CameraView.launchScanner`，不需要另外要求相機權限，掃描介面由系統提供）；iOS/其他平台用 App 內建相機畫面，第一次使用需要跳出相機權限請求（`src/ui/gamification/FriendQrPanel.tsx:72-104`）。
