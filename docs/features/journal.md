@@ -73,7 +73,10 @@
 
 ### 隱私（誰能看到日記）
 - 日記文字只存在手機的本機資料庫（`qingmu_journal_entries.body`，`src/storage/journalStore.ts`），不會送到伺服器，所以教會的管理者看不到任何人的日記。
-- Android：正式版開著系統備份（產生的 `AndroidManifest.xml` 是 `android:allowBackup="true"`，沒有排除規則）。使用者手機若開著 Google 備份，日記可能隨 App 資料備份到**使用者自己的** Google 帳號，重裝時也可能被系統還原。這不經過本 App 的伺服器。
+- 系統備份（兩個平台都不經過本 App 的伺服器，教會看不到）：
+  - Android：正式版開著系統備份（產生的 `AndroidManifest.xml` 是 `android:allowBackup="true"`，沒有排除規則）。使用者開著 Google 備份時，日記可能隨 App 資料備份到**使用者自己的** Google 帳號，重裝時也可能被系統還原。
+  - iPhone：日記資料庫在 App 的 Documents 資料夾（`expo-sqlite` 預設 `Documents/SQLite`，`node_modules/expo-sqlite/ios/SQLiteModule.swift`），照 Apple 的規則會跟著 iCloud 備份或電腦備份，存到**使用者自己的** Apple 帳號。只有「整支手機從備份還原」才會回來；單獨刪掉 App 再裝，日記就不見了。
+- App Store 的隱私標籤（上架時填）：日記只存在手機、不傳出，不算「收集的資料」；和 Play 資料安全表（`docs/play/app-content.md`）一致。
 - 伺服器端留著的日記端點（見上一節）本身也只認「發請求的人自己」，內容不進計點、排行榜或稽核用的資料表（`server/journal.ts`）。
 
 ## 決定（為什麼這樣做）
@@ -89,6 +92,7 @@
 | 項目 | Android | iOS |
 | --- | --- | --- |
 | 同時存到我選的資料夾 | 有（Storage Access Framework） | 沒有，改用「匯出全部」→ 系統分享面板存到「檔案」（`AGENTS.md` 第 6 點） |
+| 系統自動備份 | Google 備份（使用者自己的帳號），重裝時可能還原 | iCloud/電腦備份（使用者自己的帳號），只在整支手機還原時回來 |
 | 鍵盤避讓 | 依鍵盤是否彈出切換 `KeyboardAvoidingView` 是否啟用 | 一律啟用 |
 | 匯出、朗讀控制、插入經文 | 相同 | 相同 |
 
