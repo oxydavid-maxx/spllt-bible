@@ -2,6 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { Announcement } from '../services/announcementClient';
 import type { EventRegistrationSummary } from '../services/eventRegistrationClient';
 import { theme } from './Theme';
+import { taipeiDate } from '../domain/gamificationV1';
 
 /**
  * The notice board: what is on next, what was preached last, and how to get there.
@@ -33,8 +34,9 @@ function LinkRow({ links, onOpen }: { links: Array<[string, string | null]>; onO
 }
 
 function shortWeek(week: string): string {
-  const [, month, day] = week.split('-');
-  return `${Number(month)}/${Number(day)}`;
+  const [year, month, day] = week.split('-');
+  const date = `${Number(month)}/${Number(day)}`;
+  return year === taipeiDate().slice(0, 4) ? date : `${year}/${date}`;
 }
 
 export function AnnouncementBoard({ announcement, stale, onOpen, registration }: AnnouncementBoardProps) {
@@ -126,8 +128,8 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '800' },
   signups: { gap: 2, paddingTop: theme.spacing.xs },
   friends: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
-  pastRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: theme.spacing.sm, paddingVertical: theme.spacing.xxs },
-  pastTitle: { flexGrow: 1, flexBasis: 140, minWidth: 140, color: theme.colors.muted, fontSize: theme.type.caption.size },
+  pastRow: { flexDirection: 'column', alignItems: 'stretch', gap: theme.spacing.xxs, paddingVertical: theme.spacing.xxs },
+  pastTitle: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   standing: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   standingLink: { minHeight: theme.control.tap, justifyContent: 'center' },
   stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, textAlign: 'center', paddingTop: theme.spacing.xs },
