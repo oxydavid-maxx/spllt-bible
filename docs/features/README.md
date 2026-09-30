@@ -1,7 +1,7 @@
 # 竹科聖經功能清單
 
 > 使用者看得到的每個功能都在這裡有一列，詳細行為看「規格」欄的檔案。
-> 依據：main 1e00ca5（0.5.21）的程式碼，2026-09-30 核對。
+> 依據：0.5.21＋0.5.22 候選的程式碼，2026-09-30 核對；版本號在發布時才更新。
 > **新增或改變功能的 PR，同一個 PR 更新這份清單和對應的規格**（規則在 [`AGENTS.md`](../../AGENTS.md)，守衛測試 `tests/tools/featureDocs.test.ts`）。
 
 ## 規格檔
@@ -11,7 +11,7 @@
 | [announcements.md](announcements.md) | 公告分頁：下次聚會、服事、報名狀況、上次講道、以前的主日、常設資訊 |
 | [reader.md](reader.md) | 讀經頁：版面與沉浸模式、譯本、字體、經節複製、預先載入、閱讀位置、載入失敗與重試 |
 | [narration.md](narration.md) | 朗讀：播放、速度、連讀、背景播放、朗讀跟著走 |
-| [reading-plan.md](reading-plan.md) | 讀經計畫與每日完成：開啟日期、日期列、當日章節、完成打卡、補登、撤銷、積分月曆、更正說明 |
+| [reading-plan.md](reading-plan.md) | 讀經計畫與每日完成：開啟日期、日期列、整份計畫清單、當日章節、完成打卡、補登、撤銷、積分月曆 |
 | [points.md](points.md) | 積分與社群：自己、好友、全體（管理）、目標獎品、兌換、提名投票、一起走過 |
 | [journal.md](journal.md) | 靈修日記：寫、存、匯出、存到自選資料夾 |
 | [reminders.md](reminders.md) | 讀經提醒與推播 |
@@ -23,7 +23,7 @@
 |---|---|---|---|---|
 | 下次聚會 | 下次主日的日期、主題或兩堂各自的內容、服事名單、報名按鈕 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 報名狀況 | 已有幾人報名、有哪些朋友報名 | 公告的下次聚會卡片 | Android、iOS | [announcements.md](announcements.md) |
-| 上次講道與以前的主日 | 講道標題、講員、經文，以及錄音、投影片、逐字稿的連結 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
+| 上次講道與以前的主日 | 日期/講員/標題在上、連結按鈕在下；不是今年的日期顯示年份 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 離線提示 | 抓不到最新公告時，小字註明目前顯示哪一週 | 公告分頁底部 | Android、iOS | [announcements.md](announcements.md) |
 
 ## 讀經
@@ -45,7 +45,7 @@
 | 完成打卡 | 讀完按圓圈打卡；讀到最後一段時圓圈展開成按鈕 | 讀經頁右下角 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 補登和撤銷 | 今天和前 6 天可以補打卡；撤銷要先確認並收回積分 | 讀經頁、積分月曆 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 離線打卡與跨手機 | 沒網路先記住、連上後送出；另一支手機完成的日子也顯示已完成 | 讀經頁、積分頁 | Android、iOS | [reading-plan.md](reading-plan.md) |
-| 計畫更正說明 | 教會讀經表排錯、App 已更正的日子多一行說明 | 讀經頁、積分月曆 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 整份讀經計畫清單 | 分月顯示 9/1–12/31，今天標底色、讀完打勾，點一天就去讀 | 讀經頁點日期、積分月曆的「整份計畫」 | Android、iOS | [reading-plan.md](reading-plan.md) |
 
 ## 朗讀
 
@@ -62,7 +62,7 @@
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| 積分月曆 | 完成的日子標出來；點一天看那天的經文，可以補打卡 | 積分「自己」最上方 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 積分月曆 | 點任一天看經文與狀態，未來/過期也能看；期限內可以補打卡 | 積分「自己」最上方 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 範圍切換 | 自己、好友、全體（管理）三個分頁 | 積分頁頂部 | Android、iOS | [points.md](points.md) |
 | 自己的積分 | 總積分、梯隊、目標獎品進度、累積走勢或讀經日曆 | 積分「自己」 | Android、iOS | [points.md](points.md) |
 | 目標獎品 | 選一個想換的獎品，看還差幾分 | 積分「自己」 | Android、iOS | [points.md](points.md) |
@@ -99,13 +99,6 @@
 | 啟用碼 | 認不出 Google 帳號時，用一次性啟用碼綁定 | 登入畫面（需要時才出現） | Android、iOS | [account.md](account.md) |
 | 帳戶頁 | 看自己的名字和小組、設定提醒、登出、申請刪除資料 | 右上角頭像 | Android、iOS | [account.md](account.md) |
 | App 更新提示 | 有新版時提示下載安裝檔 | 開 App 或回到前景時自動出現 | 只有 Android | [account.md](account.md) |
-
-## 規劃中（0.5.22）
-
-| 功能 | 一句話 | 從哪裡進 | 規格 |
-|---|---|---|---|
-| 整份讀經計畫清單 | 按月份看整份計畫，打開時捲到今天，讀完的打勾，點一天就去讀那天；兩個入口共用同一個清單 | 讀經頁點日期、積分月曆的「整份計畫」 | [reading-plan.md](reading-plan.md) |
-| 以前的主日排版 | 每一列日期在上、按鈕在下；不是今年的寫出年份 | 公告 | [announcements.md](announcements.md) |
 
 ## 其他文件放哪
 

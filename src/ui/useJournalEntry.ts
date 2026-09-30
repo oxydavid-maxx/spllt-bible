@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { openQingmuJournalStore } from '../storage/mobileDatabase';
-import type { JournalRecord, JournalSyncStatus } from '../storage/journalStore';
+import type { JournalRecord } from '../storage/journalStore';
 
 /**
  * Owns one day's journal entry: load, debounce, save, and the guards that stop text being lost.
@@ -24,9 +24,6 @@ const SAVE_DEBOUNCE_MS = 2_000;
 export interface JournalEntryView {
   ready: boolean;
   body: string;
-  syncStatus: JournalSyncStatus;
-  /** Another device wrote this day. The local text is kept and nothing is overwritten silently. */
-  conflict: boolean;
   /** What the Save button and its label show: nothing written, typed but not saved, or saved. */
   saveStatus: 'empty' | 'unsaved' | 'saved';
   /** When the text on screen was last saved (ISO), for 「已儲存 08:58」. */
@@ -38,8 +35,6 @@ export interface JournalEntryView {
   appendQuote: (quote: string) => void;
   /** Persist immediately: closing the panel, changing day, or the app going to the background. */
   flushNow: () => void;
-  /** Send the local text even though the server moved on, after the member says so. */
-  resolveConflict: () => void;
 }
 
 export interface JournalEntryOptions {
@@ -51,14 +46,14 @@ export interface JournalEntryOptions {
   openStore?: typeof openQingmuJournalStore;
   /**
    * Optional copy into a folder the member picked. Best effort by definition: the entry is already
-   * in the local store and on its way to the server before this runs, so a folder that has gone
+   * in the local store before this runs, so a folder that has gone
    * away must never cost somebody their writing.
    */
   mirror?: (taskDate: string, body: string) => void;
 }
 
 const blank = (memberId: string, planId: string, taskDate: string): JournalRecord => ({
-  memberId, planId, taskDate, body: '', revision: 0, syncStatus: 'CONFIRMED', updatedAt: '',
+  memberId, planId, taskDate, body: '', updatedAt: '',
 });
 
 export function useJournalEntry(options: JournalEntryOptions): JournalEntryView {
@@ -82,12 +77,12 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
   const persistedDraftRef = useRef<{ owner: typeof owner; body: string } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const persist = useCallback((force = false) => {
+  const persist = useCallback(() => {
     if (!memberId) return;
     const body = draftRef.current;
-    if (!force && persistedDraftRef.current?.owner === owner && persistedDraftRef.current.body === body) return;
+    if (persistedDraftRef.current?.owner === owner && persistedDraftRef.current.body === body) return;
     const saved = latest.current.openStore().save({
-      memberId, planId, taskDate, body, operationId: latest.current.newOperationId(), expectedRevision: 0,
+      memberId, planId, taskDate, body,
     });
     persistedDraftRef.current = { owner, body };
     if (owns()) setRecord(saved);
@@ -115,7 +110,7 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
       const lastSaved = persistedDraftRef.current?.owner === owner ? persistedDraftRef.current.body : stored.body;
       if (draftRef.current !== lastSaved) {
         const body = draftRef.current;
-        store.save({ memberId, planId, taskDate, body, operationId: latest.current.newOperationId(), expectedRevision: 0 });
+        store.save({ memberId, planId, taskDate, body });
         persistedDraftRef.current = { owner, body };
         try { latest.current.mirror?.(taskDate, body); } catch { /* see above */ }
       }
@@ -135,7 +130,6 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
   }, [setBody]);
 
   const flushNow = useCallback(() => { cancelPending(); persist(); }, [persist]);
-  const resolveConflict = useCallback(() => { cancelPending(); persist(true); }, [persist]);
 
   // A record whose key does not match the current selection is stale by definition: render blank.
   const visible = record && memberId && record.memberId === memberId && record.taskDate === taskDate
@@ -147,14 +141,11 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
   return {
     ready: visible !== null,
     body: draft,
-    syncStatus: visible?.syncStatus ?? 'CONFIRMED',
-    conflict: visible?.syncStatus === 'SAVE_FAILED',
     saveStatus,
     savedAt: saveStatus === 'saved' && visible?.updatedAt ? visible.updatedAt : null,
     saveNow: flushNow,
     setBody,
     appendQuote,
     flushNow,
-    resolveConflict,
   };
 }
