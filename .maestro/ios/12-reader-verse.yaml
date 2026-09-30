@@ -1,5 +1,5 @@
-# 12-reader-verse — tapping a verse opens the verse panel, and the panel's on-screen close button lets it go
-# (iPhone has no back key). The tap point is inside the chapter text, between the toolbar and the actions.
+# 12-reader-verse — tapping a verse selects it (the verse bar with Copy and Share appears), and tapping the same
+# verse again lets it go (iPhone has no back key). The tap point is inside the chapter text.
 appId: org.qingmu.youth
 ---
 - launchApp
@@ -16,10 +16,11 @@ appId: org.qingmu.youth
 - tapOn:
     point: "50%,40%"
 - extendedWaitUntil:
-    visible: "關閉面板"
+    visible: "Copy"
     timeout: 15000
 - takeScreenshot: 12-reader-verse
-- tapOn: "關閉面板"
+- tapOn:
+    point: "50%,40%"
 - extendedWaitUntil:
-    notVisible: "關閉面板"
+    notVisible: "Copy"
     timeout: 10000

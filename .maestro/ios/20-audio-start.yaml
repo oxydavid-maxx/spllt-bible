@@ -1,4 +1,4 @@
-# 20-audio-start — narration starts in the reader (the CI build plays a generated 120 s tone for every chapter).
+# 20-audio-start — narration of the day's chapter starts in the reader (backend chapter audio, as in production).
 # run-flows.sh then sends the app to the background for 20 s before 21.
 appId: org.qingmu.youth
 ---
