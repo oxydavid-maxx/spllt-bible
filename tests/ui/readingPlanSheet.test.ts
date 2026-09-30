@@ -72,9 +72,24 @@ describe('the full reading plan shared by both entry points', () => {
     act(() => scroll.props.onLayout({ nativeEvent: { layout: { height: 800 } } }));
     act(() => row('2026-09-30').props.onLayout({ nativeEvent: { layout: { y: 1400 } } }));
     act(() => scroll.props.onContentSizeChange(411, 6000));
+    expect(boundary.scrollTo).not.toHaveBeenCalled();
+    act(() => tree!.root.findByType('Modal' as never).props.onShow());
     expect(boundary.scrollTo).toHaveBeenCalledExactlyOnceWith({ y: 1080, animated: false });
     act(() => scroll.props.onContentSizeChange(411, 6100));
     expect(boundary.scrollTo).toHaveBeenCalledOnce();
+  });
+
+  it('does not treat an early empty content layout as ready to position the native list', async () => {
+    await mount();
+    const scroll = tree!.root.findByType('ScrollView' as never);
+    act(() => scroll.props.onContentSizeChange(411, 0));
+    act(() => scroll.props.onLayout({ nativeEvent: { layout: { height: 800 } } }));
+    act(() => row('2026-09-30').props.onLayout({ nativeEvent: { layout: { y: 1400 } } }));
+    expect(boundary.scrollTo).not.toHaveBeenCalled();
+    act(() => tree!.root.findByType('Modal' as never).props.onShow());
+    expect(boundary.scrollTo).not.toHaveBeenCalled();
+    act(() => scroll.props.onContentSizeChange(411, 6000));
+    expect(boundary.scrollTo).toHaveBeenCalledExactlyOnceWith({ y: 1080, animated: false });
   });
 
   it('closes and opens any chosen reading date without a completion mutation', async () => {

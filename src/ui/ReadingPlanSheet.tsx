@@ -36,11 +36,12 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
   const targetDate = plan.dates.find(date => date >= today) ?? plan.dates[plan.dates.length - 1];
   const scroll = useRef<ScrollView>(null);
   const targetY = useRef<number | null>(null);
-  const contentReady = useRef(false);
+  const contentHeight = useRef(0);
+  const modalShown = useRef(false);
   const viewportHeight = useRef(0);
   const positioned = useRef(false);
   const scrollToToday = () => {
-    if (positioned.current || !contentReady.current || viewportHeight.current <= 0 || targetY.current === null || !scroll.current) return;
+    if (positioned.current || !modalShown.current || viewportHeight.current <= 0 || targetY.current === null || contentHeight.current <= targetY.current || !scroll.current) return;
     // Keep a few previous days above today, as in the approved mock, using the measured viewport.
     scroll.current.scrollTo({ y: Math.max(0, targetY.current - viewportHeight.current * 0.4), animated: false });
     positioned.current = true;
@@ -95,7 +96,7 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
   const last = days[days.length - 1]?.date;
   const summary = first && last ? `${formatReadingDateLabel(first)}–${formatReadingDateLabel(last)}，共 ${days.length} 天，已讀 ${days.filter(day => day.completed).length} 天` : '目前沒有讀經計畫';
 
-  return <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+  return <Modal visible transparent animationType="slide" onShow={() => { modalShown.current = true; scrollToToday(); }} onRequestClose={onClose}>
     <SafeAreaProvider><SheetBackdrop label="關閉整份讀經計畫" onPress={onClose} style={styles.scrim}>
       <View style={styles.sheetWrap}>
         <SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']} accessibilityViewIsModal>
@@ -106,7 +107,7 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
           </View>
           <Text accessibilityLiveRegion="polite" style={styles.subtitle}>{summary}</Text>
           {visible.loading ? <Text style={styles.notice}>正在更新完成記錄…</Text> : visible.offline ? <Text style={styles.notice}>尚未連上更新，先顯示這支手機的完成記錄。</Text> : null}
-          <ScrollView ref={scroll} style={styles.list} onLayout={event => { viewportHeight.current = event.nativeEvent.layout.height; scrollToToday(); }} onContentSizeChange={() => { contentReady.current = true; scrollToToday(); }}>
+          <ScrollView ref={scroll} style={styles.list} onLayout={event => { viewportHeight.current = event.nativeEvent.layout.height; scrollToToday(); }} onContentSizeChange={(_width, height) => { contentHeight.current = height; scrollToToday(); }}>
             {days.flatMap((day, index) => {
               const isToday = day.date === today;
               const passages = formatReferenceListZhTw(day.references);
