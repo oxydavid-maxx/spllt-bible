@@ -2,8 +2,14 @@
 # scripts/ios/collect-failure.sh <udid> <flow-name> — small, readable evidence for a failed flow:
 # the Maestro log tail, the app's own error lines, and the crash report's exception + crashed-thread frames.
 UDID=$1; NAME=$2; OUT=${OUT:-ci-out}; DIR="$OUT/maestro"; mkdir -p "$DIR"
+# Capture the actual simulator frame before slow diagnostics or another driver session changes it.
+# A Maestro failure PNG can be black/blank while the later accessibility tree looks normal.
+xcrun simctl io "$UDID" screenshot "$DIR/$NAME-native-screen.png" > "$DIR/$NAME-native-screen-capture.txt" 2>&1 || true
 APP=$(cat "$OUT/app-path.txt")
 EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")
+# Ordinary pause/binding events are not errors and disappear from the generic error-only tail.
+xcrun simctl spawn "$UDID" log show --last 5m --info --debug --style compact --predicate "process == \"$EXE\"" 2>/dev/null \
+  | grep -Ei '\[chapter-audio\]|AVAudioSession|AVPlayer|playbackStatus|timeControlStatus' | tail -n 120 > "$DIR/$NAME-audio.txt" || true
 tail -n 40 "$DIR/$NAME.log" > "$DIR/$NAME-maestro-tail.txt" 2>/dev/null || true
 # The whole fatal JS error: message plus every stack frame (the filtered lines below keep only its first line).
 xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "process == \"$EXE\"" 2>/dev/null   | awk '/Unhandled JS Exception|Terminating app due to uncaught exception/ {grab=90} grab > 0 {print; grab--}' | head -n 120 > "$DIR/$NAME-js-fatal.txt" || true
