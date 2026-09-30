@@ -18,6 +18,37 @@ afterEach(async () => {
 });
 
 describe('CI evidence keeps credentials out of logs and artifacts', () => {
+  it('keeps local API requests healthy when a backend closes a reused keep-alive socket', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'qm-ci-socket-')); roots.push(root);
+    const log = join(root, 'requests.log');
+    const seen = new WeakSet<object>();
+    upstream = createServer((request, response) => {
+      if (seen.has(request.socket)) { request.socket.destroy(); return; }
+      seen.add(request.socket);
+      response.end('healthy local API');
+    });
+    await new Promise<void>(resolve => upstream!.listen(0, '127.0.0.1', resolve));
+    const targetPort = (upstream.address() as { port: number }).port;
+    const reservation = createServer();
+    await new Promise<void>(resolve => reservation.listen(0, '127.0.0.1', resolve));
+    const proxyPort = (reservation.address() as { port: number }).port;
+    await new Promise<void>(resolve => reservation.close(() => resolve()));
+    proxy = spawn(process.execPath, [resolve('node_modules/tsx/dist/cli.mjs'), 'scripts/ios/count-proxy.ts', String(proxyPort), String(targetPort), log], { cwd: process.cwd(), stdio: 'ignore' });
+    const url = `http://127.0.0.1:${proxyPort}/api/me/profile`;
+    let first: Response | null = null;
+    const until = performance.now() + 3000;
+    while (!first && performance.now() < until) {
+      try { first = await fetch(url); }
+      catch { await new Promise(resolve => setTimeout(resolve, 30)); }
+    }
+    expect(first?.status).toBe(200);
+    expect(await first!.text()).toBe('healthy local API');
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const second = await fetch(url);
+    expect(second.status, 'a proxy-owned reused-socket failure must not become a false app 502').toBe(200);
+    expect(await second.text()).toBe('healthy local API');
+  });
+
   it('masks raw/encoded query credentials, bearer headers and supplied literal secrets', () => {
     const secret = 'dummy-app-key-123456';
     const input = `GET /stylesheet?app_key=${secret}&font=1\nGET /path%3Fapp_key%3Dother-key%26font%3D1\nAuthorization: Bearer dummy-token\nmessage ${secret}`;
