@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 
 vi.mock('react-native', () => ({}));
@@ -27,7 +27,12 @@ function scheduler() {
 let schedulerValue = scheduler();
 
 describe('auth-owned reminder runtime', () => {
-  afterEach(() => { clearAuthSession(); schedulerValue = scheduler(); });
+  beforeEach(() => {
+    // Keep scheduled fixture dates in the future without faking the asynchronous runtime timers.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-14T00:00:00Z'));
+  });
+  afterEach(() => { clearAuthSession(); schedulerValue = scheduler(); vi.useRealTimers(); });
 
   it('finishes a missing reminder endpoint as a recoverable error, then loads after retry', async () => {
     const snapshot = { memberId: 'member:one', readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'REMOTE_PENDING' as const, meetings: [] };
@@ -170,7 +175,7 @@ describe('auth-owned reminder runtime', () => {
     });
     owner.start();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(getReadingDays).toHaveBeenCalledWith(expect.any(String), expect.any(String));
+    expect(getReadingDays).toHaveBeenCalledWith('2026-09-14', '2026-11-14');
     expect(schedulerValue.scheduled).toEqual([expect.objectContaining({ taskDate: '2026-10-01', targetId: 'plan-october', scheduleRevision: 7 })]);
     owner.dispose();
   });
