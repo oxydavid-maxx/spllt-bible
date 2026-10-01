@@ -1,7 +1,7 @@
 {
-  "versionCode": 44,
-  "versionName": "0.5.21",
+  "versionCode": 45,
+  "versionName": "0.5.22",
   "url": "https://home.luminexhealthbiohack.com/public/jhuke-bible/",
   "mandatory": false,
-  "note": "朗讀時畫面會跟著念到的經文走；用手指滑開就停下，按左下「回到朗讀處」再跟上。修正 5-6 這類合併的經節朗讀時沒有反白。"
+  "note": "新增整份讀經計畫清單，可從讀經日期或積分月曆開啟，選一天就去讀。月曆可查看未來與過期日期的經文；公告排版更清楚，日記維持只存在自己的手機、不上傳伺服器。"
 }
