@@ -1,6 +1,6 @@
 {
   "week": "2026-09-27",
-  "generatedAt": "2026-10-02T00:21:08.535Z",
+  "generatedAt": "2026-10-02T01:00:13.537Z",
   "sermon": {
     "title": "耶穌：耶穌是誰？",
     "speaker": "中亮/大專",
@@ -12,8 +12,8 @@
   },
   "next": {
     "date": "10/4",
-    "topic": "亞當的後代",
-    "owner": "佑駿",
+    "topic": "創世記3~5章",
+    "owner": "分組進行",
     "signup": null,
     "sessions": [
       {
@@ -25,8 +25,8 @@
       {
         "label": "第二堂",
         "kind": null,
-        "title": "青少團契",
-        "owner": null
+        "title": "創世記3~5章",
+        "owner": "分組進行"
       }
     ],
     "roles": [
