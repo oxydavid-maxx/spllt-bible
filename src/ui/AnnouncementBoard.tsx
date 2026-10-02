@@ -47,9 +47,10 @@ export function AnnouncementBoard({ announcement, stale, onOpen, registration }:
       {next.sessions && next.sessions.length > 0
         ? next.sessions.map((session) => <View key={session.label} style={styles.session} accessibilityLabel={session.label}>
             <Text style={styles.sessionTag}>{session.label}</Text>
+            {/* Category · speaker above the title (maintainer 2026-10-01); a session with neither is one line. */}
             <View style={styles.sessionCopy}>
-              <Text style={styles.sessionTitle}>{session.title}</Text>
               {session.kind || session.owner ? <Text style={styles.muted}>{[session.kind, session.owner].filter(Boolean).join(' · ')}</Text> : null}
+              <Text style={styles.sessionTitle}>{session.title}</Text>
             </View>
           </View>)
         : <>
