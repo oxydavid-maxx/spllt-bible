@@ -70,6 +70,7 @@
 - **發布檔案採「多欄位、忽略未知鍵」的格式**：新版加欄位不會讓舊版 App 壞掉，新版讀到舊格式的檔案也有退回顯示——因為後端承諾舊版 App 仍要能正常連線。（來源：[../../AGENTS.md](../../AGENTS.md)「編輯注意」：後端要向下相容）
 - **公告在 iOS 移植計畫裡被列為低風險、不特別客製化**：因為這是同一份 React Native 元件與同一個 HTTPS GET，兩平台沒有分支。（來源：[../superpowers/plans/2026-09-29-ios-parity.md](../superpowers/plans/2026-09-29-ios-parity.md) §3 第 9 項）
 - **第二堂只寫「青少團契」，不寫章節和內容**：兩個第二堂分頁（每月第一到第四週）都一樣；分頁裡的規劃（例如「創世記3~5章／分組進行」）是同工安排用的，不是要公告的內容。舊版 App 讀的 `topic`/`owner` 也改用第一堂，不再出現團契的規劃。（維護者 2026-10-01 決定）
+- **排程發布一律用 GitHub main 的程式，不用開發中的工作目錄**：`tools/announce/run.cmd` 先把 main 取到排程專用的 checkout 再執行；拿不到就不發布。2026-10-02 第二堂的修正已合併一天，但排程跑的是沒更新的工作目錄，09:00 又把第二堂蓋回團契規劃。（維護者 2026-10-02）
 - **以前的主日固定日期在上、按鈕在下，非今年的日期顯示年份**：按鈕數量和手機寬度不改變行的結構，避免少量按鈕擠到日期右側或誤認年份。（維護者 2026-09-30 決定）
 
 **待確認（沒有記錄，請維護者確認是否刻意）：**
@@ -86,6 +87,7 @@
 - 公告內容本身**不經過** `server/`：直接讀 GitHub raw 上的 `announcements/latest.json`（本 repo 內 `announcements/latest.json` 就是目前發布的版本，範例欄位：`week`、`sermon`、`next`（含 `sessions`/`roles`）、`standing`、`past`）。
 - 報名狀況才經過後端：`GET /api/me/groups`-同層的 `GET /api/me/event-registrations?date=YYYY-MM-DD`（`src/services/eventRegistrationClient.ts` 呼叫），需要 Bearer session token 與 `x-qingmu-member-id`。
 - 後端資料表：`event_registrations`（誰報名哪天）、`event_registration_totals`（每天總人數）、`form_sync_audience`（釘住的推送者 Google audience），定義在 `server/eventRegistrations.ts` 的 `ensureEventRegistrationSchema`。
+- 發布：維護者電腦上的排程執行 `tools/announce/run.cmd` → 把 GitHub main 取到排程專用的 checkout，用那份程式產生公告、交給 `tools/announce/publisher.ts` 從另一個專用的 main checkout 推上 `announcements/`。開發用的工作目錄在哪個分支、有沒有改到一半，都不影響發布；拿不到 main 的程式或任一步失敗就不發布，上週的檔案留著（舊但不錯），原因寫在 `tools/announce/last-run.log`。
 - 舊版 App 相容：發布檔案格式是「多欄位、忽略未知鍵」設計，新加欄位不會讓舊 App 壞掉；反過來新 App 讀到沒有 `sessions`/`roles`/`sermonSlides` 的舊檔案也有對應的退回顯示。
 
 ## 守住它的測試
@@ -93,6 +95,7 @@
 - `tests/services/announcementClient.test.ts` — 解析發布 JSON、多餘欄位容忍、抓取失敗時退回裝置快取並標記過期、成功才覆蓋快取。
 - `tests/ui/announcementBoard.test.ts` — 卡片版面規則：下次聚會的兩堂顯示/退回單一主題、報名人數與好友顯示位置、講道連結按名稱分開、缺欄位整塊不畫、過期提示文字。
 - `tests/tools/announceIngest.test.ts` — 產生公告：第二堂只有「青少團契」、`topic`/`owner` 不帶團契規劃、那一週沒有第二堂規劃列就不顯示第二堂。
+- `tests/tools/announceRunner.test.ts` — 排程先取 main 的程式、只從那份 checkout 執行，取不到就不發布。
 - `tests/eventRegistrationClient.test.ts` — 把公告上的 `9/27` 換算成最接近今天的日期、只信任預期形狀的回應、伺服器異常時安靜回傳 `null`。
 - `tests/server/eventRegistrations.test.ts` — 表單推送的兩種身份驗證（固定金鑰/Google identity token 且釘住 audience）、姓名比對規則、只回傳好友名單與總數、整批重寫上游日期的規則。
 
