@@ -10,7 +10,8 @@
  *   toolbar neither collapses nor reveals (window.__qingmuRangeScrolling).
  * - greys every verse unit outside the range, and each heading that leads into one. Once the member's
  *   own finger scrolls the range off the reading line (a third down the band), the grey is gone for
- *   good. Scrolls the app makes (this jump, the read-along follow) never count.
+ *   good; a range from verse 1 only leaves it downwards, past its last verse. Scrolls the app makes
+ *   (this jump, the read-along follow) never count.
  * - reports whether the range's last verse has been reached (its bottom inside the band, or above it),
  *   with the range it belongs to, whenever that changes; native grows 完成今日讀經 from it.
  *
@@ -127,7 +128,10 @@ export function readingRangeScript(insets: { top: number; bottom: number }): str
     if (!opened) { opened = true; open(found, main); }
     report(found, main);
   }
-  // A scroll the member made: give the colour back once the range has left the reading line.
+  // A scroll the member made: give the colour back once the range has left the reading line. A range
+  // from the chapter's first verse has nothing above it to scroll into, and it can open with its first
+  // verse already below the line (a tall chapter title, a large font): only reading on past its last
+  // verse counts there.
   function onScroll() {
     var main = container();
     if (!key || !units || !units.list || !main) return;
@@ -135,7 +139,8 @@ export function readingRangeScript(insets: { top: number; bottom: number }): str
     report(units, main);
     if (released || appScrolling() || !fingerScrolled) return;
     var b = band(main), line = b.top + (b.bottom - b.top) * READING_LINE;
-    if (units.start.getBoundingClientRect().top > line || units.last.getBoundingClientRect().bottom < line) {
+    var aboveRange = !units.atChapterStart && units.start.getBoundingClientRect().top > line;
+    if (aboveRange || units.last.getBoundingClientRect().bottom < line) {
       released = true;
       clearGrey();
     }

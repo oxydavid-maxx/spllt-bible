@@ -46,11 +46,12 @@ function sdkStyles() {
 // A Psalm 119-like chapter: a heading before every eight verses, 48 verses.
 const TEXT = '你們要稱謝耶和華，求告他的名，在萬民中傳揚他的作為！要向他唱詩歌頌，談論他一切奇妙的作為。';
 const unit = (v: number) => `<span class="yv-v" v="${v}"><span class="yv-vlbl">${v}</span>${TEXT}</span> `;
-const passage = () => '<div class="chapter">' + Array.from({ length: 48 }, (_, i) => i + 1).map(v =>
+// lead: what the reader shows above the first heading (a tall chapter title, a large font).
+const passage = (lead = '') => lead + '<div class="chapter">' + Array.from({ length: 48 }, (_, i) => i + 1).map(v =>
   (v % 8 === 1 ? `<div class="s1 yv-h" data-h="${v}">第${(v + 7) / 8}段</div>` : '') + `<div class="p">${unit(v)}</div>`).join('') + '</div>';
 
 const INSETS = { top: 170, bottom: 190 };
-const SCRIPT = `
+const PRELUDE = `
 var msgs = [];
 window.ReactNativeWebView = { postMessage: function (raw) { msgs.push(JSON.parse(raw)); } };
 __BRIDGE__
@@ -89,6 +90,16 @@ function record(label, first) {
   snap[label] = { scrollTop: Math.round(main.scrollTop), grey: grey(), greyHeadings: greyHeadings(), firstTop: first ? Math.round(box(first).top) : null,
     outColour: colour(verse(1)), inColour: colour(verse(20)) };
 }
+`;
+const RUN_STEPS = `
+var i = 0;
+function next() {
+  if (i < steps.length) { steps[i++](); setTimeout(next, 120); return; }
+  parent.postMessage({ index: 0, msgs: msgs, snap: snap, bandTop: bandTop, bandHeight: bandHeight }, '*');
+}
+setTimeout(next, 80);
+`;
+const SCRIPT = PRELUDE + `
 var steps = [
   function () { record('none', null); mark('open'); set('range', 'PSA.119.17-24'); },
   // Headless Chromium does not fire scroll events by itself here; send the one the opening jump makes.
@@ -108,20 +119,30 @@ var steps = [
   function () { record('fromStart', null); mark('gone'); set('range', null); },
   function () { record('gone', null); mark('done'); },
 ];
-var i = 0;
-function next() {
-  if (i < steps.length) { steps[i++](); setTimeout(next, 120); return; }
-  parent.postMessage({ index: 0, msgs: msgs, snap: snap, bandTop: bandTop, bandHeight: bandHeight }, '*');
-}
-setTimeout(next, 80);
-`;
+` + RUN_STEPS;
 
-it('opens at the range, greys outside it until the member scrolls out, and reports the range end', () => {
+// A range from verse 1 under a tall chapter title (10/15 詩119:1-88 at a large font): the range opens at
+// the chapter top with its first verse already below the reading line. Nothing above the range can be
+// scrolled into, so only reading on past its last verse gives the colour back.
+const FROM_START_SCRIPT = PRELUDE + `
+var steps = [
+  function () { mark('open'); set('range', 'PSA.119.1-8'); },
+  function () { main.dispatchEvent(new Event('scroll')); },
+  function () { record('opened', heading(1)); mark('small'); drag(heading(1), 'top', box(heading(1)).top - 40); },
+  function () { record('small', heading(1)); snap.small.lastBottom = Math.round(box(verse(8)).bottom); mark('past'); drag(verse(8), 'bottom', bandTop + bandHeight * 0.2); },
+  function () { record('past', null); mark('done'); },
+];
+` + RUN_STEPS;
+
+type Snapshot = { scrollTop: number; grey: number[]; greyHeadings: number[]; firstTop: number | null; outColour: string; inColour: string; lastBottom?: number };
+interface FixtureRun { msgs: Array<{ type: string; data: any }>; bandTop: number; bandHeight: number; snap: Record<string, Snapshot> }
+
+function runFixture(script: string, content: string): FixtureRun {
   const { css, mainClass } = sdkStyles();
   expect(mainClass).toContain('yv:overflow-y-auto');
   const frame = `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style><style>html,body{height:100%;margin:0}[data-yv-sdk]{height:100%}</style></head><body>
-    <div data-yv-sdk data-yv-theme="light"><main class="${mainClass}"><div data-yv-sdk data-busy-host><section data-slot="yv-bible-renderer">${passage()}</section></div></main></div>
-    <script>${SCRIPT.replace('__BRIDGE__', () => buildReaderDomBridge(true, true, INSETS))}</script></body></html>`;
+    <div data-yv-sdk data-yv-theme="light"><main class="${mainClass}"><div data-yv-sdk data-busy-host><section data-slot="yv-bible-renderer">${content}</section></div></main></div>
+    <script>${script.replace('__BRIDGE__', () => buildReaderDomBridge(true, true, INSETS))}</script></body></html>`;
   const html = `<!doctype html><meta charset="utf-8"><pre id="result"></pre><script>
     window.addEventListener('message',function(e){if(typeof e.data.index!=='number')return;document.getElementById('result').textContent=JSON.stringify(e.data);});
     var f=document.createElement('iframe');f.style='width:390px;height:700px;border:0';document.body.appendChild(f);f.srcdoc=${JSON.stringify(frame).replace(/</g, '\\u003c')};
@@ -137,20 +158,28 @@ it('opens at the range, greys outside it until the member scrolls out, and repor
     ], { encoding: 'utf8', timeout: 60000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     const raw = output.match(/<pre id="result">([^<]+)<\/pre>/)?.[1];
     expect(raw, 'Chromium must run the reading-range fixture').toBeDefined();
-    const run = JSON.parse(raw!.replace(/&quot;/g, '"').replace(/&amp;/g, '&')) as {
-      msgs: Array<{ type: string; data: any }>; bandTop: number; bandHeight: number;
-      snap: Record<string, { scrollTop: number; grey: number[]; greyHeadings: number[]; firstTop: number | null; outColour: string; inColour: string }>;
-    };
-    const between = (from: string, to?: string) => {
-      const start = run.msgs.findIndex(m => m.type === 'mark' && m.data === from);
-      const end = to ? run.msgs.findIndex(m => m.type === 'mark' && m.data === to) : run.msgs.length;
-      return run.msgs.slice(start + 1, end).filter(m => m.type !== 'qingmu.reader.canvas.edge')
-        .map(m => m.type === 'qingmu.reader.range.end' ? `end:${m.data.range}:${m.data.atEnd}`
-          : m.type === 'qingmu.reader.canvas.scroll' ? 'collapse' : m.type === 'qingmu.reader.canvas.reveal' ? `reveal:${m.data.reason}` : m.type);
-    };
+    return JSON.parse(raw!.replace(/&quot;/g, '"').replace(/&amp;/g, '&')) as FixtureRun;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+function messagesBetween(run: FixtureRun, from: string, to?: string) {
+  const start = run.msgs.findIndex(m => m.type === 'mark' && m.data === from);
+  const end = to ? run.msgs.findIndex(m => m.type === 'mark' && m.data === to) : run.msgs.length;
+  return run.msgs.slice(start + 1, end).filter(m => m.type !== 'qingmu.reader.canvas.edge')
+    .map(m => m.type === 'qingmu.reader.range.end' ? `end:${m.data.range}:${m.data.atEnd}`
+      : m.type === 'qingmu.reader.canvas.scroll' ? 'collapse' : m.type === 'qingmu.reader.canvas.reveal' ? `reveal:${m.data.reason}` : m.type);
+}
+
+const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+const outside = (first: number, last: number) => range(1, 48).filter(v => v < first || v > last);
+
+it('opens at the range, greys outside it until the member scrolls out, and reports the range end', () => {
+  const run = runFixture(SCRIPT, passage());
+  const between = (from: string, to?: string) => messagesBetween(run, from, to);
+  {
     const { snap } = run;
-    const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
-    const outside = (first: number, last: number) => range(1, 48).filter(v => v < first || v > last);
 
     // A whole-chapter day: nothing greyed, nothing moved, nothing reported.
     expect(snap.none).toMatchObject({ scrollTop: 0, grey: [], greyHeadings: [] });
@@ -202,9 +231,28 @@ it('opens at the range, greys outside it until the member scrolls out, and repor
     for (const [from, to] of [['open', 'end'], ['other', 'up'], ['loading', 'done']]) {
       expect(between(from, to).filter(m => m === 'collapse'), from).toEqual([]);
     }
-  } finally {
-    rmSync(work, { recursive: true, force: true });
   }
+}, 90000);
+
+it('keeps a range from verse 1 grey until the member reads on past its last verse', () => {
+  const run = runFixture(FROM_START_SCRIPT, passage('<div style="height:320px">詩篇 第一百一十九篇</div>'));
+  const { snap } = run;
+  const line = run.bandTop + run.bandHeight / 3;
+
+  // Opened at the chapter top, with the range's first heading already below the reading line.
+  expect(snap.opened.scrollTop).toBe(0);
+  expect(snap.opened.firstTop!).toBeGreaterThan(line);
+  expect(snap.opened.grey).toEqual(outside(1, 8));
+  // A first short drag down: the range still spans the reading line, so it stays grey.
+  expect(snap.small.scrollTop).toBeGreaterThan(0);
+  expect(snap.small.firstTop!).toBeGreaterThan(line);
+  expect(snap.small.lastBottom!).toBeGreaterThan(line);
+  expect(snap.small.grey).toEqual(outside(1, 8));
+  expect(snap.small.greyHeadings).toEqual([9, 17, 25, 33, 41]);
+  // Reading on past verse 8 gives the rest of the chapter its normal colour.
+  expect(messagesBetween(run, 'past', 'done')).toContain('end:PSA.119.1-8:true');
+  expect(snap.past.grey).toEqual([]);
+  expect(snap.past.greyHeadings).toEqual([]);
 }, 90000);
 
 it('reads only well-formed range-end messages', () => {
