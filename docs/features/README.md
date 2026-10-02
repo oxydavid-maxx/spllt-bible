@@ -1,7 +1,7 @@
 # 竹科聖經功能清單
 
 > 使用者看得到的每個功能都在這裡有一列，詳細行為看「規格」欄的檔案。
-> 依據：0.5.22 程式碼，2026-10-01 核對；正式成品與發布驗收另外綁定。
+> 依據：0.5.22 程式碼，2026-10-01 核對；半章的日子與公告下次卡片排法 2026-10-02 加入（下一版 App）。正式成品與發布驗收另外綁定。
 > **新增或改變功能的 PR，同一個 PR 更新這份清單和對應的規格**（規則在 [`AGENTS.md`](../../AGENTS.md)，守衛測試 `tests/tools/featureDocs.test.ts`）。
 
 ## 規格檔
@@ -21,7 +21,7 @@
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| 下次聚會 | 下次主日的日期、主題或兩堂各自的內容、服事名單、報名按鈕 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
+| 下次聚會 | 下次主日的日期、主題或兩堂各自的內容（「類別 · 講員」在上、標題在下）、服事名單、報名按鈕 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 報名狀況 | 已有幾人報名、有哪些朋友報名 | 公告的下次聚會卡片 | Android、iOS | [announcements.md](announcements.md) |
 | 上次講道與以前的主日 | 日期/講員/標題在上、連結按鈕在下；不是今年的日期顯示年份 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 離線提示 | 抓不到最新公告時，小字註明目前顯示哪一週 | 公告分頁底部 | Android、iOS | [announcements.md](announcements.md) |
@@ -32,7 +32,8 @@
 |---|---|---|---|---|
 | 開啟日期 | 打開 App 自動落在今天；計畫還沒開始或已結束時落在最近的一天 | 分頁列「讀經」 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 日期列 ‹ › | 換到前一個或下一個排定讀經日，沒有就變灰 | 讀經頁頂部 | Android、iOS | [reading-plan.md](reading-plan.md) |
-| 當日章節 | 一排標籤對應當天每段經文，點哪段讀哪段 | 讀經頁日期列下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 當日章節 | 一排標籤對應當天每段經文，點哪段讀哪段；只讀半章的寫範圍（詩119:1-88），同一章接在一起的兩段合成一個（徒2） | 讀經頁日期列下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 半章的日子 | 整章照樣顯示，打開時捲到範圍第一節，範圍外變灰；手指滑出範圍就恢復顏色 | 讀經頁（計畫只排半章的日子） | Android、iOS | [reader.md](reader.md) |
 | 自由閱讀 | 換到計畫以外的書卷和章 | 讀經頁「選擇其他章節」 | Android、iOS | [reader.md](reader.md) |
 | 譯本選擇 | 5 個譯本，中文和英文分組，每個帳號各記一份 | 更多閱讀工具 → 選擇譯本 | Android、iOS | [reader.md](reader.md) |
 | 字體設定 | 字級、字型、行距 | 更多閱讀工具 → 調整字體 | Android、iOS | [reader.md](reader.md) |
@@ -42,7 +43,7 @@
 | 閱讀位置記憶 | 記住每個帳號每一天讀到哪裡，回來接著讀 | 自動 | Android、iOS | [reader.md](reader.md) |
 | 載入失敗與重試 | 失敗時顯示說明和「重試」，回到前景自動再試 | 讀經頁載入經文時 | Android、iOS | [reader.md](reader.md) |
 | 在 YouVersion 開啟、版本資訊 | 用 YouVersion 開同一章；看譯本的出版和版權資訊 | 更多閱讀工具 | Android、iOS | [reader.md](reader.md) |
-| 完成打卡 | 讀完按圓圈打卡；讀到最後一段時圓圈展開成按鈕 | 讀經頁右下角 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 完成打卡 | 讀完按圓圈打卡；讀到最後一段的結尾（半章的日子是範圍最後一節）時圓圈展開成按鈕 | 讀經頁右下角 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 補登和撤銷 | 今天和前 6 天可以補打卡；撤銷要先確認並收回積分 | 讀經頁、積分月曆 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 離線打卡與跨手機 | 沒網路先記住、連上後送出；另一支手機完成的日子也顯示已完成 | 讀經頁、積分頁 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 整份讀經計畫清單 | 分月顯示 9/1–12/31，今天標底色、讀完打勾，點一天就去讀；上緣可下拉關閉 | 讀經頁點日期、積分月曆的「整份計畫」 | Android、iOS | [reading-plan.md](reading-plan.md) |
@@ -51,9 +52,9 @@
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| 播放朗讀 | 播放這一章的朗讀，沒有朗讀或暫時失敗時會說明，能重試的有「重試」 | 讀經頁右下角播放鍵 | Android、iOS | [narration.md](narration.md) |
+| 播放朗讀 | 播放這一章的朗讀，沒有朗讀或暫時失敗時會說明，能重試的有「重試」；半章的日子只念範圍，譯本沒有逐節時間時念整章並在播放鍵旁說明 | 讀經頁右下角播放鍵 | Android、iOS | [narration.md](narration.md) |
 | 朗讀速度 | 0.75、1、1.25、1.5 倍，立即套用 | 更多閱讀工具 | Android、iOS | [narration.md](narration.md) |
-| 連讀 | 念完一章自動接當天下一段，最後一段念完就停 | 更多閱讀工具 | Android、iOS | [narration.md](narration.md) |
+| 連讀 | 念完一段（一章或半章的範圍）自動接當天下一段，最後一段念完就停 | 更多閱讀工具 | Android、iOS | [narration.md](narration.md) |
 | 背景與鎖定畫面播放 | 離開讀經頁、關螢幕都繼續念，鎖定畫面可以控制 | 播放後自動 | Android、iOS | [narration.md](narration.md) |
 | 朗讀跟著走 | 畫面跟著念到的經節走並反白；手指滑開就停，按「回到朗讀處」再跟上 | 朗讀時的讀經頁 | Android、iOS | [narration.md](narration.md) |
 | 日記頁的朗讀控制 | 在日記頁控制同一段朗讀 | 日記頁播放鍵 | Android、iOS | [narration.md](narration.md) |

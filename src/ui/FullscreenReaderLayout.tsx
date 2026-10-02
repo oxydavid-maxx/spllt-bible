@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Alert, BackHandler, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SheetBackdrop } from './SheetBackdrop';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -8,6 +8,8 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationBar } from 'expo-navigation-bar';
 import { ChapterAudioAutoplayNotice, ChapterAudioAutoplayToggle, ChapterAudioControls, type ChapterAudioControlsHandle } from './ChapterAudioControls';
 import { formatChapterTitleZhTw, formatReferenceZhTw } from '../domain/scriptureReference';
+import { readingRangeOf } from '../domain/readingRange';
+import type { ReadingRangeEnd } from './readingRangeBridge';
 import { theme } from './Theme';
 import { formatReadingDateHeader, formatReadingDateLabel } from './ReadingDateNavigator';
 import { setReaderImmersed } from './readerImmersionState';
@@ -111,6 +113,14 @@ export function useReaderChrome() {
     else showTools();
   }, [hideTools, showTools]);
   const handleCanvasEdge = useCallback(({ atEnd }: { atEnd: boolean }) => setAtChapterEnd(atEnd), []);
+  // Half-chapter days: the page reports reaching the last verse of the day's range, with the range it is
+  // for, so a report for a passage already left is never applied to the next one. Arriving there brings
+  // the tools back, as arriving at a chapter's end does.
+  const [rangeEnd, setRangeEnd] = useState<ReadingRangeEnd | null>(null);
+  const handleRangeEnd = useCallback((next: ReadingRangeEnd | null) => {
+    setRangeEnd(current => current?.range === next?.range && current?.atEnd === next?.atEnd ? current : next);
+    if (next?.atEnd) setToolsVisible(true);
+  }, []);
   // Read-along (2026-09-29): the page follows the narrated verse until a finger drag or a verse
   // selection lets go; only 回到朗讀處 follows again. See readAlongFollow.ts.
   const [readAlongState, dispatchReadAlong] = useReducer(readAlong, initialReadAlong);
@@ -144,9 +154,9 @@ export function useReaderChrome() {
   const openInfo = useCallback(() => { setInfoOpen(true); setMoreOpen(false); setAudioOpen(false); showTools(); }, [showTools]);
   const closeInfo = useCallback(() => { setInfoOpen(false); showTools(); }, [showTools]);
   const returnToNarrationVisible = focused && showReturnToNarration(readAlongState, verseSelected || sheetOpen);
-  return { focused, toolsVisible: focused && toolsVisible, collapsed, barsHidden, atChapterEnd, verseSelected, verseClearSignal, settledInsets: settled.current, screenReaderEnabled, moreOpen, audioOpen, infoOpen,
+  return { focused, toolsVisible: focused && toolsVisible, collapsed, barsHidden, atChapterEnd, rangeEnd, verseSelected, verseClearSignal, settledInsets: settled.current, screenReaderEnabled, moreOpen, audioOpen, infoOpen,
     readAlong: readAlongState, returnToNarrationVisible, reduceMotion,
-    hideTools, showTools, revealTools, handleCanvasScroll, handleCanvasEdge, handleVerseSelection, handleSheetOpenChange, clearVerseSelection, openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo,
+    hideTools, showTools, revealTools, handleCanvasScroll, handleCanvasEdge, handleRangeEnd, handleVerseSelection, handleSheetOpenChange, clearVerseSelection, openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo,
     handleNarration, handleFollowRelease, handleFollowPosition, returnToNarration, handleReadAlongChapter };
 }
 export interface FullscreenReaderLayoutProps {
@@ -192,7 +202,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   const [versionPageOpen, setVersionPageOpen] = useState(false);
   const audioControlRef = useRef<ChapterAudioControlsHandle | null>(null);
   const curatedVersions = versionOptions !== undefined && onSelectVersion !== undefined;
-  const { handleCanvasEdge, clearVerseSelection, handleReadAlongChapter } = chrome;
+  const { handleCanvasEdge, handleRangeEnd, clearVerseSelection, handleReadAlongChapter } = chrome;
   const verseSelected = useRef(chrome.verseSelected);
   verseSelected.current = chrome.verseSelected;
   useEffect(() => { if (!chrome.moreOpen) setVersionPageOpen(false); }, [chrome.moreOpen]);
@@ -208,6 +218,16 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
     handleReadAlongChapter();
     if (verseSelected.current) clearVerseSelection();
   }, [chapterUsfm, handleCanvasEdge, clearVerseSelection, handleReadAlongChapter]);
+  // A half-chapter day (maintainer 2026-10-01/02): the day's passage reads part of the chapter on screen.
+  const passageReference = selectionSource === 'ASSIGNED' && references.length > 0
+    ? references[Math.max(0, Math.min(activeReferenceIndex, references.length - 1))] ?? '' : '';
+  const passageRange = readingRangeOf(passageReference);
+  const verseRange = passageRange && passageRange.chapterUsfm === chapterUsfm.trim().toUpperCase() ? passageRange : null;
+  const rangeKey = verseRange ? passageReference : null;
+  const verseRangeProp = useMemo(() => verseRange ? { first: verseRange.first, last: verseRange.last } : null, [verseRange?.first, verseRange?.last]);
+  useEffect(() => { handleRangeEnd(null); }, [chapterUsfm, rangeKey, handleRangeEnd]);
+  // Without per-verse timing the recording reads the whole chapter; ▶ says so on such a day.
+  const [narrationScope, setNarrationScope] = useState<'range' | 'chapter' | null>(null);
   const closeVersionPage = () => { setVersionPageOpen(false); chrome.closeMore(); };
   const openOfficial = (open: () => void) => { chrome.closeMore(); open(); };
   const openYouVersion = () => {
@@ -229,8 +249,11 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
     ? Math.max(0, Math.min(activeReferenceIndex, references.length - 1))
     : -1;
   const nextIndex = assignedIndex >= 0 && assignedIndex < references.length - 1 ? assignedIndex + 1 : -1;
-  const atEnd = !chrome.collapsed && chrome.atChapterEnd;
-  // The last chapter read to its end: the same ○ grows into the day's completion call (one button, one record).
+  const atRangeEnd = rangeKey !== null && chrome.rangeEnd?.range === rangeKey && chrome.rangeEnd.atEnd;
+  const atEnd = !chrome.collapsed && (chrome.atChapterEnd || atRangeEnd);
+  // The last passage read to its end (the chapter's, or on a half-chapter day the range's last verse): the
+  // same ○ grows into the day's completion call (one button, one record). Before that it is a plain ○ that
+  // can be pressed at any time.
   // Not while 回到朗讀處 holds the bottom-left: on a 360 dp phone the grown ○ would run into it.
   const completionExpanded = atEnd && assignedIndex >= 0 && nextIndex < 0 && !completed && !completionActionDisabled && !completionFailed && !chrome.returnToNarrationVisible;
   const nextReference = atEnd && nextIndex >= 0 ? references[nextIndex] : undefined;
@@ -308,6 +331,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
       <View pointerEvents="box-none" style={[styles.aboveActions, { left: theme.spacing.lg + insets.left, right: theme.spacing.lg + insets.right, bottom: aboveActions }, chrome.verseSelected && styles.stepAside]}>
         <ChapterAudioAutoplayNotice active={chrome.focused} />
         {statusMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.statusBanner}>{statusMessage}</Text> : null}
+        {verseRange && narrationScope === 'chapter' ? <Text style={styles.narrationNote}>這個譯本的朗讀沒有分節，會念整章</Text> : null}
         {nextReference ? <Pressable accessibilityRole="button" accessibilityLabel={`繼續讀 ${formatChapterTitleZhTw(nextReference)}`} onPress={continueReading} android_ripple={{ color: theme.colors.primarySoft }} style={styles.nextCard}>
           <Text numberOfLines={1} style={styles.nextCardText}>{`繼續讀 ${formatReferenceZhTw(nextReference)} ›`}</Text>
         </Pressable> : null}
@@ -328,7 +352,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           {completionExpanded ? <Text style={styles.completionExpandedText}>完成今日讀經</Text> : null}
         </Pressable>}
         <View accessible={false} style={styles.audioCell}>
-          <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={false} readerAction active={audioOwnerActive} sharedOwner />
+          <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={false} readerAction active={audioOwnerActive} sharedOwner verseRange={verseRangeProp} onNarrationScope={setNarrationScope} />
         </View>
       </View>
       {/* Read-along let go (a finger drag or a selected verse): the only way back, bottom-left, clear of ▶. */}
@@ -492,6 +516,7 @@ const styles = StyleSheet.create({
   collapsedPosition: { flexShrink: 0, color: theme.colors.muted, fontSize: 13, lineHeight: 16, fontWeight: '600' },
   collapsedExpand: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   aboveActions: { position: 'absolute', zIndex: 3, gap: theme.spacing.sm },
+  narrationNote: { alignSelf: 'flex-end', color: theme.colors.muted, backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.chip, overflow: 'hidden', fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xxs },
   statusBanner: { alignSelf: 'flex-end', color: theme.colors.ink, backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.chip, overflow: 'hidden', fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs },
   nextCard: { height: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderRadius: 26, backgroundColor: theme.colors.primary, ...floating },
   nextCardText: { color: theme.colors.white, fontSize: 17, lineHeight: 22, fontWeight: '700' },

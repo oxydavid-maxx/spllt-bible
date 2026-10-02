@@ -24,7 +24,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAudioPlayer, type AudioLockScreenOptions, type AudioMetadata, type AudioStatus } from 'expo-audio';
 import { theme } from './Theme';
-import { isAuthorizedAudioEnabled, isQaTestAudioEnabled, resolveChapterAudioSession, verseAtPosition } from '../services/audioChapterResolver';
+import { isAuthorizedAudioEnabled, isQaTestAudioEnabled, narrationWindow, resolveChapterAudioSession, verseAtPosition } from '../services/audioChapterResolver';
 import { createCapabilityCoordinator, type CapabilityCoordinator, type CapabilityOutcome } from '../services/contentCapabilityClient';
 import { getAuthSnapshot, useAuthSnapshot, type AuthSession } from '../services/authSession';
 import { validateCapability } from '../domain/chapterAudioContract';
@@ -179,6 +179,13 @@ export interface ChapterAudioControlsProps {
   onPlaybackPaused?: (chapterUsfm: string) => void;
   onPlaybackEnded?: (chapterUsfm: string) => void;
   onPlaybackError?: (chapterUsfm: string) => void;
+  /**
+   * Half-chapter days (maintainer 2026-10-02): the verses of this chapter the day reads. Narration starts
+   * at the first and stops after the last, which counts as the end of the passage. Null reads the chapter.
+   */
+  verseRange?: { first: number; last: number } | null;
+  /** Whether the day's range is narrated alone ('range'), or as the whole chapter for want of per-verse timing ('chapter'). */
+  onNarrationScope?: (scope: 'range' | 'chapter' | null) => void;
 }
 
 export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, ChapterAudioControlsProps>(function ChapterAudioControls({
@@ -196,6 +203,8 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
   onPlaybackPaused,
   onPlaybackEnded,
   onPlaybackError,
+  verseRange = null,
+  onNarrationScope,
 }, ref) {
   const autoplay = useChapterAudioAutoplay();
   const autoplayRef = useRef(autoplay);
@@ -289,6 +298,18 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
     () => resolveChapterAudioSession({ chapterUsfm, versionId, qaTestAudioEnabled: qaEnabled, audioAuthorized, capability }),
     [chapterUsfm, versionId, qaEnabled, audioAuthorized, capability],
   );
+
+  // The stretch of the recording the day reads. Read through a ref: the range can change with the chapter
+  // (and its player binding) staying the same, as on 10/30 (徒7:1-29 then 徒7:31-60).
+  const rangeFirst = verseRange?.first ?? null, rangeLast = verseRange?.last ?? null;
+  const rangeWindow = useMemo(() => rangeFirst === null || rangeLast === null ? null
+    : narrationWindow(resolved.source?.verseTiming, { first: rangeFirst, last: rangeLast }), [rangeFirst, rangeLast, resolved.source?.verseTiming]);
+  const windowRef = useRef(rangeWindow);
+  windowRef.current = rangeWindow;
+  const scopeReport = useRef(onNarrationScope);
+  scopeReport.current = onNarrationScope;
+  const narrationScope = rangeFirst === null || !resolved.source ? null : rangeWindow ? 'range' : 'chapter';
+  useEffect(() => { scopeReport.current?.(narrationScope); }, [narrationScope]);
 
   // ONE player for the component's lifetime, driven by replace(). expo-audio releases the player it
   // owns on UNMOUNT, and this component stays mounted across chapter changes.
@@ -440,9 +461,31 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
     };
     // Expo reports decoder/network failures after play() has returned. Polling currentStatus loses
     // these one-shot errors; subscribe per binding and retire the exact listener with that binding.
+    // The end of the day's range is the end of this passage: pause there and hand over as at EOF (連讀
+    // moves on). Status ticks come every 500 ms, so the last second is timed to the verse's end.
+    let rangeTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearRangeTimer = () => { if (rangeTimer !== null) { clearTimeout(rangeTimer); rangeTimer = null; } };
+    const stopAtRangeEnd = () => {
+      clearRangeTimer();
+      if (!bindingIsCurrent() || eofNotifiedBinding.current === bound) return;
+      try { p.pause?.(); } catch { /* the hand-over below still happens */ }
+      if (!hiddenRef.current) { notifyPlayingVerse(chapterUsfm, null); setProgress(bound.getProgress()); }
+      finishedBinding.current = bound;
+      eofNotifiedBinding.current = bound;
+      notifyPlaybackEnded(chapterUsfm);
+    };
     const subscription = (player as unknown as PlaybackStatusEmitter).addListener('playbackStatusUpdate', status => {
       if (!bindingIsCurrent()) return;
       if (status.error) { reportPlaybackError(); return; }
+      const stop = windowRef.current?.stop ?? null;
+      if (stop !== null && typeof status.currentTime === 'number' && eofNotifiedBinding.current !== bound) {
+        clearRangeTimer();
+        const remaining = stop - status.currentTime;
+        if (remaining <= 0.02) { if (status.playing !== false) { stopAtRangeEnd(); return; } }
+        else if (status.playing !== false && remaining < 1.5) {
+          rangeTimer = setTimeout(() => { rangeTimer = null; if ((player as unknown as { playing?: boolean }).playing) stopAtRangeEnd(); }, remaining / (autoplayRef.current.speed ?? 1) * 1000);
+        }
+      }
       const hidden = hiddenRef.current;
       if (!hidden && typeof status.currentTime === 'number') notifyPlayingVerse(chapterUsfm, verseAtPosition(resolved.source?.verseTiming, status.currentTime));
       if (status.didJustFinish) {
@@ -481,6 +524,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
     }
     return () => {
       subscription.remove();
+      clearRangeTimer();
       if (resyncOnShow.current === resync) resyncOnShow.current = () => {};
       notifyPlayingVerse(chapterUsfm, null);
       logPause('rebind', chapterUsfm);
@@ -492,6 +536,24 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
       }
     };
   }, [player, key, sessionKey, active, resolved.source?.chapterUsfm, resolved.source?.uri, retryNonce]);
+
+  // Another passage of the same chapter (10/30: 徒7:1-29 → 徒7:31-60) keeps the binding, so it is stopped
+  // here, as a chapter change stops it. A range just read to its end is already stopped: 連讀 moves on
+  // from there and must not be cancelled.
+  const lastRange = useRef({ first: rangeFirst, last: rangeLast });
+  useEffect(() => {
+    const previous = lastRange.current;
+    lastRange.current = { first: rangeFirst, last: rangeLast };
+    if (previous.first === rangeFirst && previous.last === rangeLast) return;
+    const bound = playbackRef.current;
+    if (!bound || bound.disposed || eofNotifiedBinding.current === bound || !bound.getProgress().playing) return;
+    logPause('rebind', chapterUsfm);
+    void bound.pause().then(() => {
+      if (playbackRef.current !== bound) return;
+      setProgress(bound.getProgress());
+      notifyPlaybackPaused(chapterUsfm);
+    }).catch(() => {});
+  }, [rangeFirst, rangeLast]);
 
   // Progress is polled from the REAL player, never simulated. A paused or idle player reports the
   // same numbers on every tick, and returning a fresh object each time made React repaint the whole
@@ -529,11 +591,16 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
         && validateCapability(confirmed, { versionId, usfm: chapterUsfm }, Date.now()).ok)));
     if (!mayPlay() || !bound) return false;
     const nativeProgress = bound.getProgress();
-    if (finishedBinding.current === bound || (nativeProgress.durationSeconds > 0
+    // A half-chapter day starts at its range, and starts it again from outside it (a new range of the
+    // same chapter, or a range already read); a pause inside the range resumes where it was.
+    const range = windowRef.current;
+    const outsideRange = range !== null && (nativeProgress.positionSeconds < range.start - 0.25
+      || (range.stop !== null && nativeProgress.positionSeconds >= range.stop - 0.05));
+    if (finishedBinding.current === bound || outsideRange || (nativeProgress.durationSeconds > 0
       && nativeProgress.positionSeconds >= nativeProgress.durationSeconds && !nativeProgress.playing)) {
       // Native EOF can have isLoaded=false. That is not a failed stream and does
       // not require replace(): rewind, then recheck the exact binding after await.
-      await player.seekTo(0);
+      await player.seekTo(range?.start ?? 0);
       if (!mayPlay()) return false;
       finishedBinding.current = null;
       eofNotifiedBinding.current = null;

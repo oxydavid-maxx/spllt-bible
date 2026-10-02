@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, Linking, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { buildFixtureModels } from '../../src/ui/routes';
@@ -29,6 +29,7 @@ import type { CompletionAwardEvent } from '../../src/services/completionControll
 import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
 import { useReaderRetrySignal } from '../../src/ui/readerRetrySignal';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
+import { readerSegments, readingRangeOf } from '../../src/domain/readingRange';
 
 let handledTodayReaderTabPressRevision = 0;
 
@@ -43,7 +44,10 @@ export default function ReaderScreen() {
   const session = auth.session;
   const memberId = session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
   const model = buildFixtureModels(selectedDate);
-  const references = day?.references ?? model.reader.references;
+  // The day's tags: two halves of one chapter that follow each other are one passage (10/23 徒2), so it
+  // is read and narrated once. The calendar and the plan list keep the plan's own references.
+  const planReferencesKey = (day?.references ?? model.reader.references).join('|');
+  const references = useMemo(() => readerSegments(planReferencesKey ? planReferencesKey.split('|') : []), [planReferencesKey]);
   const referencesKey = references.join('|');
   const [preferencesStore] = useState(createNativeReaderPreferencesStore);
   const preferences = useReaderPreferences(memberId, preferencesStore);
@@ -160,6 +164,9 @@ export default function ReaderScreen() {
   const currentBook = selection.source === 'FREE' ? selection.book : assignedBook;
   const currentChapter = selection.source === 'FREE' ? selection.chapter : assignedChapter;
   const currentUsfm = currentBook && currentChapter ? `${currentBook}.${currentChapter}` : '';
+  // A half-chapter day (maintainer 2026-10-01/02): the whole chapter is shown, opened at and narrated
+  // over the day's verses. Free reading has no range.
+  const readingRange = selection.source === 'ASSIGNED' && readingRangeOf(assignedReference) ? assignedReference : null;
 
   // Free-browse moves arrive as SEPARATE book and chapter callbacks from the SDK, often within one
   // batch. Reading the other half out of the render closure produced old-book + new-chapter, because
@@ -357,6 +364,8 @@ export default function ReaderScreen() {
       onNarrationChange={chrome.handleNarration}
       onFollowRelease={chrome.handleFollowRelease}
       onFollowPosition={chrome.handleFollowPosition}
+      readingRange={readingRange}
+      onRangeEnd={chrome.handleRangeEnd}
       clearVerseSelectionSignal={chrome.verseClearSignal}
       retrySignal={retrySignal}
       canvasInsets={readerCanvasInsets(chrome.settledInsets)}

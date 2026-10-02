@@ -15,6 +15,7 @@
 | 功能 | 使用者看到什麼 |
 |---|---|
 | 指定/自由閱讀 | 頂端章節籤顯示今天的指定範圍，目前那一段反白；點其他籤直接換、點自己那一籤或「選擇其他章節」可自由換書卷/章 |
+| 半章的日子 | 計畫只排半章（如詩119:1-88）時，整章照樣顯示，打開時捲到範圍第一節，範圍外的經文變灰；用手指滑出範圍就恢復正常顏色 |
 | 譯本選擇 | 更多閱讀工具 → 選擇譯本：5 個版本，依繁體中文/English 分組 |
 | 字體設定 | 更多閱讀工具 → 調整字體：官方字體大小/字型/行距面板 |
 | 經節複製 | 選取經文出現複製按鈕，寫入剪貼簿並可帶入日記引句 |
@@ -40,11 +41,25 @@
 - 「回到指定範圍」（`returnToAssignedRange`）與再次點「讀經」tab 且判定要重置到指派起點時（`todayReaderTabPressResetToAssignedStart`），都會把選擇重設回第一段指定經文；後者只在登入身分、日期都跟當初觸發的一致，且不是仍在「同一天再次點讀經」的情形下才會覆蓋現有選擇。
 - 未登入（訪客）時不記住/讀取任何位置，選擇只存在畫面狀態中，離開就消失。
 
+### 半章的日子（`src/domain/readingRange.ts`、`src/ui/readingRangeBridge.ts`、`app/(tabs)/reader.tsx`）
+
+計畫裡有 15 天只讀半章，例如 10/15 詩119:1-88、10/22 徒1＋徒2:1-24。這些日子：
+
+- 讀經頁照樣顯示整章，不裁掉範圍外的經文。
+- 打開這一段（換到這個籤、換日期、連讀接到這一段）時，畫面直接跳到範圍第一節：第一節上面緊接著小標題時，小標題放在可讀區頂端；範圍從第 1 節開始時停在章首。同一段只在打開時跳一次，之後換字級、選經文都不會再跳回去。
+- 範圍外的經文和帶出它們的小標題變灰。使用者用手指往下（或往上）滑，讓範圍離開可讀區上方三分之一那條線，灰色就恢復正常顏色，這一段之後都不再變灰。App 自己的捲動（打開時的跳轉、朗讀跟著走）不算。
+- 讀到範圍最後一節（整節出現在可讀區內，或已經捲過去）時，頁面告訴 App；如果這是當天最後一段，右下角圓圈展開成「完成今日讀經」，不用捲到整章最後；不是最後一段時出現「繼續讀 下一段 ›」。工具列收合時也會叫回來。完成規則見 [reading-plan.md](reading-plan.md)。
+- 朗讀只念範圍，見 [narration.md](narration.md)「半章的日子」。
+- 同一天、同一章、節數接在一起的兩段（10/23 徒2:1-24＋徒2:25-47）合成一個籤「徒2」，當成整章讀（`readerSegments`）。
+- 自由閱讀（換到計畫外的章，包括同一章用「選擇其他章節」選到的）沒有範圍：不跳、不變灰。
+- 頁面還在載入新的一章時（SDK 標記 `aria-busy`）不做任何事，等新的一章出現才跳和變灰，避免在上一章的內容上操作。
+- 做法：App 把當天這一段的參照（例如 `PSA.119.1-88`）經 SDK patch 寫到頁面的 `data-qingmu-range`；頁面裡的 `readingRangeScript` 負責跳轉、變灰、回報「讀到範圍終點」（`qingmu.reader.range.end`，附上是哪個範圍，換了段落後才到的舊回報不會套用）。這段注入程式不隨範圍改變，所以換段落不會讓 WebView 重新載入。
+
 ### 章節導覽與章節籤（`src/ui/FullscreenReaderLayout.tsx`）
 
 - 一般（未收合）狀態：頁首依序是日期列（‹ 上一個排定讀經日 · 今天日期 · 下一個排定讀經日 ›，規則見 [reading-plan.md](reading-plan.md)）與章節籤列。章節籤列列出今天每一段指定經文各一個籤，目前那一段反白；沒有排定時只顯示一個「自由閱讀：《書卷章節》」籤。籤列右側是「更多閱讀工具」按鈕。
 - 點目前反白的那一籤＝打開官方「選擇其他章節」選單；點其他籤＝直接切換到那一段。
-- 讀完當天最後一段、且尚未完成、且沒有其他遮擋時，右下角原本圓形的完成按鈕就地展開成「○ 完成今日讀經」文字按鈕（`completionExpanded`）；章尾同時出現「繼續讀 下一段 ›」卡片，點下去換到下一段指定經文。這兩個按鈕跟隨完成/連讀邏輯，完整規則見 [reading-plan.md](reading-plan.md)。
+- 讀完當天最後一段（章尾；半章的日子是範圍最後一節）、且尚未完成、且沒有其他遮擋時，右下角原本圓形的完成按鈕就地展開成「○ 完成今日讀經」文字按鈕（`completionExpanded`）；不是最後一段時，同一個位置出現「繼續讀 下一段 ›」卡片，點下去換到下一段指定經文。這兩個按鈕跟隨完成/連讀邏輯，完整規則見 [reading-plan.md](reading-plan.md)。
 
 ### 沉浸模式與工具列收合（`src/ui/FullscreenReaderLayout.tsx`、`src/ui/readerSettingsBridge.ts`、`src/ui/readerImmersionState.ts`）
 
@@ -123,6 +138,10 @@
 - **書名整個畫面只出現一次，放在章節籤**：範圍列、內文標題、底部膠囊都各顯示一次是設計錯誤，已定案改掉。（來源：[../design/reader-page.md](../design/reader-page.md) §2 已定案「書名」）
 - **經文快取明訂 30 分鐘的新鮮期，不留給 SDK 自己決定預設保存期限**：避免 SDK 沒設定時自己套用不可預期的快取時間。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §4.4）
 
+- **半章的日子整章照樣顯示，不裁掉範圍外的經文**：打開時捲到範圍第一節，範圍外變灰；使用者自己用手指滑出範圍，灰色就恢復，不擋人往下讀。App 自己的捲動不會讓灰色消失。（維護者 2026-10-01～02 決定，mock 已確認）
+- **同一天、同一章、接在一起的兩段合成一個籤**：10/23 的徒2:1-24＋徒2:25-47 顯示成「徒2」，讀和朗讀都只一次。從第 1 節開始的合併就是整章（教會表只把一章拆成前後兩半，`tests/domain/readingRange.test.ts` 核對 2026 計畫）。不相連的兩段（10/30 徒7:1-29、徒7:31-60，中間缺 7:30）不合併。（維護者 2026-10-01～02 決定）
+- **範圍的跳轉、變灰、終點判斷放在頁面裡的注入程式，經 SDK patch 的 `data-qingmu-range` 傳進去**：跟朗讀跟著走同一個做法；不把範圍編進注入程式本身，因為注入程式一改，WebView 會重新載入回章首。
+
 **待確認（沒有記錄，請維護者確認是否刻意）：**
 
 - owner 帳號目前存的行距是 2.0（新帳號預設是 1.7），是否為本人特意設定過，沒有記錄，暫不擅自清掉。（來源：[../design/reader-page.md](../design/reader-page.md) §6）
@@ -132,7 +151,7 @@
 - 更新提示（下載新版 APK 的橫幅）只在 Android 出現；`FullscreenReaderLayout` 把 `UpdateBanner` 放進「更多閱讀工具」清單中，但橫幅本身在非 Android 平台一律回報「沒有更新」且不發任何網路請求（`AGENTS.md` 第 54-66 行第 2 條；`app/(tabs)/reader.tsx` 傳入 `updateBanner={<UpdateBanner />}`）。
 - 面板/選單（更多閱讀工具、版本資訊、譯本選擇、註腳）都用本專案自己的底部面板元件（`src/ui/sheet/bottomSheet.tsx`）取代第三方 `@gorhom/bottom-sheet`，兩平台共用同一套實作，理由是 React Native 0.85 上 reanimated/worklets 的原生記憶體與常駐畫格成本，以及 iOS 上可按的背景元件會讓 VoiceOver/自動化測試找不到面板內容（`src/ui/sheet/bottomSheet.tsx` 檔案開頭注解、`src/ui/SheetBackdrop.tsx`）。
 - 沉浸模式會呼叫 `NavigationBar.hidden`（Android 系統導覽列）與 `StatusBar hidden`；iOS 沒有對應的畫面上系統導覽列，這段程式碼在 iOS 上實際生效範圍本次未能從程式碼確認，列為待確認（`src/ui/FullscreenReaderLayout.tsx`）。
-- 除上述之外，本文件涵蓋的行為（章節籤、譯本選擇、字體設定、經節複製、沉浸收合叫回、內容預先載入、位置記憶）程式碼中沒有 `Platform.OS` 分支，兩平台共用同一份實作（已於 `FullscreenReaderLayout.tsx`、`YouVersionReader.tsx`、`app/(tabs)/reader.tsx` 逐檔確認）。
+- 除上述之外，本文件涵蓋的行為（章節籤、半章的日子、譯本選擇、字體設定、經節複製、沉浸收合叫回、內容預先載入、位置記憶）程式碼中沒有 `Platform.OS` 分支，兩平台共用同一份實作（已於 `FullscreenReaderLayout.tsx`、`YouVersionReader.tsx`、`app/(tabs)/reader.tsx` 逐檔確認）。
 
 ## 資料與後端
 
@@ -147,6 +166,10 @@
 - `tests/ui/readerLayoutA.test.ts`、`tests/ui/readerLayoutContract.test.ts` — 沉浸收合/展開時機與版面契約（`readerLayoutContract.ts`）。
 - `tests/ui/readerImmersionBridge.test.ts`、`tests/ui/readerImmersionSettings.test.ts` — WebView 內收合/展開偵測腳本、沉浸狀態廣播。
 - `tests/ui/readerRetrySignal.test.ts` — 回前景/回讀經頁自動重試訊號。
+- `tests/ui/readingRangeBridge.test.ts` — 半章的日子在真瀏覽器（chrome-headless-shell）裡：打開時捲到範圍第一節、範圍外變灰、手指滑出範圍恢復顏色、App 自己的捲動不算、回報讀到範圍終點、載入中不動作。
+- `tests/domain/readingRange.test.ts` — 範圍解析、同一章接在一起的兩段合成一個籤（含 2026 計畫的核對）。
+- `tests/ui/partialChapterScreen.test.ts` — 從真實 ReaderScreen 把範圍交給頁面與朗讀、頁面回報終點後出現「繼續讀」、合併的籤。
+- `tests/services/sdkPlayingVerseExtension.test.ts` — SDK patch 把範圍寫成 `data-qingmu-range`。
 - `tests/ui/readerDailyFlow.test.ts` — DOM bridge 訊息（捲動方向、邊界）的編碼/解碼。
 - `tests/ui/readerCompactHeaderContract.test.ts` — 隱藏 SDK 原生標題、精簡頁首樣式的字串契約。
 - `tests/ui/youVersionReader.test.ts` — `YouVersionReader` 元件的整體行為（載入狀態、錯誤卡、疊層）。
