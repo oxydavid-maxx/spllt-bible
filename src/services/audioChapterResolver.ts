@@ -106,6 +106,22 @@ export function verseAtPosition(timing: readonly VerseTiming[] | undefined, posi
   return current;
 }
 
+/**
+ * The stretch of the recording that reads verses first..last (half-chapter days, maintainer 2026-10-02):
+ * from the first verse's start (the recording's start when the range starts the chapter) to the last
+ * verse's end, or to the end of the recording when the range runs to the chapter's end. Null when the
+ * timing does not cover the range; the whole chapter is read then.
+ */
+export function narrationWindow(timing: readonly VerseTiming[] | undefined, range: { first: number; last: number }): { start: number; stop: number | null } | null {
+  if (!timing || timing.length === 0) return null;
+  const opening = timing.find(row => row.verse >= range.first);
+  if (!opening || opening.verse > range.last) return null;
+  const start = range.first <= 1 ? 0 : opening.start;
+  const last = timing.find(row => row.verse === range.last);
+  const after = timing.find(row => row.verse > range.last);
+  return { start, stop: last ? (after ? last.end : null) : after ? after.start : null };
+}
+
 export interface ChapterAudioSession {
   /** The EXISTING seam type. Pass straight to createAudioSession. */
   availability: AudioAvailability;

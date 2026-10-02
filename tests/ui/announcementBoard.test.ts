@@ -163,6 +163,26 @@ describe('the next gathering in full', () => {
     expect(board.byLabel('報名')).toBeDefined();
   });
 
+  // 2026-10-01 (maintainer): category · speaker first, the title under it; a session with neither
+  // (the second session's 青少團契) is one line.
+  it('puts category · speaker above the title, and keeps a session without either to one line', () => {
+    const board = render({
+      ...FULL,
+      next: {
+        ...FULL.next!,
+        sessions: [
+          { label: '第一堂', kind: '信息', title: '亞當的後代', owner: '佑駿' },
+          { label: '第二堂', kind: null, title: '青少團契', owner: null },
+        ],
+      },
+    });
+    const lines = (label: string) => board.byLabel(label).findAll((node) => String(node.type) === 'Text')
+      .filter((node) => node.props.children !== label)
+      .map((node) => ({ text: node.props.children, bold: (node.props.style as { fontWeight?: string }).fontWeight === '800' }));
+    expect(lines('第一堂')).toEqual([{ text: '信息 · 佑駿', bold: false }, { text: '亞當的後代', bold: true }]);
+    expect(lines('第二堂')).toEqual([{ text: '青少團契', bold: true }]);
+  });
+
   it('falls back to the single topic when the file has no sessions', () => {
     const text = render(FULL).text();
     expect(text).toContain('豚汁定食/如何殺柚子');
