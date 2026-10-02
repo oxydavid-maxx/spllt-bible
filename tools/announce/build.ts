@@ -24,6 +24,11 @@ const GATHERING_TABS = ['正慧姐青崇一三周第二堂規劃', '小丁第二
 /** What the first session is on the weeks each first-session tab covers. */
 const FIRST_SESSION_KIND: Record<string, string> = { 中亮第一三周信息排班: '信息', 中亮第二四周青年啟發內容: '青年啟發' };
 const STANDING_TAB = '常設';
+/**
+ * What the second session is called, whatever its tab plans (維護者, 2026-10-01): the plan is the
+ * leaders' working notes (創世記3~5章／分組進行), not something to announce.
+ */
+const SECOND_SESSION_TITLE = '青少團契';
 
 const PAST_WEEKS = 8;
 
@@ -133,9 +138,9 @@ function standingFrom(workbook: Buffer): Record<string, string> | null {
 /** The dated service sheet labels the speaker explicitly; program-tab owners can be a group. */
 /**
  * Both sessions of one Sunday (光佑, 2026-09-27): the first from whichever first-session tab covers
- * that week (信息 on the first and third Sundays, 青年啟發 on the second and fourth), the second from
- * the second-session tabs. Titles are the cell's first line; the rest of a 青年啟發 cell is the
- * small-group questions.
+ * that week (信息 on the first and third Sundays, 青年啟發 on the second and fourth). The second is
+ * there when a second-session tab has a row for that Sunday, and is only ever called 青少團契.
+ * Titles are the cell's first line; the rest of a 青年啟發 cell is the small-group questions.
  */
 function sessionsOn(program: Buffer, date: string): NextSession[] {
   const sessions: NextSession[] = [];
@@ -145,7 +150,7 @@ function sessionsOn(program: Buffer, date: string): NextSession[] {
   }
   for (const tab of GATHERING_TABS) {
     const row = rowFor(readPlanRows(xlsxSheetRows(program, tab)), date);
-    if (row) { sessions.push({ label: '第二堂', kind: null, title: headline(row.topic), owner: row.owner || null }); break; }
+    if (row) { sessions.push({ label: '第二堂', kind: null, title: SECOND_SESSION_TITLE, owner: null }); break; }
   }
   return sessions;
 }
@@ -254,6 +259,8 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
   const thisWeekSermon = rowFor(sermonRows, week);
   const upcoming = nextAfter([...gatheringRows, ...sermonRows], week);
   const sessions = upcoming ? sessionsOn(program, upcoming.date) : [];
+  // Older phones show only topic and owner: they carry the first session, or just 青少團契.
+  const headlineSession = sessions[0] ?? { title: SECOND_SESSION_TITLE, owner: null };
   const roles = upcoming ? rolesOn(xlsxSheetRows(sunday, '2026服事表'), upcoming.date) : [];
   const deck = await deckText(files.deck);
   if (deck === null) return { announcement: null, reason: 'DECK_UNREACHABLE' };
@@ -311,7 +318,7 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
       generatedAt: new Date().toISOString(),
       sermon,
       next: upcoming ? {
-        date: shortDate(upcoming.date), topic: headline(upcoming.topic), owner: upcoming.owner || null, signup,
+        date: shortDate(upcoming.date), topic: headlineSession.title, owner: headlineSession.owner, signup,
         ...(sessions.length ? { sessions } : {}),
         ...(roles.length ? { roles } : {}),
       } : null,

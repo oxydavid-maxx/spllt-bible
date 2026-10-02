@@ -142,7 +142,7 @@ describe('the next gathering, in full (光佑 2026-09-27: both sessions and who 
       date: '9/27',
       sessions: [
         { label: '第一堂', kind: '青年啟發', title: '耶穌：耶穌是誰？', owner: '中亮/大專' },
-        { label: '第二堂', kind: null, title: '爸媽不在家，我要活下去系列: 豚汁定食/如何殺柚子', owner: '淑君校長/大廚' },
+        { label: '第二堂', kind: null, title: '青少團契', owner: null },
       ],
       roles: [
         { label: '講員', value: '中亮' }, { label: '敬拜團+詩歌', value: '大專青少混合' }, { label: '主領(報告)', value: '光佑' },
@@ -150,6 +150,47 @@ describe('the next gathering, in full (光佑 2026-09-27: both sessions and who 
         { label: '清潔', value: '全體' },
       ],
     });
+  });
+});
+
+describe('the second session is 青少團契, nothing more (維護者 2026-10-01)', () => {
+  const sunday = workbook({ '常設': [['key', 'value'], ['地址', '測試地址']] });
+  const program = (tabs: Record<string, string[][]>) => { sources.fetchWorkbook.mockImplementation(async (id: string) => id === PROGRAM_WORKBOOK ? workbook(tabs) : sunday); };
+  const header = ['Date', 'Topic', 'Owner', 'Note'];
+
+  it.each(['正慧姐青崇一三周第二堂規劃', '小丁第二四周第二堂'])('shows only 青少團契 from %s, and keeps its plan out of topic and owner', async (tab) => {
+    program({
+      '中亮第一三周信息排班': [header, ['46285', '先', '講員', '約3'], ['46292', ['創世記：神的應許', '小組問題'].join(String.fromCharCode(10)), '中亮', '']],
+      [tab]: [header, ['46292', '創世記3~5章', '分組進行', '']],
+    });
+    const { announcement } = await buildAnnouncement({ today: '2026-09-22' });
+    expect(announcement?.next).toMatchObject({
+      date: '9/27', topic: '創世記：神的應許', owner: '中亮',
+      sessions: [
+        { label: '第一堂', kind: '信息', title: '創世記：神的應許', owner: '中亮' },
+        { label: '第二堂', kind: null, title: '青少團契', owner: null },
+      ],
+    });
+    expect(JSON.stringify(announcement)).not.toMatch(/創世記3~5章|分組進行/);
+  });
+
+  it('names a Sunday that only has a second-session row 青少團契, without its plan', async () => {
+    program({
+      '中亮第一三周信息排班': [header, ['46285', '先', '講員', '約3']],
+      '正慧姐青崇一三周第二堂規劃': [header, ['46299', '創世記3~5章', '分組進行', '']],
+    });
+    const { announcement } = await buildAnnouncement({ today: '2026-09-22' });
+    expect(announcement?.next).toMatchObject({ date: '10/4', topic: '青少團契', owner: null, sessions: [{ label: '第二堂', kind: null, title: '青少團契', owner: null }] });
+    expect(JSON.stringify(announcement)).not.toMatch(/創世記3~5章|分組進行/);
+  });
+
+  it('leaves the second session out when its tab has no row for that Sunday', async () => {
+    program({
+      '中亮第一三周信息排班': [header, ['46285', '先', '講員', '約3'], ['46292', '下一次', '輔導', '']],
+      '小丁第二四周第二堂': [header, ['46306', '別週', '別人', '']],
+    });
+    const { announcement } = await buildAnnouncement({ today: '2026-09-22' });
+    expect(announcement?.next?.sessions).toEqual([{ label: '第一堂', kind: '信息', title: '下一次', owner: '輔導' }]);
   });
 });
 
