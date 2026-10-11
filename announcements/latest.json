@@ -1,26 +1,26 @@
 {
-  "week": "2026-10-04",
-  "generatedAt": "2026-10-06T01:00:14.924Z",
+  "week": "2026-10-11",
+  "generatedAt": "2026-10-11T01:00:16.221Z",
   "sermon": {
-    "title": "亞當的後代",
-    "speaker": "佑駿",
-    "passage": "創4-5",
+    "title": "十架：耶穌為什麼死？",
+    "speaker": "中亮/大專",
+    "passage": null,
     "audio": null,
-    "slides": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view",
+    "slides": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view",
     "transcript": null,
     "youtube": null
   },
   "next": {
-    "date": "10/11",
-    "topic": "十架：耶穌為什麼死？",
-    "owner": "中亮/大專",
+    "date": "10/18",
+    "topic": "洪水，挪亞方舟",
+    "owner": "德馨",
     "signup": null,
     "sessions": [
       {
         "label": "第一堂",
-        "kind": "青年啟發",
-        "title": "十架：耶穌為什麼死？",
-        "owner": "中亮/大專"
+        "kind": "信息",
+        "title": "洪水，挪亞方舟",
+        "owner": "德馨"
       },
       {
         "label": "第二堂",
@@ -32,7 +32,7 @@
     "roles": [
       {
         "label": "講員",
-        "value": "中亮"
+        "value": "德馨"
       },
       {
         "label": "敬拜團+詩歌",
@@ -44,15 +44,15 @@
       },
       {
         "label": "招待",
-        "value": "以諾/悅恩"
+        "value": "玉堃/心予"
       },
       {
         "label": "影音(投影/音控)",
-        "value": "欣儀＆柏羽"
+        "value": "柏睿＆采人"
       },
       {
         "label": "愛筵",
-        "value": "正慧訂餐"
+        "value": "小丁訂餐"
       },
       {
         "label": "清潔",
@@ -62,6 +62,14 @@
   },
   "standing": null,
   "past": [
+    {
+      "week": "2026-10-04",
+      "title": null,
+      "speaker": "佑駿",
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view",
+      "transcript": null
+    },
     {
       "week": "2026-09-27",
       "title": null,

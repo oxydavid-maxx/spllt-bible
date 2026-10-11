@@ -1,0 +1,134 @@
+{
+  "week": "2026-10-11",
+  "generatedAt": "2026-10-11T01:00:16.221Z",
+  "sermon": {
+    "title": "十架：耶穌為什麼死？",
+    "speaker": "中亮/大專",
+    "passage": null,
+    "audio": null,
+    "slides": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view",
+    "transcript": null,
+    "youtube": null
+  },
+  "next": {
+    "date": "10/18",
+    "topic": "洪水，挪亞方舟",
+    "owner": "德馨",
+    "signup": null,
+    "sessions": [
+      {
+        "label": "第一堂",
+        "kind": "信息",
+        "title": "洪水，挪亞方舟",
+        "owner": "德馨"
+      },
+      {
+        "label": "第二堂",
+        "kind": null,
+        "title": "青少團契",
+        "owner": null
+      }
+    ],
+    "roles": [
+      {
+        "label": "講員",
+        "value": "德馨"
+      },
+      {
+        "label": "敬拜團+詩歌",
+        "value": "青少團"
+      },
+      {
+        "label": "主領(報告)",
+        "value": "中亮"
+      },
+      {
+        "label": "招待",
+        "value": "玉堃/心予"
+      },
+      {
+        "label": "影音(投影/音控)",
+        "value": "柏睿＆采人"
+      },
+      {
+        "label": "愛筵",
+        "value": "小丁訂餐"
+      },
+      {
+        "label": "清潔",
+        "value": "全體"
+      }
+    ]
+  },
+  "standing": null,
+  "past": [
+    {
+      "week": "2026-10-04",
+      "title": null,
+      "speaker": "佑駿",
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view",
+      "transcript": null
+    },
+    {
+      "week": "2026-09-27",
+      "title": null,
+      "speaker": "中亮",
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/1FZvb7J25OFkecgwUcD1TTS5umyvQaDlB66ohskjfgLQ/preview",
+      "transcript": null
+    },
+    {
+      "week": "2026-09-20",
+      "title": "先",
+      "speaker": "光佑",
+      "audio": "https://drive.google.com/file/d/1CX5pHpYDmNPN-2_9E082QikMMWPhlHtg/view",
+      "slides": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview",
+      "transcript": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view",
+      "sermonSlides": "https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview"
+    },
+    {
+      "week": "2026-09-13",
+      "title": null,
+      "speaker": "中亮",
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview",
+      "transcript": null,
+      "sermonSlides": "https://drive.google.com/file/d/1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD/view"
+    },
+    {
+      "week": "2026-09-06",
+      "title": null,
+      "speaker": "為潔",
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ/preview",
+      "transcript": null,
+      "sermonSlides": "https://drive.google.com/file/d/1FVOvVG9Egjr_NYTgoYIqaQzaJQOONt3y/view"
+    },
+    {
+      "week": "2026-07-11",
+      "title": null,
+      "speaker": null,
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1UR7J2CKEMCopPj2PNA9zkJ3-_FN92cqP/view",
+      "transcript": null
+    },
+    {
+      "week": "2025-12-13",
+      "title": null,
+      "speaker": null,
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1dgO-5bAgk_MPJ1XoGG1jiQZue1bqcWg5/view",
+      "transcript": null
+    },
+    {
+      "week": "2025-06-14",
+      "title": null,
+      "speaker": null,
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/1X-OHFSCEhwGgKecv99IJ8C9q0fvdnZRcngUbKLemoZk/preview",
+      "transcript": null,
+      "sermonSlides": "https://drive.google.com/file/d/1WZ4QgwZQ4vlmJ_JPEqv-JKcTr__r4wi2/view"
+    }
+  ]
+}
