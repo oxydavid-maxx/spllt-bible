@@ -14,6 +14,8 @@ export default defineConfig({
       // the native registry at import time, so every component test that renders that tab failed to
       // load rather than failed an assertion.
       'expo-application': fileURLToPath(new URL('./tests/doubles/expo-application.ts', import.meta.url)),
+      // And through Play in-app updates, which every screen with an update notice now asks.
+      'expo-in-app-updates': fileURLToPath(new URL('./tests/doubles/expo-in-app-updates.ts', import.meta.url)),
       // And again through expo-crypto, which the completion flow uses for operation ids.
       'expo-crypto': fileURLToPath(new URL('./tests/doubles/expo-crypto.ts', import.meta.url)),
       // And through the icon font: @expo/vector-icons -> expo-font -> expo-asset -> react-native's Flow

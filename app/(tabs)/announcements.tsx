@@ -10,7 +10,8 @@ import { useAuthSnapshot } from '../../src/services/authSession';
 import { runtimeConfig } from '../../src/config/runtime';
 import { eventDateFromLabel, fetchEventRegistrations, type EventRegistrationSummary } from '../../src/services/eventRegistrationClient';
 import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
-import { fetchUpdateState, NO_UPDATE, type UpdateState } from '../../src/services/updateCheck';
+import { checkAppUpdate, startAppUpdate } from '../../src/services/appUpdate';
+import { NO_UPDATE, type UpdateState } from '../../src/services/updateCheck';
 import { UpdateCard } from '../../src/ui/UpdateCard';
 import { installedVersionCode } from '../../src/ui/UpdatePrompt';
 import { theme } from '../../src/ui/Theme';
@@ -80,7 +81,7 @@ export default function AnnouncementsScreen() {
   const [update, setUpdate] = useState<UpdateState>(NO_UPDATE);
   const loadUpdate = useCallback(() => {
     let active = true;
-    void fetchUpdateState(installedVersionCode(), Platform.OS).then((next) => { if (active) setUpdate(next); });
+    void checkAppUpdate(installedVersionCode(), Platform.OS).then((next) => { if (active) setUpdate(next); });
     return () => { active = false; };
   }, []);
   useFocusEffect(loadUpdate);
@@ -90,7 +91,7 @@ export default function AnnouncementsScreen() {
       <Text accessibilityRole="header" style={styles.title}>公告</Text>
       <AccountEntryButton />
     </View>
-    <UpdateCard state={update} onUpdate={(url) => { void Linking.openURL(url).catch(() => undefined); }} />
+    <UpdateCard state={update} onUpdate={() => { void startAppUpdate(update, (url) => { void Linking.openURL(url).catch(() => undefined); }); }} />
     {announcement
       ? <AnnouncementBoard
           announcement={announcement}
