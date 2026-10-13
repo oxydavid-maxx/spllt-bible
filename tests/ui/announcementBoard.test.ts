@@ -170,3 +170,31 @@ describe('the next gathering in full', () => {
     expect(text).not.toContain('服事');
   });
 });
+
+it('renders recorded sessions under 上次講道 and opens the second-session deck', () => {
+  const second = { ...FULL.sermon!, label: '第二堂', title: '一本書終結你的拖延症', speaker: null, passage: null, audio: null, slides: null, sermonSlides: 'https://example.invalid/book', transcript: null };
+  const board = render({ ...FULL, sessions: [{ ...FULL.sermon!, label: '第一堂', slides: null }, second] } as Announcement);
+  expect(board.text()).toContain('第二堂');
+  expect(board.text()).toContain('一本書終結你的拖延症');
+});
+
+it('shows every file when a session has multiple teaching decks', () => {
+  const session = { ...FULL.sermon!, label: '第一堂', materials: [
+    { name: '教學一', role: 'sermonSlides', url: 'https://example.invalid/one' },
+    { name: '教學二', role: 'sermonSlides', url: 'https://example.invalid/two' },
+  ] };
+  const board = render({ ...FULL, sessions: [session] } as Announcement);
+  expect(board.text()).toContain('教學二');
+});
+
+it('keeps the legacy button order when a single session uses content-classified materials', () => {
+  const materials = [
+    { name: '逐字稿', role: 'transcript', url: FULL.sermon!.transcript! },
+    { name: '報告', role: 'slides', url: FULL.sermon!.slides! },
+    { name: '講道', role: 'sermonSlides', url: FULL.sermon!.sermonSlides! },
+    { name: '錄音', role: 'audio', url: FULL.sermon!.audio! },
+  ];
+  const board = render({ ...FULL, sessions: [{ ...FULL.sermon!, label: '第一堂', materials }] } as Announcement);
+  const links = board.byLabel('上次講道').findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel);
+  expect(links).toEqual(['錄音','講道投影片','報告投影片','逐字稿']);
+});

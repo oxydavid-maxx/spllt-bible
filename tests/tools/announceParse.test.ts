@@ -219,3 +219,8 @@ describe('the dates a sign-up form states', () => {
     expect(formDates('沒有日期的表單')).toEqual([]);
   });
 });
+
+it('excludes non-Sunday dates and folders outside the recent weekly sequence', () => {
+  const dates = ['20261011','20261004','20260927','20260711','20251213','20250614','20260802','20260230'];
+  expect(listWeekFolders(dates.map(name => ({ id: name, name })), '2026-10-13').map(x => x.name)).toEqual(['20261011','20261004','20260927']);
+});

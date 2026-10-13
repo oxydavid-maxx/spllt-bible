@@ -11,9 +11,9 @@ import { publishAnnouncement } from './publisher';
  * The weekly job, run twice: Sunday morning once the deck is up, Tuesday morning once the recording
  * has been posted. Both runs build the same file; the Tuesday one simply finds more in the folder.
  *
- * Everything up to the last step is a script, so the cost of a run is a few HTTP requests. The model
- * is asked one question at the end — does this look like a coherent week — and a no means the file
- * is not published rather than published wrong.
+ * Each changed week gets one cheap content-classification call; unchanged inputs reuse its cache.
+ * The existing structural review still runs before publication; dry runs never publish or read the
+ * default publication checkout (an explicit isolated fallback directory remains supported).
  */
 
 // A checkout of the public repo on `main`, kept apart from this working tree so publishing a notice
@@ -46,12 +46,14 @@ function previousWeek(week: string, fallbackFiles: Map<string, string | null>): 
       if (!item) continue;
       const text = (value: unknown) => typeof value === 'string' && value.trim() ? value : null;
       const sermonSlides = text(item.sermonSlides);
+      const sessions = prior.week === week ? prior.sessions : ('sessions' in item ? item.sessions : undefined);
       const result = {
+        ...(Array.isArray(sessions) ? { sessions } : {}),
         week, title: text(item.title), speaker: text(item.speaker),
         audio: text(item.audio), slides: text(item.slides), transcript: text(item.transcript),
         ...(sermonSlides ? { sermonSlides } : {}),
       };
-      if (result.audio || result.slides || sermonSlides || result.transcript) return result;
+      if (result.audio || result.slides || sermonSlides || result.transcript || result.sessions?.some(session => session.audio || session.slides || session.sermonSlides || session.transcript || session.materials?.length)) return result;
     } catch { /* Try the other last-good copy; a broken cache must never invent a week. */ }
   }
   return null;
@@ -65,7 +67,7 @@ async function main(): Promise<number> {
   const today = dateFlag >= 0 ? argv[dateFlag + 1] : taipeiToday();
 
   const fallbackFiles = new Map<string, string | null>();
-  const { announcement, reason, warnings, signupCheck } = await buildAnnouncement({ today, previousWeek: (week) => previousWeek(week, fallbackFiles) });
+  const { announcement, reason, warnings, signupCheck } = await buildAnnouncement({ today, ...(!dryRun || process.env.QINGMU_ANNOUNCE_REPO ? { previousWeek: (week: string) => previousWeek(week, fallbackFiles) } : {}) });
   // Every run says what it decided about the sign-up link, so a stale or missing one shows in the log.
   if (signupCheck) process.stdout.write(`SIGNUP: ${signupCheck}\n`);
   if (!announcement) {
@@ -82,7 +84,8 @@ async function main(): Promise<number> {
 
   for (const warning of warnings ?? []) process.stdout.write(`USING LAST GOOD: ${warning}\n`);
 
-  // The review is the job's only model call. Once a day, most days nothing changed: compare with
+  // Classification uses the cheap capability binding; the structural review stays separate.
+  // Most days nothing changed: compare with
   // what is already published first, and ask only about a file that would actually go out.
   let published: string | null = null;
   try { published = contentOf(JSON.parse(readFileSync(join(REPO, 'announcements/latest.json'), 'utf8')) as Announcement); } catch { /* none yet */ }

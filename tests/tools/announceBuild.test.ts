@@ -8,6 +8,7 @@ const announceIo = vi.hoisted(() => ({
   xlsxSheetRows: vi.fn(),
 }));
 
+vi.mock('../../tools/announce/classify', async (original) => ({ ...await original<typeof import('../../tools/announce/classify')>(), classifyWeek: vi.fn(async () => { throw new Error('isolated fixture'); }) }));
 vi.mock('../../tools/announce/fetch', () => announceIo);
 vi.mock('../../tools/announce/office', () => ({
   pptxSlideText: vi.fn(() => []),
@@ -83,7 +84,7 @@ async function buildHistory(
 }
 
 describe('speakers attached to history', () => {
-  it('uses the dated speaker field and leaves unmatched archive weeks unknown', async () => {
+  it('uses the dated speaker field and excludes non-weekly archives', async () => {
     const result = await buildHistory({
       weeks: ['2026-09-13', '2026-09-06', '2025-12-13', '2025-06-14'],
       speakers: { '2026-09-06': '為潔', '2026-09-13': '中亮' },
@@ -92,8 +93,6 @@ describe('speakers attached to history', () => {
     expect(result.announcement?.past).toMatchObject([
       { week: '2026-09-13', speaker: '中亮' },
       { week: '2026-09-06', speaker: '為潔' },
-      { week: '2025-12-13', speaker: null },
-      { week: '2025-06-14', speaker: null },
     ]);
   });
 

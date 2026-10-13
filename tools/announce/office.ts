@@ -4,8 +4,8 @@ import { readZipFile, readZipMatching } from './zip';
  * Text out of the two Office formats the 青崇 folder actually contains.
  *
  * A .pptx and an .xlsx are both zips of XML, so neither needs a model to read. That is the whole
- * reason the weekly job costs nothing at runtime: the expensive-looking step is a regex over
- * decompressed XML.
+ * reason text extraction needs no model: the expensive-looking step is a regex over
+ * decompressed XML. Classification then uses these excerpts as evidence.
  */
 
 const XML_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };

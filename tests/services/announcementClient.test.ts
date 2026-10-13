@@ -129,3 +129,11 @@ describe('a successful fetch', () => {
     expect(storage.store.has('qingmu.announcement.latest')).toBe(true);
   });
 });
+
+it('parses current and historical sessions while keeping first-session legacy fields', () => {
+  const sermon = { title: '第一堂信息', slides: null };
+  const sessions = [{ ...sermon, label: '第一堂' }, { label: '第二堂', title: '讀書會', sermonSlides: 'https://example.invalid/deck', materials: [{ name: '教材', role: 'sermonSlides', url: 'https://example.invalid/deck' }] }];
+  const result = parseAnnouncement({ week: '2026-10-11', sermon, sessions, past: [{ week: '2026-10-04', ...sermon, sessions }] });
+  expect(result?.sermon?.title).toBe('第一堂信息');
+  expect(result).toMatchObject({ sessions: [{ label: '第一堂' }, { label: '第二堂', title: '讀書會', materials: [{ name: '教材' }] }], past: [{ sessions: [{ label: '第一堂' }, { label: '第二堂' }] }] });
+});
