@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import type { UpdateState } from '../services/updateCheck';
+import { updateActionLabel, updateTitle, type UpdateState } from '../services/updateCheck';
 import { theme } from './Theme';
 
 /**
@@ -12,10 +12,10 @@ export function UpdateCard({ state, onUpdate }: { state: UpdateState; onUpdate: 
   const url = state.url;
   return <View style={styles.card} accessibilityLabel="有新版本">
     <View style={styles.copy}>
-      <Text style={styles.title}>{`有新版本 ${state.versionName ?? ''}`}</Text>
+      <Text style={styles.title}>{updateTitle(state)}</Text>
       {state.note ? <Text style={styles.note} numberOfLines={2}>{state.note}</Text> : null}
     </View>
-    <Pressable accessibilityRole="button" accessibilityLabel={`更新到 ${state.versionName}`} onPress={() => onUpdate(url)} style={styles.action}>
+    <Pressable accessibilityRole="button" accessibilityLabel={updateActionLabel(state)} onPress={() => onUpdate(url)} style={styles.action}>
       <Text style={styles.actionText}>更新</Text>
     </Pressable>
   </View>;

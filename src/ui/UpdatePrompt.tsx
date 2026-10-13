@@ -1,7 +1,8 @@
 import * as Application from 'expo-application';
 import { useEffect, useState } from 'react';
 import { AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { fetchUpdateState, NO_UPDATE, type UpdateState } from '../services/updateCheck';
+import { checkAppUpdate, startAppUpdate } from '../services/appUpdate';
+import { NO_UPDATE, updateActionLabel, updateTitle, type UpdateState } from '../services/updateCheck';
 import { theme } from './Theme';
 
 const RETRY_MS = 20_000;
@@ -21,13 +22,17 @@ export function installedVersionCode(): number | null {
  * the newest APK — the same Chrome flow its steps describe. 稍後 puts it away until the next time the
  * app comes back, and a mandatory release asks just as often. It never locks anyone out: a phone that
  * cannot install the new build still gets today's reading.
+ *
+ * 光佑 (2026-10-13): a Play install shows the same prompt, and 更新 updates it inside the app.
  */
 export function UpdatePrompt({
-  check = () => fetchUpdateState(installedVersionCode(), Platform.OS),
+  check = () => checkAppUpdate(installedVersionCode(), Platform.OS),
   open = (url: string) => { void Linking.openURL(url).catch(() => undefined); },
+  start,
 }: {
   check?: () => Promise<UpdateState>;
   open?: (url: string) => void;
+  start?: () => Promise<boolean>;
 }) {
   const [state, setState] = useState<UpdateState>(NO_UPDATE);
   const [dismissed, setDismissed] = useState(false);
@@ -54,11 +59,11 @@ export function UpdatePrompt({
   return <Modal transparent animationType="fade" visible={visible} onRequestClose={() => setDismissed(true)}>
     <View style={styles.scrim}>
       <View style={styles.card} accessibilityViewIsModal accessibilityLabel="有新版本">
-        <Text accessibilityRole="header" style={styles.title}>{`有新版本 ${state.versionName ?? ''}`}</Text>
+        <Text accessibilityRole="header" style={styles.title}>{updateTitle(state)}</Text>
         {state.note ? <Text style={styles.note}>{state.note}</Text> : null}
-        <Text style={styles.hint}>按「更新」會打開安裝頁，照步驟下載後按「更新」，資料都會保留。</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={`更新到 ${state.versionName}`}
-          onPress={() => { if (state.url) open(state.url); }} style={styles.update}>
+        <Text style={styles.hint}>{state.viaPlay ? '按「更新」會用 Google Play 在 App 裡更新，資料都會保留。' : '按「更新」會打開安裝頁，照步驟下載後按「更新」，資料都會保留。'}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={updateActionLabel(state)}
+          onPress={() => { void startAppUpdate(state, open, start); }} style={styles.update}>
           <Text style={styles.updateText}>更新</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="稍後再說" onPress={() => setDismissed(true)} style={styles.later}>

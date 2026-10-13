@@ -32,14 +32,16 @@ import type { UpdateState } from '../../src/services/updateCheck';
 const PAGE = 'https://home.luminexhealthbiohack.com/public/jhuke-bible/';
 const UPDATE: UpdateState = { available: true, mandatory: true, versionName: '0.5.16', url: PAGE, note: '10 月起的讀經進度要這一版才看得到。' };
 const NONE: UpdateState = { available: false, mandatory: false, versionName: null, url: null, note: null };
+const LISTING = 'https://play.google.com/store/apps/details?id=org.qingmu.youth';
+const PLAY: UpdateState = { available: true, mandatory: false, versionName: null, url: LISTING, note: null, viaPlay: true };
 
 const mounted: Array<ReturnType<typeof create>> = [];
 afterEach(() => { mounted.splice(0).forEach((tree) => act(() => tree.unmount())); vi.useRealTimers(); });
 
-async function render(check: () => Promise<UpdateState>) {
+async function render(check: () => Promise<UpdateState>, start: () => Promise<boolean> = async () => true) {
   const open = vi.fn();
   let tree!: ReturnType<typeof create>;
-  await act(async () => { tree = create(React.createElement(UpdatePrompt, { check, open })); });
+  await act(async () => { tree = create(React.createElement(UpdatePrompt, { check, open, start })); });
   mounted.push(tree);
   return {
     open,
@@ -76,6 +78,24 @@ describe('the update prompt', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
     expect(check).toHaveBeenCalledTimes(2);
     expect(view.text()).toContain('有新版本 0.5.16');
+  });
+
+  // 光佑 (2026-10-13): same prompt as before, but a Play install updates inside the app.
+  it('updates a Play install inside the app instead of opening a page', async () => {
+    const start = vi.fn(async () => true);
+    const view = await render(async () => PLAY, start);
+    expect(view.text()).toContain('有新版本');
+    expect(view.text()).toContain('Google Play');
+    expect(view.text()).not.toContain('null');
+    await act(async () => { view.byLabel('更新').props.onPress(); });
+    expect(start).toHaveBeenCalledOnce();
+    expect(view.open).not.toHaveBeenCalled();
+  });
+
+  it('opens the Play listing when Play cannot start the update in the app', async () => {
+    const view = await render(async () => PLAY, async () => false);
+    await act(async () => { view.byLabel('更新').props.onPress(); });
+    expect(view.open).toHaveBeenCalledWith(LISTING);
   });
 
   it('shows nothing when the phone already has the newest version or the check fails', async () => {

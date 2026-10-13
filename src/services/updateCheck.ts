@@ -1,6 +1,11 @@
 /**
  * Whether a newer build exists, decided from a small file published beside the APK.
  *
+ * Since 2026-10-13 this serves only builds that Play does not manage (a sideloaded APK). A Play
+ * install asks Play's in-app updates instead (src/services/appUpdate.ts); the paragraph below is
+ * why this file came first, and its no-prebuild premise no longer holds: Expo modules autolink at
+ * Gradle time (android/settings.gradle `useExpoModules()`), so a native module needs no hand edits.
+ *
  * The native route is Play's in-app updates, which can force a full-screen update flow. It needs a
  * Play Core module, a native module needs a prebuild, and this project deliberately does not
  * prebuild — android/ is generated once and edited under guard, because a prebuild here has broken
@@ -47,9 +52,21 @@ export interface UpdateState {
   versionName: string | null;
   url: string | null;
   note: string | null;
+  /** Play manages this install, so 更新 runs Play's in-app update (src/services/appUpdate.ts). */
+  viaPlay?: true;
 }
 
 export const NO_UPDATE: UpdateState = { available: false, mandatory: false, versionName: null, url: null, note: null };
+
+/** 有新版本 0.5.16, or just 有新版本 when the name is unknown (Play reports only the versionCode). */
+export function updateTitle(state: UpdateState): string {
+  return state.versionName ? `有新版本 ${state.versionName}` : '有新版本';
+}
+
+/** The 更新 button's spoken label, without an unknown version read out as null. */
+export function updateActionLabel(state: UpdateState): string {
+  return state.versionName ? `更新到 ${state.versionName}` : '更新';
+}
 
 /**
  * A published record is only usable if every field the banner needs is present and sane.

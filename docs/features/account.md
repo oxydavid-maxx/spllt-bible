@@ -54,14 +54,18 @@
 - 按「登出」立刻清掉本機的登入狀態（畫面馬上回到登入畫面），並且非同步呼叫伺服器撤銷這個裝置的 session；伺服器端撤銷是「精確比對這個 token」，不看用戶端自稱的會員或裝置 ID（`server/mobileSessions.ts` 的 `revokeSession`）。
 - 撤銷請求即使因為這個憑證已經失效（401/403）而被伺服器拒絕，也算撤銷完成，不會讓佇列卡住重試；只有網路完全打不通才會留著、等下次前景再送一次。
 
-### App 更新提示（`src/services/updateCheck.ts`、`UpdateBanner.tsx`、`UpdateCard.tsx`、`UpdatePrompt.tsx`）
+### App 更新提示（`src/services/appUpdate.ts`、`src/services/updateCheck.ts`、`UpdateBanner.tsx`、`UpdateCard.tsx`、`UpdatePrompt.tsx`）
 
-- 只比較「Android 版本代碼」（`versionCode`）：抓 `VERSION_URL` 上發布的版本檔（本 repo 內 `announcements/app-version.json` 就是目前的版本，例如 `versionCode: 44`/`versionName: "0.5.21"`），跟裝置上安裝的版本比大小；比對失敗、逾時（8 秒）、格式不完整都當作「沒有更新」，不會出現半吊子的提示。
+- **先問 Google Play**（2026-10-13 起，`checkAppUpdate`）：用 Play 官方的 App 內更新（Play Core，經由 `expo-in-app-updates`）問 Play 這個帳號能不能裝到更新的版本，Play 會照帳號所在的測試軌道回答。
+  - Play 說有新版：提示照下面三處出現，標題只寫「有新版本」（Play 只給 versionCode，沒有大家看得懂的版本名稱）；按「更新」直接在 App 裡跑 Play 的全螢幕更新（immediate），Play 開不了時改開 Play 商店頁 `PLAY_LISTING_URL`（`startAppUpdate`）。
+  - Play 說沒有新版：就是沒有，不再看版本檔。Play 裝的 App 是 Play 簽章，安裝頁的 APK 裝不上去。
+  - Play 回答失敗（側載的 APK 會得到「app not owned」，或手機沒有 Play）：改用下面的版本檔，按「更新」照舊開安裝頁。
+- 版本檔（側載的 APK 用）只比較「Android 版本代碼」（`versionCode`）：抓 `VERSION_URL` 上發布的版本檔（本 repo 內 `announcements/app-version.json` 就是目前的版本，例如 `versionCode: 44`/`versionName: "0.5.21"`），跟裝置上安裝的版本比大小；比對失敗、逾時（8 秒）、格式不完整都當作「沒有更新」，不會出現半吊子的提示。
 - 三個地方都讀同一個結果，但呈現方式不同：
-  - `UpdatePrompt`：開 App、或從背景回前景時蓋在畫面最上層的全螢幕彈窗（`Modal`），有「更新」（開安裝頁）與「稍後」；`mandatory` 為真的版本沒有「稍後」按鈕。第一次檢查沒抓到（例如手機剛醒來還沒連網）會在 20 秒後自動再檢查一次。
+  - `UpdatePrompt`：開 App、或從背景回前景時蓋在畫面最上層的全螢幕彈窗（`Modal`），有「更新」（Play 裝的在 App 裡更新，側載的開安裝頁）與「稍後」；`mandatory` 為真的版本沒有「稍後」按鈕。第一次檢查沒抓到（例如手機剛醒來還沒連網）會在 20 秒後自動再檢查一次。
   - `UpdateCard`：公告分頁最上方的常駐卡片，只要手機還落後就一直在，不會因為使用者關掉全螢幕提示就消失（2026-09-27 的產品決定：避免使用者不小心關掉提示後找不到更新入口）。
   - `UpdateBanner`：讀經精讀器（`app/(tabs)/reader.tsx`）更多閱讀工具面板裡的一行提示，可以按「稍後」關掉本次顯示。
-- **只有 Android 會看到任何更新提示**：`fetchUpdateState` 一開頭就檢查 `Platform.OS !== 'android'`，是的話直接回「沒有更新」且**不發任何網路請求**——這是為了符合 App Store 2.5.2（不能引導使用者去裝會改變功能的安裝檔）；iOS 交給 App Store 自己的自動更新。
+- **只有 Android 會看到任何更新提示**：`checkAppUpdate` 和 `fetchUpdateState` 一開頭都檢查 `Platform.OS !== 'android'`，是的話直接回「沒有更新」，**不問 Play、不發任何網路請求**——這是為了符合 App Store 2.5.2（不能引導使用者去裝會改變功能的安裝檔）；iOS 交給 App Store 自己的自動更新。
 
 ## 決定（為什麼這樣做）
 
@@ -72,6 +76,7 @@
 - **不收集 Email、密碼，只存 Google 帳號給的識別碼**；也不收集位置、通訊錄、相片影片、廣告識別碼，沒有廣告或使用行為分析工具。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)）
 
 - **Google 登入第一次找不到對應帳號時會自動建立會員**，不用先請維護者手動開帳號；但「誰是管理者」不會因為誰先登入就自動取得——管理者身分是維護者在私有部署設定裡另外指定的，不會進公開原始碼。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §3.4）
+- **Play 裝的 App 用 Play 的 App 內更新**（維護者 2026-10-13，取代原本「只用版本檔、不用原生模組」的做法，理由寫在 `updateCheck.ts` 開頭）：Play 自己的自動更新什麼時候跑不一定，維護者的手機放了好幾個小時都沒更新。畫面維持原本的全螢幕提示、公告卡片、讀經一行提示，只換「去哪裡問」和「按更新做什麼」。當初不用原生模組的理由是「這個專案不重新產生 android/」，現在 Expo 模組在 Gradle 建置時自動連結（`android/settings.gradle` 的 `useExpoModules()`），不用手改 android/。
 - **App 版本號放在帳戶頁最下面**（維護者 2026-10-13）：測試者要能說出 Google Play 裝的是哪一版，一般 App 也是點頭像進去的帳戶或設定頁看得到版本。括號放 versionCode，因為 Play 用它分辨版本。
 - **申請刪除帳號與資料，兩個平台顯示同一份文案**，走「App 內連結＋寄信」兩條路，不是只給 Android 看的說法，也沒有另外做一個線上申請系統。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)「刪除帳號與資料」）
 
@@ -109,6 +114,7 @@
 - `tests/ui/accountRouteSafeArea.test.ts` — 帳戶頁底部不會被系統導覽列蓋住。
 - `tests/ui/accountReminderPatch.test.ts` — 帳戶頁的提醒設定只送出真的被改動的欄位。
 - `tests/updateCheck.test.ts` — 版本比對規則、非 Android 平台完全不檢查。
+- `tests/services/appUpdate.test.ts` — 先問 Play、Play 說沒有就不看版本檔、Play 失敗才用版本檔、iOS 誰都不問；「更新」在 App 裡跑 Play 更新、開不了改開商店頁、側載的開安裝頁。
 - `tests/ui/updatePrompt.test.ts` — 全螢幕提示的開啟/稍後/回前景重問、以及公告卡片的顯示條件。
 - `.maestro/ios/40-no-update-prompt.yaml` — 真機層級驗證 iOS 完全看不到更新視窗。
 

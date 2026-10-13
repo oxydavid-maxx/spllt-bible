@@ -36,6 +36,7 @@
     "expo-crypto": "~56.0.5",
     "expo-file-system": "~56.0.11",
     "expo-font": "~56.0.7",
+    "expo-in-app-updates": "0.12.0",
     "expo-linking": "~56.0.17",
     "expo-local-authentication": "~56.0.5",
     "expo-navigation-bar": "56.0.3",

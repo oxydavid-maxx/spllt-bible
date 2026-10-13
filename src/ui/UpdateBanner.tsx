@@ -2,11 +2,15 @@ import * as Application from 'expo-application';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { fetchUpdateState, NO_UPDATE, type UpdateState } from '../services/updateCheck';
+import { checkAppUpdate, startAppUpdate } from '../services/appUpdate';
+import { NO_UPDATE, updateActionLabel, updateTitle, type UpdateState } from '../services/updateCheck';
 import { theme } from './Theme';
 
 /**
  * One line at the top of the reading tab when a newer build exists.
+ *
+ * Since 2026-10-13 a Play install runs Play's in-app update from 更新 (src/services/appUpdate.ts);
+ * the reasoning below predates that and still explains why this line is not a modal.
  *
  * Deliberately not a modal. The native equivalent — Play's immediate in-app update — takes over the
  * screen and is the right shape for a mandatory security fix, but it needs a Play Core native
@@ -27,7 +31,7 @@ export function UpdateBanner() {
   useEffect(() => {
     let active = true;
     const installed = Application.nativeBuildVersion ? Number(Application.nativeBuildVersion) : null;
-    void fetchUpdateState(Number.isFinite(installed) ? installed : null, Platform.OS).then((next) => {
+    void checkAppUpdate(Number.isFinite(installed) ? installed : null, Platform.OS).then((next) => {
       if (active) setState(next);
     });
     return () => { active = false; };
@@ -40,11 +44,11 @@ export function UpdateBanner() {
       {/* On the mandatory variant the background IS primary, so ink-on-primary and muted-on-primary
           both fall below readable contrast. The text has to change with the background, not sit on
           top of it unchanged. */}
-      <Text style={[styles.title, state.mandatory && styles.onPrimary]}>{`有新版本 ${state.versionName}`}</Text>
+      <Text style={[styles.title, state.mandatory && styles.onPrimary]}>{updateTitle(state)}</Text>
       {state.note ? <Text style={[styles.note, state.mandatory && styles.onPrimarySoft]} numberOfLines={2}>{state.note}</Text> : null}
     </View>
-    <Pressable accessibilityRole="button" accessibilityLabel={`更新到 ${state.versionName}`}
-      onPress={() => { if (state.url) void WebBrowser.openBrowserAsync(state.url); }}
+    <Pressable accessibilityRole="button" accessibilityLabel={updateActionLabel(state)}
+      onPress={() => { void startAppUpdate(state, (url) => { void WebBrowser.openBrowserAsync(url); }); }}
       style={[styles.action, state.mandatory && styles.actionOnPrimary]}>
       <Text style={[styles.actionText, state.mandatory && styles.actionTextOnPrimary]}>更新</Text>
     </Pressable>
