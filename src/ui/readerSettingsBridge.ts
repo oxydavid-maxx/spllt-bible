@@ -1,4 +1,5 @@
 import { readAlongScript } from './readAlongBridge';
+import { readingRangeScript } from './readingRangeBridge';
 
 export const READER_SETTINGS_MESSAGE = 'qingmu.reader.settings.open';
 export const READER_CANVAS_SCROLL_MESSAGE = 'qingmu.reader.canvas.scroll';
@@ -77,9 +78,10 @@ const READER_CANVAS_BRIDGE = `
   document.addEventListener('scroll', function (event) {
     var target = event.target;
     if (!closest(target, canvasSelector) || typeof target.scrollTop !== 'number') return;
-    // Read-along scrolled the page to the narrated verse: not a gesture, so neither collapse nor
-    // reveal, and the next real gesture starts from here. The chapter end is still reported.
-    if (window.__qingmuFollowScrolling && window.__qingmuFollowScrolling()) {
+    // Read-along scrolled the page to the narrated verse, or a half-chapter day opened at its first
+    // verse: not a gesture, so neither collapse nor reveal, and the next real gesture starts from here.
+    // The chapter end is still reported.
+    if ((window.__qingmuFollowScrolling && window.__qingmuFollowScrolling()) || (window.__qingmuRangeScrolling && window.__qingmuRangeScrolling())) {
       anchor = target.scrollTop; run = null; upAccum = 0;
       reportEdges(target);
       return;
@@ -166,7 +168,7 @@ export function buildReaderDomBridge(fullscreen: boolean, hasVersionMetadata = f
     + `${renderer} .s, ${renderer} .s1 { font-weight: 600 !important; }`
     + (hasVersionMetadata ? `${scope} > footer { display: none !important; }` : '');
   // Canvas listeners first so the edge reporter exists when the layout pass runs.
-  return READER_SETTINGS_BRIDGE + readAlongScript({ top, bottom }) + READER_CANVAS_BRIDGE + readerLayoutScript(css);
+  return READER_SETTINGS_BRIDGE + readAlongScript({ top, bottom }) + readingRangeScript({ top, bottom }) + READER_CANVAS_BRIDGE + readerLayoutScript(css);
 }
 
 export function readReaderUiMessage(data: string): string | null {

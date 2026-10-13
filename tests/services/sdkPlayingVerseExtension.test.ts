@@ -14,7 +14,7 @@ const index = readFileSync(`${pkg}/index.js`, 'utf8');
 // The DOM reader's effect body, run against a stand-in document to see what it writes.
 function domEffect(props: Record<string, unknown>): Record<string, string> {
   const start = dom.indexOf('useEffect(() => {\n        const root = document.documentElement;');
-  const end = dom.indexOf('}, [qingmuPlayingVerse, qingmuFollow, qingmuFollowRequest, qingmuReduceMotion]);');
+  const end = dom.indexOf('}, [qingmuPlayingVerse, qingmuFollow, qingmuFollowRequest, qingmuReduceMotion, qingmuReadingRange]);');
   expect(start, 'the DOM reader writes the narration state in one effect').toBeGreaterThan(0);
   const body = dom.slice(dom.indexOf('{', start) + 1, end);
   const written: Record<string, string> = {};
@@ -22,8 +22,8 @@ function domEffect(props: Record<string, unknown>): Record<string, string> {
     setAttribute: (name: string, value: string) => { written[name] = value; },
     removeAttribute: (name: string) => { delete written[name]; },
   } };
-  new Function('document', 'qingmuPlayingVerse', 'qingmuFollow', 'qingmuFollowRequest', 'qingmuReduceMotion', body)(
-    document, props.qingmuPlayingVerse ?? null, props.qingmuFollow ?? false, props.qingmuFollowRequest ?? 0, props.qingmuReduceMotion ?? false);
+  new Function('document', 'qingmuPlayingVerse', 'qingmuFollow', 'qingmuFollowRequest', 'qingmuReduceMotion', 'qingmuReadingRange', body)(
+    document, props.qingmuPlayingVerse ?? null, props.qingmuFollow ?? false, props.qingmuFollowRequest ?? 0, props.qingmuReduceMotion ?? false, props.qingmuReadingRange ?? null);
   return written;
 }
 
@@ -45,6 +45,18 @@ describe('Qingmu SDK read-along extension', () => {
     });
     expect(domEffect({ qingmuPlayingVerse: null })).toEqual({ 'data-qingmu-follow': '0', 'data-qingmu-follow-request': '0', 'data-qingmu-reduce-motion': '0' });
     expect(domEffect({ qingmuPlayingVerse: 0 })['data-qingmu-playing-verse']).toBeUndefined();
+  });
+
+  // Half-chapter days (2026-10-02): the day's verse range goes onto the document the same way, for the
+  // host's script (src/ui/readingRangeBridge.ts) to open at, grey around and report the end of.
+  it('passes the day\'s verse range to the reader document', () => {
+    expect(native).toContain('readingRange = null, ');
+    expect(native).toContain("qingmuReadingRange: typeof readingRange === 'string' && readingRange !== '' ? readingRange : null");
+    expect(types).toContain('readingRange?: string | null;');
+    expect(domEffect({ qingmuReadingRange: 'PSA.119.1-88' })['data-qingmu-range']).toBe('PSA.119.1-88');
+    expect(domEffect({ qingmuReadingRange: null })['data-qingmu-range']).toBeUndefined();
+    const patch = readFileSync('patches/@youversion+platform-react-native-expo-ui+1.5.0.patch', 'utf8');
+    expect(patch).toContain("+        set('range', typeof qingmuReadingRange === 'string' && qingmuReadingRange !== '' ? qingmuReadingRange : null);");
   });
 
   it('is carried by the tracked patch so a clean install reproduces it', () => {

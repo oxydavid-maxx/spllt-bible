@@ -770,6 +770,71 @@ describe('fullscreen reader layout and chrome', () => {
     expect(button('版本資訊')).toBeDefined();
   });
 
+  // Half-chapter days (maintainer 2026-10-01/02): 完成今日讀經 grows at the last verse of the day's range,
+  // not at the end of the chapter; the page reports that verse (src/ui/readingRangeBridge.ts).
+  describe('a half-chapter day', () => {
+    const halfDay = () => { currentChapter = 'PSA.119'; assignedReferences = ['PSA.119.1-88']; activeReferenceIndex = 0; };
+    it('grows 完成今日讀經 at the last verse of the range, and ignores a report for another range', async () => {
+      halfDay();
+      await mount();
+      expect(text()).not.toContain('完成今日讀經');
+      act(() => { chrome.handleRangeEnd({ range: 'PSA.119.89-176', atEnd: true }); });
+      expect(text()).not.toContain('完成今日讀經');
+      act(() => { chrome.handleRangeEnd({ range: 'PSA.119.1-88', atEnd: true }); });
+      expect(text()).toContain('完成今日讀經');
+      act(() => { chrome.handleRangeEnd({ range: 'PSA.119.1-88', atEnd: false }); });
+      expect(text()).not.toContain('完成今日讀經');
+    });
+    it('keeps ○ a plain circle that can be pressed before the range is read', async () => {
+      halfDay();
+      onComplete = vi.fn();
+      await mount();
+      act(() => { button('完成讀經').props.onPress(); });
+      expect(onComplete).toHaveBeenCalledOnce();
+    });
+    it('offers the next passage at the end of a range that is not the day\'s last, and forgets it on the next passage', async () => {
+      currentChapter = 'ACT.7'; assignedReferences = ['ACT.7.1-29', 'PSA.126']; activeReferenceIndex = 0;
+      await mount();
+      act(() => { chrome.handleRangeEnd({ range: 'ACT.7.1-29', atEnd: true }); });
+      expect(text()).toContain('繼續讀 詩126 ›');
+      expect(text()).not.toContain('完成今日讀經');
+      currentChapter = 'PSA.126'; activeReferenceIndex = 1;
+      act(() => { renderer!.update(React.createElement(Harness)); });
+      expect(text()).not.toContain('完成今日讀經');
+      act(() => { chrome.handleRangeEnd({ range: 'ACT.7.1-29', atEnd: true }); });
+      expect(text()).not.toContain('完成今日讀經');
+      act(() => { chrome.handleCanvasEdge({ atEnd: true }); });
+      expect(text()).toContain('完成今日讀經');
+    });
+    it('brings the tools back when the range\'s end is reached while they are collapsed', async () => {
+      halfDay();
+      await mount();
+      act(() => { chrome.handleCanvasScroll({ direction: 'down', deltaY: 20 }); });
+      expect(chrome.toolsVisible).toBe(false);
+      act(() => { chrome.handleRangeEnd({ range: 'PSA.119.1-88', atEnd: true }); });
+      expect(chrome.toolsVisible).toBe(true);
+      expect(text()).toContain('完成今日讀經');
+    });
+    it('hands the range to the narration, and says by ▶ when this recording reads the whole chapter', async () => {
+      halfDay();
+      await mount();
+      const audio = all('ChapterAudioControls')[0];
+      expect(audio.props.verseRange).toEqual({ first: 1, last: 88 });
+      expect(text()).not.toContain('整章');
+      act(() => { audio.props.onNarrationScope('chapter'); });
+      expect(text()).toContain('這個譯本的朗讀沒有分節，會念整章');
+      act(() => { audio.props.onNarrationScope('range'); });
+      expect(text()).not.toContain('整章');
+    });
+    it('gives the narration no range on a whole-chapter passage or while reading freely', async () => {
+      await mount();
+      expect(all('ChapterAudioControls')[0].props.verseRange).toBeNull();
+      currentChapter = 'PSA.119'; assignedReferences = ['PSA.119.1-88']; selectionSource = 'FREE';
+      act(() => { renderer!.update(React.createElement(Harness)); });
+      expect(all('ChapterAudioControls')[0].props.verseRange).toBeNull();
+    });
+  });
+
   it('ignores a late completed save after leaving the version page and reopening More', async () => {
     enableCuratedVersions();
     let resolve!: () => void;

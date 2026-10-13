@@ -19,7 +19,8 @@
 |---|---|
 | 播放/暫停/重試 | 讀經器右下角圓形鍵；載入中顯示轉圈，沒有朗讀顯示喇叭斜線圖示，可重試時顯示重播圖示 |
 | 朗讀跟著走 | 播放時畫面自動捲到正在念的那一節，並用底色反白；手指一滑或選字就放開，出現「回到朗讀處」 |
-| 連讀 | 開啟後，播完目前章接著念當日剩下的章節，最後一章念完才停 |
+| 半章的日子 | 只念當天的範圍：從範圍第一節開始，念完最後一節自動停；譯本沒有逐節時間時念整章，播放鍵旁說明一句 |
+| 連讀 | 開啟後，播完目前這一段（一章或半章的範圍）接著念當日剩下的段落，最後一段念完才停 |
 | 朗讀速度 | 0.75/1/1.25/1.5 倍，立即套用到正在播放的聲音 |
 | 背景與鎖定畫面播放 | 離開讀經器、切到其他分頁、螢幕關閉都繼續念；鎖定畫面/通知欄出現一張可以暫停/倒退10秒/快進10秒的卡片 |
 | 日記朗讀遙控 | 日記分頁的播放鍵會操作讀經器裡同一段朗讀，不會另外開一段 |
@@ -38,13 +39,25 @@
 - 播放鍵一律操作同一顆播放器，換章只是換音源，不會整顆重建，所以「播 A → 播 B → 回頭播 A」不會壞掉（`src/services/expoAudioPlayback.ts` 的 ownership 設計，見 `tests/services/chapterAudioOwnership.test.ts`）。
 - 切換章節、切換譯本、登出、帳號過期都會捨棄還在進行中的舊查詢結果，不會把舊章節的答案套用到新章節上（`ChapterAudioControls.tsx` 的 selection key/auth epoch 比對）。
 
+### 半章的日子
+
+來源：`src/ui/ChapterAudioControls.tsx`（`verseRange`）、`src/services/audioChapterResolver.ts`（`narrationWindow`）、`src/ui/FullscreenReaderLayout.tsx`
+
+- 當天這一段只讀半章（例如詩119:1-88）時，按播放從範圍第一節開始（範圍從第 1 節開始時從錄音開頭，包含章名）；念完範圍最後一節自動暫停，視同這一段念完：連讀開著就接下一段，沒開就停在這裡。
+- 在範圍中間暫停，再按播放從暫停的地方接著念；已經念完範圍、或位置在範圍外（例如同一章換到另一個範圍），再按播放回到範圍第一節。
+- 停止點用逐節時間的「最後一節結束」計時，不等下一次半秒一次的狀態更新，避免念出下一節的第一個字。
+- 這個譯本的朗讀沒有逐節時間（或時間沒有涵蓋這個範圍）時，照舊念整章，播放鍵上方出現一行小字「這個譯本的朗讀沒有分節，會念整章」。
+- 同一天、同一章、接在一起的兩段（10/23 徒2:1-24＋徒2:25-47）合成一段「徒2」，只念一次整章（見 [reader.md](reader.md)「半章的日子」）。
+- 自由閱讀沒有範圍，照舊念整章。
+- 鎖定畫面卡片的倒退/快進由系統直接控制，可以退到範圍外；之後在 App 裡按播放會回到範圍第一節。
+
 ### 連讀（連續播放到下一章）
 
 來源：`src/services/readerAutoplayController.ts`、`src/services/readerAutoplayPreferences.ts`、`src/ui/YouVersionReader.tsx`
 
 - 「更多閱讀工具」裡的「連讀」開關，預設開啟，依登入的會員各自記住（`readerAutoplayPreferences.ts`,SecureStore,每位會員一組鍵）。
 - 開啟連讀只是設定，不會自己開始播放；播放仍要按播放鍵（`更多閱讀工具` 選單裡的說明文字：「切換設定不會立即播放」）。
-- 開著連讀播放完一章 → 自動切到當日排定的下一段並開始播放；最後一段念完就停止，不繼續往後翻章（`readerAutoplayController.ts` 的 `onEof`）。
+- 開著連讀播放完一段（整章，或半章的日子念完範圍最後一節）→ 自動切到當日排定的下一段並開始播放；下一段是同一章的另一個範圍時，從那個範圍的第一節開始；最後一段念完就停止，不繼續往後翻章（`readerAutoplayController.ts` 的 `onEof`）。
 - 自動切到的下一章沒有朗讀 → 停止連讀，顯示提示「這一章沒有朗讀，已停止連續播放。」（`handleAutoplayUnavailable`）。
 - 自動播放途中發生播放錯誤 → 停止連讀，顯示「朗讀暫時無法播放，已停止連續播放。」（`handlePlaybackError`）。
 - 手動暫停、手動換到別的章節/日期/譯本、登出都會直接取消目前的連讀意圖（`cancelAutoplay` 在對應 effect 被呼叫）。
@@ -107,6 +120,8 @@
 - **播放鍵的版位固定 48×48dp，不管載入中/可播放/沒有朗讀是哪個狀態，位置都不跳動**：也不會因為顯示說明文字而推走旁邊的按鈕，避免畫面閃動。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.1 CL12、§4.6）
 - **朗讀反白改由 App 自己的注入程式上色，不再借用 SDK 使用者標記的管道**：SDK 用 `parseInt(v)` 判斷節號，「5-6」這種合併節會被當成「5」，找不到第 6 節而整段不反白。（來源：[../superpowers/plans/2026-09-29-read-along-follow.md](../superpowers/plans/2026-09-29-read-along-follow.md) §2、§3.1）
 
+- **半章的日子只念範圍，念完自動停；沒有逐節時間的譯本照舊念整章，播放鍵旁說明一句**：不硬猜範圍在錄音的哪裡。連讀接下一段，同一章接在一起的兩段合成一段，不會把徒2 念兩遍。（維護者 2026-10-01～02 決定）
+
 ## 平台差異
 
 來源：`docs/superpowers/plans/2026-09-29-read-along-follow.md` §3.5、`AGENTS.md`
@@ -150,6 +165,8 @@
 - `tests/ui/readerAudioSelectionWiring.test.ts` — 從真實 ReaderScreen 到播放請求的整條串接，含換日期/換版本情境。
 - `tests/ui/readerAutoplayNativeFlow.test.ts` — 連讀在真實 Reader 畫面上的完整流程。
 - `tests/ui/youVersionReaderAutoplay.test.ts` — `YouVersionReader` 對連讀意圖與朗讀反白的轉發。
+- `tests/services/narrationWindow.test.ts` — 半章的日子：範圍在錄音裡從哪裡開始、在哪裡停，沒有逐節時間就沒有範圍。
+- `tests/ui/chapterAudioVerseRange.test.ts` — 從範圍第一節開始、念完最後一節自動停並交給連讀、計時停止、暫停後接著念、同一章換範圍、沒有逐節時間念整章並說明。
 - `tests/ui/readAlongFollow.test.ts` — 跟隨狀態機（§3.2 每一條規則，含「暫停再播放不恢復」「念完恢復」）。
 - `tests/ui/readAlongBridge.test.ts` — 注入程式在真瀏覽器（chrome-headless-shell）裡的反白、跟隨捲動、手勢放開、位置回報。
 - `tests/ui/readAlongScreen.test.ts` — 從真實 ReaderScreen 到「回到朗讀處」按鈕、箭頭方向、選字放開的整條串接。
