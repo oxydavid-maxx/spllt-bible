@@ -36,7 +36,7 @@ function LinkRow({ links, onOpen }: { links: Array<[string, string | null]>; onO
 const materialLabels = { slides: '報告投影片', sermonSlides: '講道投影片', audio: '錄音', transcript: '逐字稿', sermonDoc: '教材' } as const;
 function sessionLinks(session: SermonBlock | SessionBlock): Array<[string, string | null]> {
   if ('materials' in session && session.materials?.length) return [
-    ...session.materials.map((file): [string, string] => [session.materials!.filter(other => other.role === file.role).length > 1
+    ...(['audio', 'sermonSlides', 'slides', 'transcript', 'sermonDoc'] as const).flatMap(role => session.materials!.filter(file => file.role === role)).map((file): [string, string] => [session.materials!.filter(other => other.role === file.role).length > 1
       ? `${materialLabels[file.role]} · ${file.name}` : materialLabels[file.role], file.url]),
     ['影片', session.youtube],
   ];
