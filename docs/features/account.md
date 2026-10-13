@@ -46,7 +46,7 @@
 - 已登入且個人資料載入成功時：顯示頭像（`avatarUrl` 有值才顯示圖片，否則顯示姓名字首的圓形字母）、姓名、登出按鈕、讀經提醒設定、申請刪除帳號與資料的連結。
 - 帳戶入口圖示（`AccountEntryButton`）同一套規則：有頭像顯示頭像，否則顯示姓名字首；**資料還沒回來之前一律顯示中性的「人」字**，不會用 memberId 拼出字母（避免顯示像 `google:1234567` 的 `1` 這種假身份）。
 - 讀經提醒：帳戶頁只顯示「讀經提醒」開關與時間，**不顯示「聚會提醒」**（`showMeeting={false}`）；程式註解明確寫「正式帳戶頁停用已退役的聚會提醒」——這與「小組」分頁已退役一致（見「已知限制與待辦」）。提醒設定本身的完整規則不在本文件範圍。
-- 最下面一行顯示安裝的版本，例如「版本 0.5.24 (47)」：括號裡是 Google Play 用來分辨版本的 versionCode。帳戶頁每個狀態都顯示（含載入中、載入失敗）；讀不到版本時整行不顯示，不會編一個版本（`appVersionLabel`）。
+- 最下面一行顯示安裝的版本，例如「版本 0.5.24 (47)」：括號裡是 Google Play 用來分辨版本的 versionCode。帳戶頁每個狀態都顯示（含載入中、載入失敗）；讀不到版本時整行不顯示，不會編一個版本（`appVersionLabel`）。頁面底部留在安全區內（`app/account.tsx` 的 `SafeAreaView`）：App 畫到系統導覽列底下，0.5.24 的版本號就是被導覽列蓋住。
 - 「申請刪除帳號與資料」連到本 repo 的 `docs/play/privacy-policy.md` 對應章節（`ACCOUNT_DELETION_URL`），兩個平台都顯示同一份文案，不是只給 Android 看的說法。
 
 ### 登出（`clearAuthSession`、`POST /api/session/revoke`）
@@ -106,6 +106,7 @@
 - `tests/ui/accountSurface.test.ts`、`tests/ui/accountProfileRecovery.test.ts` — 帳戶頁在已登入/過期/載入中/載入失敗/載入完成但空各種狀態下顯示什麼。
 - `tests/ui/accountDeletionEntry.test.ts` — 已登入時能打開刪除帳號與資料的說明頁。
 - `tests/ui/accountVersionLabel.test.ts`、`tests/ui/accountSurface.test.ts`（app version label）— 帳戶頁最下面的版本號，資料載入失敗時也顯示；讀不到版本時不顯示。
+- `tests/ui/accountRouteSafeArea.test.ts` — 帳戶頁底部不會被系統導覽列蓋住。
 - `tests/ui/accountReminderPatch.test.ts` — 帳戶頁的提醒設定只送出真的被改動的欄位。
 - `tests/updateCheck.test.ts` — 版本比對規則、非 Android 平台完全不檢查。
 - `tests/ui/updatePrompt.test.ts` — 全螢幕提示的開啟/稍後/回前景重問、以及公告卡片的顯示條件。
