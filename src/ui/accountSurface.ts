@@ -15,6 +15,18 @@ function initial(profile: VerifiedProfile): string {
   return profile.displayName.trim().slice(0, 1) || '你';
 }
 
+/**
+ * The installed version as testers report it, e.g. 版本 0.5.24 (47). The number in brackets is the
+ * versionCode Google Play counts, so "which build do you have" has one answer. null when the native
+ * version cannot be read (tests, web), so the page shows nothing rather than an invented version.
+ */
+export function appVersionLabel(version: string | null, build: string | null): string | null {
+  const name = version?.trim();
+  if (!name) return null;
+  const code = build?.trim();
+  return code ? `版本 ${name} (${code})` : `版本 ${name}`;
+}
+
 export function buildAccountSurfaceModel(snapshot: Pick<AuthSnapshot, 'status' | 'profile' | 'profileStatus'>): AccountSurfaceModel {
   if (snapshot.status === 'signed-in' && snapshot.profile) {
     return {

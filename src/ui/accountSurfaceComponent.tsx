@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import * as Application from 'expo-application';
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { clearAuthSession, retryAuthProfile, useAuthSnapshot } from '../services/authSession';
 import { runtimeConfig } from '../config/runtime';
 import { GoogleLoginCard } from './GoogleLoginCard';
-import { buildAccountSurfaceModel } from './accountSurface';
+import { appVersionLabel, buildAccountSurfaceModel } from './accountSurface';
 import { theme } from './Theme';
 import { ReminderSettings } from './ReminderSettings';
 import { getReminderRuntimeOwner, useReminderRuntimeSnapshot } from '../services/reminderRuntime';
@@ -23,6 +24,7 @@ export function AccountSurface() {
     await runtime?.savePreferences(next);
   };
   const signOut = () => { clearAuthSession(); };
+  const versionLabel = appVersionLabel(Application.nativeApplicationVersion, Application.nativeBuildVersion);
 
   return (
     <View style={styles.card}>
@@ -49,6 +51,8 @@ export function AccountSurface() {
         <Text style={styles.title}>{model.mode === 'reauthenticate' ? '登入狀態已過期' : '竹科聖經帳戶'}</Text>
         <GoogleLoginCard baseUrl={runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl} />
       </>}
+      {/* Shown in every state, including a profile that failed to load: that tester still needs to say which build they have. */}
+      {versionLabel ? <Text style={styles.version}>{versionLabel}</Text> : null}
     </View>
   );
 }
@@ -64,5 +68,6 @@ const styles = StyleSheet.create({
   secondary: { minHeight: theme.control.tap, borderColor: theme.colors.primary, borderWidth: theme.control.hairline, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center' },
   secondaryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
   quiet: { minHeight: theme.control.tap, alignSelf: 'flex-start', justifyContent: 'center' },
+  version: { marginTop: 'auto', color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   quietText: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, textDecorationLine: 'underline' },
 });

@@ -97,7 +97,7 @@
 |---|---|---|---|---|
 | Google 登入 | 用 Google 帳號登入，第一次登入自動建立帳號 | 開 App 時的登入畫面 | Android（iOS 待第二階段） | [account.md](account.md) |
 | 啟用碼 | 認不出 Google 帳號時，用一次性啟用碼綁定 | 登入畫面（需要時才出現） | Android、iOS | [account.md](account.md) |
-| 帳戶頁 | 看自己的名字和小組、設定提醒、登出、申請刪除資料 | 右上角頭像 | Android、iOS | [account.md](account.md) |
+| 帳戶頁 | 看自己的名字和小組、設定提醒、登出、申請刪除資料、看 App 版本 | 右上角頭像 | Android、iOS | [account.md](account.md) |
 | App 更新提示 | 有新版時提示下載安裝檔 | 開 App 或回到前景時自動出現 | 只有 Android | [account.md](account.md) |
 
 ## 其他文件放哪
