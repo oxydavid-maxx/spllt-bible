@@ -6,12 +6,27 @@
 
 const TIMEOUT_MS = 60_000;
 
+/** Follow public export redirects, but never open an identity/login page. */
+async function anonymousGet(url: string, signal: AbortSignal): Promise<Response> {
+  for (let redirects = 0; redirects < 8; redirects++) {
+    const target = new URL(url);
+    if (target.hostname === 'accounts.google.com' || !['https:', 'http:'].includes(target.protocol)) return new Response(null, { status: 401 });
+    const response = await fetch(url, { redirect: 'manual', signal });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get('location');
+    await response.body?.cancel().catch(() => undefined);
+    if (!location) return new Response(null, { status: 502 });
+    url = new URL(location, url).href;
+  }
+  return new Response(null, { status: 502 });
+}
+
 /** null means transport/HTTP failure. A successfully fetched empty body remains ''/an empty Buffer. */
 async function get(url: string, kind: 'text' | 'binary'): Promise<string | Buffer | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(url, { redirect: 'follow', signal: controller.signal });
+    const response = await anonymousGet(url, controller.signal);
     if (!response.ok) return null;
     if (kind === 'text') return await response.text();
     return Buffer.from(await response.arrayBuffer());
@@ -43,7 +58,7 @@ export async function linkAccess(url: string): Promise<'open' | 'needs-sign-in' 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(url, { redirect: 'follow', signal: controller.signal });
+    const response = await anonymousGet(url, controller.signal);
     await response.body?.cancel().catch(() => undefined);
     if (new URL(response.url).hostname === 'accounts.google.com' || response.status === 401 || response.status === 403) return 'needs-sign-in';
     if (response.status === 404) return 'missing';

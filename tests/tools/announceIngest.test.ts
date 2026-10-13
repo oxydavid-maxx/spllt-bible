@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildAnnouncement, PARENT_FOLDER, PROGRAM_WORKBOOK, SUNDAY_WORKBOOK, type Announcement } from '../../tools/announce/build';
 
 const sources = vi.hoisted(() => ({ fetchFolderHtml: vi.fn(), fetchWorkbook: vi.fn(), fetchSlidesText: vi.fn(), fetchDriveFile: vi.fn(), fetchDocText: vi.fn(), fetchFormText: vi.fn(), linkAccess: vi.fn(async () => 'open'), publish: vi.fn(), review: vi.fn(async () => ({ sensible: true })) }));
+vi.mock('../../tools/announce/classify', async (original) => ({ ...await original<typeof import('../../tools/announce/classify')>(), classifyWeek: vi.fn(async () => { throw new Error('isolated fixture'); }) }));
 vi.mock('../../tools/announce/fetch', () => sources);
 vi.mock('../../tools/announce/publisher', () => ({ publishAnnouncement: sources.publish }));
 vi.mock('../../tools/announce/review', () => ({ reviewAnnouncement: sources.review }));
@@ -253,4 +254,61 @@ describe('the sign-up link belongs to the next gathering', () => {
     expect(result.output).toMatch(/SIGNUP: omitted: .*9\/20/);
     expect(sources.publish.mock.calls.at(-1)?.[1].next.signup).toBeNull();
   });
+});
+
+// 2026-10-13 anonymous capture: 10/11 contains exactly this second-session deck.
+// Raw Drive/workbook captures stay in the private job; the public fixture retains only its title slide.
+describe('content-based session assignment', () => {
+  const entry = { id: 'reading-club-deck', name: '20261011_青崇讀書會_拖延症_可編輯投影片.pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+  function october11() {
+    sources.fetchFolderHtml.mockImplementation(async (id: string) => id === PARENT_FOLDER ? listing(['week11', '20261011']) : id === 'week11' ? listing([entry.id, entry.name]) : null);
+    sources.fetchWorkbook.mockImplementation(async (id: string) => id === PROGRAM_WORKBOOK ? workbook({
+      '中亮第二四周青年啟發內容': [['Date','Topic','Owner'],['46306','十架：耶穌為什麼死？','中亮/大專']],
+      '小丁第二四周第二堂': [['Date','Topic','Owner'],['46306','青崇讀書會/拖延症','小丁']],
+    }) : normalSunday);
+    sources.fetchDriveFile.mockResolvedValue(readFileSync(resolve('tests/fixtures/announce-20261011-title.pptx')));
+  }
+  it('puts the captured 10/11 reading-club deck in the second session, never first-session reports', async () => {
+    october11();
+    const classifyWeek = vi.fn(async (_input: unknown) => ({ files: [{ id: entry.id, session: 2, role: 'sermonSlides', title: '一本書終結你的拖延症', speaker: null }] }));
+    const result = await buildAnnouncement({ today: '2026-10-13', classifyWeek } as Parameters<typeof buildAnnouncement>[0]);
+    expect(result.announcement?.sermon?.slides).toBeNull();
+    expect(result.announcement).toMatchObject({ sessions: [
+      { label: '第一堂', title: '十架：耶穌為什麼死？', slides: null, sermonSlides: null },
+      { label: '第二堂', title: '一本書終結你的拖延症', slides: null, sermonSlides: expect.stringContaining(entry.id) },
+    ] });
+    expect(classifyWeek).toHaveBeenCalledTimes(1);
+    expect(classifyWeek.mock.calls[0]?.[0]).toMatchObject({ files: [{ content: expect.stringContaining('一本書終結') }], sessions: [{ title: '十架：耶穌為什麼死？' }, { context: expect.stringContaining('讀書會') }] });
+  });
+  it('publishes with the legacy filename rules and logs every file when the classifier fails', async () => {
+    october11();
+    const log = vi.fn();
+    const classifyWeek = vi.fn(async () => { throw new Error('offline'); });
+    const result = await buildAnnouncement({ today: '2026-10-13', classifyWeek, log } as Parameters<typeof buildAnnouncement>[0]);
+    expect(result.announcement?.sermon?.slides).toContain(entry.id);
+    expect(log).toHaveBeenCalledWith(`CLASSIFY FALLBACK ${entry.name}`);
+  });
+});
+
+it('retains a second-session manuscript as named teaching material without pretending it is a transcript', async () => {
+  const classifyWeek = vi.fn(async () => ({ files: [{ id: 'doc20', session: 2, role: 'sermonDoc', title: null, speaker: null }] }));
+  sources.fetchFolderHtml.mockImplementation(async (id: string) => id === PARENT_FOLDER ? listing(['week20','20260920']) : listing(['doc20','未命名文件.docx']));
+  sources.fetchWorkbook.mockImplementation(async (id: string) => id === PROGRAM_WORKBOOK ? workbook({
+    '中亮第一三周信息排班': [['Date','Topic','Owner'],['46285','先','講員']],
+    '正慧姐青崇一三周第二堂規劃': [['Date','Topic','Owner'],['46285','小組','分組進行']],
+  }) : normalSunday);
+  const result = await buildAnnouncement({ today: '2026-09-20', classifyWeek } as Parameters<typeof buildAnnouncement>[0]);
+  expect(result.announcement).toMatchObject({ sessions: [{ label: '第一堂' }, { label: '第二堂', transcript: null, materials: [{ name: '未命名文件.docx', role: 'sermonDoc' }] }] });
+});
+
+it('keeps both sessions from a last-good archive when only the second session has material', async () => {
+  failFolder('week13');
+  const first = { title: '第一堂', speaker: null, passage: null, audio: null, slides: null, transcript: null, youtube: null };
+  const archive = { ...previous, sermon: first, sessions: [
+    { ...first, label: '第一堂' },
+    { ...first, label: '第二堂', title: '讀書會', sermonSlides: 'https://example.invalid/book' },
+  ] };
+  const result = await runIndex(null, archive);
+  expect(result.code).toBe(0);
+  expect(sources.publish.mock.calls[0][1].past[0].sessions).toMatchObject([{ label: '第一堂' }, { label: '第二堂', sermonSlides: 'https://example.invalid/book' }]);
 });

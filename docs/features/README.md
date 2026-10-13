@@ -23,7 +23,7 @@
 |---|---|---|---|---|
 | 下次聚會 | 下次主日的日期、主題或兩堂各自的內容、服事名單、報名按鈕 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 報名狀況 | 已有幾人報名、有哪些朋友報名 | 公告的下次聚會卡片 | Android、iOS | [announcements.md](announcements.md) |
-| 上次講道與以前的主日 | 日期/講員/標題在上、連結按鈕在下；不是今年的日期顯示年份 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
+| 上次講道與以前的主日 | 每週分堂列出名稱、講員與資料；單堂沿用原版面；以前的主日只含近期週聚會 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 離線提示 | 抓不到最新公告時，小字註明目前顯示哪一週 | 公告分頁底部 | Android、iOS | [announcements.md](announcements.md) |
 
 ## 讀經

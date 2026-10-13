@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { Announcement } from '../services/announcementClient';
+import type { Announcement, SessionBlock, SermonBlock } from '../services/announcementClient';
 import type { EventRegistrationSummary } from '../services/eventRegistrationClient';
 import { theme } from './Theme';
 import { taipeiDate } from '../domain/gamificationV1';
@@ -27,10 +27,28 @@ function LinkRow({ links, onOpen }: { links: Array<[string, string | null]>; onO
   if (present.length === 0) return null;
   return <View style={styles.links}>
     {present.map(([label, url]) => <Pressable
-      key={label} accessibilityRole="button" accessibilityLabel={label}
+      key={`${label}:${url}`} accessibilityRole="button" accessibilityLabel={label}
       onPress={() => onOpen(url)} style={styles.link}
     ><Text style={styles.linkText}>{label}</Text></Pressable>)}
   </View>;
+}
+
+const materialLabels = { slides: '報告投影片', sermonSlides: '講道投影片', audio: '錄音', transcript: '逐字稿', sermonDoc: '教材' } as const;
+function sessionLinks(session: SermonBlock | SessionBlock): Array<[string, string | null]> {
+  if ('materials' in session && session.materials?.length) return [
+    ...session.materials.map((file): [string, string] => [session.materials!.filter(other => other.role === file.role).length > 1
+      ? `${materialLabels[file.role]} · ${file.name}` : materialLabels[file.role], file.url]),
+    ['影片', session.youtube],
+  ];
+  return [['錄音', session.audio], ['講道投影片', session.sermonSlides ?? null], ['報告投影片', session.slides], ['逐字稿', session.transcript], ['影片', session.youtube]];
+}
+function RecordedSessions({ sessions, onOpen }: { sessions: SessionBlock[]; onOpen: (url: string) => void }) {
+  return <>{sessions.map(session => <View key={session.label} style={styles.recordedSession} accessibilityLabel={sessions.length > 1 ? `上次講道 ${session.label}` : undefined}>
+    {sessions.length > 1 ? <Text style={styles.sessionTag}>{session.label}</Text> : null}
+    <Text style={styles.headline}>{session.title ?? '講道'}</Text>
+    {[session.speaker, session.passage].some(Boolean) ? <Text style={styles.muted}>{[session.speaker, session.passage].filter(Boolean).join(' · ')}</Text> : null}
+    <LinkRow links={sessionLinks(session)} onOpen={onOpen} />
+  </View>)}</>;
 }
 
 function shortWeek(week: string): string {
@@ -41,6 +59,7 @@ function shortWeek(week: string): string {
 
 export function AnnouncementBoard({ announcement, stale, onOpen, registration }: AnnouncementBoardProps) {
   const { sermon, next, standing, past } = announcement;
+  const recorded = announcement.sessions?.length ? announcement.sessions : sermon ? [{ ...sermon, label: '第一堂' }] : [];
   return <ScrollView contentContainerStyle={styles.page}>
     {next ? <View style={styles.card} accessibilityLabel="下次聚會">
       <Text style={styles.eyebrow}>{`下次 ${next.date}`}</Text>
@@ -75,21 +94,19 @@ export function AnnouncementBoard({ announcement, stale, onOpen, registration }:
       </View> : null}
     </View> : null}
 
-    {sermon ? <View style={styles.card} accessibilityLabel="上次講道">
+    {recorded.length ? <View style={styles.card} accessibilityLabel="上次講道">
       <Text style={styles.eyebrow}>上次講道</Text>
-      <Text style={styles.headline}>{sermon.title ?? '講道'}</Text>
-      <Text style={styles.muted}>{[sermon.speaker, sermon.passage].filter(Boolean).join(' · ')}</Text>
-      <LinkRow
-        links={[['錄音', sermon.audio], ['講道投影片', sermon.sermonSlides ?? null], ['報告投影片', sermon.slides], ['逐字稿', sermon.transcript], ['影片', sermon.youtube]]}
-        onOpen={onOpen}
-      />
+      <RecordedSessions sessions={recorded} onOpen={onOpen} />
     </View> : null}
 
     {past.length > 0 ? <View style={styles.card} accessibilityLabel="以前的主日">
       <Text style={styles.eyebrow}>以前的主日</Text>
       {past.map((week) => <View key={week.week} style={styles.pastRow}>
-        <Text style={styles.pastTitle}>{[shortWeek(week.week), week.speaker, week.title].filter(Boolean).join(' · ')}</Text>
-        <LinkRow links={[['錄音', week.audio], ['講道投影片', week.sermonSlides ?? null], ['報告投影片', week.slides], ['逐字稿', week.transcript]]} onOpen={onOpen} />
+        {week.sessions && week.sessions.length > 1
+          ? <><Text style={styles.pastTitle}>{shortWeek(week.week)}</Text><RecordedSessions sessions={week.sessions} onOpen={onOpen} /></>
+          : <><Text style={styles.pastTitle}>{[shortWeek(week.week), week.speaker, week.title].filter(Boolean).join(' · ')}</Text>
+            <LinkRow links={week.sessions?.length ? sessionLinks(week.sessions[0]) : [['錄音', week.audio], ['講道投影片', week.sermonSlides ?? null], ['報告投影片', week.slides], ['逐字稿', week.transcript]]} onOpen={onOpen} /></>}
+
       </View>)}
     </View> : null}
 
@@ -112,6 +129,7 @@ const styles = StyleSheet.create({
   eyebrow: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
   headline: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
   muted: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  recordedSession: { gap: theme.spacing.xxs },
   session: { flexDirection: 'row', gap: theme.spacing.sm, paddingVertical: theme.spacing.xs },
   sessionTag: { alignSelf: 'flex-start', overflow: 'hidden', borderRadius: theme.radius.chip, backgroundColor: theme.colors.primarySoft, color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xxs },
   sessionCopy: { flex: 1, minWidth: 0 },

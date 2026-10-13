@@ -29,8 +29,14 @@ export interface SermonBlock {
   youtube: string | null;
 }
 
+export interface SessionBlock extends SermonBlock {
+  label: string;
+  materials?: Array<{ name: string; role: 'slides' | 'sermonSlides' | 'audio' | 'transcript' | 'sermonDoc'; url: string }>;
+}
+
 export interface PastWeek {
   week: string;
+  sessions?: SessionBlock[];
   title: string | null;
   speaker: string | null;
   audio: string | null;
@@ -44,6 +50,7 @@ export interface PastWeek {
 export interface Announcement {
   week: string;
   sermon: SermonBlock | null;
+  sessions?: SessionBlock[];
   next: {
     date: string; topic: string; owner: string | null; signup: string | null;
     /** Both sessions of that Sunday, when the file carries them. */
@@ -83,6 +90,17 @@ function parseSermon(value: unknown): SermonBlock | null {
   return Object.values(sermon).some((entry) => entry !== null) ? sermon : null;
 }
 
+function parseSessions(value: unknown): SessionBlock[] {
+  return records(value).flatMap(item => {
+    const sermon = parseSermon(item);
+    if (!text(item.label) || !sermon) return [];
+    const materials = records(item.materials).filter(material => text(material.name) && text(material.url)
+      && ['slides', 'sermonSlides', 'audio', 'transcript', 'sermonDoc'].includes(String(material.role)))
+      .map(material => ({ name: material.name as string, role: material.role as NonNullable<SessionBlock['materials']>[number]['role'], url: material.url as string }));
+    return [{ ...sermon, label: item.label as string, ...(materials.length ? { materials } : {}) }];
+  });
+}
+
 /**
  * Built from named keys, and tolerant of a file that carries more than this version knows about.
  *
@@ -105,6 +123,7 @@ export function parseAnnouncement(value: unknown): Announcement | null {
       const week = entry as Record<string, unknown>;
       if (!text(week.week)) continue;
       past.push({
+        ...(parseSessions(week.sessions).length ? { sessions: parseSessions(week.sessions) } : {}),
         week: week.week, title: orNull(week.title),
         speaker: typeof week.speaker === 'string' && week.speaker.trim() ? week.speaker.trim() : null,
         audio: orNull(week.audio), slides: orNull(week.slides), sermonSlides: orNull(week.sermonSlides), transcript: orNull(week.transcript),
@@ -115,6 +134,7 @@ export function parseAnnouncement(value: unknown): Announcement | null {
   return {
     week: item.week,
     sermon: parseSermon(item.sermon),
+    ...(parseSessions(item.sessions).length ? { sessions: parseSessions(item.sessions) } : {}),
     next: next && text(next.date) && text(next.topic)
       ? { date: next.date, topic: next.topic, owner: orNull(next.owner), signup: orNull(next.signup), ...parseNextDetail(next) }
       : null,

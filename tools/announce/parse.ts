@@ -1,11 +1,4 @@
-/**
- * Everything the weekly announcement builder decides, with no network and no model.
- *
- * The published deck is a rendering of the spreadsheets, so nothing here reads a slide to learn a
- * fact that a sheet already states. What the deck folder uniquely provides is the *files* — the
- * recording, the slides, the transcript — and those are identified by name, not by content. So this
- * module is string handling, and the expensive parts stay out of it.
- */
+/** Pure listing, schedule and legacy filename helpers. Content classification lives in classify.ts. */
 
 /** mimeType comes from the listing's file-type icon; a listing without one leaves it out. */
 export interface DriveEntry { id: string; name: string; mimeType?: string }
@@ -47,18 +40,32 @@ export function pickWeekFolder(entries: DriveEntry[], today: string): DriveEntry
   const compact = today.replace(/-/g, '');
   let chosen: DriveEntry | null = null;
   for (const entry of entries) {
-    if (!/^\d{8}$/.test(entry.name)) continue;
+    if (!isSundayFolder(entry.name)) continue;
     if (entry.name > compact) continue;
     if (!chosen || entry.name > chosen.name) chosen = entry;
   }
   return chosen;
 }
 
-/** Week folders, newest first, for the "past Sundays" list. */
+function isSundayFolder(name: string): boolean {
+  if (!/^\d{8}$/.test(name)) return false;
+  const iso = `${name.slice(0, 4)}-${name.slice(4, 6)}-${name.slice(6, 8)}`;
+  const date = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === iso && date.getUTCDay() === 0;
+}
+
+/**
+ * Only valid Sunday folders within eight weekly intervals of the selected Sunday are history.
+ * Non-Sunday event/archive folders (20260711, 20251213, 20250614) and distant Sunday archives
+ * are not weekly gatherings; gaps do not pull unrelated old folders into the eight-week window.
+ */
 export function listWeekFolders(entries: DriveEntry[], today: string): DriveEntry[] {
   const compact = today.replace(/-/g, '');
+  const selected = pickWeekFolder(entries, today);
+  if (!selected) return [];
+  const anchor = Date.parse(`${selected.name.slice(0, 4)}-${selected.name.slice(4, 6)}-${selected.name.slice(6, 8)}T00:00:00Z`);
   return entries
-    .filter((entry) => /^\d{8}$/.test(entry.name) && entry.name <= compact)
+    .filter((entry) => isSundayFolder(entry.name) && entry.name <= compact && anchor - Date.parse(`${entry.name.slice(0, 4)}-${entry.name.slice(4, 6)}-${entry.name.slice(6, 8)}T00:00:00Z`) <= 8 * 7 * 86400000)
     .sort((a, b) => b.name.localeCompare(a.name));
 }
 
@@ -77,9 +84,8 @@ function isDeck(name: string, mimeType?: string): boolean {
 /**
  * What a file in the week folder is, by its name.
  *
- * Deliberately not by mime type: the folder listing does not carry one, and the naming here is
- * consistent and human-chosen. A file that does not match is `other` and is simply not linked,
- * which is the right outcome for anything unexpected appearing in the folder.
+ * Legacy fallback only: content classification is the primary route. Unknown filenames stay
+ * other when the model is unavailable; this function does not guess a second session.
  */
 export function classifyFile(name: string, mimeType?: string): FileKind {
   const lower = name.toLowerCase();

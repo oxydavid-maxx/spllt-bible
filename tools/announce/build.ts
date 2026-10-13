@@ -1,3 +1,4 @@
+import { classifyWeek, fileText, parseClassification, type Classification, type ClassificationInput, type MaterialRole } from './classify';
 import { fetchDriveFile, fetchFolderHtml, fetchFormText, fetchSlidesText, fetchWorkbook } from './fetch';
 import { pptxSlideText, xlsxSheetRows } from './office';
 import {
@@ -6,13 +7,7 @@ import {
   type DriveEntry, type PlanRow,
 } from './parse';
 
-/**
- * The announcement the phone reads, built once a week from what is already in Drive.
- *
- * Nothing here interprets a slide to learn a fact a spreadsheet states. The deck is consulted for
- * exactly one thing — a sign-up link, which lives nowhere else — and otherwise the folder is used
- * as a list of files and the workbooks as tables. That is what keeps the whole job free.
- */
+/** The notice combines public schedules with anonymously read file content; classification is optional. */
 
 export const PARENT_FOLDER = '1eAVlDzcgbJYurIrSzSGBH59-HVDSdFmc';
 export const PROGRAM_WORKBOOK = '1CNsEhyNwxZ5enGR4ACsr3U56Zgc8nHGOQK7Z_RU5XfU';
@@ -45,12 +40,19 @@ export interface SermonBlock {
   youtube: string | null;
 }
 
+export interface SessionBlock extends SermonBlock {
+  label: string;
+  materials?: Array<{ name: string; role: MaterialRole; url: string }>;
+}
+
 export interface NextSession { label: string; kind: string | null; title: string; owner: string | null }
 
 export interface Announcement {
   week: string;
   generatedAt: string;
   sermon: SermonBlock | null;
+  /** First and second session; sermon remains the first for older phones. */
+  sessions?: SessionBlock[];
   next: {
     date: string; topic: string; owner: string | null; signup: string | null;
     /** Both sessions of that Sunday; older phones keep reading topic and owner. */
@@ -59,7 +61,7 @@ export interface Announcement {
     roles?: Array<{ label: string; value: string }>;
   } | null;
   standing: Record<string, string> | null;
-  past: Array<{ week: string; title: string | null; speaker: string | null; audio: string | null; slides: string | null; sermonSlides?: string | null; transcript: string | null }>;
+  past: Array<{ week: string; title: string | null; speaker: string | null; audio: string | null; slides: string | null; sermonSlides?: string | null; transcript: string | null; sessions?: SessionBlock[] }>;
 }
 
 function isoWeek(folderName: string): string {
@@ -222,8 +224,60 @@ async function signupForNext(nextDate: string | null, folders: DriveEntry[], cho
   return { signup: null, signupCheck: `omitted: next gathering ${want}; ${rejected.join('; ')}` };
 }
 
+function emptySession(label: string, title: string | null, speaker: string | null, passage: string | null): SessionBlock {
+  return { label, title, speaker, passage, audio: null, slides: null, sermonSlides: null, transcript: null, youtube: null };
+}
+
+async function sessionFiles(entries: DriveEntry[], program: Buffer, week: string, speaker: string | null, options: BuildOptions): Promise<SessionBlock[]> {
+  const schedule = sessionsOn(program, week);
+  const firstRow = rowFor(readTabs(program, SERMON_TABS), week);
+  if (schedule.length && schedule[0].label !== '第一堂') schedule.unshift({ label: '第一堂', kind: null, title: '', owner: speaker });
+  const contexts = schedule.map(item => ({ ...item, context: item.label === '第二堂'
+    ? GATHERING_TABS.map(tab => rowFor(readPlanRows(xlsxSheetRows(program, tab)), week)).filter(Boolean).map(row => `${headline(row!.topic)} / ${row!.owner}`).join('; ')
+    : item.title }));
+  if (!contexts.length) contexts.push({ label: '第一堂', kind: null, title: '', owner: speaker, context: '' });
+  const sessions = contexts.map((item, index) => emptySession(item.label, item.title || null,
+    index === 0 ? speaker ?? item.owner : null, index === 0 ? firstRow?.note || null : null));
+  if (!entries.length) return firstRow ? sessions : [];
+  const fallback = readWeekFiles(entries, week);
+  const log = options.log ?? ((line: string) => process.stdout.write(`${line}\n`));
+  let decisions: Classification | null = null;
+  try {
+    const files = [];
+    for (const entry of entries) files.push({ ...entry, content: await fileText(entry) });
+    const input = { week, sessions: contexts, files };
+    decisions = await (options.classifyWeek ?? classifyWeek)(input);
+    // Injectable classifiers obey the same public response boundary as the real provider.
+    decisions = parseClassification(JSON.stringify(decisions), input);
+  } catch { /* Filename rules remain the last-good behavior, never a publication gate. */ }
+  const fallbacks = new Set(entries.filter(entry => !decisions?.files.find(item => item.id === entry.id && item.session !== null)).map(entry => entry.id));
+  if (fallbacks.size === entries.length) {
+    for (const entry of entries) log(`CLASSIFY FALLBACK ${entry.name}`);
+    Object.assign(sessions[0], { title: fallback.title ?? sessions[0].title, audio: fallback.audio, slides: fallback.slides, sermonSlides: fallback.sermonSlides ?? null, transcript: fallback.transcript });
+    return sessions;
+  }
+  for (const entry of entries) {
+    let decision = decisions!.files.find(item => item.id === entry.id)!;
+    if (fallbacks.has(entry.id)) {
+      log(`CLASSIFY FALLBACK ${entry.name}`);
+      const kind = classifyFile(entry.name, entry.mimeType);
+      decision = { id: entry.id, session: 1, role: ['poster', 'video', 'other'].includes(kind) ? 'other' : kind as MaterialRole };
+    }
+    if (decision.role === 'other' || decision.session === null) continue;
+    const session = sessions[decision.session - 1];
+    if (decision.role !== 'slides' && decision.title) session.title = decision.title;
+    if (decision.role !== 'slides' && decision.speaker) session.speaker = decision.speaker;
+    const url = viewUrl(entry, decision.role);
+    (session.materials ??= []).push({ name: entry.name, role: decision.role, url });
+    if (decision.role !== 'sermonDoc') session[decision.role] ??= url;
+  }
+  return sessions;
+}
+
 export interface BuildOptions {
   today: string;
+  classifyWeek?: (input: ClassificationInput) => Promise<Classification>;
+  log?: (line: string) => void;
   parentFolder?: string;
   /** Read-only last-good item; it supplies missing speaker metadata and preserves links after a folder failure. */
   previousWeek?: (week: string) => Announcement['past'][number] | null;
@@ -241,7 +295,8 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
 
   const weekHtml = await fetchFolderHtml(chosen.id);
   if (weekHtml === null) return { announcement: null, reason: 'WEEK_FOLDER_UNREACHABLE' };
-  const files = readWeekFiles(parseFolderListing(weekHtml), week);
+  const entries = parseFolderListing(weekHtml);
+  const files = readWeekFiles(entries, week);
 
   const [program, sunday] = await Promise.all([fetchWorkbook(PROGRAM_WORKBOOK), fetchWorkbook(SUNDAY_WORKBOOK)]);
   if (program === null || sunday === null) return { announcement: null, reason: 'REQUIRED_WORKBOOK_UNREACHABLE' };
@@ -262,22 +317,12 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
   // Older phones show only topic and owner: they carry the first session, or just 青少團契.
   const headlineSession = sessions[0] ?? { title: SECOND_SESSION_TITLE, owner: null };
   const roles = upcoming ? rolesOn(xlsxSheetRows(sunday, '2026服事表'), upcoming.date) : [];
+  const currentSessions = await sessionFiles(entries, program, week, speakers.get(week) ?? null, options);
   const deck = await deckText(files.deck);
   if (deck === null) return { announcement: null, reason: 'DECK_UNREACHABLE' };
   const { signup, signupCheck } = await signupForNext(upcoming?.date ?? null, folders, chosen, deck);
 
-  // A block with nothing in it is omitted rather than rendered empty: the phone shows what exists.
-  const sermon: SermonBlock | null = files.title || files.audio || files.slides || files.sermonSlides || thisWeekSermon
-    ? {
-        title: files.title ?? (thisWeekSermon ? headline(thisWeekSermon.topic) : null),
-        speaker: thisWeekSermon?.owner || null,
-        passage: thisWeekSermon?.note || null,
-        audio: files.audio, slides: files.slides, transcript: files.transcript,
-        // Only when the week has one, so a file without a sermon deck reads exactly as before.
-        ...(files.sermonSlides ? { sermonSlides: files.sermonSlides } : {}),
-        youtube: null,
-      }
-    : null;
+  const sermon = currentSessions[0] ?? null;
 
   const past: Announcement['past'] = [];
   const warnings: string[] = [];
@@ -296,17 +341,20 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
     const listing = await fetchFolderHtml(folder.id);
     if (listing === null) {
       const lastGood = sameWeekCache();
-      if (!lastGood || (!lastGood.audio && !lastGood.slides && !lastGood.sermonSlides && !lastGood.transcript)) {
+      if (!lastGood || (!lastGood.audio && !lastGood.slides && !lastGood.sermonSlides && !lastGood.transcript && !lastGood.sessions?.some(session => session.audio || session.slides || session.sermonSlides || session.transcript || session.materials?.length))) {
         return { announcement: null, reason: `HISTORY_UNREACHABLE_WITHOUT_FALLBACK:${priorWeek}` };
       }
       past.push({ ...lastGood, speaker });
       warnings.push(`HISTORY_LAST_GOOD:${priorWeek}`);
       continue;
     }
-    const older = readWeekFiles(parseFolderListing(listing), priorWeek);
-    if (!older.audio && !older.slides && !older.sermonSlides && !older.transcript) continue;
+    const priorSessions = await sessionFiles(parseFolderListing(listing), program, priorWeek, speaker, options);
+    const older = priorSessions[0];
+    if (!older) continue;
+    if (!priorSessions.some(item => item.audio || item.slides || item.sermonSlides || item.transcript || item.materials?.length)) continue;
     past.push({
-      week: priorWeek, title: older.title, speaker,
+      week: priorWeek, title: older.title, speaker: older.speaker,
+      sessions: priorSessions,
       audio: older.audio, slides: older.slides, transcript: older.transcript,
       ...(older.sermonSlides ? { sermonSlides: older.sermonSlides } : {}),
     });
@@ -317,6 +365,7 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
       week,
       generatedAt: new Date().toISOString(),
       sermon,
+      ...(currentSessions.length ? { sessions: currentSessions } : {}),
       next: upcoming ? {
         date: shortDate(upcoming.date), topic: headlineSession.title, owner: headlineSession.owner, signup,
         ...(sessions.length ? { sessions } : {}),

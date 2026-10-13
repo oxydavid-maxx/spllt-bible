@@ -28,3 +28,11 @@ describe('announcement fetch outcome boundary', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+it('stops an anonymous redirect before requesting a Google sign-in page', async () => {
+  const request = vi.fn(async (_url: string, _init: RequestInit) => new Response(null, { status: 302, headers: { location: 'https://accounts.google.com/ServiceLogin' } }));
+  vi.stubGlobal('fetch', request);
+  expect(await fetchFolderHtml('private-folder')).toBeNull();
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(request.mock.calls[0]?.[1]).toMatchObject({ redirect: 'manual' });
+});

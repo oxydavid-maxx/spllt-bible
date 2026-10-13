@@ -170,3 +170,19 @@ describe('the next gathering in full', () => {
     expect(text).not.toContain('服事');
   });
 });
+
+it('renders recorded sessions under 上次講道 and opens the second-session deck', () => {
+  const second = { ...FULL.sermon!, label: '第二堂', title: '一本書終結你的拖延症', speaker: null, passage: null, audio: null, slides: null, sermonSlides: 'https://example.invalid/book', transcript: null };
+  const board = render({ ...FULL, sessions: [{ ...FULL.sermon!, label: '第一堂', slides: null }, second] } as Announcement);
+  expect(board.text()).toContain('第二堂');
+  expect(board.text()).toContain('一本書終結你的拖延症');
+});
+
+it('shows every file when a session has multiple teaching decks', () => {
+  const session = { ...FULL.sermon!, label: '第一堂', materials: [
+    { name: '教學一', role: 'sermonSlides', url: 'https://example.invalid/one' },
+    { name: '教學二', role: 'sermonSlides', url: 'https://example.invalid/two' },
+  ] };
+  const board = render({ ...FULL, sessions: [session] } as Announcement);
+  expect(board.text()).toContain('教學二');
+});
