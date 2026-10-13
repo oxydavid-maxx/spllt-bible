@@ -18,7 +18,7 @@
 |---|---|
 | Google 登入 | 一個「用 Google 登入」大按鈕；第一次登入自動建立帳號 |
 | 帳號啟用碼（備援路徑） | 伺服器認不出這個 Google 身份時，改顯示「輸入一次性啟用碼」欄位 |
-| 帳戶頁 | 頭像或姓名字首圖示、姓名、所屬小組名稱、讀經提醒設定、登出、申請刪除帳號與資料 |
+| 帳戶頁 | 頭像或姓名字首圖示、姓名、所屬小組名稱、讀經提醒設定、登出、申請刪除帳號與資料，最下面一行是 App 版本號 |
 | 登出 | 一個按鈕，清掉本機登入狀態並讓裝置端 session 失效 |
 | App 更新全螢幕提示 | 開機/回前景時蓋在畫面上的卡片：版本號、更新按鈕、（非強制時）稍後按鈕 |
 | 公告分頁常駐更新卡片 | 手機落後時公告分頁最上方一直顯示，直到更新完成 |
@@ -46,6 +46,7 @@
 - 已登入且個人資料載入成功時：顯示頭像（`avatarUrl` 有值才顯示圖片，否則顯示姓名字首的圓形字母）、姓名、登出按鈕、讀經提醒設定、申請刪除帳號與資料的連結。
 - 帳戶入口圖示（`AccountEntryButton`）同一套規則：有頭像顯示頭像，否則顯示姓名字首；**資料還沒回來之前一律顯示中性的「人」字**，不會用 memberId 拼出字母（避免顯示像 `google:1234567` 的 `1` 這種假身份）。
 - 讀經提醒：帳戶頁只顯示「讀經提醒」開關與時間，**不顯示「聚會提醒」**（`showMeeting={false}`）；程式註解明確寫「正式帳戶頁停用已退役的聚會提醒」——這與「小組」分頁已退役一致（見「已知限制與待辦」）。提醒設定本身的完整規則不在本文件範圍。
+- 最下面一行顯示安裝的版本，例如「版本 0.5.24 (47)」：括號裡是 Google Play 用來分辨版本的 versionCode。帳戶頁每個狀態都顯示（含載入中、載入失敗）；讀不到版本時整行不顯示，不會編一個版本（`appVersionLabel`）。
 - 「申請刪除帳號與資料」連到本 repo 的 `docs/play/privacy-policy.md` 對應章節（`ACCOUNT_DELETION_URL`），兩個平台都顯示同一份文案，不是只給 Android 看的說法。
 
 ### 登出（`clearAuthSession`、`POST /api/session/revoke`）
@@ -71,6 +72,7 @@
 - **不收集 Email、密碼，只存 Google 帳號給的識別碼**；也不收集位置、通訊錄、相片影片、廣告識別碼，沒有廣告或使用行為分析工具。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)）
 
 - **Google 登入第一次找不到對應帳號時會自動建立會員**，不用先請維護者手動開帳號；但「誰是管理者」不會因為誰先登入就自動取得——管理者身分是維護者在私有部署設定裡另外指定的，不會進公開原始碼。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §3.4）
+- **App 版本號放在帳戶頁最下面**（維護者 2026-10-13）：測試者要能說出 Google Play 裝的是哪一版，一般 App 也是點頭像進去的帳戶或設定頁看得到版本。括號放 versionCode，因為 Play 用它分辨版本。
 - **申請刪除帳號與資料，兩個平台顯示同一份文案**，走「App 內連結＋寄信」兩條路，不是只給 Android 看的說法，也沒有另外做一個線上申請系統。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)「刪除帳號與資料」）
 
 **待確認（沒有記錄，請維護者確認是否刻意）：**
@@ -103,6 +105,7 @@
 - `tests/services/googleVerifier.test.ts` — Google ID token 的簽章、發行者、audience、過期檢查。
 - `tests/ui/accountSurface.test.ts`、`tests/ui/accountProfileRecovery.test.ts` — 帳戶頁在已登入/過期/載入中/載入失敗/載入完成但空各種狀態下顯示什麼。
 - `tests/ui/accountDeletionEntry.test.ts` — 已登入時能打開刪除帳號與資料的說明頁。
+- `tests/ui/accountVersionLabel.test.ts`、`tests/ui/accountSurface.test.ts`（app version label）— 帳戶頁最下面的版本號，資料載入失敗時也顯示；讀不到版本時不顯示。
 - `tests/ui/accountReminderPatch.test.ts` — 帳戶頁的提醒設定只送出真的被改動的欄位。
 - `tests/updateCheck.test.ts` — 版本比對規則、非 Android 平台完全不檢查。
 - `tests/ui/updatePrompt.test.ts` — 全螢幕提示的開啟/稍後/回前景重問、以及公告卡片的顯示條件。

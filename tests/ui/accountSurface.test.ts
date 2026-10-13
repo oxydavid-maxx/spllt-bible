@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildAccountSurfaceModel } from '../../src/ui/accountSurface';
+import { appVersionLabel, buildAccountSurfaceModel } from '../../src/ui/accountSurface';
 
 describe('account surface', () => {
   it('replaces the sign-in CTA with a verified identity and group context', () => {
@@ -50,5 +50,22 @@ describe('account surface', () => {
     for (const profileStatus of ['error', 'empty'] as const) {
       expect(buildAccountSurfaceModel({ status: 'signed-in', profile: null, profileStatus }).mode).not.toBe('loading');
     }
+  });
+});
+
+// Testers need to tell which build Play has installed, and the account page (behind the avatar) is
+// where apps usually show it. Maintainer decision 2026-10-13.
+describe('app version label', () => {
+  it('shows the version name and the build number Play counts', () => {
+    expect(appVersionLabel('0.5.24', '47')).toBe('版本 0.5.24 (47)');
+  });
+
+  it('drops a missing build number instead of printing (null)', () => {
+    expect(appVersionLabel('0.5.24', null)).toBe('版本 0.5.24');
+  });
+
+  it('says nothing when the version cannot be read', () => {
+    expect(appVersionLabel(null, '47')).toBeNull();
+    expect(appVersionLabel('  ', '47')).toBeNull();
   });
 });
