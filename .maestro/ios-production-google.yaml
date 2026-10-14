@@ -5,6 +5,6 @@ appId: org.qingmu.youth
 - tapOn: '使用Google登入'
 # Capture the real first native response. Do not accept an authentication/consent dialog.
 - extendedWaitUntil:
-    visible: '.*(google\.com|Email or phone|電子郵件或電話).*'
+    visible: '.*(google\.com|Email or phone|電子郵件或電話|invalid_client|Error 40[01]|Authorization Error).*'
     timeout: 30000
 # The driver reads the live hierarchy for privacy before saving a screenshot, then closes the app.

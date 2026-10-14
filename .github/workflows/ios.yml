@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       google_login_proof:
-        description: 'Production-config Google entry proof (no account input)'
+        description: 'Synthetic Google wiring proof with production config composition (no account input)'
         type: boolean
         default: false
 concurrency:
@@ -112,10 +112,8 @@ jobs:
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION=2.10.0 bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      - name: production Google entry (no credentials or continuation)
-        env:
-          QM_IOS_PRODUCTION_CONFIG: ${{ secrets.QM_IOS_PRODUCTION_CONFIG }}
-          EXPO_PUBLIC_YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
+      - name: synthetic Google wiring (no credentials or continuation)
+        # Explicitly fake clients live in google-login-fixture.ts. This job consumes no secrets.
         run: npx tsx scripts/ios/google-login-proof.ts
       - uses: actions/upload-artifact@v4
         if: always()
@@ -126,4 +124,5 @@ jobs:
             ci-google/public-config.redacted.json
             ci-google/google-entry.png
             ci-google/failure.redacted.txt
+            ci-google/hierarchy.redacted.txt
           retention-days: 7
