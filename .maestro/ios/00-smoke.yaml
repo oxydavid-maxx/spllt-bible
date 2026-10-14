@@ -1,5 +1,6 @@
 # .maestro/ios/00-smoke.yaml
-# Tab buttons are matched by their accessibility labels (app/(tabs)/_layout.tsx): 公告, 讀經入口, 積分, 靈修日記.
+# Tab buttons are matched by their accessibility labels (app/(tabs)/_layout.tsx): 公告, 讀經入口, 積分.
+# 日記 left the tab bar in 0.5.27 (href: null), so no flow looks for its 靈修日記 button.
 appId: org.qingmu.youth
 ---
 # The app was just installed and granted notifications by run-flows.sh; no clearState, which would reinstall it.
@@ -8,8 +9,6 @@ appId: org.qingmu.youth
     visible: "積分"
     timeout: 90000
 - assertVisible: "公告"
-# Main 0.5.27 intentionally hides Journal; verify the current public tab contract.
-- assertNotVisible: "靈修日記"
 # Tabs are already exposed while Today is replacing itself with Reader. Wait for the
 # destination; the tab hierarchy alone is not readiness.
 - extendedWaitUntil:
@@ -29,13 +28,10 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "開啟積分操作"
     timeout: 15000
-# The group card precedes the member card in main 0.5.27 (actual screen has three scroll pages).
-# Keep the same signed-in member assertion, reached with the normal scroll interaction.
+# 0.5.27: the member's own name sits in the goal card under the calendar, below an iPhone's fold.
 - scrollUntilVisible:
-    element:
-      text: "測試成員甲"
+    element: "測試成員甲"
     direction: DOWN
     timeout: 30000
-- assertVisible: "測試成員甲"
 - takeScreenshot: 00-smoke
 - tapOn: "讀經入口"
