@@ -112,7 +112,7 @@ jobs:
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION=2.10.0 bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      - name: synthetic Google wiring (no credentials or continuation)
+      - name: synthetic Google wiring (one native iOS authorization, no Google interaction)
         # Explicitly fake clients live in google-login-fixture.ts. This job consumes no secrets.
         run: npx tsx scripts/ios/google-login-proof.ts
       - uses: actions/upload-artifact@v4
@@ -124,5 +124,7 @@ jobs:
             ci-google/public-config.redacted.json
             ci-google/google-entry.png
             ci-google/failure.redacted.txt
+            ci-google/flow.redacted.txt
+            ci-google/failure-screen.png
             ci-google/hierarchy.redacted.txt
           retention-days: 7

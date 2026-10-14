@@ -76,7 +76,8 @@ try {
   env.MAESTRO_DRIVER_STARTUP_TIMEOUT = '600000';
   run(`${process.env.HOME}/.maestro/bin/maestro`, ['--device', device, 'hierarchy', '--no-reinstall-driver']);
   env.MAESTRO_DRIVER_STARTUP_TIMEOUT = '180000';
-  run(`${process.env.HOME}/.maestro/bin/maestro`, ['--device', device, 'test', '--no-reinstall-driver', '.maestro/ios-production-google.yaml']);
+  const flowOutput = run(`${process.env.HOME}/.maestro/bin/maestro`, ['--device', device, 'test', '--no-reinstall-driver', '.maestro/ios-production-google.yaml']);
+  writeFileSync(`${out}/flow.redacted.txt`, redactEvidence(flowOutput, secrets));
   const hierarchy = run(`${process.env.HOME}/.maestro/bin/maestro`, ['--device', device, 'hierarchy', '--no-reinstall-driver']);
   if (/[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(hierarchy)) throw Error('Account/email visible; screenshot withheld');
   run('xcrun', ['simctl', 'io', device, 'screenshot', `${out}/google-entry.png`]);
@@ -87,7 +88,20 @@ try {
   receipt.observedGoogleClientError = /invalid_client|OAuth client was not found|Access blocked|Authorization Error|Error 40[01]|無效的用戶端|授權錯誤/i.test(hierarchy);
   if (!/Email or phone|電子郵件或電話/.test(hierarchy) && !(receipt.observedGoogleDomain && receipt.observedGoogleClientError)) throw Error('Google account/client-error page not reached after the approved native iOS authorization');
   receipt.verdict = 'PASS';
-} catch (error) { receipt.reason = error instanceof Error ? error.message : 'Proof failed'; process.exitCode = 1; }
+} catch (error) {
+  receipt.reason = error instanceof Error ? error.message : 'Proof failed'; process.exitCode = 1;
+  // A failed selector must retain the live screen oracle. Never save an account-bearing screenshot.
+  if (device) {
+    const observed = spawnSync(`${process.env.HOME}/.maestro/bin/maestro`, ['--device', device, 'hierarchy', '--no-reinstall-driver'], { env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+    if (observed.status === 0) {
+      const hierarchy = observed.stdout;
+      const privateEmail = /[\w.+-]+@[\w.-]+\.[a-z]{2,}/i;
+      writeFileSync(`${out}/hierarchy.redacted.txt`, redactEvidence(hierarchy.replace(new RegExp(privateEmail.source, 'gi'), '[REDACTED_EMAIL]'), secrets));
+      receipt.failureScreenPrivacy = privateEmail.test(hierarchy) ? 'email observed; screenshot withheld' : 'live hierarchy contains no email';
+      if (!privateEmail.test(hierarchy)) spawnSync('xcrun', ['simctl', 'io', device, 'screenshot', `${out}/failure-screen.png`], { env, stdio: 'ignore' });
+    }
+  }
+}
 finally {
   if (device) spawnSync('xcrun', ['simctl', 'terminate', device, 'org.qingmu.youth'], { env, stdio: 'ignore' });
   writeFileSync(`${out}/receipt.json`, redactEvidence(JSON.stringify(receipt, null, 2), secrets));
