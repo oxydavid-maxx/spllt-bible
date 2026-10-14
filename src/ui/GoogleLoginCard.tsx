@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { theme } from './Theme';
 import { createApiClient, type SessionResult } from '../services/apiClient';
-import { obtainGoogleIdToken, type NativeGoogleModule } from '../services/googleNative';
+import { obtainGoogleIdToken, iosClientIdFromUrlScheme, type NativeGoogleModule } from '../services/googleNative';
 import { beginAuthSessionAttempt, finishAuthSessionAttempt, configureAuthSessionTransport, persistEstablishedAuthSession, type AuthSessionAttempt } from '../services/authSession';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -38,7 +38,9 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
     setErrorMessage(null);
     try {
       const nativeGoogle = require('react-native-nitro-google-signin') as NativeGoogleModule;
-      const authResult = await obtainGoogleIdToken(nativeGoogle, clientId);
+      // iOS needs its own native client; serverClientID stays the web client so the backend audience is unchanged.
+      const iosClientId = Platform.OS === 'ios' ? iosClientIdFromUrlScheme(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME) : undefined;
+      const authResult = await obtainGoogleIdToken(nativeGoogle, clientId, iosClientId);
       if (authResult.status !== 'SUCCESS') {
         setState('error');
         setErrorMessage(authResult.status === 'CANCELLED' ? '你取消了登入。' : authResult.reason === 'GOOGLE_PLAY_SERVICES_UNAVAILABLE' ? '這台裝置沒有可用的Google服務。' : '登入沒有完成，請稍後再試。');

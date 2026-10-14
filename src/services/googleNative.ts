@@ -1,6 +1,6 @@
 export interface NativeGoogleModule {
   GoogleOneTapSignIn: {
-    configure: (options: { webClientId: string }) => void;
+    configure: (options: { webClientId: string; iosClientId?: string }) => void;
     checkPlayServices: () => Promise<void>;
     signIn: () => Promise<unknown>;
     createAccount: () => Promise<unknown>;
@@ -16,9 +16,15 @@ export type NativeGoogleResult =
   | { status: 'CANCELLED' }
   | { status: 'ERROR'; reason: 'GOOGLE_PLAY_SERVICES_UNAVAILABLE' | 'SIGN_IN_NOT_COMPLETED' | 'NATIVE_MODULE_UNAVAILABLE' };
 
-export async function obtainGoogleIdToken(nativeGoogle: NativeGoogleModule, webClientId: string): Promise<NativeGoogleResult> {
+/** Google defines the callback scheme as the reversed iOS OAuth client ID. */
+export function iosClientIdFromUrlScheme(scheme: string | undefined): string | undefined {
+  const match = /^com\.googleusercontent\.apps\.([A-Za-z0-9_-]+)$/.exec(scheme?.trim() ?? '');
+  return match ? `${match[1]}.apps.googleusercontent.com` : undefined;
+}
+
+export async function obtainGoogleIdToken(nativeGoogle: NativeGoogleModule, webClientId: string, iosClientId?: string): Promise<NativeGoogleResult> {
   try {
-    nativeGoogle.GoogleOneTapSignIn.configure({ webClientId });
+    nativeGoogle.GoogleOneTapSignIn.configure({ webClientId, ...(iosClientId ? { iosClientId } : {}) });
     await nativeGoogle.GoogleOneTapSignIn.checkPlayServices();
     let response = await nativeGoogle.GoogleOneTapSignIn.signIn();
     if (nativeGoogle.isNoSavedCredentialFoundResponse(response)) response = await nativeGoogle.GoogleOneTapSignIn.createAccount();

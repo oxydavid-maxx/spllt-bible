@@ -9,7 +9,7 @@ const storage = vi.hoisted(() => new Map<string, string>());
 const storageGate = vi.hoisted(() => ({ beforeWrite: null as null | ((key: string) => Promise<void>) }));
 const foreground = vi.hoisted(() => ({ callback: null as null | ((state: string) => void) }));
 const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknown }) => { const R = require('react'); return R.createElement(name, props, props.children); });
-vi.mock('react-native', () => ({ View: primitive('View'), Text: primitive('Text'), TextInput: primitive('TextInput'), Pressable: primitive('Pressable'), StyleSheet: { create: (x: unknown) => x }, AppState: { addEventListener: (_: string, callback: (state: string) => void) => { foreground.callback = callback; return { remove: () => { foreground.callback = null; } }; } } }));
+vi.mock('react-native', () => ({ Platform: { OS: 'android' }, View: primitive('View'), Text: primitive('Text'), TextInput: primitive('TextInput'), Pressable: primitive('Pressable'), StyleSheet: { create: (x: unknown) => x }, AppState: { addEventListener: (_: string, callback: (state: string) => void) => { foreground.callback = callback; return { remove: () => { foreground.callback = null; } }; } } }));
 vi.mock('expo-web-browser', () => ({ maybeCompleteAuthSession() {} }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async (key: string) => storage.get(key) ?? null, setItemAsync: async (key: string, value: string) => { await storageGate.beforeWrite?.(key); storage.set(key, value); }, deleteItemAsync: async (key: string) => { storage.delete(key); } }));
 let auth: any, createClient: any;

@@ -1,0 +1,15 @@
+appId: org.qingmu.youth
+---
+- launchApp
+- assertVisible: '使用Google登入'
+- tapOn: '使用Google登入'
+# Supervisor exception: exactly one native iOS authorization action, in a new account-free simulator.
+# This system phrase/domain is from run 38518138297; never tap any Google page control.
+- extendedWaitUntil:
+    visible: '.*Wants to Use.*accounts\.google\.com.*to Sign In.*'
+    timeout: 30000
+- tapOn: 'Continue'
+- extendedWaitUntil:
+    visible: '.*(Email or phone|電子郵件或電話|invalid_client|OAuth client was not found|Access blocked|Error 40[01]|Authorization Error).*'
+    timeout: 30000
+# The driver checks the live hierarchy for privacy, saves a screenshot, and terminates the app.

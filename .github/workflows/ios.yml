@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      google_login_proof:
+        description: 'Synthetic Google wiring proof with production config composition (no account input)'
+        type: boolean
+        default: false
 concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
@@ -14,6 +19,7 @@ permissions:
   actions: read
 jobs:
   simulator:
+    if: ${{ !inputs.google_login_proof }}
     runs-on: macos-26
     timeout-minutes: 120
     env:
@@ -22,7 +28,7 @@ jobs:
       EXPO_PUBLIC_QINGMU_FIXTURE: 'true'
       EXPO_PUBLIC_QINGMU_DEV_TOKEN: ci-fixture-token
       # HTTPS like production (scripts/ios/run-flows.sh): the reader loads Bible text only through an https API base.
-      EXPO_PUBLIC_QINGMU_API_BASE_URL: https://localhost:8788
+      EXPO_PUBLIC_QINGMU_API_BASE_URL: https://127.0.0.1:8788
       EXPO_PUBLIC_QINGMU_TEST_DATE: '2026-09-02'
       # Empty until 光佑 approves Q1; the reader flows then report 略過（無 key）.
       EXPO_PUBLIC_YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
@@ -83,6 +89,44 @@ jobs:
           path: |
             ci-out/*.json
             ci-out/xcodebuild-errors.txt
+            ci-out/fixture-listener.txt
+            ci-out/fixture-san.txt
             ci-out/maestro/**/*.png
             ci-out/maestro/*.txt
           retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
+  google-login:
+    if: ${{ inputs.google_login_proof }}
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: sudo xcode-select -s /Applications/Xcode_26.4.1.app
+      - run: npm ci
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: install Maestro 2.10.0
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION=2.10.0 bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: synthetic Google wiring (one native iOS authorization, no Google interaction)
+        # Explicitly fake clients live in google-login-fixture.ts. This job consumes no secrets.
+        run: npx tsx scripts/ios/google-login-proof.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-google-entry
+          path: |
+            ci-google/receipt.json
+            ci-google/public-config.redacted.json
+            ci-google/google-entry.png
+            ci-google/failure.redacted.txt
+            ci-google/flow.redacted.txt
+            ci-google/failure-screen.png
+            ci-google/hierarchy.redacted.txt
+          retention-days: 7
