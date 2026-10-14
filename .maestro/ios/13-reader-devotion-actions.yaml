@@ -3,6 +3,11 @@
 appId: org.qingmu.youth
 ---
 - launchApp
+# The tab bar reaches the accessibility tree only after start-up (2026-10-14 run: drawn on screen,
+# 讀經入口 still missing for 20 s); wait for it the way 12-reader-verse does.
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
 - tapOn: "讀經入口"
 - extendedWaitUntil:
     visible: "更多閱讀工具"
