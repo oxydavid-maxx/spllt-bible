@@ -6,6 +6,7 @@ vi.mock('react-native', () => ({
   Pressable: 'Pressable', Text: 'Text', View: 'View',
   StyleSheet: { create: (value: unknown) => value },
 }));
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
 import type { CompletionRecord } from '../../src/domain/completion';
 import { createMobileRepository, type MobileDatabase } from '../../src/storage/mobileRepository';
 import { buildCompletionTodayButtonModel, CompletionTodayButton } from '../../src/ui/CompletionTodayButton';

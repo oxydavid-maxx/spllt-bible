@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import * as Application from 'expo-application';
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { clearAuthSession, retryAuthProfile, useAuthSnapshot } from '../services/authSession';
@@ -12,7 +12,8 @@ import { getReminderRuntimeOwner, useReminderRuntimeSnapshot } from '../services
 /** Web resource for requesting deletion of the account and its data (Google Play account deletion policy). */
 export const ACCOUNT_DELETION_URL = `https://github.com/oxydavid-maxx/spllt-bible/blob/main/docs/play/privacy-policy.md#${encodeURIComponent('刪除帳號與資料')}`;
 
-export function AccountSurface() {
+/** `adminEntry`: the route hands in 全體 (管理), so this surface stays free of navigation. */
+export function AccountSurface({ adminEntry }: { adminEntry?: ReactNode } = {}) {
   const auth = useAuthSnapshot();
   const session = auth.session;
   const profile = session && auth.profile?.memberId === session.memberId ? auth.profile : null;
@@ -42,6 +43,7 @@ export function AccountSurface() {
           onOpenSettings={() => { void Linking.openSettings(); }}
           showMeeting={false}
         />
+        {adminEntry}
         <Pressable accessibilityRole="link" accessibilityLabel="申請刪除帳號與資料" onPress={() => { void Linking.openURL(ACCOUNT_DELETION_URL).catch(() => undefined); }} style={styles.quiet}><Text style={styles.quietText}>申請刪除帳號與資料</Text></Pressable>
       </> : model.mode === 'loading' || model.mode === 'error' || model.mode === 'empty' ? <>
         <Text style={styles.title}>{model.mode === 'error' ? '暫時無法載入帳戶資料' : model.mode === 'empty' ? '尚未取得帳戶資料' : '正在載入帳戶資料'}</Text>

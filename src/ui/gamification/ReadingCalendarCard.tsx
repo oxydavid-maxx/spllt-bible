@@ -29,6 +29,8 @@ export interface ReadingCalendarCardProps {
   /** The selected day's completion button, with anything it needs to say about syncing. */
   action?: ReactNode;
   onOpenReadingPlan?: () => void;
+  /** Days the member also read the pastor's 靈修: a small gold 「靈修」 under the date. */
+  devotionDates?: ReadonlySet<string>;
 }
 
 function monthLabel(month: string): string {
@@ -36,7 +38,7 @@ function monthLabel(month: string): string {
   return `${year}年${Number(value)}月`;
 }
 
-export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, action, onOpenReadingPlan }: ReadingCalendarCardProps) {
+export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, action, onOpenReadingPlan, devotionDates }: ReadingCalendarCardProps) {
   const selectedDay = days.get(selectedDate);
   const selectedState = dayState(selectedDate, today, selectedDay);
   const message = dayMessage(selectedDate, selectedState);
@@ -55,17 +57,24 @@ export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect
         if (!date) return <View key={`b${index}`} style={styles.slot}><View style={styles.cellBlank} /></View>;
         const state = dayState(date, today, days.get(date));
         const selected = date === selectedDate;
+        const devoted = devotionDates?.has(date) ?? false;
         return <View key={date} style={styles.slot}><Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${date} ${STATE_LABEL[state]}${date === today ? ' 今天' : ''}`}
+          accessibilityLabel={`${date} ${STATE_LABEL[state]}${devoted ? ' 也讀了靈修' : ''}${date === today ? ' 今天' : ''}`}
           accessibilityState={{ selected }}
           onPress={() => onSelect(date)}
-          style={[styles.cell, state === 'completed' && styles.cellDone, date > today && styles.cellFuture, date === today && styles.cellToday, selected && styles.cellSelected]}
+          // Today's dark ring already marks the day the page opens on; the clay ring is for another day picked.
+          style={[styles.cell, state === 'completed' && styles.cellDone, date > today && styles.cellFuture, date === today && styles.cellToday, selected && date !== today && styles.cellSelected]}
         >
           <Text style={[styles.cellText, state === 'completed' && styles.cellTextDone, selected && styles.cellTextSelected]}>{Number(date.slice(8, 10))}</Text>
+          {devoted ? <Text style={[styles.devotionMark, state === 'completed' && styles.devotionMarkDone]}>靈修</Text> : null}
         </Pressable></View>;
       })}
     </View>
+    {devotionDates ? <View style={styles.legend}>
+      <View style={styles.legendItem}><View style={styles.legendDone} /><Text style={styles.legendText}>讀完經文</Text></View>
+      <Text style={styles.legendText}><Text style={styles.legendDevotion}>靈修</Text>＝那天也讀了靈修</Text>
+    </View> : null}
     <View style={styles.selected}>
       {selectedDay ? <>
         <View style={styles.dayLine}>
@@ -81,7 +90,7 @@ export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.xs },
+  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, padding: 14, gap: 6 },
   periodNav: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.xs },
   navButton: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface },
   navText: { color: theme.colors.primary, fontSize: 30, lineHeight: 32 },
@@ -90,8 +99,15 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   slot: { width: '14.2857%', padding: 2 },
   weekday: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, textAlign: 'center' },
-  cellBlank: { height: 36 },
-  cell: { height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted },
+  cellBlank: { height: 40 },
+  cell: { height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted },
+  devotionMark: { color: theme.colors.goldText, fontSize: 11, lineHeight: 12, fontWeight: '700' },
+  devotionMarkDone: { color: theme.colors.goldOnPrimary },
+  legend: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 2 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
+  legendDone: { width: 12, height: 12, borderRadius: 3, backgroundColor: theme.colors.primary },
+  legendText: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+  legendDevotion: { color: theme.colors.goldText, fontWeight: '700' },
   cellDone: { backgroundColor: theme.colors.primary },
   cellFuture: { opacity: 0.45 },
   cellToday: { borderWidth: 2, borderColor: theme.colors.primaryDeep },

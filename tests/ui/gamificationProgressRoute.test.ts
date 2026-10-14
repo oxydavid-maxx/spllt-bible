@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaProvider: (props: any) => props.children, SafeAreaView: (props: any) => props.children }));
 
 const { primitive, api, auth, ApiError, appListeners } = vi.hoisted(() => ({
@@ -19,7 +19,8 @@ vi.mock('../../src/services/useCompletionController', () => ({ useCompletionCont
 vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn() }));
 vi.mock('react-native', () => ({ AppState: { addEventListener: vi.fn((_event: string, listener: (state: string) => void) => { appListeners.push(listener); return { remove: vi.fn() }; }) }, Pressable: primitive('Pressable'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
-vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle') }; });
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
+vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => ({ getDevotionDates: async () => [], setDevotion: async () => undefined, getGroupReading: async () => { throw new Error('not served'); }, getScoreHistory: async () => { throw new Error('not served'); }, getDevotional: async () => null }) }));
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | void) => { require('react').useEffect(callback, []); } }));
 vi.mock('expo-local-authentication', () => ({ authenticateAsync: vi.fn(async () => ({ success: true })) }));
 vi.mock('../../src/services/authSession', () => ({ getAuthSnapshot: () => auth, isCurrentAuthSession: () => true, registerAuthLifecycleListener: () => vi.fn(), useAuthSnapshot: () => auth }));
@@ -31,7 +32,14 @@ vi.mock('../../src/ui/gamification/RedemptionList', () => ({ RedemptionList: (pr
 vi.mock('../../src/ui/gamification/FriendQrPanel', () => ({ FriendQrPanel: (props: any) => React.createElement('FriendQrPanel', props) }));
 vi.mock('../../src/ui/gamification/RewardControls', () => ({ RewardControls: (props: any) => React.createElement('RewardControls', props) }));
 
+import { consumeOpenAllScores, requestOpenAllScores } from '../../src/services/allScoresRequest';
 import ProgressScreen from '../../app/(tabs)/progress';
+
+// 全體 is asked for from 我的帳戶 and heard by every mounted 積分 screen, so each test unmounts its own.
+const mountedScreens: TestRenderer.ReactTestRenderer[] = [];
+const createScreen = TestRenderer.create;
+beforeEach(() => { vi.spyOn(TestRenderer, 'create').mockImplementation(((...args: Parameters<typeof createScreen>) => { const tree = createScreen(...args); mountedScreens.push(tree); return tree; }) as typeof createScreen); });
+afterEach(async () => { await act(async () => { for (const tree of mountedScreens.splice(0)) tree.unmount(); }); consumeOpenAllScores(); });
 
 describe('progress gamification route', () => {
   it('loads own profile, then uses the same people/profile surface for friends', async () => {
@@ -120,8 +128,7 @@ describe('progress gamification route', () => {
   it('requires admin unlock before the all scope and reaches redeem/reverse actions', async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    const all = renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0];
-    await act(async () => { all.props.onPress(); });
+    await act(async () => { requestOpenAllScores(); });
     expect(api.getPeople).toHaveBeenCalledWith('all');
     const list = renderer.root.findByType('PeopleList' as any);
     await act(async () => { list.props.onSelect(list.props.people[0]); });
@@ -152,7 +159,7 @@ describe('progress gamification route', () => {
     api.redeem.mockRejectedValueOnce(new ApiError('timeout')).mockResolvedValueOnce({});
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
+    await act(async () => { requestOpenAllScores(); });
     const list = renderer.root.findByType('PeopleList' as any);
     await act(async () => { list.props.onSelect(list.props.people[0]); });
     await act(async () => { renderer.root.findByType('ScoreProfile' as any).props.onOpenActions(); });
@@ -172,7 +179,7 @@ describe('progress gamification route', () => {
     });
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
+    await act(async () => { requestOpenAllScores(); });
     await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); });
     const pendingAction = renderer.root.findByType('ActionSheet' as any).props.actions.find((action: any) => action.label === '尚未確認操作 (2)');
     await act(async () => { pendingAction.onPress(); });
@@ -190,14 +197,14 @@ describe('progress gamification route', () => {
     const openMenu = async () => { await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); }); };
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label.startsWith('尚未確認操作'))).toBe(false);
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
+    await act(async () => { requestOpenAllScores(); });
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label === '尚未確認操作 (1)')).toBe(true);
 
     await act(async () => { [...appListeners].forEach((listener) => listener('background')); [...appListeners].forEach((listener) => listener('active')); await Promise.resolve(); });
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label.startsWith('尚未確認操作'))).toBe(false);
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
+    await act(async () => { requestOpenAllScores(); });
     await openMenu();
     expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label === '尚未確認操作 (1)')).toBe(true);
     expect(api.getPendingOperations).toHaveBeenCalledTimes(2);
@@ -236,7 +243,7 @@ describe('progress gamification route', () => {
     api.redeem.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRedeem = reject; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); });
+    await act(async () => { requestOpenAllScores(); });
     const list = renderer.root.findByType('PeopleList' as any);
     await act(async () => { list.props.onSelect(list.props.people[0]); });
     await act(async () => { renderer.root.findByType('ScoreProfile' as any).props.onOpenActions(); });

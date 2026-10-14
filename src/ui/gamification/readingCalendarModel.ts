@@ -49,7 +49,7 @@ export function shiftMonth(month: string, delta: number): string {
 /** 9/25（五）: how the page names a day, in the heading and in every one-line message. */
 export function dayHeading(date: string): string {
   const value = utcNoon(date);
-  return `${value.getUTCMonth() + 1}/${value.getUTCDate()}（${WEEKDAYS[value.getUTCDay()]}）`;
+  return `${value.getUTCMonth() + 1}/${value.getUTCDate()} (${WEEKDAYS[value.getUTCDay()]})`;
 }
 
 export function dayState(date: string, today: string, day: CalendarDay | undefined): DayState {
@@ -61,9 +61,9 @@ export function dayState(date: string, today: string, day: CalendarDay | undefin
 
 /** The whole panel for a day that has no button: one line, the date first. */
 export function dayMessage(date: string, state: DayState): string | null {
-  if (state === 'expired') return `${dayHeading(date)}已超過 ${COMPLETION_WINDOW_DAYS} 天，不能補登`;
-  if (state === 'rest') return `${dayHeading(date)}這天沒有讀經`;
-  if (state === 'future') return `${dayHeading(date)}還沒到，當天再來打卡`;
+  if (state === 'expired') return `${dayHeading(date)} 已超過 ${COMPLETION_WINDOW_DAYS} 天，不能補登`;
+  if (state === 'rest') return `${dayHeading(date)} 這天沒有讀經`;
+  if (state === 'future') return `${dayHeading(date)} 還沒到，當天再來打卡`;
   return null;
 }
 

@@ -10,7 +10,6 @@ const { primitive, api, auth, appListeners, focusCallbacks, focusCleanupRef, aut
     getProfile: vi.fn(), getPeople: vi.fn(async () => []), getMyRedemptions: vi.fn(), getAdminRedemptions: vi.fn(),
     getRewards: vi.fn(async () => [{ rewardId: 'goal', name: '電影票', costPoints: 10, active: true, revision: 1 }]),
     getNominations: vi.fn(async () => ({ round: { roundId: 'round-1', title: '提案', closesAt: 9999999999999 }, nominations: [] })),
-    getCommunityProgress: vi.fn(async () => ({ books: ['約翰福音'], personDays: 3, currentBook: null })),
     getPendingOperations: vi.fn(async () => ({ ownerMemberId: 'self', redemptions: [], reversals: [] })),
   },
   auth: { status: 'signed-in' as 'signed-in' | 'signed-out', session: { memberId: 'self', sessionToken: 'token' } as { memberId: string; sessionToken: string } | null, profile: null, profileStatus: 'ready', epoch: 1 },
@@ -26,7 +25,12 @@ vi.mock('../../src/services/useCompletionController', () => ({ useCompletionCont
 vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn() }));
 vi.mock('react-native', () => ({ AppState: { addEventListener: vi.fn((_event: string, listener: (state: string) => void) => { appListeners.push(listener); return { remove: vi.fn() }; }) }, Pressable: primitive('Pressable'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
-vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle') }; });
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
+const { devotionApi, groupView } = vi.hoisted(() => {
+  const groupView = (monthReads: number) => ({ month: '2026-10', today: '2026-10-14', todayReaders: null, yesterdayReaders: null, days: [], monthReads, busiest: null, qualifyingDays: 15, prizes: [], myDaysThisMonth: 0 });
+  return { groupView, devotionApi: { getGroupReading: vi.fn(async () => groupView(3)), getDevotionDates: vi.fn(async () => []), setDevotion: vi.fn(async () => undefined), getScoreHistory: vi.fn(async () => { throw new Error('not served'); }), getDevotional: vi.fn(async () => null) } };
+});
+vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => devotionApi }));
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | void) => {
   focusCallbacks.push(callback);
   require('react').useEffect(() => {
@@ -55,12 +59,19 @@ vi.mock('../../src/ui/gamification/PeopleList', () => ({ PeopleList: (props: any
 // The real ScoreProfile renders its slots; the nomination banner lives in `lead` since the 0.5.18 layout.
 vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (props: any) => React.createElement('ScoreProfile', props, props.lead, props.nominations) }));
 vi.mock('../../src/ui/gamification/NominationBanner', () => ({ NominationBanner: (props: any) => React.createElement('NominationBanner', props) }));
-vi.mock('../../src/ui/gamification/CommunityProgress', () => ({ CommunityProgress: (props: any) => React.createElement('CommunityProgress', props) }));
 vi.mock('../../src/ui/gamification/ActionSheet', () => ({ ActionSheet: (props: any) => props.visible ? React.createElement('ActionSheet', props, props.children) : null }));
 vi.mock('../../src/ui/gamification/FriendQrPanel', () => ({ FriendQrPanel: (props: any) => React.createElement('FriendQrPanel', props) }));
 vi.mock('../../src/ui/gamification/RewardControls', () => ({ RewardControls: (props: any) => React.createElement('RewardControls', props) }));
 
+import { consumeOpenAllScores, requestOpenAllScores } from '../../src/services/allScoresRequest';
 import ProgressScreen from '../../app/(tabs)/progress';
+import { GroupReadingCard } from '../../src/ui/gamification/GroupReadingCard';
+
+// 全體 is asked for from 我的帳戶 and heard by every mounted 積分 screen, so each test unmounts its own.
+const mountedScreens: TestRenderer.ReactTestRenderer[] = [];
+const createScreen = TestRenderer.create;
+beforeEach(() => { vi.spyOn(TestRenderer, 'create').mockImplementation(((...args: Parameters<typeof createScreen>) => { const tree = createScreen(...args); mountedScreens.push(tree); return tree; }) as typeof createScreen); });
+afterEach(async () => { await act(async () => { for (const tree of mountedScreens.splice(0)) tree.unmount(); }); consumeOpenAllScores(); });
 
 describe('progress protected response lifecycle', () => {
   // The screen prefetches the other chart ranges on a timer after its first profile load. These tests
@@ -122,33 +133,32 @@ describe('progress protected response lifecycle', () => {
     api.getPendingOperations.mockImplementationOnce(() => new Promise((resolve) => { resolvePending = resolve; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）')[0].props.onPress(); await Promise.resolve(); });
+    await act(async () => { requestOpenAllScores(); await Promise.resolve(); });
     await act(async () => { [...appListeners].forEach((listener) => listener('background')); resolvePending({ ownerMemberId: 'self', redemptions: [], reversals: [] }); });
     expect(api.getPeople).not.toHaveBeenCalledWith('all');
-    expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '全體（管理）' && node.props.accessibilityState?.selected)).toHaveLength(0);
+    expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '全體 (管理)' && node.props.accessibilityState?.selected)).toHaveLength(0);
   });
 
   it('keeps the same-account profile and secondary blocks stable until refresh fails', async () => {
     const profile = { memberId: 'self', displayName: '自己', earnedTotal: 1, band: null, months: [], private: { redeemableBalance: 1, targetReward: { rewardId: 'goal', name: '電影票', costPoints: 10, active: true, revision: 1 } }, permissions: { canEditTarget: true, canRedeem: false } };
     let resolveRefresh!: (value: unknown) => void; let resolveForeground!: (value: unknown) => void; let rejectRefresh!: (reason: unknown) => void;
-    let resolveRewards!: (value: any) => void; let resolveNominations!: (value: any) => void; let resolveCommunity!: (value: any) => void;
-    let rejectRewards!: (reason: unknown) => void; let rejectNominations!: (reason: unknown) => void; let rejectCommunity!: (reason: unknown) => void;
+    let resolveRewards!: (value: any) => void; let resolveNominations!: (value: any) => void; let resolveGroup!: (value: any) => void;
+    let rejectRewards!: (reason: unknown) => void; let rejectNominations!: (reason: unknown) => void; let rejectGroup!: (reason: unknown) => void;
     api.getProfile.mockReset().mockResolvedValueOnce(profile).mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; })).mockImplementationOnce(() => new Promise((resolve) => { resolveForeground = resolve; })).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRefresh = reject; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); await Promise.resolve(); await Promise.resolve(); });
-    const expectSecondary = (rewardName: string, roundTitle: string, book: string) => {
+    const expectSecondary = (rewardName: string, roundTitle: string, groupReads: number) => {
       const score = renderer.root.findByType('ScoreProfile' as any);
       expect(score.props.rewards.map((reward: any) => reward.name)).toContain(rewardName);
-      expect(score.props.community).toBeDefined();
-      expect(score.props.community.props.books).toContain(book);
+      expect(renderer.root.findByType(GroupReadingCard).props.view.monthReads).toBe(groupReads);
       expect(renderer.root.findByType('NominationBanner' as any).props.round.title).toBe(roundTitle);
     };
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'self', earnedTotal: 1 });
-    expectSecondary('電影票', '提案', '約翰福音');
-    const initialCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, community: api.getCommunityProgress.mock.calls.length };
+    expectSecondary('電影票', '提案', 3);
+    const initialCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
     api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewards = resolve; }));
     api.getNominations.mockImplementationOnce(() => new Promise((resolve) => { resolveNominations = resolve; }));
-    api.getCommunityProgress.mockImplementationOnce(() => new Promise((resolve) => { resolveCommunity = resolve; }));
+    devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((resolve) => { resolveGroup = resolve; }));
 
     await act(async () => {
       focusCleanupRef.current?.(); focusCleanupRef.current = null;
@@ -159,70 +169,70 @@ describe('progress protected response lifecycle', () => {
     expect(api.getProfile).toHaveBeenCalledTimes(2);
     expect(api.getRewards).toHaveBeenCalledTimes(initialCalls.rewards + 1);
     expect(api.getNominations).toHaveBeenCalledTimes(initialCalls.nominations + 1);
-    expect(api.getCommunityProgress).toHaveBeenCalledTimes(initialCalls.community + 1);
+    expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(initialCalls.group + 1);
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'self', earnedTotal: 1 });
-    expectSecondary('電影票', '提案', '約翰福音');
+    expectSecondary('電影票', '提案', 3);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '載入中…')).toHaveLength(0);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
 
     await act(async () => {
       resolveRewards([{ rewardId: 'new-goal', name: '新獎品', costPoints: 12, active: true, revision: 1 }]);
       resolveNominations({ round: { roundId: 'round-2', title: '新提案', closesAt: 9999999999999 }, nominations: [] });
-      resolveCommunity({ books: ['羅馬書'], personDays: 5, currentBook: null });
+      resolveGroup(groupView(5));
       await Promise.resolve();
     });
-    expectSecondary('新獎品', '新提案', '羅馬書');
+    expectSecondary('新獎品', '新提案', 5);
     await act(async () => { resolveRefresh({ ...profile, earnedTotal: 2, private: { redeemableBalance: 2, targetReward: profile.private.targetReward } }); });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(2);
-    expectSecondary('新獎品', '新提案', '羅馬書');
+    expectSecondary('新獎品', '新提案', 5);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
 
-    const refreshedCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, community: api.getCommunityProgress.mock.calls.length };
+    const refreshedCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
     api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewards = resolve; }));
     api.getNominations.mockImplementationOnce(() => new Promise((resolve) => { resolveNominations = resolve; }));
-    api.getCommunityProgress.mockImplementationOnce(() => new Promise((resolve) => { resolveCommunity = resolve; }));
+    devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((resolve) => { resolveGroup = resolve; }));
     await act(async () => { appListeners.at(-1)?.('background'); await Promise.resolve(); });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(2);
-    expectSecondary('新獎品', '新提案', '羅馬書');
+    expectSecondary('新獎品', '新提案', 5);
     expect(renderer.root.findByProps({ testID: 'progress-inactive-cover' })).toBeDefined();
     await act(async () => { appListeners.at(-1)?.('active'); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledTimes(3);
     expect(api.getRewards).toHaveBeenCalledTimes(refreshedCalls.rewards + 1);
     expect(api.getNominations).toHaveBeenCalledTimes(refreshedCalls.nominations + 1);
-    expect(api.getCommunityProgress).toHaveBeenCalledTimes(refreshedCalls.community + 1);
-    expectSecondary('新獎品', '新提案', '羅馬書');
+    expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(refreshedCalls.group + 1);
+    expectSecondary('新獎品', '新提案', 5);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
     await act(async () => {
       resolveRewards([{ rewardId: 'foreground-goal', name: '前景獎品', costPoints: 15, active: true, revision: 1 }]);
       resolveNominations({ round: { roundId: 'foreground-round', title: '前景提案', closesAt: 9999999999999 }, nominations: [] });
-      resolveCommunity({ books: ['以弗所書'], personDays: 8, currentBook: null });
+      resolveGroup(groupView(8));
       resolveForeground({ ...profile, earnedTotal: 3, private: { redeemableBalance: 3, targetReward: profile.private.targetReward } });
       await Promise.resolve();
     });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(3);
-    expectSecondary('前景獎品', '前景提案', '以弗所書');
+    expectSecondary('前景獎品', '前景提案', 8);
 
-    const foregroundCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, community: api.getCommunityProgress.mock.calls.length };
+    const foregroundCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
     api.getRewards.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRewards = reject; }));
     api.getNominations.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectNominations = reject; }));
-    api.getCommunityProgress.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectCommunity = reject; }));
+    devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectGroup = reject; }));
     await act(async () => { focusCallbacks.at(-1)?.(); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledTimes(4);
     expect(api.getRewards).toHaveBeenCalledTimes(foregroundCalls.rewards + 1);
     expect(api.getNominations).toHaveBeenCalledTimes(foregroundCalls.nominations + 1);
-    expect(api.getCommunityProgress).toHaveBeenCalledTimes(foregroundCalls.community + 1);
-    expectSecondary('前景獎品', '前景提案', '以弗所書');
+    expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(foregroundCalls.group + 1);
+    expectSecondary('前景獎品', '前景提案', 8);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
-    await act(async () => { rejectRewards(new Error('offline')); rejectNominations(new Error('offline')); rejectCommunity(new Error('offline')); rejectRefresh(new Error('offline')); await Promise.resolve(); });
+    await act(async () => { rejectRewards(new Error('offline')); rejectNominations(new Error('offline')); rejectGroup(new Error('offline')); rejectRefresh(new Error('offline')); await Promise.resolve(); });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(3);
-    expectSecondary('前景獎品', '前景提案', '以弗所書');
+    expectSecondary('前景獎品', '前景提案', 8);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(1);
   });
 
   it('clears member A on account change and never applies A response after member B signs in', async () => {
     auth.status = 'signed-in'; auth.session = { memberId: 'member-a', sessionToken: 'token-a' };
     let resolveRefreshA!: (value: unknown) => void;
-    let resolveRewardsA!: (value: any) => void; let resolveNominationsA!: (value: any) => void; let resolveCommunityA!: (value: any) => void;
+    let resolveRewardsA!: (value: any) => void; let resolveNominationsA!: (value: any) => void; let resolveGroupA!: (value: any) => void;
     const profileA = { memberId: 'member-a', displayName: 'A私人資料', earnedTotal: 1, band: null, months: [], private: { redeemableBalance: 1, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } };
     const profileB = { memberId: 'member-b', displayName: 'B私人資料', earnedTotal: 2, band: null, months: [], private: { redeemableBalance: 2, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } };
     api.getProfile.mockReset().mockResolvedValueOnce(profileA).mockImplementationOnce(() => new Promise((resolve) => { resolveRefreshA = resolve; })).mockResolvedValueOnce(profileB);
@@ -230,10 +240,10 @@ describe('progress protected response lifecycle', () => {
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); await Promise.resolve(); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledWith('member-a', 'me', expect.any(String));
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'member-a', earnedTotal: 1 });
-    const initialSecondaryCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, community: api.getCommunityProgress.mock.calls.length };
+    const initialSecondaryCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
     api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewardsA = resolve; }));
     api.getNominations.mockImplementationOnce(() => new Promise((resolve) => { resolveNominationsA = resolve; }));
-    api.getCommunityProgress.mockImplementationOnce(() => new Promise((resolve) => { resolveCommunityA = resolve; }));
+    devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((resolve) => { resolveGroupA = resolve; }));
     await act(async () => {
       focusCleanupRef.current?.(); focusCleanupRef.current = null;
       const cleanup = focusCallbacks.at(-1)?.();
@@ -243,7 +253,7 @@ describe('progress protected response lifecycle', () => {
     expect(api.getProfile).toHaveBeenCalledTimes(2);
     expect(api.getRewards).toHaveBeenCalledTimes(initialSecondaryCalls.rewards + 1);
     expect(api.getNominations).toHaveBeenCalledTimes(initialSecondaryCalls.nominations + 1);
-    expect(api.getCommunityProgress).toHaveBeenCalledTimes(initialSecondaryCalls.community + 1);
+    expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(initialSecondaryCalls.group + 1);
 
     auth.status = 'signed-out'; auth.session = null;
     await act(async () => { authListeners.at(-1)?.({ current: null }); });
@@ -254,7 +264,7 @@ describe('progress protected response lifecycle', () => {
     const rewardB = { rewardId: 'b-goal', name: 'B獎品', costPoints: 4, active: true, revision: 1 };
     api.getRewards.mockResolvedValueOnce([rewardB]);
     api.getNominations.mockResolvedValueOnce({ round: { roundId: 'b-round', title: 'B提案', closesAt: 9999999999999 }, nominations: [] });
-    api.getCommunityProgress.mockResolvedValueOnce({ books: ['B書卷'], personDays: 7, currentBook: null });
+    devotionApi.getGroupReading.mockResolvedValueOnce(groupView(7));
     await act(async () => { authListeners.at(-1)?.({ current: auth.session }); });
     await act(async () => { renderer.update(React.createElement(ProgressScreen)); });
     await act(async () => { focusCallbacks.at(-1)?.(); await Promise.resolve(); });
@@ -262,7 +272,7 @@ describe('progress protected response lifecycle', () => {
     const expectBSecondary = () => {
       const score = renderer.root.findByType('ScoreProfile' as any);
       expect(score.props.rewards.map((reward: any) => reward.name)).toContain('B獎品');
-      expect(score.props.community.props.books).toContain('B書卷');
+      expect(renderer.root.findByType(GroupReadingCard).props.view.monthReads).toBe(7);
       expect(renderer.root.findByType('NominationBanner' as any).props.round.title).toBe('B提案');
     };
     expectBSecondary();
@@ -271,7 +281,7 @@ describe('progress protected response lifecycle', () => {
     await act(async () => {
       resolveRewardsA([{ rewardId: 'a-late', name: 'A舊獎品', costPoints: 1, active: true, revision: 1 }]);
       resolveNominationsA({ round: { roundId: 'a-late-round', title: 'A舊提案', closesAt: 9999999999999 }, nominations: [] });
-      resolveCommunityA({ books: ['A舊書卷'], personDays: 99, currentBook: null });
+      resolveGroupA(groupView(99));
       await Promise.resolve();
     });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'member-b', earnedTotal: 2 });

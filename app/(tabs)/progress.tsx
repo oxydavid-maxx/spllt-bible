@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
 import { getAuthSnapshot, isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
-import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type NominationBoardView, type ScoreChartQuery, type ScoreChartRange, type CommunityProgressView, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
+import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type NominationBoardView, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
 import type { PendingGamificationOperations } from '../../src/services/gamificationPendingStore';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../src/services/adminUnlockGuard';
 import { createProfileCache } from '../../src/services/profileCache';
@@ -13,7 +13,11 @@ import { FriendQrPanel } from '../../src/ui/gamification/FriendQrPanel';
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
 import { RewardControls } from '../../src/ui/gamification/RewardControls';
 import { RedemptionList } from '../../src/ui/gamification/RedemptionList';
-import { CommunityProgress } from '../../src/ui/gamification/CommunityProgress';
+import { GroupReadingCard } from '../../src/ui/gamification/GroupReadingCard';
+import { ScoreHistoryCard } from '../../src/ui/gamification/ScoreHistoryCard';
+import { DevotionTodayButton } from '../../src/ui/gamification/DevotionTodayButton';
+import { createDevotionClient, type GroupReading, type ScoreHistory } from '../../src/services/devotionClient';
+import { consumeOpenAllScores, subscribeOpenAllScores } from '../../src/services/allScoresRequest';
 import { NominationBoard } from '../../src/ui/gamification/NominationBoard';
 import { NominationBanner } from '../../src/ui/gamification/NominationBanner';
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
@@ -40,6 +44,7 @@ export default function ProgressScreen() {
   const session = auth.status === 'signed-in' ? auth.session : null;
   const client = useMemo(() => session ? createGamificationApiClient({ baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [session?.memberId, session?.sessionToken]);
   const completionClient = useMemo(() => session ? createApiClient({ baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [session?.memberId, session?.sessionToken]);
+  const devotionClient = useMemo(() => session ? createDevotionClient({ baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [session?.memberId, session?.sessionToken]);
   const today = taipeiDate();
   // The own page's reading calendar. Its days come from the account's reading-days schedule, one
   // month at a time, never from the trend chart's range; the reading tab's local plan stands in
@@ -122,6 +127,20 @@ export default function ProgressScreen() {
     }).catch(() => undefined);
     return () => { active = false; };
   }, [completionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh]);
+  // 靈修 days for the same range as the reading days. Kept apart from completions: they earn nothing.
+  const [devotionDates, setDevotionDates] = useState<ReadonlySet<string>>(() => new Set());
+  const [devotionPending, setDevotionPending] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    const expectedAuthEpoch = auth.epoch;
+    if (!devotionClient || !session) return () => { active = false; };
+    const range = readingDaysRange(calendarMonth, today);
+    void devotionClient.getDevotionDates(range.from, range.to).then((dates) => {
+      if (!active || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
+      setDevotionDates((current) => new Set([...[...current].filter((date) => date < range.from || date > range.to), ...dates]));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [devotionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh]);
   const isLive = useCallback((generation: number, expectedScope: ScoreScope, expectedMember?: string | null, requiresUnlock = false) => Boolean(focusedRef.current && appActive.current && requestGeneration.current === generation && activeScope.current === expectedScope && (expectedMember === undefined || expectedMember === activeMember.current) && session && isCurrentAuthSession(session) && (!requiresUnlock || guard.current.state === 'unlocked')), [session]);
   // Account-wide secondary content is independent of the selected chart range/member.
   const isViewLive = useCallback((generation: number) => Boolean(focusedRef.current && appActive.current && viewGeneration.current === generation && session && isCurrentAuthSession(session)), [session]);
@@ -138,7 +157,7 @@ export default function ProgressScreen() {
     setSheet(preserveScanner ? 'scan' : null);
     if (!preserveView) {
       setProfileStale(Boolean(ownProfile)); setRewards([]); setRedemptions([]); setPendingOperations(null); setRetryAction(null); setPrimaryReady(Boolean(ownProfile));
-      setNominationError(null); setShelfRewards(null); setNominations(null); setCommunity(null);
+      setNominationError(null); setShelfRewards(null); setNominations(null); setGroupReading(null); setScoreHistory(null);
     }
     setNominationBusy(false);
     if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
@@ -160,6 +179,7 @@ export default function ProgressScreen() {
         resumeScannerAfterActivity.current = false;
         refreshOnForeground.current(preserveScanner);
         openRequestedFriends.current();
+        openRequestedAll.current();
       }
     });
     return () => subscription.remove();
@@ -167,6 +187,7 @@ export default function ProgressScreen() {
   useEffect(() => {
     setCapabilities(null); setError(null); setCompletionAward(null);
     setSchedule({ days: new Map(), ranges: [] }); setConfirmedDays({}); pickedDate.current = false;
+    setDevotionDates(new Set()); setDevotionPending(null);
   }, [accountKey]);
 
   const prefetchCharts = useCallback(async (memberId: string, nextScope: ScoreScope, currentRange: ScoreChartRange, generation: number, requestId: number) => {
@@ -259,7 +280,7 @@ export default function ProgressScreen() {
   useFocusEffect(useCallback(() => {
     // Each visit starts on this month and lets the page choose the day again.
     pickedDate.current = false; setCalendarMonth(taipeiDate().slice(0, 7));
-    focusedRef.current = true; setFocused(true); refreshOwnProfile(); openRequestedFriends.current();
+    focusedRef.current = true; setFocused(true); refreshOwnProfile(); openRequestedFriends.current(); openRequestedAll.current();
     return () => { focusedRef.current = false; setFocused(false); clearProtectedState(false, true, true); };
   }, [clearProtectedState, refreshOwnProfile]));
   // Everything secondary waits for the one critical own-profile request to settle.
@@ -371,9 +392,14 @@ export default function ProgressScreen() {
   };
   const [shelfRewards, setShelfRewards] = useState<Reward[] | null>(null);
   const [nominations, setNominations] = useState<NominationBoardView | null>(null);
-  const [community, setCommunity] = useState<CommunityProgressView | null>(null);
+  // 團體 (維護者 2026-10-14): replaces 一起走過. Absent on a backend that predates it; the section then hides.
+  const [groupMonth, setGroupMonth] = useState(() => today.slice(0, 7));
+  const [groupReading, setGroupReading] = useState<GroupReading | null>(null);
+  const [scoreHistory, setScoreHistory] = useState<ScoreHistory | null>(null);
+  const [scoreHistoryMissing, setScoreHistoryMissing] = useState(false);
+  // A 靈修 tap redraws only the chart's gold line: it is not in the group's numbers or the points.
+  const [historyRefresh, setHistoryRefresh] = useState(0);
   const shelfRewardsRef = useRef(shelfRewards); shelfRewardsRef.current = shelfRewards;
-  const communityRef = useRef(community); communityRef.current = community;
   const hasOwnPrivateProfile = Boolean(session && profile?.memberId === session.memberId && profile.private);
   useEffect(() => {
     if (!client || !session || !focused || !primaryReady || scope !== 'me' || !hasOwnPrivateProfile || typeof client.getRewards !== 'function') return;
@@ -403,15 +429,17 @@ export default function ProgressScreen() {
   }, [focused, primaryReady, scope, secondaryRefresh, reloadNominations]);
 
   useEffect(() => {
-    if (!client || !session || !focused || !primaryReady || scope !== 'me' || typeof client.getCommunityProgress !== 'function') return;
+    if (!devotionClient || !session || !focused || !primaryReady || scope !== 'me') return;
     let active = true; const generation = viewGeneration.current;
-    void client.getCommunityProgress().then((value) => { if (active && isViewLive(generation)) setCommunity(value); }).catch((reason) => {
-      if (!active || !isViewLive(generation)) return;
-      if (communityRef.current === null) setCommunity({ books: [], personDays: null, currentBook: null });
-      else setError(messageFor(reason));
-    });
+    void devotionClient.getGroupReading(groupMonth).then((value) => { if (active && isViewLive(generation)) setGroupReading(value); }).catch(() => undefined);
     return () => { active = false; };
-  }, [client, session, scope, focused, primaryReady, secondaryRefresh, isViewLive]);
+  }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, groupMonth, isViewLive]);
+  useEffect(() => {
+    if (!devotionClient || !session || !focused || !primaryReady || scope !== 'me') return;
+    let active = true; const generation = viewGeneration.current;
+    void devotionClient.getScoreHistory().then((value) => { if (active && isViewLive(generation)) { setScoreHistory(value); setScoreHistoryMissing(false); } }).catch(() => { if (active && isViewLive(generation)) setScoreHistoryMissing(true); });
+    return () => { active = false; };
+  }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, historyRefresh, isViewLive, profile?.earnedTotal]);
   useEffect(() => {
     if (!focused || sheet !== 'nominations') return;
     void reloadNominations(true);
@@ -480,6 +508,14 @@ export default function ProgressScreen() {
     void chooseScope('friends');
   };
   useEffect(() => subscribeOpenFriendsList(() => openRequestedFriends.current()), []);
+  const openRequestedAll = useRef<() => void>(() => undefined);
+  openRequestedAll.current = () => {
+    // From 我的帳戶; left pending until this screen is in front and knows the viewer is an admin.
+    if (!session || !focusedRef.current || !appActive.current || !capabilities || !consumeOpenAllScores()) return;
+    void chooseScope('all');
+  };
+  useEffect(() => subscribeOpenAllScores(() => openRequestedAll.current()), []);
+  useEffect(() => { openRequestedAll.current(); }, [capabilities, focused]);
   awardRefreshRef.current = (memberId) => {
     if (session?.memberId === memberId && scope === 'me' && focusedRef.current && appActive.current) void loadProfile(memberId, 'me');
   };
@@ -538,12 +574,22 @@ export default function ProgressScreen() {
   // finished and stays still rather than offering an undo that does nothing.
   const finishedElsewhere = selectedState === 'completed' && completion.record.status !== 'COMPLETED';
   const withPick = (run: () => void) => { pickedDate.current = true; run(); };
+  const toggleDevotion = (date: string, completed: boolean) => {
+    if (!devotionClient || devotionPending) return;
+    const apply = (value: boolean) => setDevotionDates((current) => { const next = new Set(current); if (value) next.add(date); else next.delete(date); return next; });
+    apply(completed); setDevotionPending(date);
+    void devotionClient.setDevotion(date, completed)
+      .then(() => setHistoryRefresh((value) => value + 1))
+      .catch((reason) => { apply(!completed); setError(messageFor(reason)); })
+      .finally(() => setDevotionPending(null));
+  };
+  const groupFirstMonth = planSpan ? planSpan.first.slice(0, 7) : today.slice(0, 7);
 
   if (!session) return <View style={styles.screen}><Text style={styles.title}>積分</Text><Text style={styles.note}>請先登入以查看積分。</Text></View>;
   const ownProfile = profile?.memberId === session.memberId ? profile : null;
   const showingProfile = scope !== 'me' && selected && profile;
   return <View style={styles.screen} accessibilityElementsHidden={!appForeground} importantForAccessibility={appForeground ? 'auto' : 'no-hide-descendants'}>
-    <View style={styles.scopeHeader}><View style={styles.scopes}>{(['me', 'friends', ...(capabilities?.canViewAllScores ? ['all'] : [])] as ScoreScope[]).map((item) => <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: scope === item }} accessibilityLabel={item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體（管理）'} onPress={() => void chooseScope(item)} style={[styles.scope, scope === item && styles.scopeActive]}><Text style={[styles.scopeText, scope === item && styles.scopeTextActive]}>{item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體（管理）'}</Text></Pressable>)}</View><Pressable accessibilityRole="button" accessibilityLabel="開啟積分操作" onPress={() => setSheet('menu')} style={styles.menu}><Text style={styles.menuText}>⋯</Text></Pressable></View>
+    <View style={styles.scopeHeader}><View style={styles.scopes}>{(['me', 'friends', ...(scope === 'all' ? ['all'] : [])] as ScoreScope[]).map((item) => <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: scope === item }} accessibilityLabel={item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體 (管理)'} onPress={() => void chooseScope(item)} style={[styles.scope, scope === item && styles.scopeActive]}><Text style={[styles.scopeText, scope === item && styles.scopeTextActive]}>{item === 'me' ? '自己' : item === 'friends' ? '好友' : '全體 (管理)'}</Text></Pressable>)}</View><Pressable accessibilityRole="button" accessibilityLabel="開啟積分操作" onPress={() => setSheet('menu')} style={styles.menu}><Text style={styles.menuText}>⋯</Text></Pressable></View>
     {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}{busy ? <Text style={styles.note}>載入中…</Text> : null}
     {/* A number with no note beside it claims to be current. This one is not. */}
     {profileStale && ownProfile ? <Text style={styles.stale}>目前顯示上次的積分，還沒連上更新</Text> : null}
@@ -554,6 +600,16 @@ export default function ProgressScreen() {
       profile={ownProfile}
       showChartViewToggle={false}
       lead={<>
+        {groupReading ? <>
+          <SectionHeader title="團體" />
+          <GroupReadingCard
+            view={groupReading}
+            onPreviousMonth={groupMonth > groupFirstMonth ? () => setGroupMonth(shiftMonth(groupMonth, -1)) : undefined}
+            onNextMonth={groupMonth < today.slice(0, 7) ? () => setGroupMonth(shiftMonth(groupMonth, 1)) : undefined}
+            onSuggestPrize={nominations?.round ? () => setSheet('nominations') : undefined}
+          />
+          <SectionHeader title="個人" />
+        </> : null}
         <ReadingCalendarCard
           month={calendarMonth}
           today={today}
@@ -563,7 +619,17 @@ export default function ProgressScreen() {
           onOpenReadingPlan={() => setPlanOpen(true)}
           onPreviousMonth={planSpan && calendarMonth > planSpan.first.slice(0, 7) ? () => setCalendarMonth(shiftMonth(calendarMonth, -1)) : undefined}
           onNextMonth={calendarMonth < lastMonth ? () => setCalendarMonth(shiftMonth(calendarMonth, 1)) : undefined}
+          devotionDates={devotionDates}
           action={<View style={styles.completionAction}>
+            <View style={styles.dayActions}>
+            <DevotionTodayButton
+              date={selectedDate}
+              today={today}
+              completed={devotionDates.has(selectedDate)}
+              pending={devotionPending === selectedDate}
+              canMark={selectedDate <= today && isWithinCompletionWindow(selectedDate, today)}
+              onToggle={(completed) => withPick(() => toggleDevotion(selectedDate, completed))}
+            />
             <CompletionTodayButton
               record={finishedElsewhere ? { ...completion.record, status: 'COMPLETED' } : completion.record}
               pending={completion.pending}
@@ -574,6 +640,7 @@ export default function ProgressScreen() {
               onComplete={() => withPick(() => { void completion.complete(); })}
               onUndo={() => withPick(completion.requestUndo)}
             />
+            </View>
             {completion.syncError ? <Text accessibilityRole="alert" style={styles.stale}>{completion.record.syncStatus === 'SAVE_FAILED' && !completion.retryable ? '完成記錄無法同步，本機完成狀態仍保留。' : '同步遇到問題，完成狀態已保留，連線後會重試。'}</Text> : null}
           </View>}
         />
@@ -585,7 +652,7 @@ export default function ProgressScreen() {
         /> : null}
       </>}
       rewards={shelfRewards ?? undefined}
-      community={community ? <CommunityProgress books={community.books} personDays={community.personDays} currentBook={community.currentBook} /> : undefined}
+      chart={scoreHistory ? <ScoreHistoryCard history={scoreHistory} /> : scoreHistoryMissing ? undefined : null}
       onChooseTarget={(rewardId) => { void setTarget(rewardId); }}
       onChartChange={loadProfileChart}
       onChooseReward={() => void loadRewards()}
@@ -644,4 +711,8 @@ export default function ProgressScreen() {
 function monthNow(): string { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).formatToParts(new Date()); const year = parts.find((part) => part.type === 'year')?.value ?? '1970'; const month = parts.find((part) => part.type === 'month')?.value ?? '01'; return `${year}-${month}`; }
 function monthlyPlanId(date: string): string { return `church-${date.slice(0, 7)}`; }
 function messageFor(reason: unknown): string { return reason instanceof GamificationApiError ? reason.userMessage : '目前無法載入積分，請稍後再試。'; }
-const styles = StyleSheet.create({ screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, inactiveCover: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: theme.colors.background }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, completionAction: { gap: theme.spacing.xs }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNotice: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.sm, borderRadius: theme.radius.card, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, friendTick: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary }, friendTickText: { color: theme.colors.white, fontSize: theme.type.caption.size, fontWeight: '900' }, friendNoticeText: { flexShrink: 1, color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNoticeHint: { textAlign: 'center' } });
+function SectionHeader({ title }: { title: string }) {
+  return <View style={styles.section}><Text accessibilityRole="header" style={styles.sectionTitle}>{title}</Text><View style={styles.sectionRule} /></View>;
+}
+
+const styles = StyleSheet.create({ section: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingTop: theme.spacing.xs, paddingHorizontal: theme.spacing.xxs }, sectionTitle: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, sectionRule: { flex: 1, height: 2, borderRadius: 1, backgroundColor: theme.colors.primary }, dayActions: { flexDirection: 'row', gap: theme.spacing.sm }, screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, inactiveCover: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: theme.colors.background }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, completionAction: { gap: theme.spacing.xs }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNotice: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.sm, borderRadius: theme.radius.card, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, friendTick: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary }, friendTickText: { color: theme.colors.white, fontSize: theme.type.caption.size, fontWeight: '900' }, friendNoticeText: { flexShrink: 1, color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNoticeHint: { textAlign: 'center' } });

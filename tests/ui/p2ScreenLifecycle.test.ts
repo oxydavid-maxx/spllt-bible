@@ -16,6 +16,8 @@ vi.mock('../../src/services/useCompletionController', () => ({ useCompletionCont
 vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn() }));
 vi.mock('react-native', () => ({ Platform: platform, AppState: { currentState: 'active', addEventListener: (_: string, callback: (state: string) => void) => { appListeners.push(callback); return { remove: () => { appListeners.splice(appListeners.indexOf(callback), 1); } }; } }, ActivityIndicator: (p: any) => React.createElement('ActivityIndicator', p), Pressable: (p: any) => React.createElement('Pressable', p, p.children), View: (p: any) => React.createElement('View', p, p.children), Text: (p: any) => React.createElement('Text', p, p.children), TextInput: (p: any) => React.createElement('TextInput', p), StyleSheet: { create: (x: any) => x } }));
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
+vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => ({ getDevotionDates: async () => [], setDevotion: async () => undefined, getGroupReading: async () => { throw new Error('not served'); }, getScoreHistory: async () => { throw new Error('not served'); }, getDevotional: async () => null }) }));
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => any) => { React.useEffect(() => nav.focused ? callback() : undefined, [callback, nav.focused]); } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: (key: string) => storageGet(key), setItemAsync: async (key: string, value: string) => { if (!/^[\w.-]+$/.test(key)) throw Error('invalid key'); store.set(key, value); } }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn() }));
@@ -32,6 +34,7 @@ vi.mock('expo-camera', () => { const CameraView = Object.assign((props: any) => 
 vi.mock('react-native-qrcode-svg', () => ({ default: () => null }));
 vi.mock('../../src/ui/gamification/RewardControls', () => ({ RewardControls: () => null }));
 vi.mock('../../src/ui/gamification/ActionSheet', () => ({ ActionSheet: (p: any) => p.visible ? React.createElement('ActionSheet', p, p.children) : null }));
+import { requestOpenAllScores } from '../../src/services/allScoresRequest';
 import ProgressScreen from '../../app/(tabs)/progress';
 import AnnouncementsScreen from '../../app/(tabs)/announcements';
 import { createProfileCache } from '../../src/services/profileCache';
@@ -124,22 +127,27 @@ describe('focused progress loading', () => {
     await act(async () => pendingBoard.resolve(board()));
     expect(tree.root.findAll((node) => node.props.accessibilityLabel === 'QA輪，我要提案').length).toBeGreaterThan(0);
   });
-  it('keeps the pending account capabilities read alive through an early scope change', async () => {
+  it('keeps the pending account capabilities read alive through an early scope change, then honours a waiting 全體 request', async () => {
     const capabilities = deferred<any>(); let started = false;
     api.getCapabilities.mockImplementationOnce(() => { started = true; return capabilities.promise; });
     api.cancelReads.mockImplementation((path?: string) => { if (started && path === undefined) capabilities.reject(Error('cancelled')); });
     const tree = await render(ProgressScreen);
     expect(api.getCapabilities).toHaveBeenCalledTimes(1);
     await press(tree, '好友');
+    // Asked from 我的帳戶 before the screen knows the viewer is an admin: it waits, not refuses.
+    await act(async () => { requestOpenAllScores(); });
+    expect(api.getPeople).not.toHaveBeenCalledWith('all');
+    expect(tree.root.findAll((node) => node.props.accessibilityRole === 'alert')).toHaveLength(0);
     await act(async () => capabilities.resolve({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true }));
-    expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '全體（管理）')).toHaveLength(1);
+    expect(api.getPeople).toHaveBeenCalledWith('all');
+    expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '全體 (管理)' && node.props.accessibilityState?.selected)).toHaveLength(1);
   });
 });
 
 describe('nomination action feedback', () => {
   async function openBoard(scope = 'me') {
     const tree = await render(ProgressScreen);
-    if (scope === 'all') await press(tree, '全體（管理）');
+    if (scope === 'all') await act(async () => { requestOpenAllScores(); });
     await press(tree, '開啟積分操作');
     await act(async () => tree.root.findByType('ActionSheet' as any).props.actions.find((a: any) => a.label === '獎品提案').onPress());
     return tree;
@@ -234,7 +242,7 @@ describe('scanner permission lifecycle', () => {
   async function openScanner(admin = false) {
     const tree = await render(ProgressScreen);
     if (admin) {
-      await press(tree, '全體（管理）');
+      await act(async () => { requestOpenAllScores(); });
       await act(async () => { const list = tree.root.findByType('PeopleList' as any); list.props.onSelect(list.props.people[0]); });
     }
     await press(tree, '開啟積分操作');
@@ -254,7 +262,7 @@ describe('scanner permission lifecycle', () => {
     requestCameraPermission.mockImplementation(() => { changeAppState('background'); return permission.promise; });
     const tree = await openScanner(true); await press(tree, '開啟相機掃描好友碼');
     expect(tree.root.findAllByType('ScoreProfile' as any)).toHaveLength(0); // Protected admin/member data still clears.
-    expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '全體（管理）' && node.props.accessibilityState?.selected)).toHaveLength(0);
+    expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '全體 (管理)' && node.props.accessibilityState?.selected)).toHaveLength(0);
     expect(tree.root.findByType('ActionSheet' as any).props.title).toBe('掃描好友 QR');
     await act(async () => { changeAppState('active'); permission.resolve({ granted: true }); });
     expect(tree.root.findAllByType('CameraView' as any)).toHaveLength(1);

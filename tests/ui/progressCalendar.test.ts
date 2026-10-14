@@ -15,7 +15,6 @@ const { primitive, api, auth, readingDays, completion } = vi.hoisted(() => ({
     getPeople: vi.fn(async () => [{ memberId: 'friend', displayName: '小明', earnedTotal: 3 }]),
     getRewards: vi.fn(async () => []),
     getNominations: vi.fn(async () => ({ round: { roundId: 'r1', title: '9 月獎品', closesAt: Date.parse('2026-10-06T00:00:00Z'), phase: 'VOTING' }, nominations: [], votesLeft: 3, votesPerMember: 3 })),
-    getCommunityProgress: vi.fn(async () => ({ books: ['提多書'], personDays: null, currentBook: null })),
   },
   auth: { status: 'signed-in', session: { memberId: 'self', sessionToken: 'token' }, profile: null, profileStatus: 'ready', epoch: 1 },
   readingDays: vi.fn(),
@@ -24,7 +23,16 @@ const { primitive, api, auth, readingDays, completion } = vi.hoisted(() => ({
 const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined, deleteItemAsync: async () => undefined }));
 vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: vi.fn(() => ({ remove: vi.fn() })) }, Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
-vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline') }; });
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
+// 團體 and the history chart are served only by a newer backend: absent by default, as on the old one.
+const devotionApi = vi.hoisted(() => ({
+  getDevotionDates: vi.fn(async (): Promise<string[]> => []),
+  setDevotion: vi.fn(async (): Promise<void> => undefined),
+  getGroupReading: vi.fn(async (): Promise<unknown> => { throw new Error('not served'); }),
+  getScoreHistory: vi.fn(async (): Promise<unknown> => { throw new Error('not served'); }),
+  getDevotional: vi.fn(async () => null),
+}));
+vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => devotionApi }));
 vi.mock('expo-router', () => ({ router: navigation, useFocusEffect: (callback: () => (() => void) | void) => { require('react').useEffect(callback, []); } }));
 vi.mock('../../src/ui/ReadingPlanSheet', () => ({ ReadingPlanSheet: (props: any) => props.visible ? require('react').createElement('ReadingPlanSheet', props) : null }));
 vi.mock('expo-local-authentication', () => ({ authenticateAsync: vi.fn(async () => ({ success: true })) }));
@@ -96,11 +104,18 @@ describe('the 積分 page opens on its calendar', () => {
     expect((await import('../../src/ui/readingSession')).getReadingSessionSnapshot().selectedDate).toBe('2026-10-15');
     expect(renderer!.root.findAllByType('ReadingPlanSheet' as never)).toHaveLength(0);
   });
-  it('scrolls as one page: calendar, prize banner, reward goal, trend, community — with no button above it', async () => {
+  it('scrolls as one page: 團體, then 個人 with the calendar, prize banner, reward goal and chart — with no button above it', async () => {
+    devotionApi.getGroupReading.mockResolvedValueOnce({ month: '2026-09', today: '2026-09-27', todayReaders: null, yesterdayReaders: 4, days: [], monthReads: 40, busiest: null, qualifyingDays: 15, prizes: [], myDaysThisMonth: 3 });
+    devotionApi.getScoreHistory.mockResolvedValueOnce({ from: '2026-09-01', today: '2026-09-27', points: [0, 1, 2], devotions: [0, 0, 1], months: [{ month: '2026-09', points: 2, devotionDays: 1 }] });
     await mount();
     const scroll = renderer!.root.findByType('ScrollView' as never);
     const order = (scroll.children as TestRenderer.ReactTestInstance[]).map((child) => (child.type as { name?: string }).name ?? String(child.type));
-    expect(order.slice(0, 5)).toEqual(['ReadingCalendarCard', 'NominationBanner', 'RewardGoalCard', 'ScoreProfileChart', 'CommunityProgress']);
+    expect(order.slice(0, 7)).toEqual(['SectionHeader', 'GroupReadingCard', 'SectionHeader', 'ReadingCalendarCard', 'NominationBanner', 'RewardGoalCard', 'ScoreHistoryCard']);
+    expect(scroll.children.filter((child) => typeof child !== 'string' && (child.type as { name?: string }).name === 'SectionHeader').map((child) => (child as TestRenderer.ReactTestInstance).props.title)).toEqual(['團體', '個人']);
+    // 一起走過 is gone, and 全體 is not a tab any more: only 自己 and 好友.
+    expect(order).not.toContain('CommunityProgress');
+    const tabs = renderer!.root.findAll((node) => (node.type as unknown) === 'Pressable' && node.props.accessibilityRole === 'tab').map((node) => node.props.accessibilityLabel);
+    expect(tabs).toEqual(['自己', '好友', '總積分', '每月']);
     // The only completion button on the page is the calendar's.
     expect(buttons()).toHaveLength(1);
     expect(scroll.findAll(isCompletionButton)).toHaveLength(1);
@@ -109,7 +124,7 @@ describe('the 積分 page opens on its calendar', () => {
 
   it('selects the most recent unfinished day when today (a Sunday) has no reading, and completes that day', async () => {
     await mount();
-    expect(texts()).toEqual(expect.arrayContaining(['9/25（五）', '多1、多2、詩101']));
+    expect(texts()).toEqual(expect.arrayContaining(['9/25 (五)', '多1、多2、詩101']));
     expect(cell('2026-09-25').props.accessibilityState).toEqual({ selected: true });
     expect(lastOptions()).toMatchObject({ taskDate: '2026-09-25', planId: 'church-2026-09', canComplete: true });
     const [button] = buttons();
@@ -123,7 +138,7 @@ describe('the 積分 page opens on its calendar', () => {
 
   it('says in one line why an old, a rest or a future day has no button', async () => {
     await mount();
-    for (const [date, line] of [['2026-09-10', '9/10（四）已超過 7 天，不能補登'], ['2026-09-20', '9/20（日）這天沒有讀經'], ['2026-09-29', '9/29（二）還沒到，當天再來打卡']]) {
+    for (const [date, line] of [['2026-09-10', '9/10 (四) 已超過 7 天，不能補登'], ['2026-09-20', '9/20 (日) 這天沒有讀經'], ['2026-09-29', '9/29 (二) 還沒到，當天再來打卡']]) {
       await act(async () => { cell(date).props.onPress(); });
       expect(texts()).toContain(line);
       expect(buttons()).toHaveLength(0);
@@ -136,10 +151,34 @@ describe('the 積分 page opens on its calendar', () => {
     await mount();
     await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '下個月' }).props.onPress(); await Promise.resolve(); });
     await act(async () => cell('2026-10-04').props.onPress());
-    expect(texts()).toContain('10/4（日）這天沒有讀經');
+    expect(texts()).toContain('10/4 (日) 這天沒有讀經');
     expect(texts()).not.toContain('詩1');
-    expect(texts().join('')).not.toContain('10/4（日）還沒到');
+    expect(texts().join('')).not.toContain('10/4 (日) 還沒到');
     expect(buttons()).toHaveLength(0);
+  });
+
+  it('marks 靈修 with the gold button: the cell gets its mark, the reading completion is untouched, a failure puts it back', async () => {
+    // The server's 靈修 days, kept by the same calls the page makes.
+    const served = new Set(['2026-09-24']);
+    devotionApi.getDevotionDates.mockImplementation(async () => [...served]);
+    devotionApi.setDevotion.mockImplementation(async (...args: unknown[]) => { const [date, done] = args as [string, boolean]; if (done) served.add(date); else served.delete(date); });
+    await mount();
+    expect(cell('2026-09-24').props.accessibilityLabel).toContain('也讀了靈修');
+    expect(cell('2026-09-24').findAll((node) => (node.type as unknown) === 'Text' && node.children.join('') === '靈修')).toHaveLength(1);
+    const gold = () => renderer!.root.findAll((node) => (node.type as unknown) === 'Pressable' && /靈修/.test(String(node.props.accessibilityLabel ?? '')) && !/^\d{4}-/.test(String(node.props.accessibilityLabel)))[0];
+    expect(gold().props.accessibilityLabel).toBe('我已讀了靈修');
+    await act(async () => { gold().props.onPress(); await Promise.resolve(); });
+    expect(devotionApi.setDevotion).toHaveBeenCalledWith('2026-09-25', true);
+    expect(completion.complete).not.toHaveBeenCalledWith('2026-09-25');
+    expect(cell('2026-09-25').props.accessibilityLabel).toContain('也讀了靈修');
+    expect(gold().props.accessibilityLabel).toBe('這天靈修已完成');
+    devotionApi.setDevotion.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => { gold().props.onPress(); await Promise.resolve(); await Promise.resolve(); });
+    expect(devotionApi.setDevotion).toHaveBeenLastCalledWith('2026-09-25', false);
+    expect(cell('2026-09-25').props.accessibilityLabel).toContain('也讀了靈修');
+    expect(served.has('2026-09-25')).toBe(true);
+    devotionApi.getDevotionDates.mockImplementation(async () => []);
+    devotionApi.setDevotion.mockImplementation(async () => undefined);
   });
 
   it('offers the undo on a finished day, through the same controller', async () => {

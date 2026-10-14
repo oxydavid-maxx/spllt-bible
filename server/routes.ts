@@ -17,6 +17,8 @@ import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliver
 import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
 import { notifyFriendAdded, type PushDataSender } from './friendPush';
 import type { ApnsAlertSender } from './apnsSender';
+import { createSongTitleLookup, isDevotionalDate, readDevotional, type SongTitleLookup } from './devotional';
+import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDates, setDevotion } from './devotionProgress';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
 import {
   GAMIFICATION_POLICY_VERSION,
@@ -88,6 +90,10 @@ export interface ApiHandlerOptions {
   pushData?: PushDataSender;
   /** APNs alerts to a member's registered iPhones. Absent means iPhones are simply not pushed. */
   pushIos?: ApnsAlertSender;
+  /** Private folder of the pastor's daily posts (YYYYMMDD.txt). Absent: the 靈修 tab says there is none yet. */
+  devotionalDir?: string;
+  /** Song titles for the 靈修 tab; tests pass a stub so nothing reaches YouTube. */
+  songTitle?: SongTitleLookup;
   now?: () => Date;
 }
 
@@ -121,7 +127,7 @@ function isGamificationError(value: unknown): value is GamificationError {
 }
 
 function isGamificationPath(pathname: string): boolean {
-  return pathname === '/api/me/profile' || pathname.startsWith('/api/me/reading-days') || pathname.startsWith('/api/me/completions/') || pathname.startsWith('/api/me/reward-target') || pathname.startsWith('/api/me/redemptions') || pathname.startsWith('/api/me/journal') || pathname.startsWith('/api/points/') || pathname.startsWith('/api/rewards') || pathname.startsWith('/api/friends/') || pathname.startsWith('/api/admin/');
+  return pathname === '/api/me/profile' || pathname.startsWith('/api/me/reading-days') || pathname.startsWith('/api/me/completions/') || pathname.startsWith('/api/me/reward-target') || pathname.startsWith('/api/me/redemptions') || pathname.startsWith('/api/me/journal') || pathname.startsWith('/api/me/devotions') || pathname === '/api/me/score-history' || pathname.startsWith('/api/devotional/') || pathname.startsWith('/api/points/') || pathname.startsWith('/api/rewards') || pathname.startsWith('/api/friends/') || pathname.startsWith('/api/admin/');
 }
 
 function parseBody(body: string | undefined): Record<string, unknown> {
@@ -296,6 +302,8 @@ export function createApiHandler(options: ApiHandlerOptions) {
   ensureJournalSchema(options.db.db);
   ensureNominationSchema(options.db.db);
   ensureEventRegistrationSchema(options.db.db);
+  ensureDevotionSchema(options.db.db);
+  const songTitle = options.songTitle ?? createSongTitleLookup();
   if (options.scheduleDates && options.scheduleDates.length > 0) {
     // Existing tests and local deployments can narrow the aggregate period without
     // replacing the canonical reading-day source. Dates already present retain their
@@ -542,6 +550,32 @@ export function createApiHandler(options: ApiHandlerOptions) {
       }
       if (request.method === 'GET' && url.pathname === '/api/points/community') {
         return gamificationJson(200, getCommunityProgress(options.db.db, taipeiDate(now())) as unknown as Record<string, unknown>);
+      }
+      // 積分頁 團體 / 個人 and the 靈修 tab (維護者 2026-10-14). 靈修 earns no points and never
+      // enters a group number; see server/devotionProgress.ts.
+      if (request.method === 'GET' && url.pathname === '/api/points/group') {
+        const today = taipeiDate(now());
+        const view = getGroupReading(options.db.db, auth.memberId, url.searchParams.get('month') ?? today.slice(0, 7), today);
+        return view ? gamificationJson(200, view as unknown as Record<string, unknown>) : gamificationError({ status: 400, code: 'INVALID_MONTH' });
+      }
+      if (request.method === 'GET' && url.pathname === '/api/me/score-history') {
+        return gamificationJson(200, getScoreHistory(options.db.db, auth.memberId, taipeiDate(now())) as unknown as Record<string, unknown>);
+      }
+      if (request.method === 'GET' && url.pathname === '/api/me/devotions') {
+        const dates = listDevotionDates(options.db.db, auth.memberId, url.searchParams.get('from') ?? '', url.searchParams.get('to') ?? '');
+        return dates ? gamificationJson(200, { dates }) : gamificationError({ status: 400, code: 'INVALID_DATE' });
+      }
+      const devotionMatch = url.pathname.match(/^\/api\/me\/devotions\/([^/]+)$/);
+      if (devotionMatch && (request.method === 'PUT' || request.method === 'DELETE')) {
+        const result = setDevotion(options.db.db, auth.memberId, decodeURIComponent(devotionMatch[1]), request.method === 'PUT', taipeiDate(now()), now().getTime());
+        return 'error' in result ? gamificationError({ status: 400, code: result.error }) : gamificationJson(200, result);
+      }
+      const devotionalMatch = url.pathname.match(/^\/api\/devotional\/([^/]+)$/);
+      if (request.method === 'GET' && devotionalMatch) {
+        const date = decodeURIComponent(devotionalMatch[1]);
+        if (!isDevotionalDate(date)) return gamificationError({ status: 400, code: 'INVALID_DATE' });
+        const post = await readDevotional(options.devotionalDir, date, songTitle);
+        return post ? gamificationJson(200, post as unknown as Record<string, unknown>) : gamificationError({ status: 404, code: 'DEVOTIONAL_NOT_FOUND' });
       }
       if (url.pathname === '/api/rewards/nominations' && request.method === 'GET') {
         return gamificationJson(200, listNominations(options.db.db, auth.memberId, now().getTime()));
