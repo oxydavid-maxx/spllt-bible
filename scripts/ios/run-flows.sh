@@ -5,10 +5,38 @@ OUT=${OUT:-ci-out}; mkdir -p "$OUT/maestro"; : > "$OUT/requests.log"
 QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 \
   npx tsx server/http.ts > "$OUT/server.log" 2>&1 &
 # The app talks to the backend over HTTPS, as in production: the reader takes its Bible content host only
-# from an https API base. A throwaway CA, trusted only inside this simulator, signs a localhost certificate.
+# from an https API base. A throwaway CA, trusted only inside this simulator, signs a loopback certificate.
 bash scripts/ios/make-ci-tls.sh "$OUT/tls"
 npx tsx scripts/ios/count-proxy.ts 8788 8787 "$OUT/requests.log" "$OUT/tls/leaf.pem" "$OUT/tls/leaf.key" &
-for i in $(seq 1 30); do curl -sf --cacert "$OUT/tls/ca.pem" https://localhost:8788/api/health > /dev/null && break; sleep 1; done
+for i in $(seq 1 30); do curl -sf --cacert "$OUT/tls/ca.pem" https://127.0.0.1:8788/api/health > /dev/null && break; sleep 1; done
+# The proxy binds IPv4 only. Read the actual listener/SAN/HTTPS response before launching the simulator;
+# localhost let CFNetwork choose a refused address and stall fixture profile requests (run 38538827467).
+[ "${EXPO_PUBLIC_QINGMU_API_BASE_URL:-}" = 'https://127.0.0.1:8788' ] || { echo 'CI App origin does not match the fixture listener'; exit 1; }
+lsof -nP -iTCP:8788 -sTCP:LISTEN > "$OUT/fixture-listener.txt"
+grep -q '127.0.0.1:8788' "$OUT/fixture-listener.txt" || { echo 'IPv4 fixture listener not observed'; exit 1; }
+openssl x509 -in "$OUT/tls/leaf.pem" -noout -ext subjectAltName > "$OUT/fixture-san.txt"
+grep -q 'IP Address:127.0.0.1' "$OUT/fixture-san.txt" || { echo 'Fixture certificate does not cover the client IP'; exit 1; }
+curl -fsS --cacert "$OUT/tls/ca.pem" https://127.0.0.1:8788/api/health > "$OUT/fixture-health.json" || exit 1
+node - "$OUT" <<'JS'
+const fs = require('node:fs'), crypto = require('node:crypto'), cp = require('node:child_process');
+const out = process.argv[2];
+const sha = b => crypto.createHash('sha256').update(b).digest('hex');
+const names = Object.keys(process.env).filter(k => k.startsWith('EXPO_PUBLIC_')).sort();
+const vars = Object.fromEntries(names.map(k => [k, process.env[k]]));
+const receipt = {
+  sourceCommit: cp.execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
+  sourceTree: cp.execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim(),
+  observedAt: new Date().toISOString(), nodeVersion: process.version,
+  packageLockSha256: sha(fs.readFileSync('package-lock.json')),
+  podsLockSha256: sha(fs.readFileSync('ios/Podfile.lock')),
+  environmentNames: names, environmentInputDigest: sha(JSON.stringify(vars)),
+  fixtureClientOrigin: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL,
+  observedListenerSha256: sha(fs.readFileSync(out + '/fixture-listener.txt')),
+  observedSanSha256: sha(fs.readFileSync(out + '/fixture-san.txt')),
+  observedHealthSha256: sha(fs.readFileSync(out + '/fixture-health.json')),
+};
+fs.writeFileSync(out + '/fixture-transport.json', JSON.stringify(receipt, null, 2));
+JS
 UDID=$(xcrun simctl create qm-ci "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-4)
 xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b
 xcrun simctl keychain "$UDID" add-root-cert "$OUT/tls/ca.pem"
