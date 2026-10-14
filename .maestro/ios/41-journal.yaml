@@ -11,6 +11,11 @@ appId: org.qingmu.youth
 # retained route via the app's declared public URL scheme, without restoring a tab.
 - assertNotVisible: "靈修日記"
 - openLink: "org.qingmu.youth:///journal"
+# Recorded iOS 26.4 public-link confirmation (run 38529814164); this is not account consent.
+- extendedWaitUntil:
+    visible: 'Open in.*竹科聖經.*'
+    timeout: 15000
+- tapOn: "Open"
 # The editor is found by position: by label it collides with the 靈修日記 tab, and iOS exposes no placeholder.
 # (If this misses, the failure leaves the screen's labels in 41-journal-screen.txt.)
 - extendedWaitUntil:

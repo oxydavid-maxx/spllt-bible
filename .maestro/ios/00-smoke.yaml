@@ -29,8 +29,13 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "開啟積分操作"
     timeout: 15000
-- extendedWaitUntil:
-    visible: "測試成員甲"
+# The group card precedes the member card in main 0.5.27 (actual screen has three scroll pages).
+# Keep the same signed-in member assertion, reached with the normal scroll interaction.
+- scrollUntilVisible:
+    element:
+      text: "測試成員甲"
+    direction: DOWN
     timeout: 30000
+- assertVisible: "測試成員甲"
 - takeScreenshot: 00-smoke
 - tapOn: "讀經入口"
