@@ -45,7 +45,7 @@ vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => void | (() => v
 } }));
 // Audio implementation belongs to a separate lane; assert only its mounting/lifecycle contract
 // and where in the chrome it is placed.
-vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice: () => null, ChapterAudioAutoplayToggle: (props: any) => React.createElement('Pressable', { accessibilityRole: 'switch', accessibilityLabel: '連讀', ...props }), ChapterAudioControls: React.forwardRef((props: any, ref: any) => {
+vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice: () => null, ChapterAudioAutoplayToggle: (props: any) => React.createElement('Pressable', { accessibilityRole: 'switch', accessibilityLabel: '接續讀經', ...props }), ChapterAudioControls: React.forwardRef((props: any, ref: any) => {
   React.useEffect(() => { native.audioMounts++; return () => { native.audioUnmounts++; }; }, []);
   React.useImperativeHandle(ref, () => ({ pause: native.pauseAudio }));
   return React.createElement('View', { style: { width: props.readerAction ? 56 : 48, height: props.readerAction ? 56 : 48 } },
@@ -128,10 +128,8 @@ describe('fullscreen reader layout and chrome', () => {
   it('explains continuous reading in More, including current-state labels and playback boundaries', async () => {
     await mount();
     act(() => { button('更多閱讀工具').props.onPress(); });
-    expect(text()).toContain('連讀是什麼？');
-    expect(text()).toContain('這不是加快語速');
-    expect(text()).toContain('切換設定不會立即播放');
-    expect(text()).toContain('遇到沒有朗讀的章節會停下並提示');
+    expect(text()).not.toContain('連讀是什麼？');
+    expect(all('Pressable').filter(n => n.props.accessibilityLabel === '接續讀經')).toHaveLength(1);
   });
   beforeEach(() => {
     vi.useFakeTimers();
@@ -356,9 +354,9 @@ describe('fullscreen reader layout and chrome', () => {
     const siblings = root.children.filter(child => typeof child !== 'string');
     for (const overlay of [toolbar()!, actionRow()]) expect(siblings.indexOf(surface())).toBeLessThan(siblings.indexOf(overlay));
     expect(toolbar()!.findAll(node => String(node.type) === 'ChapterAudioControls')).toHaveLength(0);
-    expect(all('Pressable').some(node => node.props.accessibilityLabel === '連讀')).toBe(false);
+    expect(all('Pressable').some(node => node.props.accessibilityLabel === '接續讀經')).toBe(false);
     act(() => button('更多閱讀工具').props.onPress());
-    expect(all('Pressable').some(node => node.props.accessibilityRole === 'switch' && node.props.accessibilityLabel === '連讀')).toBe(true);
+    expect(all('Pressable').some(node => node.props.accessibilityRole === 'switch' && node.props.accessibilityLabel === '接續讀經')).toBe(true);
   });
 
   it('places ○ ▶ above the tab bar from the system insets, 12dp apart, and keeps ▶ there while collapsed', async () => {
@@ -617,7 +615,7 @@ describe('fullscreen reader layout and chrome', () => {
       expect(scroll.findAll(node => String(node.type) === 'Pressable' && String(node.props.accessibilityLabel).startsWith('朗讀速度 '))).toHaveLength(4);
       act(() => { button('朗讀速度 1.5 倍').props.onPress(); });
       expect(onSelectNarrationSpeed).toHaveBeenCalledExactlyOnceWith(1.5);
-      expect(text()).toContain('遇到沒有朗讀的章節會停下並提示');
+      expect(text()).not.toContain('連讀是什麼？');
     }
   });
 
@@ -638,7 +636,7 @@ describe('fullscreen reader layout and chrome', () => {
     expect(menuLabels).toContain('調整字體');
     expect(menuLabels).toContain('選擇其他章節');
     expect(menuLabels).toContain('在 YouVersion 開啟此章');
-    expect(menu.findAll(node => node.props.accessibilityLabel === '連讀')).toHaveLength(1);
+    expect(menu.findAll(node => node.props.accessibilityLabel === '接續讀經')).toHaveLength(1);
     expect(menu.findAll(node => String(node.type) === 'AccountEntryButton')).toHaveLength(1);
     expect(menu.findAll(node => String(node.type) === 'TodayAuthGate')).toHaveLength(1);
     expect(menu.findAll(node => String(node.type) === 'UpdateBanner')).toHaveLength(1);
@@ -804,10 +802,41 @@ describe('fullscreen reader layout and chrome', () => {
 
 // 靈修 (維護者 2026-10-14): a tab after the chapters, the gold corner button, ▶ reading the 靈修.
 describe('the 靈修 tab and the gold corner button', () => {
+  it('uses mock B/G green outlined/filled glyphs and never gold (#1/#2/#3/#12)', async () => {
+    devotion = makeDevotion(); await mount();
+    expect(styleOf(gold())).toMatchObject({ borderWidth: 2, borderColor: '#1A5544', backgroundColor: '#FFFFFF' });
+    expect(styleOf(button('完成讀經'))).toMatchObject({ borderWidth: 2, borderColor: '#1A5544', backgroundColor: '#FFFFFF' });
+    expect(gold().findAll(n => String(n.type) === 'Path').map(n => n.props.d)).toContain('M5 19l8-8');
+    completed = true; devotion = makeDevotion({ completed: true });
+    act(() => renderer!.update(React.createElement(Harness)));
+    expect(styleOf(gold()).backgroundColor).toBe('#1A5544');
+    expect(gold().findAll(n => String(n.type) === 'Path').map(n => n.props.d)).toContain('M9 16v5');
+    expect(button('已完成，可撤銷完成確認').findAll(n => String(n.type) === 'Path').map(n => n.props.d)).toContain('M18 22a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-6v7l-2.5-1.5L7 9V2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12z');
+  });
+  it('never navigates on manual reading completion (#7)', async () => {
+    onComplete = vi.fn(); devotion = makeDevotion(); await mount();
+    act(() => chrome.handleCanvasEdge({ atEnd: true }));
+    act(() => button('完成讀經').props.onPress());
+    expect(onComplete).toHaveBeenCalledOnce();
+    expect(devotion.onSelect).not.toHaveBeenCalled(); expect(devotion.onFollow).not.toHaveBeenCalled();
+  });
+  it.each([false, true])('the final end only offers follow to eligible members (%s) (#6)', async eligible => {
+    completed = true; devotion = makeDevotion({ followOfferEligible: eligible }); await mount();
+    act(() => chrome.handleCanvasEdge({ atEnd: true }));
+    expect(text().includes('接續靈修 ›')).toBe(eligible);
+    act(() => chrome.handleCanvasEdge({ atEnd: false }));
+    expect(text()).not.toContain('接續靈修 ›');
+  });
+  it('the devotional bottom grows completion, then returns to the filled circle (#8)', async () => {
+    devotion = makeDevotion({ selected: true, atEnd: true }); await mount();
+    expect(gold().findAll(n => String(n.type) === 'Text').map(n => n.props.children)).toContain('完成今日靈修');
+    devotion = makeDevotion({ selected: true, atEnd: true, completed: true }); act(() => renderer!.update(React.createElement(Harness)));
+    expect(gold().findAll(n => String(n.type) === 'Text')).toHaveLength(0);
+  });
   const makeDevotion = (overrides: Partial<NonNullable<typeof devotion>> = {}): NonNullable<typeof devotion> => ({
     selected: false, onSelect: vi.fn(), renderView: (insets) => React.createElement('DevotionalView', { insets }),
     completed: false, disabled: false, onToggle: vi.fn(), onFollow: vi.fn(), speaking: false, onPlayPause: vi.fn(),
-    banner: null, followEnabled: true, onFollowChange: vi.fn(), ...overrides,
+    banner: null, followEnabled: false, followOfferEligible: true, onFollowOfferShown: vi.fn(), onFollowChange: vi.fn(), ...overrides,
   });
   const gold = () => actionRow().findAll(node => String(node.type) === 'Pressable' && /靈修|跟傳道/.test(String(node.props.accessibilityLabel ?? '')))[0];
   beforeEach(() => {
@@ -829,17 +858,21 @@ describe('the 靈修 tab and the gold corner button', () => {
     expect(chips.at(-1)).toBe('靈修，傳道的每日靈修');
     act(() => { chrome.handleCanvasEdge({ atEnd: true }); });
     const row = actionRow().findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityRole === 'button').map(node => node.props.accessibilityLabel);
-    expect(row.slice(0, 2)).toEqual(['跟傳道一起讀', '完成讀經']);
+    expect(row.slice(0, 2)).toEqual(['完成今日靈修', '完成讀經']);
     expect(text()).toContain('完成今日讀經');
     expect(text()).not.toContain('跟傳道一起讀 ›');
     act(() => gold().props.onPress());
-    expect(devotion.onFollow).toHaveBeenCalledOnce();
+    expect(devotion.onToggle).toHaveBeenCalledOnce();
+    expect(devotion.onFollow).not.toHaveBeenCalled();
   });
 
   it('after the reading is completed, gold grows into 跟傳道一起讀 ›', async () => {
     completed = true; devotion = makeDevotion();
     await mount();
-    expect(text()).toContain('跟傳道一起讀 ›');
+    expect(text()).not.toContain('接續靈修 ›');
+    act(() => chrome.handleCanvasEdge({ atEnd: true }));
+    expect(text()).toContain('接續靈修 ›');
+    expect(devotion.onFollowOfferShown).toHaveBeenCalled();
     expect(text()).not.toContain('完成今日讀經');
     act(() => gold().props.onPress());
     expect(devotion.onFollow).toHaveBeenCalledOnce();
@@ -870,14 +903,14 @@ describe('the 靈修 tab and the gold corner button', () => {
     completed = true; devotion = makeDevotion({ selected: true, completed: true, speaking: true });
     await mount();
     expect(gold().props.accessibilityLabel).toBe('今日靈修已完成');
-    expect(styleOf(gold()).backgroundColor).toBe('#9A6B0F');
+    expect(styleOf(gold()).backgroundColor).toBe('#1A5544');
     expect(button('暫停朗讀')).toBeDefined();
     act(() => { button('更多閱讀工具').props.onPress(); });
-    const follow = all('Pressable').find(node => node.props.accessibilityRole === 'switch' && node.props.accessibilityLabel === '跟傳道一起讀')!;
-    expect(follow.props.accessibilityState).toEqual({ checked: true });
-    expect(text()).toContain('讀完經文自動接靈修，朗讀完播詩歌 (螢幕亮著才播)');
+    const follow = all('Pressable').find(node => node.props.accessibilityRole === 'switch' && node.props.accessibilityLabel === '接續靈修')!;
+    expect(follow.props.accessibilityState).toEqual({ checked: false });
+    expect(text()).toContain('經文念完，接著念靈修和詩歌');
     act(() => follow.props.onPress());
-    expect(devotion.onFollowChange).toHaveBeenCalledWith(false);
+    expect(devotion.onFollowChange).toHaveBeenCalledWith(true);
   });
 
   it('has no 靈修 tab or gold button when signed out', async () => {

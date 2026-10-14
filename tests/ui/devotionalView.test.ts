@@ -34,6 +34,21 @@ const props = (overrides: Partial<React.ComponentProps<typeof DevotionalView>> =
 const textOf = (node: TestRenderer.ReactTestInstance | string): string => typeof node === 'string' ? node : node.children.map(textOf).join('');
 
 describe('the 靈修 tab', () => {
+  it('reports the real scroll bottom, including short content and leaving the bottom (#8)', () => {
+    const onEndChange = vi.fn(); let tree!: TestRenderer.ReactTestRenderer;
+    act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props({ onEndChange }))); });
+    const scroll = tree.root.findAll(n => String(n.type) === 'ScrollView')[0];
+    act(() => scroll.props.onLayout({ nativeEvent: { layout: { height: 600 } } }));
+    act(() => scroll.props.onContentSizeChange(393, 1400));
+    expect(onEndChange).toHaveBeenLastCalledWith(false);
+    act(() => scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 800 }, layoutMeasurement: { height: 600 }, contentSize: { height: 1400 } } }));
+    expect(onEndChange).toHaveBeenLastCalledWith(true);
+    act(() => scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 200 }, layoutMeasurement: { height: 600 }, contentSize: { height: 1400 } } }));
+    expect(onEndChange).toHaveBeenLastCalledWith(false);
+    act(() => scroll.props.onContentSizeChange(393, 400));
+    expect(onEndChange).toHaveBeenLastCalledWith(true);
+    act(() => tree.unmount());
+  });
   it('shows the post with its title in 《》, the pastor’s line, the paragraph being read lit, and a song poster that loads nothing', () => {
     let tree!: TestRenderer.ReactTestRenderer;
     act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props({ activeIndex: 2 }))); });

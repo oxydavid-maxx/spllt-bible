@@ -20,6 +20,7 @@ export type DevotionalState =
 
 export interface DevotionalViewProps {
   state: DevotionalState;
+  onEndChange?: (atEnd: boolean) => void;
   /** The paragraph being read, counted across sections in reading order; -1 when none. */
   activeIndex: number;
   /** `${api}/api/devotional/player`: a page on our own server, so YouTube sees a real embedding site. */
@@ -46,7 +47,12 @@ export function songCaption(song: SongState, songFollows: boolean): string {
 const PLAY = 'window.qmPlay&&window.qmPlay();true;';
 const PAUSE = 'window.qmPause&&window.qmPause();true;';
 
-export function DevotionalView({ state, activeIndex, playerUrl, songRequest, songFollows, insets }: DevotionalViewProps) {
+export function DevotionalView({ state, activeIndex, playerUrl, songRequest, songFollows, insets, onEndChange }: DevotionalViewProps) {
+  const viewport = useRef({ height: 0, content: 0, y: 0 });
+  const reportEnd = () => {
+    const v = viewport.current;
+    onEndChange?.(state.kind === 'ready' && v.height > 0 && v.content > 0 && v.y + v.height >= v.content - 2);
+  };
   const scroller = useRef<ScrollView | null>(null);
   const sectionTops = useRef(new Map<number, number>());
   const paragraphTops = useRef(new Map<number, { section: number; y: number }>());
@@ -55,7 +61,7 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
   const post = state.kind === 'ready' ? state.post : null;
   const songKey = post ? `${post.date}:${post.song.youtubeId}` : '';
 
-  useEffect(() => { setSong('poster'); sectionTops.current.clear(); paragraphTops.current.clear(); }, [songKey]);
+  useEffect(() => { onEndChange?.(false); viewport.current = { height: 0, content: 0, y: 0 }; setSong('poster'); sectionTops.current.clear(); paragraphTops.current.clear(); }, [songKey]);
   useEffect(() => {
     const place = paragraphTops.current.get(activeIndex);
     if (!place) return;
@@ -92,7 +98,11 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
   const caption = songCaption(song, songFollows);
   let unit = -1;
   const playerMounted = song !== 'poster' && song !== 'error';
-  return <ScrollView ref={scroller} accessibilityLabel="靈修" style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: insets.top + 14, paddingBottom: insets.bottom }]}>
+  return <ScrollView ref={scroller} accessibilityLabel="靈修" scrollEventThrottle={100}
+    onLayout={(event) => { viewport.current.height = event.nativeEvent.layout.height; reportEnd(); }}
+    onContentSizeChange={(_width, height) => { viewport.current.content = height; reportEnd(); }}
+    onScroll={(event) => { const e = event.nativeEvent; viewport.current = { y: e.contentOffset.y, height: e.layoutMeasurement.height, content: e.contentSize.height }; reportEnd(); }}
+    style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: insets.top + 14, paddingBottom: insets.bottom }]}>
     <View style={styles.titleBlock}>
       <Text accessibilityRole="header" style={styles.title}>{`《${devotional.title}》`}</Text>
       <Text style={styles.meta}>{devotionMeta(devotional)}</Text>

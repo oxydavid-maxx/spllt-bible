@@ -37,6 +37,7 @@ export interface ReaderDevotionBinding {
 export function useReaderDevotion({ session, baseUrl, date, showTools }: { session: { memberId: string; sessionToken: string } | null; baseUrl: string; date: string; showTools: () => void }): ReaderDevotionBinding {
   const memberId = session?.memberId ?? null;
   const client = useMemo(() => session ? createDevotionClient({ baseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [baseUrl, session?.memberId, session?.sessionToken]);
+  const [atEnd, setAtEnd] = useState(false);
   const [selected, setSelected] = useState(false);
   const [post, setPost] = useState<{ date: string; state: DevotionalState } | null>(null);
   const [marked, setMarked] = useState<{ date: string; done: boolean } | null>(null);
@@ -51,7 +52,7 @@ export function useReaderDevotion({ session, baseUrl, date, showTools }: { sessi
 
   useEffect(() => { void preferences.load(memberId); }, [memberId]);
   // A new day, or another member: back to the chapter, nothing read aloud from the old one.
-  useEffect(() => { setSelected(false); speakWhenReady.current = false; speech.stop(); }, [date, memberId, speech]);
+  useEffect(() => { setSelected(false); setAtEnd(false); speakWhenReady.current = false; speech.stop(); }, [date, memberId, speech]);
   useEffect(() => () => speech.stop(), [speech]);
   useEffect(() => {
     if (!client) { setMarked(null); return; }
@@ -103,6 +104,9 @@ export function useReaderDevotion({ session, baseUrl, date, showTools }: { sessi
   };
   const devotion: ReaderDevotion | undefined = client ? {
     selected,
+    atEnd,
+    followOfferEligible: preferences.canOffer(memberId, today),
+    onFollowOfferShown: () => preferences.recordOfferShown(memberId, today),
     onSelect: () => open(false),
     renderView: (insets) => <DevotionalView
       state={current ?? { kind: 'loading' }}
@@ -111,11 +115,12 @@ export function useReaderDevotion({ session, baseUrl, date, showTools }: { sessi
       songRequest={songRequest}
       songFollows={follow.enabled}
       insets={insets}
+      onEndChange={setAtEnd}
     />,
     completed: done,
     disabled: markPending || date > today || !isWithinCompletionWindow(date, today),
     onToggle: toggle,
-    onFollow: () => { preferences.firstFollow(memberId); open(true); },
+    onFollow: () => { if (preferences.firstFollow(memberId, today)) open(false); },
     speaking,
     onPlayPause: () => {
       if (speaking) { speech.pause(); return; }

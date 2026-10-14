@@ -8,8 +8,8 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationBar } from 'expo-navigation-bar';
 import { ChapterAudioAutoplayNotice, ChapterAudioAutoplayToggle, ChapterAudioControls, type ChapterAudioControlsHandle } from './ChapterAudioControls';
 import { SettingSwitchRow } from './SettingSwitchRow';
-import { goldFab } from './devotion/devotionFabModel';
-import { LeafGlyph, PlayPauseGlyph, TickGlyph } from './devotion/glyphs';
+import { devotionFab } from './devotion/devotionFabModel';
+import { BookGlyph, GrownLeafGlyph, LeafGlyph, PlayPauseGlyph } from './devotion/glyphs';
 import { formatChapterTitleZhTw, formatReferenceZhTw } from '../domain/scriptureReference';
 import { theme } from './Theme';
 import { formatReadingDateHeader, formatReadingDateLabel } from './ReadingDateNavigator';
@@ -152,18 +152,21 @@ export function useReaderChrome() {
     hideTools, showTools, revealTools, handleCanvasScroll, handleCanvasEdge, handleVerseSelection, handleSheetOpenChange, clearVerseSelection, openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo,
     handleNarration, handleFollowRelease, handleFollowPosition, returnToNarration, handleReadAlongChapter };
 }
-/** The 靈修 tab and the gold corner button (維護者 2026-10-14). Absent when signed out. */
+/** The 靈修 tab and the green completion circles (維護者 2026-10-14). Absent when signed out. */
 export interface ReaderDevotion {
   /** The 靈修 tab is showing instead of the chapter. */
   selected: boolean;
   onSelect: () => void;
   /** The tab's content, laid out clear of the header above and the corner buttons below. */
   renderView: (insets: { top: number; bottom: number }) => ReactNode;
+  atEnd?: boolean;
+  followOfferEligible?: boolean;
+  onFollowOfferShown?: () => void;
   completed: boolean;
   /** Marking cannot be saved for this day (outside the 7-day window). */
   disabled: boolean;
   onToggle: () => void;
-  /** 「跟傳道一起讀」: open the 靈修 and read it aloud. */
+  /** Explicit bounded offer: enable follow and open the devotional tab. */
   onFollow: () => void;
   speaking: boolean;
   onPlayPause: () => void;
@@ -253,8 +256,11 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
     : -1;
   const nextIndex = assignedIndex >= 0 && assignedIndex < references.length - 1 ? assignedIndex + 1 : -1;
   const onDevotion = Boolean(devotion?.selected);
-  const gold = devotion ? goldFab({ onDevotion, readingCompleted: completed, devotionCompleted: devotion.completed, crowded: chrome.returnToNarrationVisible }) : null;
-  const goldDisabled = Boolean(devotion?.disabled) && gold?.action === 'toggle';
+  const leaf = devotion ? devotionFab({ onDevotion, readingCompleted: completed, devotionCompleted: devotion.completed, crowded: chrome.returnToNarrationVisible, atReadingEnd: !chrome.collapsed && chrome.atChapterEnd && assignedIndex >= 0 && nextIndex < 0, atDevotionEnd: devotion.atEnd, followOfferEligible: devotion.followOfferEligible }) : null;
+  const offerVisible = leaf?.action === 'follow' && !chrome.collapsed && !chrome.verseSelected && !chrome.moreOpen && !chrome.infoOpen && chrome.focused;
+  const onFollowOfferShown = devotion?.onFollowOfferShown;
+  useEffect(() => { if (offerVisible) onFollowOfferShown?.(); }, [offerVisible, onFollowOfferShown]);
+  const leafDisabled = Boolean(devotion?.disabled) && leaf?.action === 'toggle';
   const atEnd = !chrome.collapsed && chrome.atChapterEnd && !onDevotion;
   // The last chapter read to its end: the same ○ grows into the day's completion call (one button, one record).
   // Not while 回到朗讀處 holds the bottom-left: on a 360 dp phone the grown ○ would run into it.
@@ -348,17 +354,17 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
         </Pressable> : null}
       </View>
       <View accessibilityLabel="讀經動作" accessible={false} pointerEvents="box-none" style={[styles.actionRow, { right: theme.spacing.sm + insets.right, bottom: actionBottom }, chrome.verseSelected && styles.stepAside]}>
-        {chrome.collapsed || !gold || !devotion ? null : <Pressable
+        {chrome.collapsed || !leaf || !devotion ? null : <Pressable
           accessibilityRole="button"
-          accessibilityLabel={gold.label}
-          accessibilityState={{ disabled: goldDisabled, checked: gold.done }}
-          disabled={goldDisabled}
-          onPress={gold.action === 'follow' ? devotion.onFollow : devotion.onToggle}
-          android_ripple={{ color: theme.colors.accentSoft }}
-          style={[styles.goldAction, gold.expanded && styles.goldExpanded, gold.done && styles.goldDone, goldDisabled && styles.disabled]}
+          accessibilityLabel={leaf.label}
+          accessibilityState={{ disabled: leafDisabled, checked: leaf.done }}
+          disabled={leafDisabled}
+          onPress={leaf.action === 'follow' ? devotion.onFollow : devotion.onToggle}
+          android_ripple={{ color: theme.colors.primarySoft }}
+          style={[styles.leafAction, leaf.expanded && styles.leafExpanded, leaf.done && styles.leafDone, leafDisabled && styles.disabled]}
         >
-          {gold.done ? <TickGlyph /> : <LeafGlyph size={gold.expanded ? 20 : 24} />}
-          {gold.expanded ? <Text style={styles.goldExpandedText}>跟傳道一起讀 ›</Text> : null}
+          {leaf.done ? <GrownLeafGlyph /> : <LeafGlyph size={leaf.expanded ? 20 : 24} />}
+          {leaf.expanded ? <Text style={styles.leafExpandedText}>{leaf.label + (leaf.action === 'follow' ? ' ›' : '')}</Text> : null}
         </Pressable>}
         {chrome.collapsed ? null : <Pressable
           accessibilityRole="button"
@@ -371,7 +377,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           android_ripple={{ color: theme.colors.primarySoft }}
           style={[styles.completionAction, completionExpanded && styles.completionExpanded, completed && styles.completionActionComplete, completionActionDisabled && styles.disabled]}
         >
-          <MaterialCommunityIcons name={completionPending ? 'clock-outline' : completionFailed ? 'sync-alert' : completed ? 'check' : 'checkbox-blank-circle-outline'} size={completionExpanded ? 26 : 28} color={completed ? theme.colors.white : completionActionDisabled ? theme.colors.muted : theme.colors.primary} />
+          {completionPending || completionFailed ? <MaterialCommunityIcons name={completionPending ? 'clock-outline' : 'sync-alert'} size={26} color={theme.colors.primary} /> : <BookGlyph completed={completed} size={completionExpanded ? 24 : undefined} />}
           {completionExpanded ? <Text style={styles.completionExpandedText}>完成今日讀經</Text> : null}
         </Pressable>}
         <View accessible={false} style={styles.audioCell}>
@@ -410,15 +416,13 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
             <MenuButton label="在 YouVersion 開啟此章" disabled={!canOpenYouVersion || !onOpenYouVersion} onPress={openYouVersion} />
             <ChapterAudioAutoplayToggle active={chrome.focused} />
             {devotion ? <SettingSwitchRow
-              label="跟傳道一起讀"
-              description="讀完經文自動接靈修，朗讀完播詩歌 (螢幕亮著才播)。第一次按金色圈圈就自動打開"
+              label="接續靈修"
+              description="經文念完，接著念靈修和詩歌"
+              help={'打開後，按 ▶ 朗讀今天的經文，最後一章念完會接著念傳道的靈修，念完再播詩歌 (螢幕亮著才播)。\n\n自己讀、不聽朗讀的人不受影響，按「完成今日讀經」不會跳頁。預設是關的。'}
               enabled={devotion.followEnabled}
               hint={devotion.followEnabled ? '目前開啟，點一下關閉' : '目前關閉，點一下開啟'}
               onPress={() => devotion.onFollowChange(!devotion.followEnabled)}
             /> : null}
-            <Text accessibilityRole="header" style={styles.heading}>連讀是什麼？</Text>
-            <Text style={styles.body}>開啟連讀後，按播放會從目前章節依序朗讀當日剩餘章節，最後一章結束就停止。這不是加快語速。</Text>
-            <Text style={styles.body}>切換設定不會立即播放。遇到沒有朗讀的章節會停下並提示。</Text>
             {onSelectNarrationSpeed ? <>
               <Text accessibilityRole="header" style={styles.heading}>朗讀速度</Text>
               <View style={styles.speedRow}>
@@ -555,14 +559,14 @@ const styles = StyleSheet.create({
   nextCard: { height: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderRadius: 26, backgroundColor: theme.colors.primary, ...floating },
   nextCardText: { color: theme.colors.white, fontSize: 17, lineHeight: 22, fontWeight: '700' },
   actionRow: { position: 'absolute', zIndex: 3, flexDirection: 'row', alignItems: 'center', gap: GAP },
-  completionAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, backgroundColor: theme.colors.white, ...floating },
+  completionAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.white, ...floating },
   completionExpanded: { width: 'auto', paddingLeft: theme.spacing.lg, paddingRight: theme.spacing.xl },
   completionActionComplete: { backgroundColor: theme.colors.primary },
   completionExpandedText: { color: theme.colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '700' },
-  goldAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, borderWidth: 2, borderColor: theme.colors.gold, backgroundColor: theme.colors.white, ...floating },
-  goldExpanded: { width: 'auto', paddingLeft: 14, paddingRight: 18 },
-  goldDone: { backgroundColor: theme.colors.gold },
-  goldExpandedText: { color: theme.colors.gold, fontSize: 16, lineHeight: 20, fontWeight: '700' },
+  leafAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.white, ...floating },
+  leafExpanded: { width: 'auto', paddingLeft: 14, paddingRight: 18 },
+  leafDone: { backgroundColor: theme.colors.primary },
+  leafExpandedText: { color: theme.colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '700' },
   audioInner: { width: ACTION, height: ACTION, alignItems: 'center', justifyContent: 'center' },
   hidden: { display: 'none' },
   devotionPlay: { width: ACTION, height: ACTION, borderRadius: ACTION / 2, alignItems: 'center', justifyContent: 'center' },

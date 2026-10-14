@@ -32,7 +32,7 @@ beforeEach(() => {
     currentTime: 0, duration: 100, playing: false, isLoaded: true, isBuffering: false, calls: [],
     play() { p.playing = true; p.calls.push('play'); }, pause() { p.playing = false; p.calls.push('pause'); },
     replace(source: { uri: string }) { p.calls.push(`replace:${source.uri}`); }, seekTo: async (value: number) => { p.currentTime = value; },
-    setPlaybackRate() {}, remove() {}, addListener(_event: string, listener: (status: any) => void) { listeners.add(listener); return { remove: () => listeners.delete(listener) }; },
+    setPlaybackRate: vi.fn(), remove() {}, addListener(_event: string, listener: (status: any) => void) { listeners.add(listener); return { remove: () => listeners.delete(listener) }; },
     finish() { p.playing = false; p.currentTime = 100; for (const listener of listeners) listener({ didJustFinish: true }); for (const listener of listeners) listener({ didJustFinish: true }); },
   };
   native.player = p;
@@ -79,6 +79,19 @@ describe('ChapterAudioControls reading highlight', () => {
 });
 
 describe('ChapterAudioControls EOF handoff', () => {
+  it.each([0.75, 1, 1.25, 1.5])('calls the native setter at %sx, including live changes (#13)', async speed => {
+    Object.defineProperty(native.player, 'playbackRate', { get: () => 1, set: () => { throw new Error('native getter only'); } });
+    const context: ChapterAudioAutoplayContextValue = {
+      available: true, enabled: true, intent: null, notice: null, cancel: vi.fn(), toggle: vi.fn(), speed,
+      onPlaybackStarted: vi.fn(), onPlaybackPaused: vi.fn(), onPlaybackEnded: vi.fn(), onPlaybackError: vi.fn(), onAutoplayUnavailable: vi.fn(),
+    };
+    await mount(vi.fn(), context);
+    expect(native.player.setPlaybackRate).toHaveBeenCalledWith(speed);
+    expect(native.player.shouldCorrectPitch).toBe(true);
+    const control = React.createElement(ChapterAudioControls, { chapterUsfm: '1TI.1', versionId: 46, env: { EXPO_PUBLIC_QINGMU_AUDIO_AUTHORIZED: 'true' }, baseUrl: 'https://in-memory.test', fetchImpl: fetchImpl as typeof fetch } as never);
+    await act(async () => view!.update(React.createElement(ChapterAudioAutoplayContext.Provider, { value: { ...context, speed: 1.25 } }, control)));
+    expect(native.player.setPlaybackRate).toHaveBeenLastCalledWith(1.25);
+  });
   it('reports a real EOF once even if native status emits duplicate finish events', async () => {
     const ended = vi.fn();
     await mount(ended);
@@ -98,12 +111,12 @@ describe('ChapterAudioControls EOF handoff', () => {
       onPlaybackError: vi.fn(), onAutoplayUnavailable: vi.fn(),
     }, true);
     const switchControl = view!.root.findAll(node => node.props?.accessibilityRole === 'switch')[0];
-    expect(switchControl.props.accessibilityLabel).toBe('連讀');
+    expect(switchControl.props.accessibilityLabel).toBe('接續讀經');
     expect(switchControl.props.accessibilityHint).toContain(enabled ? '目前開啟' : '目前關閉');
-    expect(JSON.stringify(view!.toJSON())).toContain('連讀');
+    expect(JSON.stringify(view!.toJSON())).toContain('接續讀經');
     expect(switchControl.props.accessibilityState).toMatchObject({ checked: enabled });
     // The ⋯ row says what it does (2026-10-14): 連讀, then one line of description.
-    expect(switchControl.findAll(node => String(node.type) === 'Text').map(node => String(node.props.children))).toEqual(['連讀', '按播放會依序朗讀今天剩下的章節']);
+    expect(switchControl.parent!.parent!.findAll(node => String(node.type) === 'Text' && node.props.children !== '?').map(node => String(node.props.children))).toEqual(['接續讀經', '按 ▶ 接著念今天剩下的章節']);
     const track = switchControl.findAll(node => node.props?.testID === 'autoplay-track')[0];
     const knob = switchControl.findAll(node => node.props?.testID === 'autoplay-knob')[0];
     const flat = (style: unknown) => Object.assign({}, ...([] as unknown[]).concat(style as unknown[]).filter(Boolean));
@@ -111,7 +124,7 @@ describe('ChapterAudioControls EOF handoff', () => {
     expect(flat(track.props.style).backgroundColor).toBe(enabled ? '#1A5544' : '#768D7E');
     expect(enabled ? flat(knob.props.style).right : flat(knob.props.style).left).toBe(3);
     expect(enabled ? flat(knob.props.style).left : flat(knob.props.style).right).toBeUndefined();
-    expect(switchControl.props.style).toMatchObject({ minHeight: 64, flexDirection: 'row' });
+    expect(switchControl.props.style).toMatchObject({ minHeight: 44 });
     expect(switchControl.props.style.position).toBeUndefined();
     expect(native.player.calls).not.toContain('play');
     await act(async () => switchControl.props.onPress());
