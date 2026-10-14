@@ -29,6 +29,7 @@ vi.mock('react-native', () => ({
     },
   },
 }));
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: () => React.createElement('MaterialCommunityIcons') }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => native.safeInsets }));
 vi.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
@@ -90,6 +91,7 @@ let loginGateNode: React.ReactNode | undefined;
 let updateNode: React.ReactNode | undefined;
 let onOpenYouVersion: (() => void) | undefined;
 const onSelectReference = vi.fn();
+let devotion: React.ComponentProps<typeof FullscreenReaderLayout>['devotion'];
 function Harness() {
   chrome = useReaderChrome();
   return React.createElement(FullscreenReaderLayout, {
@@ -99,7 +101,7 @@ function Harness() {
     completed, completionDisabled, completionPending, completionFailed, completionLabel, onComplete, onUndo, onSelectReference,
     noPlanMessage, statusMessage, canOpenYouVersion, accountEntry: accountNode, loginGate: loginGateNode, updateBanner: updateNode,
     onOpenYouVersion,
-    versionOptions, onSelectVersion, onSelectNarrationSpeed,
+    versionOptions, onSelectVersion, onSelectNarrationSpeed, devotion,
     metadata: { translationName: '測試譯本', publisher: '測試出版社', copyrightNotice: '測試版權文字', officialUrl: 'https://example.test/version', audioAttribution },
   });
 }
@@ -159,6 +161,7 @@ describe('fullscreen reader layout and chrome', () => {
     onSelectDate = vi.fn(); noPlanMessage = undefined; statusMessage = undefined; canOpenYouVersion = false;
     accountNode = undefined; loginGateNode = undefined; updateNode = undefined; onOpenYouVersion = undefined;
     onSelectReference.mockClear();
+    devotion = undefined;
     controls = { ready: true, openChapterPicker: vi.fn(), openVersionPicker: vi.fn(), openSettings: vi.fn() };
     vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       const message = String(args[0]);
@@ -796,5 +799,90 @@ describe('fullscreen reader layout and chrome', () => {
     act(() => { chrome.closeInfo(); chrome.openMore(); });
     expect(button('選擇譯本')).toBeDefined();
     expect(text()).not.toContain(audioAttribution);
+  });
+});
+
+// 靈修 (維護者 2026-10-14): a tab after the chapters, the gold corner button, ▶ reading the 靈修.
+describe('the 靈修 tab and the gold corner button', () => {
+  const makeDevotion = (overrides: Partial<NonNullable<typeof devotion>> = {}): NonNullable<typeof devotion> => ({
+    selected: false, onSelect: vi.fn(), renderView: (insets) => React.createElement('DevotionalView', { insets }),
+    completed: false, disabled: false, onToggle: vi.fn(), onFollow: vi.fn(), speaking: false, onPlayPause: vi.fn(),
+    banner: null, followEnabled: true, onFollowChange: vi.fn(), ...overrides,
+  });
+  const gold = () => actionRow().findAll(node => String(node.type) === 'Pressable' && /靈修|跟傳道/.test(String(node.props.accessibilityLabel ?? '')))[0];
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-23T04:00:00Z'));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    currentChapter = 'PSA.91'; assignedReferences = ['PSA.90', 'PSA.91']; activeReferenceIndex = 1; selectionSource = 'ASSIGNED';
+    completed = false; completionDisabled = false; completionPending = false; completionFailed = false;
+    controls = { ready: true, openChapterPicker: vi.fn(), openVersionPicker: vi.fn(), openSettings: vi.fn() };
+    onSelectDate = vi.fn(); onSelectReference.mockClear(); native.pauseAudio.mockClear(); native.audioMounts = 0; native.audioUnmounts = 0;
+    native.safeInsets = { top: 0, bottom: 0, left: 0, right: 0 }; native.window = { width: 393, fontScale: 1 };
+  });
+  afterEach(() => { act(() => { renderer?.unmount(); }); renderer = null; vi.restoreAllMocks(); vi.useRealTimers(); });
+
+  it('puts 靈修 after the chapters, and at the last chapter’s end grows the green button while gold stays a circle', async () => {
+    devotion = makeDevotion();
+    await mount();
+    const chips = all('Pressable').filter(node => node.props.accessibilityState && 'selected' in node.props.accessibilityState).map(node => node.props.accessibilityLabel);
+    expect(chips.at(-1)).toBe('靈修，傳道的每日靈修');
+    act(() => { chrome.handleCanvasEdge({ atEnd: true }); });
+    const row = actionRow().findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityRole === 'button').map(node => node.props.accessibilityLabel);
+    expect(row.slice(0, 2)).toEqual(['跟傳道一起讀', '完成讀經']);
+    expect(text()).toContain('完成今日讀經');
+    expect(text()).not.toContain('跟傳道一起讀 ›');
+    act(() => gold().props.onPress());
+    expect(devotion.onFollow).toHaveBeenCalledOnce();
+  });
+
+  it('after the reading is completed, gold grows into 跟傳道一起讀 ›', async () => {
+    completed = true; devotion = makeDevotion();
+    await mount();
+    expect(text()).toContain('跟傳道一起讀 ›');
+    expect(text()).not.toContain('完成今日讀經');
+    act(() => gold().props.onPress());
+    expect(devotion.onFollow).toHaveBeenCalledOnce();
+  });
+
+  it('on the 靈修 tab: its view covers the chapter, gold marks it, ▶ reads it and stops a playing chapter first', async () => {
+    completed = true; devotion = makeDevotion({ selected: true, banner: '正在朗讀靈修 · 讀完接著播詩歌' });
+    await mount();
+    expect(all('DevotionalView')).toHaveLength(1);
+    expect(all('DevotionalView')[0].props.insets.top).toBe(96);
+    expect(surface().props.accessibilityElementsHidden).toBe(true);
+    expect(chip('靈修').props.accessibilityState.selected).toBe(true);
+    expect(chip('詩91').props.accessibilityState.selected).toBe(false);
+    act(() => chip('詩91').props.onPress());
+    expect(onSelectReference).toHaveBeenCalledWith(1);
+    expect(gold().props.accessibilityLabel).toBe('完成今日靈修');
+    act(() => gold().props.onPress());
+    expect(devotion.onToggle).toHaveBeenCalledOnce();
+    expect(text()).toContain('正在朗讀靈修 · 讀完接著播詩歌');
+    // The chapter's player stays mounted, hidden; ▶ is the 靈修's.
+    expect(native.audioMounts).toBe(1);
+    await act(async () => { button('朗讀靈修').props.onPress(); });
+    expect(native.pauseAudio).toHaveBeenCalledOnce();
+    expect(devotion.onPlayPause).toHaveBeenCalledOnce();
+  });
+
+  it('shows two ticks once both are done, and the ⋯ sheet holds 跟傳道一起讀', async () => {
+    completed = true; devotion = makeDevotion({ selected: true, completed: true, speaking: true });
+    await mount();
+    expect(gold().props.accessibilityLabel).toBe('今日靈修已完成');
+    expect(styleOf(gold()).backgroundColor).toBe('#9A6B0F');
+    expect(button('暫停朗讀')).toBeDefined();
+    act(() => { button('更多閱讀工具').props.onPress(); });
+    const follow = all('Pressable').find(node => node.props.accessibilityRole === 'switch' && node.props.accessibilityLabel === '跟傳道一起讀')!;
+    expect(follow.props.accessibilityState).toEqual({ checked: true });
+    expect(text()).toContain('讀完經文自動接靈修，朗讀完播詩歌 (螢幕亮著才播)');
+    act(() => follow.props.onPress());
+    expect(devotion.onFollowChange).toHaveBeenCalledWith(false);
+  });
+
+  it('has no 靈修 tab or gold button when signed out', async () => {
+    devotion = undefined;
+    await mount();
+    expect(text()).not.toContain('靈修');
   });
 });

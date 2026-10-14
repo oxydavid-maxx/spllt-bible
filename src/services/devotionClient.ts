@@ -137,7 +137,9 @@ export function createDevotionClient(options: DevotionClientOptions): DevotionCl
       return dates as string[];
     },
     async setDevotion(date, completed) {
-      await request(`/api/me/devotions/${encodeURIComponent(date)}`, { method: completed ? 'PUT' : 'DELETE' });
+      // A backend older than 靈修 answers 404: the mark was not kept, so the screen puts it back.
+      const { status } = await request(`/api/me/devotions/${encodeURIComponent(date)}`, { method: completed ? 'PUT' : 'DELETE' });
+      if (status === 404) throw new GamificationApiError('DEVOTIONS_UNAVAILABLE', false, 404);
     },
     async getGroupReading(month) {
       const view = parseGroupReading((await request(`/api/points/group?month=${encodeURIComponent(month)}`)).body);

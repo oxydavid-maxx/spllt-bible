@@ -1,0 +1,166 @@
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { DomWebView, type DomWebViewRef } from '@expo/dom-webview';
+import Svg, { Path } from 'react-native-svg';
+import type { DevotionalPost } from '../../services/devotionClient';
+import { theme } from '../Theme';
+
+/**
+ * The 靈修 tab (維護者 2026-10-14): the pastor's post for the day, the paragraph being read aloud lit,
+ * and the day's song at the end. The song's player is loaded only when it is played, so an idle tab
+ * makes no request; it plays only while the screen is on (YouTube does not allow background play)
+ * and pauses the moment the app leaves the screen.
+ */
+
+export type DevotionalState =
+  | { kind: 'loading' }
+  | { kind: 'missing' }
+  | { kind: 'error'; onRetry: () => void }
+  | { kind: 'ready'; post: DevotionalPost };
+
+export interface DevotionalViewProps {
+  state: DevotionalState;
+  /** The paragraph being read, counted across sections in reading order; -1 when none. */
+  activeIndex: number;
+  /** `${api}/api/devotional/player`: a page on our own server, so YouTube sees a real embedding site. */
+  playerUrl: string;
+  /** Raised when the reading has finished and the song should follow. */
+  songRequest: number;
+  songFollows: boolean;
+  insets: { top: number; bottom: number };
+}
+
+type SongState = 'poster' | 'loading' | 'playing' | 'paused' | 'ended' | 'error';
+
+export function devotionMeta(post: DevotionalPost): string {
+  return `傳道 · ${post.date.replaceAll('-', '.')} (${post.weekday}) 讀經：${post.passages}`;
+}
+
+export function songCaption(song: SongState, songFollows: boolean): string {
+  if (song === 'playing') return '播放中 · 螢幕關掉就停';
+  if (song === 'error') return '詩歌暫時無法播放，點一下再試';
+  if (song === 'paused') return '已暫停 · 螢幕亮著才播';
+  return songFollows ? '朗讀完自動播放 · 螢幕亮著才播' : '點一下播放 · 螢幕亮著才播';
+}
+
+const PLAY = 'window.qmPlay&&window.qmPlay();true;';
+const PAUSE = 'window.qmPause&&window.qmPause();true;';
+
+export function DevotionalView({ state, activeIndex, playerUrl, songRequest, songFollows, insets }: DevotionalViewProps) {
+  const scroller = useRef<ScrollView | null>(null);
+  const sectionTops = useRef(new Map<number, number>());
+  const paragraphTops = useRef(new Map<number, { section: number; y: number }>());
+  const player = useRef<DomWebViewRef | null>(null);
+  const [song, setSong] = useState<SongState>('poster');
+  const post = state.kind === 'ready' ? state.post : null;
+  const songKey = post ? `${post.date}:${post.song.youtubeId}` : '';
+
+  useEffect(() => { setSong('poster'); sectionTops.current.clear(); paragraphTops.current.clear(); }, [songKey]);
+  useEffect(() => {
+    const place = paragraphTops.current.get(activeIndex);
+    if (!place) return;
+    scroller.current?.scrollTo({ y: Math.max(0, (sectionTops.current.get(place.section) ?? 0) + place.y - 24), animated: true });
+  }, [activeIndex]);
+  const handledRequest = useRef(songRequest);
+  useEffect(() => {
+    if (songRequest === handledRequest.current) return;
+    handledRequest.current = songRequest;
+    // With the screen off the song waits for a tap.
+    if (!post || AppState.currentState !== 'active') return;
+    if (song === 'paused') player.current?.injectJavaScript(PLAY);
+    else if (song !== 'playing' && song !== 'loading') setSong('loading');
+  }, [songRequest, post, song]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') return;
+      player.current?.injectJavaScript(PAUSE);
+      setSong((current) => current === 'playing' || current === 'loading' ? 'paused' : current);
+    });
+    return () => subscription.remove();
+  }, []);
+
+  if (state.kind !== 'ready') {
+    return <View style={[styles.center, { paddingTop: insets.top + theme.spacing.xl, paddingBottom: insets.bottom }]}>
+      {state.kind === 'loading' ? <><ActivityIndicator color={theme.colors.primary} /><Text style={styles.note}>正在載入今天的靈修…</Text></>
+        : state.kind === 'missing' ? <Text style={styles.note}>這一天的靈修還沒有上傳</Text>
+          : <><Text accessibilityRole="alert" style={styles.note}>靈修暫時無法載入</Text><Pressable accessibilityRole="button" accessibilityLabel="重試載入靈修" onPress={state.onRetry} style={styles.retry}><Text style={styles.retryText}>重試</Text></Pressable></>}
+    </View>;
+  }
+
+  const devotional = state.post;
+  const songTitle = devotional.song.title ?? '今天的詩歌';
+  const caption = songCaption(song, songFollows);
+  let unit = -1;
+  const playerMounted = song !== 'poster' && song !== 'error';
+  return <ScrollView ref={scroller} accessibilityLabel="靈修" style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: insets.top + 14, paddingBottom: insets.bottom }]}>
+    <View style={styles.titleBlock}>
+      <Text accessibilityRole="header" style={styles.title}>{`《${devotional.title}》`}</Text>
+      <Text style={styles.meta}>{devotionMeta(devotional)}</Text>
+    </View>
+    {devotional.sections.map((section, sectionIndex) => <View key={`${sectionIndex}:${section.heading}`} onLayout={(event) => { sectionTops.current.set(sectionIndex, event.nativeEvent.layout.y); }} style={styles.section}>
+      <Text accessibilityRole="header" style={styles.heading}>{section.heading}</Text>
+      {section.paragraphs.map((paragraph, paragraphIndex) => {
+        unit += 1;
+        const index = unit;
+        return <Text key={paragraphIndex} onLayout={(event) => { paragraphTops.current.set(index, { section: sectionIndex, y: event.nativeEvent.layout.y }); }} style={[styles.paragraph, index === activeIndex && styles.paragraphLit]}>{paragraph}</Text>;
+      })}
+    </View>)}
+    {playerMounted ? <View style={styles.songCard}>
+      <View style={styles.songMedia}>
+        <DomWebView
+          ref={player}
+          source={{ uri: `${playerUrl}?v=${encodeURIComponent(devotional.song.youtubeId)}` }}
+          mediaPlaybackRequiresUserAction={false}
+          allowsInlineMediaPlayback
+          scrollEnabled={false}
+          style={styles.fill}
+          containerStyle={styles.fill}
+          onMessage={(event) => {
+            const message = event.nativeEvent.data;
+            if (message === 'ready') { if (AppState.currentState === 'active') player.current?.injectJavaScript(PLAY); else setSong('paused'); }
+            else if (message === 'playing') { if (AppState.currentState === 'active') setSong('playing'); else { player.current?.injectJavaScript(PAUSE); setSong('paused'); } }
+            else if (message === 'paused') setSong('paused');
+            else if (message === 'ended') setSong('ended');
+            else if (message.startsWith('error')) setSong('error');
+          }}
+        />
+        {song === 'loading' ? <View pointerEvents="none" style={styles.songPlay}><ActivityIndicator color={theme.colors.white} /></View> : null}
+      </View>
+      <View style={styles.songCaption}>
+        <Text numberOfLines={1} style={styles.songTitle}>{songTitle}</Text>
+        <Text style={styles.songNote}>{caption}</Text>
+      </View>
+    </View> : <Pressable accessibilityRole="button" accessibilityLabel={`播放詩歌 ${songTitle}`} onPress={() => setSong('loading')} style={styles.poster}>
+      <View pointerEvents="none" style={styles.songPlay}><Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M8 5v14l11-7z" fill={theme.colors.white} /></Svg></View>
+      <View pointerEvents="none" style={styles.posterCaption}>
+        <Text numberOfLines={1} style={styles.songTitle}>{songTitle}</Text>
+        <Text style={styles.songNote}>{caption}</Text>
+      </View>
+    </Pressable>}
+  </ScrollView>;
+}
+
+const styles = StyleSheet.create({
+  scroll: { flex: 1, backgroundColor: theme.colors.surface },
+  content: { paddingHorizontal: theme.spacing.lg, gap: 14 },
+  center: { flex: 1, alignItems: 'center', gap: theme.spacing.md, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.lg },
+  note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, textAlign: 'center' },
+  retry: { minHeight: theme.control.tap, paddingHorizontal: theme.spacing.xl, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
+  retryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  titleBlock: { gap: 2 },
+  title: { color: theme.colors.ink, fontSize: 19, lineHeight: 26, fontWeight: '800' },
+  meta: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  section: { gap: 6 },
+  heading: { color: theme.colors.primary, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
+  paragraph: { color: theme.colors.ink, fontSize: 16, lineHeight: 27 },
+  paragraphLit: { backgroundColor: theme.colors.primarySoft, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8 },
+  poster: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: theme.colors.ink, aspectRatio: 16 / 9, justifyContent: 'flex-end' },
+  posterCaption: { paddingHorizontal: theme.spacing.md, paddingVertical: 10, gap: 2 },
+  songCard: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: theme.colors.ink },
+  songMedia: { aspectRatio: 16 / 9 },
+  fill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  songPlay: { position: 'absolute', left: '50%', top: '42%', width: 54, height: 54, marginLeft: -27, marginTop: -27, borderRadius: 27, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  songCaption: { paddingHorizontal: theme.spacing.md, paddingVertical: 10, gap: 2 },
+  songTitle: { color: theme.colors.white, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
+  songNote: { color: theme.colors.primarySoft, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+});
