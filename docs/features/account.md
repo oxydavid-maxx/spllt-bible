@@ -69,6 +69,8 @@
 
 ## 決定（為什麼這樣做）
 
+- iOS Google 登入使用私有 iOS OAuth client (bundle id `org.qingmu.youth`) 及對應的 callback scheme；送給後端的 ID token audience 仍是既有 web client。Android 保留原本的 Google/Firebase 設定。正式 TestFlight 安裝與真帳號登入另由帳號持有人驗收，不以模擬器打開 Google 頁面代替。
+
 **刻意不做：**
 
 - **不提供「用 Apple 登入」**：這是要上 App Store 才需要補的（Apple 規則 4.8 要求同等的替代登入方式），已規劃在 iOS 移植計畫的 Phase 2/M6，不是這次漏做。（來源：[../superpowers/plans/2026-09-29-ios-parity.md](../superpowers/plans/2026-09-29-ios-parity.md) §1 第 5 項、M6）
@@ -88,7 +90,7 @@
 ## 平台差異
 
 - 更新提示：iOS 完全不出現（見上），這一點有 iOS 自動化流程 `.maestro/ios/40-no-update-prompt.yaml` 專門驗證「等過 20 秒重試視窗仍然看不到『有新版本』字樣」。
-- Google 登入的 iOS 現況：iOS 建置要在建置時提供 `EXPO_PUBLIC_GOOGLE_IOS_SERVICES_FILE` 或 `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME`，才會裝上 Google 登入外掛；兩個都沒有時，`app.config.js` 會把外掛拿掉。`plugins/withGoogleSignInPods.js` 只是讓這種建置也能通過 `pod install`（避免 `AppCheckCore`/`GoogleUtilities` 缺 modular header），不是登入設定。依照 `docs/superpowers/plans/2026-09-29-ios-parity.md`（Task 1）與 `2026-09-29-ios-parity-phase1-implementation.md`（「Google iOS 登入、用 Apple 登入⋯屬於 Phase 2」），這塊排在目前 iOS 移植範圍（Phase 1，M0–M5）之外；iPhone 上的實際 Google 登入還沒驗證過。
+- Google 登入的 iOS 設定：建置時提供 `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME`，App 會從 Google 的 reversed client scheme 取得 iOS client ID，傳給原生登入模組；同時保留 web client 作為後端 token audience。只有 Android services 設定檔時也會獨立註冊 iOS callback，不會略過 Android Firebase。沒有 iOS 設定的 CI 假資料建置仍可編譯；`plugins/withGoogleSignInPods.js` 只補 modular headers，不能代替登入設定。TestFlight 真機的帳號登入仍屬發布驗收。
 - 通知權限：登入後如果讀經提醒是開的，App 會要求通知權限，兩個平台行為一致（`AGENTS.md`）。
 
 ## 資料與後端

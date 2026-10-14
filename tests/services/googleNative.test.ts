@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { obtainGoogleIdToken, type NativeGoogleModule } from '../../src/services/googleNative';
+import { obtainGoogleIdToken, iosClientIdFromUrlScheme, type NativeGoogleModule } from '../../src/services/googleNative';
 
 function moduleFor(responses: unknown[], checkPlayServices = vi.fn(async () => undefined)): NativeGoogleModule {
   const signIn = vi.fn(async () => responses.shift());
@@ -14,6 +14,15 @@ function moduleFor(responses: unknown[], checkPlayServices = vi.fn(async () => u
 }
 
 describe('native Google authentication boundary', () => {
+  it('configures iOS with its native client while keeping the web token audience', async () => {
+    const native = moduleFor([{ data: { idToken: 'fixture-id-token' } }]);
+    const iosClientId = iosClientIdFromUrlScheme('com.googleusercontent.apps.synthetic-ios');
+    expect(iosClientId).toBe('synthetic-ios.apps.googleusercontent.com');
+    await obtainGoogleIdToken(native, 'web-client-id.apps.googleusercontent.com', iosClientId);
+    expect(native.GoogleOneTapSignIn.configure).toHaveBeenCalledWith({ webClientId: 'web-client-id.apps.googleusercontent.com', iosClientId });
+    expect(iosClientIdFromUrlScheme('')).toBeUndefined();
+    expect(iosClientIdFromUrlScheme('https://wrong')).toBeUndefined();
+  });
   it('uses Credential Manager flow and returns the ID token without inventing an OAuth value', async () => {
     const native = moduleFor([{ data: { idToken: 'fixture-id-token' } }]);
     await expect(obtainGoogleIdToken(native, 'web-client-id.apps.googleusercontent.com')).resolves.toEqual({ status: 'SUCCESS', idToken: 'fixture-id-token' });

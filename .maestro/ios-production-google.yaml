@@ -1,0 +1,10 @@
+appId: org.qingmu.youth
+---
+- launchApp
+- assertVisible: '使用Google登入'
+- tapOn: '使用Google登入'
+# Capture the real first native response. Do not accept an authentication/consent dialog.
+- extendedWaitUntil:
+    visible: '.*(google\.com|Email or phone|電子郵件或電話).*'
+    timeout: 30000
+# The driver reads the live hierarchy for privacy before saving a screenshot, then closes the app.

@@ -23,6 +23,9 @@ module.exports = ({ config }) => {
   if (hasIosServices) nextConfig.ios = { ...nextConfig.ios, googleServicesFile: iosServices };
   if (Object.keys(serviceOptions).length > 0) {
     plugins.push(['react-native-nitro-google-signin', serviceOptions]);
+    // The library's iosUrlScheme branch skips Android Firebase wiring. Keep that wiring intact
+    // and register the iOS callback separately when using an OAuth client without a Firebase plist.
+    if (iosUrlScheme && !hasIosServices) plugins.push(['./plugins/withGoogleIosUrlScheme', { iosUrlScheme }]);
   } else if (iosUrlScheme) {
     plugins.push(['react-native-nitro-google-signin', { iosUrlScheme }]);
   }
