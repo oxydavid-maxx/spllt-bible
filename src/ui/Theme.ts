@@ -22,6 +22,11 @@ export const theme = {
     warning: '#8A4A19', // accent alias kept for existing call sites
     warningSoft: '#F8E9D6',
     danger: '#8C2F2F', // 8.19:1 on surface
+    // gold = 靈修 (devotion with the pastor), always beside green reading, never a score
+    gold: '#9A6B0F', // buttons and rings; white text 4.6:1
+    goldText: '#8A5F0A', // gold words on white, 5.4:1
+    goldOnPrimary: '#F0C75E', // gold marks on a green cell or bar
+    goldLine: '#D2A645', // the dashed 靈修 line on charts (decorative)
     // rules
     border: '#C6D5C9', // decorative hairline only (no 3:1 requirement)
     borderStrong: '#768D7E', // control boundary: 3.57:1 on surface, 3.12:1 on background (WCAG 1.4.11)

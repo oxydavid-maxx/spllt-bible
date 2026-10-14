@@ -127,6 +127,26 @@ describe('YouVersionReader continuous playback orchestration', () => {
     expect(changed).toEqual([1, 2]);
   });
 
+  it('hands over to the 靈修 only when the day’s last chapter is read to its end, with 連讀 on or off', async () => {
+    const handoff = vi.fn();
+    await mount({ onLastChapterNarrated: handoff });
+    for (const chapter of ['JHN.18', 'JHN.19']) {
+      await act(async () => boundary.context.onPlaybackStarted(chapter));
+      await act(async () => boundary.context.onPlaybackEnded(chapter));
+      await act(async () => { await Promise.resolve(); });
+    }
+    expect(handoff).not.toHaveBeenCalled();
+    await act(async () => boundary.context.onPlaybackStarted('JHN.20'));
+    await act(async () => boundary.context.onPlaybackEnded('JHN.20'));
+    expect(handoff).toHaveBeenCalledOnce();
+    act(() => renderer!.unmount()); renderer = null;
+    const manual = vi.fn();
+    await mount({ onLastChapterNarrated: manual, continuousPlaybackEnabled: false, activeReferenceIndex: 2 });
+    await act(async () => boundary.context.onPlaybackStarted('JHN.20'));
+    await act(async () => boundary.context.onPlaybackEnded('JHN.20'));
+    expect(manual).toHaveBeenCalledOnce();
+  });
+
   it('stops on a missing or unavailable next recording with distinct concise notices', async () => {
     await mount();
     await act(async () => boundary.context.onPlaybackStarted('JHN.18'));

@@ -24,6 +24,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAudioPlayer, type AudioLockScreenOptions, type AudioMetadata, type AudioStatus } from 'expo-audio';
 import { theme } from './Theme';
+import { SettingSwitchRow } from './SettingSwitchRow';
 import { isAuthorizedAudioEnabled, isQaTestAudioEnabled, resolveChapterAudioSession, verseAtPosition } from '../services/audioChapterResolver';
 import { createCapabilityCoordinator, type CapabilityCoordinator, type CapabilityOutcome } from '../services/contentCapabilityClient';
 import { getAuthSnapshot, useAuthSnapshot, type AuthSession } from '../services/authSession';
@@ -106,21 +107,13 @@ export const useChapterAudioAutoplay = (): ChapterAudioAutoplayContextValue => u
 export function ChapterAudioAutoplayToggle({ active = true }: { active?: boolean }) {
   const autoplay = useChapterAudioAutoplay();
   if (!active || !autoplay.available) return null;
-  return (
-    <Pressable
-      accessibilityRole="switch"
-      accessibilityLabel="連讀"
-      accessibilityHint={autoplay.enabled ? '目前開啟，點一下關閉連讀' : '目前關閉，點一下開啟連讀；按播放才開始朗讀'}
-      accessibilityState={{ checked: autoplay.enabled }}
-      onPress={autoplay.toggle}
-      style={styles.autoplayToggle}
-    >
-      <View testID="autoplay-track" style={[styles.autoplayTrack, autoplay.enabled ? styles.autoplayTrackOn : styles.autoplayTrackOff]}>
-        <View testID="autoplay-knob" style={[styles.autoplayKnob, autoplay.enabled ? styles.autoplayKnobOn : styles.autoplayKnobOff]} />
-      </View>
-      <Text style={[styles.autoplayToggleText, autoplay.enabled ? styles.autoplayToggleTextOn : styles.autoplayToggleTextOff]}>連讀</Text>
-    </Pressable>
-  );
+  return <SettingSwitchRow
+    label="連讀"
+    description="按播放會依序朗讀今天剩下的章節"
+    enabled={autoplay.enabled}
+    hint={autoplay.enabled ? '目前開啟，點一下關閉連讀' : '目前關閉，點一下開啟連讀；按播放才開始朗讀'}
+    onPress={autoplay.toggle}
+  />;
 }
 
 /** Stop/error notice rendered outside the interactive toolbar so it cannot cover controls. */
@@ -745,16 +738,6 @@ const styles = StyleSheet.create({
   bottomButton: { width: '100%', height: theme.control.tap, minHeight: theme.control.tap, flexDirection: 'row', gap: theme.spacing.xxs, borderWidth: 0, borderColor: 'transparent', borderRadius: 0, backgroundColor: 'transparent' },
   readerActionButton: { width: 56, height: 56, minHeight: 56, flexDirection: 'row', borderRadius: 28, borderWidth: 0, borderColor: 'transparent', backgroundColor: theme.colors.primary },
   bottomLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
-  autoplayToggle: { minWidth: theme.control.tapCompact, minHeight: theme.control.tapCompact, flexShrink: 0, alignItems: 'center', justifyContent: 'center', gap: 3 },
-  autoplayTrack: { width: 34, height: 18, borderRadius: 9, justifyContent: 'center' },
-  autoplayTrackOn: { backgroundColor: theme.colors.primary },
-  autoplayTrackOff: { backgroundColor: theme.colors.borderStrong },
-  autoplayKnob: { width: 14, height: 14, borderRadius: 7, backgroundColor: theme.colors.white, position: 'absolute', top: 2 },
-  autoplayKnobOn: { right: 2 },
-  autoplayKnobOff: { left: 2 },
-  autoplayToggleText: { fontSize: 10.5, lineHeight: 12, fontWeight: '800', textAlign: 'center' },
-  autoplayToggleTextOn: { color: theme.colors.primary },
-  autoplayToggleTextOff: { color: theme.colors.muted },
   autoplayNoticeRow: { flexShrink: 0, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, backgroundColor: theme.colors.surfaceMuted },
   autoplayNoticeText: { color: theme.colors.danger, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
   feedback: { position: 'absolute', left: theme.control.tap + theme.spacing.xs, top: 0, color: theme.colors.danger ?? theme.colors.ink, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, maxWidth: 160 },

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 const { primitive } = vi.hoisted(() => ({
   primitive: (name: string) => (props: Record<string, unknown>) => require('react').createElement(name, props, props.children as never),
 }));
+vi.mock('react-native-svg', () => ({ default: primitive('Svg'), Path: primitive('Path'), Rect: primitive('Rect') }));
 vi.mock('react-native', () => ({
   Pressable: primitive('Pressable'),
   ScrollView: primitive('ScrollView'),
@@ -50,7 +51,8 @@ function render(announcement: Announcement, stale = false, registration: Paramet
 describe('the notice board', () => {
   it('leads with what is on next and how to sign up', () => {
     const board = render(FULL);
-    expect(board.text()).toContain('下次 9/27');
+    expect(board.text()).toContain('下次聚會');
+    expect(board.byLabel('下次聚會 9/27').findAll((node) => String(node.type) === 'Text').map((node) => node.props.children)).toEqual(['9 月', '27', '週日']);
     expect(board.text()).toContain('豚汁定食');
     act(() => { board.byLabel('報名').props.onPress(); });
     expect(board.onOpen).toHaveBeenCalledWith('https://forms.gle/Z7Ev');
@@ -73,35 +75,29 @@ describe('the notice board', () => {
     expect(render(FULL).text()).toContain('光佑 · 創3');
   });
 
-  it('keeps the past date and speaker together and lets long names wrap without clipping', () => {
+  it('gives every Sunday its own card with the date down the left, and lets long names wrap without clipping', () => {
     const longSpeaker = '中亮哥是這一週青年啟發的帶領者';
     const board = render({
       ...FULL,
       past: [{ ...FULL.past[0], speaker: longSpeaker }],
     });
-    const line = board.textNodes().find((node) => String(node.props.children).startsWith('9/13 · '));
-
-    expect(line?.props.children).toBe('9/13 · ' + longSpeaker);
+    const line = board.textNodes().find((node) => node.props.children === longSpeaker);
     expect(line?.props.numberOfLines).toBeUndefined();
-    let row = line?.parent;
-    while (row && String(row.type) !== 'View') row = row.parent;
-    expect(row?.props.style).toMatchObject({ flexDirection: 'column', alignItems: 'stretch' });
-    expect(line?.props.style.minWidth).toBeUndefined();
+    const card = board.byLabel('9/13 的講道');
+    expect(card.findAll((node) => String(node.type) === 'Text').map((node) => node.props.children)).toEqual(expect.arrayContaining(['9/13', longSpeaker]));
     expect(board.wrapRows()).not.toHaveLength(0);
   });
 
-  it('puts even a single link below its date and includes the year outside the current Taipei year', () => {
+  it('lists the weeks newest first, marks only last Sunday 上週, and includes the year outside the current Taipei year', () => {
     const board = render({ ...FULL, past: [
       { ...FULL.past[0], week: '2025-12-13', speaker: null },
       { ...FULL.past[0], week: '2026-09-13', title: '本週信息', audio: 'https://example.invalid/audio' },
     ] });
-    for (const label of ['2025/12/13', '9/13 · 中亮 · 本週信息']) {
-      const line = board.textNodes().find(node => node.props.children === label);
-      expect(line).toBeDefined();
-      let row = line!.parent;
-      while (row && String(row.type) !== 'View') row = row.parent;
-      expect(row?.props.style).toMatchObject({ flexDirection: 'column', alignItems: 'stretch' });
-    }
+    const cards = [...new Set(board.byLabel('講道紀錄').findAll((node) => /的講道$/.test(String(node.props?.accessibilityLabel ?? ''))).map((node) => String(node.props.accessibilityLabel)))];
+    expect(cards).toEqual(['9/20 的講道', '9/13 的講道', '2025/12/13 的講道']);
+    expect(board.textNodes().filter((node) => node.props.children === '上週')).toHaveLength(1);
+    expect(board.byLabel('9/20 的講道').findAll((node) => node.props.children === '上週')).not.toHaveLength(0);
+    expect(board.byLabel('9/13 的講道').findAll((node) => String(node.type) === 'Text').map((node) => node.props.children)).toEqual(expect.arrayContaining(['本週信息', '中亮']));
   });
 
   it('opens each sermon link, the 講道 and 報告 decks under their own names', () => {
@@ -126,8 +122,8 @@ describe('the notice board', () => {
     const board = render({ ...FULL, next: null, standing: null, past: [] });
     expect(board.byLabel('下次聚會')).toBeUndefined();
     expect(board.byLabel('常設資訊')).toBeUndefined();
-    expect(board.byLabel('以前的主日')).toBeUndefined();
-    expect(board.byLabel('上次講道')).toBeDefined();
+    expect(board.byLabel('講道紀錄')).toBeDefined();
+    expect(board.byLabel('9/13 的講道')).toBeUndefined();
   });
 
   it('makes a standing value that is a link tappable, and leaves the rest as text', () => {
@@ -157,9 +153,12 @@ describe('the next gathering in full', () => {
       },
     });
     const text = board.text();
-    for (const expected of ['第一堂', '耶穌：耶穌是誰？', '青年啟發 · 中亮/大專', '第二堂', '淑君校長/大廚', '服事', '講員', '中亮', '主領(報告)', '光佑', '小丁/文樂']) {
+    for (const expected of ['第一堂', '耶穌：耶穌是誰？', '青年啟發 · 中亮/大專', '第二堂', '淑君校長/大廚', '講員', '中亮', '主領', '光佑', '小丁/文樂']) {
       expect(text).toContain(expected);
     }
+    // The grid keeps the roster's note off the label; a screen reader still hears it in full.
+    expect(board.textNodes().map((node) => node.props.children)).not.toContain('主領(報告)');
+    expect(board.byLabel('主領(報告) 光佑')).toBeDefined();
     expect(board.byLabel('報名')).toBeDefined();
   });
 
@@ -184,7 +183,10 @@ it('shows every file when a session has multiple teaching decks', () => {
     { name: '教學二', role: 'sermonSlides', url: 'https://example.invalid/two' },
   ] };
   const board = render({ ...FULL, sessions: [session] } as Announcement);
-  expect(board.text()).toContain('教學二');
+  // Two files of one kind are numbered, never printed by file name (2026-10-14).
+  const labels = board.textNodes().map((node) => node.props.children);
+  expect(labels).toEqual(expect.arrayContaining(['講道投影片 1', '講道投影片 2']));
+  expect(labels).not.toContain('教學二');
 });
 
 it('keeps the legacy button order when a single session uses content-classified materials', () => {
@@ -195,6 +197,28 @@ it('keeps the legacy button order when a single session uses content-classified 
     { name: '錄音', role: 'audio', url: FULL.sermon!.audio! },
   ];
   const board = render({ ...FULL, sessions: [{ ...FULL.sermon!, label: '第一堂', materials }] } as Announcement);
-  const links = board.byLabel('上次講道').findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel);
+  const links = board.byLabel('9/20 的講道').findAll(node => String(node.type) === 'Pressable').map(node => node.props.accessibilityLabel);
   expect(links).toEqual(['錄音','講道投影片','報告投影片','逐字稿']);
+});
+
+describe('the notice board as decided on 2026-10-14', () => {
+  it('puts the next gathering under a dark date block: month, day, weekday', () => {
+    const board = render({ ...FULL, week: '2026-10-11', next: { ...FULL.next!, date: '10/18' } });
+    const block = board.byLabel('下次聚會 10/18');
+    expect(block.findAll((node) => String(node.type) === 'Text').map((node) => node.props.children)).toEqual(['10 月', '18', '週日']);
+    expect(board.text()).toContain('下次聚會');
+  });
+
+  it('folds a session with nothing of its own into one line, its one file at the end', () => {
+    const youth = { ...FULL.sermon!, label: '第二堂', title: '青少團契', speaker: null, passage: null, audio: null, slides: null, sermonSlides: null, transcript: null, materials: [{ name: '教材.pdf', role: 'sermonDoc' as const, url: 'https://example.invalid/doc' }] };
+    const board = render({ ...FULL, sessions: [{ ...FULL.sermon!, label: '第一堂' }, youth] });
+    const row = board.byLabel('第二堂');
+    expect(Object.assign({}, ...[row.props.style].flat().filter(Boolean))).toMatchObject({ flexDirection: 'row', minHeight: 44 });
+    expect(row.findAll((node) => String(node.type) === 'Text').map((node) => node.props.children)).toEqual(['第二堂', '青少團契', '教材']);
+    // Tag and title share one line: the tag is centred like the title, not pinned to the row's top.
+    const tag = row.findAll((node) => String(node.type) === 'Text' && node.props.children === '第二堂')[0];
+    expect(Object.assign({}, ...[tag.props.style].flat().filter(Boolean))).toMatchObject({ alignSelf: 'center' });
+    act(() => { row.findAll((node) => String(node.type) === 'Pressable')[0].props.onPress(); });
+    expect(board.onOpen).toHaveBeenCalledWith('https://example.invalid/doc');
+  });
 });

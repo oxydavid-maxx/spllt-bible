@@ -30,6 +30,8 @@ vi.mock('react-native', () => ({
   BackHandler: { addEventListener: (_: string, cb: () => boolean) => { native.back = cb; return { remove: () => { native.back = null; } }; } },
   AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
 }));
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
+vi.mock('../../src/ui/devotion/useReaderDevotion', () => ({ useReaderDevotion: () => ({ devotion: undefined, onLastChapterNarrated: () => undefined, leave: () => undefined }) }));
 const safeArea = vi.hoisted(() => ({ value: { top: 24, right: 0, bottom: 16, left: 0 } }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ ...safeArea.value }) }));
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
