@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseAllDocuments } from 'yaml';
 
@@ -22,7 +22,10 @@ describe('iOS flow readiness and semantic interaction targets', () => {
       commands: [{ tapOn: { text: '積分', retryTapIfNoChange: false } }],
     });
     expect(source.indexOf('visible: "開啟積分操作"')).toBeGreaterThan(pointsTap);
-    expect(source).toContain('visible: "測試成員甲"');
+    // 0.5.27 moved the member's own name into the goal card under the calendar, below an iPhone's fold.
+    const ownName = commands.find((command: unknown) =>
+      typeof command === 'object' && command !== null && Object.hasOwn(command, 'scrollUntilVisible'))?.scrollUntilVisible;
+    expect(ownName).toMatchObject({ element: '測試成員甲', direction: 'DOWN' });
   });
 
   it('does not use screenshot animation polling as cold-start navigation readiness', () => {
@@ -56,5 +59,18 @@ describe('iOS flow readiness and semantic interaction targets', () => {
     const selector = new RegExp(target!);
     for (const label of ['1', '1 ', '1\u00a0']) expect(selector.test(label)).toBe(true);
     for (const label of ['10', '11', '詩篇 107，今日第1段，共2段']) expect(selector.test(label)).toBe(false);
+  });
+
+  it('never taps or asserts a tab the tab bar hides', () => {
+    // 0.5.27 hid 日記 (href: null) and 00-smoke and 41-journal still looked for its 靈修日記 button; only
+    // the 40-minute iOS run found out, after the merge.
+    const layout = readFileSync(new URL('../../app/(tabs)/_layout.tsx', import.meta.url), 'utf8');
+    const hidden = [...layout.matchAll(/<Tabs\.Screen name="[^"]+" options=\{\{ href: null,[^\n]*?tabBarAccessibilityLabel: '([^']+)'/g)].map(match => match[1]);
+    expect(hidden).toContain('靈修日記');
+    const flows = readdirSync(new URL('../../.maestro/ios/', import.meta.url)).filter(name => name.endsWith('.yaml'));
+    for (const name of flows) {
+      const source = flow(name.replace(/\.yaml$/, ''));
+      for (const label of hidden) expect(source, `${name} uses the hidden ${label} tab`).not.toMatch(new RegExp(`["']${label}["']`));
+    }
   });
 });

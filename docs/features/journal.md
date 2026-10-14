@@ -108,7 +108,7 @@
 | `tests/ui/journalFolderSync.test.ts` | 自選資料夾只在 Android 提供 |
 | `tests/ui/journalQuoteOffer.test.ts` | 經文提示需點一下才插入 |
 | `tests/ui/journalKeyboardAvoidance.test.ts` | 鍵盤避讓 |
-| `.maestro/ios/41-journal.yaml` | iOS 日記操作與匯出入口 |
+| `.maestro/ios/41-journal.yaml` | iOS 日記操作與匯出入口。**日記沒有入口期間 (2026-10-14 起) 暫停**：流程從分頁進日記，分頁拿掉後無路可走；入口回來時從 commit `cd5ec05` 拿回來，改成從新入口進 |
 
 ## 相關文件
 
