@@ -811,11 +811,14 @@ describe('the 靈修 tab and the gold corner button', () => {
     expect(styleOf(gold())).toMatchObject({ borderWidth: 2, borderColor: '#1A5544', backgroundColor: '#FFFFFF' });
     expect(styleOf(button('完成讀經'))).toMatchObject({ borderWidth: 2, borderColor: '#1A5544', backgroundColor: '#FFFFFF' });
     expect(gold().findAll(n => String(n.type) === 'Path').map(n => n.props.d)).toContain('M5 19l8-8');
+    // 讀經 K1 (維護者 2026-10-14): the closed Bible carries a cross until it is read.
+    expect(button('完成讀經').findAll(n => String(n.type) === 'Path').map(n => n.props.d)).toEqual(expect.arrayContaining(['M14 7.5v8', 'M11 10.5h6']));
     completed = true; devotion = makeDevotion({ completed: true });
     act(() => renderer!.update(React.createElement(Harness)));
     expect(styleOf(gold()).backgroundColor).toBe('#1A5544');
     expect(gold().findAll(n => String(n.type) === 'Path').map(n => n.props.d)).toContain('M9 16v5');
-    expect(button('已完成，可撤銷完成確認').findAll(n => String(n.type) === 'Path').map(n => n.props.d)).toContain('M18 22a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-6v7l-2.5-1.5L7 9V2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12z');
+    // Read: the Bible lies open and gives light (詩 119:130).
+    expect(button('已完成，可撤銷完成確認').findAll(n => String(n.type) === 'Path').map(n => n.props.d)).toEqual(expect.arrayContaining(['M2 12h6a4 4 0 0 1 4 4v6a3 3 0 0 0-3-3H2z', 'M12 2v4']));
   });
   it('never navigates on manual reading completion (#7)', async () => {
     onComplete = vi.fn(); devotion = makeDevotion(); await mount();

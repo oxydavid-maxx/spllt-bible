@@ -10,7 +10,7 @@ export function DayActionButton({ kind, label, completed, disabled, busy, onPres
   const color = completed ? theme.colors.white : theme.colors.primary;
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled, busy: Boolean(busy) }} disabled={disabled}
     onPress={() => { if (!disabled) onPress(); }} style={[styles.button, completed && styles.completed, disabled && styles.disabled]}>
-    {kind === 'reading' ? <BookGlyph completed={completed} size={20} color={color} /> : completed ? <GrownLeafGlyph size={22} color={color} /> : <LeafGlyph size={20} color={color} />}
+    {kind === 'reading' ? <BookGlyph completed={completed} size={completed ? 22 : 20} color={color} /> : completed ? <GrownLeafGlyph size={22} color={color} /> : <LeafGlyph size={20} color={color} />}
     <Text style={[styles.label, { color }]}>{label}</Text>
   </Pressable>;
 }

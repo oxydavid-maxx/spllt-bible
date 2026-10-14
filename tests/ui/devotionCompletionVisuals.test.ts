@@ -24,7 +24,8 @@ describe('mock J completion buttons (#2/#3/#11/#12)', () => {
       const paths = b.findAll(n => String(n.type) === 'Path').map(p => p.props.d);
       expect(paths).toContain(i === 0
         ? done ? 'M9 16c-3.6 0-6-2.2-6-5.6 3.6 0 6 2.2 6 5.6z' : 'M5 19c0-8 6-14 14-14 0 8-6 14-14 14z'
-        : done ? 'M18 22a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-6v7l-2.5-1.5L7 9V2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12z' : 'M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z');
+        // 讀經 K1 (維護者 2026-10-14): a closed Bible with a cross; read, it opens and gives light.
+        : done ? 'M12 2v4' : 'M11 10.5h6');
     });
     act(() => buttons[0].props.onPress()); expect(toggle).toHaveBeenCalledWith(!devotionDone);
     act(() => tree.unmount());
