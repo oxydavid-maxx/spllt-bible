@@ -38,13 +38,13 @@ function TextLink({ link, onOpen, last }: { link: BoardLink; onOpen: (url: strin
   </Pressable>;
 }
 
-function SessionTag({ label }: { label: string }) {
-  return <Text style={styles.sessionTag}>{label}</Text>;
+function SessionTag({ label, centered }: { label: string; centered?: boolean }) {
+  return <Text style={[styles.sessionTag, centered && styles.sessionTagCentered]}>{label}</Text>;
 }
 
 function SermonSession({ session, first, onOpen }: { session: BoardSession; first: boolean; onOpen: (url: string) => void }) {
   if (session.compact) return <View style={[styles.compactSession, !first && styles.sessionDivider]} accessibilityLabel={session.label ?? undefined}>
-    {session.label ? <SessionTag label={session.label} /> : null}
+    {session.label ? <SessionTag label={session.label} centered /> : null}
     <Text style={styles.compactTitle}>{session.title}</Text>
     {session.links.length ? <><View style={styles.spacer} /><TextLink link={session.links[0]} onOpen={onOpen} last /></> : null}
   </View>;
@@ -155,6 +155,8 @@ const styles = StyleSheet.create({
   sermonSession: { flexDirection: 'column', alignItems: 'stretch', paddingBottom: 2 },
   sessionDivider: { borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.background, paddingTop: theme.spacing.sm },
   compactSession: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
+  // The one-line row centres its words in its 44 high row, so the tag sits on that same line.
+  sessionTagCentered: { alignSelf: 'center' },
   compactTitle: { flexShrink: 1, color: theme.colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
   spacer: { flex: 1 },
   textLinks: { flexDirection: 'row', flexWrap: 'wrap' },

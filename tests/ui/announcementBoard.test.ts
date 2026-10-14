@@ -215,6 +215,9 @@ describe('the notice board as decided on 2026-10-14', () => {
     const row = board.byLabel('第二堂');
     expect(Object.assign({}, ...[row.props.style].flat().filter(Boolean))).toMatchObject({ flexDirection: 'row', minHeight: 44 });
     expect(row.findAll((node) => String(node.type) === 'Text').map((node) => node.props.children)).toEqual(['第二堂', '青少團契', '教材']);
+    // Tag and title share one line: the tag is centred like the title, not pinned to the row's top.
+    const tag = row.findAll((node) => String(node.type) === 'Text' && node.props.children === '第二堂')[0];
+    expect(Object.assign({}, ...[tag.props.style].flat().filter(Boolean))).toMatchObject({ alignSelf: 'center' });
     act(() => { row.findAll((node) => String(node.type) === 'Pressable')[0].props.onPress(); });
     expect(board.onOpen).toHaveBeenCalledWith('https://example.invalid/doc');
   });
