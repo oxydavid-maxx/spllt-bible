@@ -1,16 +1,17 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { Announcement, SessionBlock, SermonBlock } from '../services/announcementClient';
+import Svg, { Path, Rect } from 'react-native-svg';
+import type { Announcement } from '../services/announcementClient';
 import type { EventRegistrationSummary } from '../services/eventRegistrationClient';
 import { theme } from './Theme';
 import { taipeiDate } from '../domain/gamificationV1';
+import { nextDateBlock, sermonWeeks, shortRole, shortWeek, type BoardLink, type BoardSession } from './announcementModel';
 
 /**
- * The notice board: what is on next, what was preached last, and how to get there.
+ * The notice board (維護者 2026-10-14): the next gathering under a dark date block, then 講道紀錄 —
+ * one card per Sunday, newest first, the date down the left — then how to get there.
  *
- * Ordered by how long each thing stays useful. The sermon is at the top because it is the only part
- * with a life after Sunday — the run of show and the sign-up are worthless by Monday, and the
- * address never changes. Anything the published file does not carry simply is not drawn; there are
- * no empty states here, because an absent block says more than a block saying it is absent.
+ * Anything the published file does not carry simply is not drawn; there are no empty states here,
+ * because an absent block says more than a block saying it is absent.
  */
 
 export interface AnnouncementBoardProps {
@@ -22,132 +23,144 @@ export interface AnnouncementBoardProps {
   registration?: EventRegistrationSummary | null;
 }
 
-function LinkRow({ links, onOpen }: { links: Array<[string, string | null]>; onOpen: (url: string) => void }) {
-  const present = links.filter((pair): pair is [string, string] => Boolean(pair[1]));
-  if (present.length === 0) return null;
-  return <View style={styles.links}>
-    {present.map(([label, url]) => <Pressable
-      key={`${label}:${url}`} accessibilityRole="button" accessibilityLabel={label}
-      onPress={() => onOpen(url)} style={styles.link}
-    ><Text style={styles.linkText}>{label}</Text></Pressable>)}
+function LinkIcon({ kind }: { kind: BoardLink['kind'] }) {
+  return <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={theme.colors.primary} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+    {kind === 'audio' ? <><Path d="M4 15v-3a8 8 0 0 1 16 0v3" /><Rect x={3} y={14} width={4} height={6} rx={1} /><Rect x={17} y={14} width={4} height={6} rx={1} /></>
+      : kind === 'slides' ? <><Rect x={3} y={4} width={18} height={12} rx={1} /><Path d="M12 16v4M8 20h8" /></>
+        : kind === 'video' ? <><Rect x={3} y={5} width={18} height={14} rx={2} /><Path d="M10 9l5 3-5 3z" /></>
+          : <><Path d="M6 3h8l4 4v14H6z" /><Path d="M14 3v4h4M9 12h6M9 16h6" /></>}
+  </Svg>;
+}
+
+function TextLink({ link, onOpen, last }: { link: BoardLink; onOpen: (url: string) => void; last?: boolean }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={link.label} onPress={() => onOpen(link.url)} style={[styles.textLink, last && styles.textLinkLast]}>
+    <LinkIcon kind={link.kind} /><Text style={styles.textLinkText}>{link.label}</Text>
+  </Pressable>;
+}
+
+function SessionTag({ label }: { label: string }) {
+  return <Text style={styles.sessionTag}>{label}</Text>;
+}
+
+function SermonSession({ session, first, onOpen }: { session: BoardSession; first: boolean; onOpen: (url: string) => void }) {
+  if (session.compact) return <View style={[styles.compactSession, !first && styles.sessionDivider]} accessibilityLabel={session.label ?? undefined}>
+    {session.label ? <SessionTag label={session.label} /> : null}
+    <Text style={styles.compactTitle}>{session.title}</Text>
+    {session.links.length ? <><View style={styles.spacer} /><TextLink link={session.links[0]} onOpen={onOpen} last /></> : null}
+  </View>;
+  return <View style={[styles.sermonSession, !first && styles.sessionDivider]} accessibilityLabel={session.label ?? undefined}>
+    <View style={styles.titleLine}>
+      {session.label ? <SessionTag label={session.label} /> : null}
+      <Text style={styles.sessionTitle}>{session.title}</Text>
+    </View>
+    {session.byline ? <Text style={styles.byline}>{session.byline}</Text> : null}
+    {session.links.length ? <View style={styles.textLinks}>{session.links.map((link) => <TextLink key={`${link.label}:${link.url}`} link={link} onOpen={onOpen} />)}</View> : null}
   </View>;
 }
 
-const materialLabels = { slides: '報告投影片', sermonSlides: '講道投影片', audio: '錄音', transcript: '逐字稿', sermonDoc: '教材' } as const;
-function sessionLinks(session: SermonBlock | SessionBlock): Array<[string, string | null]> {
-  if ('materials' in session && session.materials?.length) return [
-    ...(['audio', 'sermonSlides', 'slides', 'transcript', 'sermonDoc'] as const).flatMap(role => session.materials!.filter(file => file.role === role)).map((file): [string, string] => [session.materials!.filter(other => other.role === file.role).length > 1
-      ? `${materialLabels[file.role]} · ${file.name}` : materialLabels[file.role], file.url]),
-    ['影片', session.youtube],
-  ];
-  return [['錄音', session.audio], ['講道投影片', session.sermonSlides ?? null], ['報告投影片', session.slides], ['逐字稿', session.transcript], ['影片', session.youtube]];
-}
-function RecordedSessions({ sessions, onOpen }: { sessions: SessionBlock[]; onOpen: (url: string) => void }) {
-  return <>{sessions.map(session => <View key={session.label} style={styles.recordedSession} accessibilityLabel={sessions.length > 1 ? `上次講道 ${session.label}` : undefined}>
-    {sessions.length > 1 ? <Text style={styles.sessionTag}>{session.label}</Text> : null}
-    <Text style={styles.headline}>{session.title ?? '講道'}</Text>
-    {[session.speaker, session.passage].some(Boolean) ? <Text style={styles.muted}>{[session.speaker, session.passage].filter(Boolean).join(' · ')}</Text> : null}
-    <LinkRow links={sessionLinks(session)} onOpen={onOpen} />
-  </View>)}</>;
-}
-
-function shortWeek(week: string): string {
-  const [year, month, day] = week.split('-');
-  const date = `${Number(month)}/${Number(day)}`;
-  return year === taipeiDate().slice(0, 4) ? date : `${year}/${date}`;
-}
-
 export function AnnouncementBoard({ announcement, stale, onOpen, registration }: AnnouncementBoardProps) {
-  const { sermon, next, standing, past } = announcement;
-  const recorded = announcement.sessions?.length ? announcement.sessions : sermon ? [{ ...sermon, label: '第一堂' }] : [];
+  const { next, standing } = announcement;
+  const today = taipeiDate();
+  const weeks = sermonWeeks(announcement);
+  const block = next ? nextDateBlock(next.date, announcement.week) : null;
   return <ScrollView contentContainerStyle={styles.page}>
-    {next ? <View style={styles.card} accessibilityLabel="下次聚會">
-      <Text style={styles.eyebrow}>{`下次 ${next.date}`}</Text>
-      {next.sessions && next.sessions.length > 0
-        ? next.sessions.map((session) => <View key={session.label} style={styles.session} accessibilityLabel={session.label}>
-            <Text style={styles.sessionTag}>{session.label}</Text>
-            <View style={styles.sessionCopy}>
-              <Text style={styles.sessionTitle}>{session.title}</Text>
-              {session.kind || session.owner ? <Text style={styles.muted}>{[session.kind, session.owner].filter(Boolean).join(' · ')}</Text> : null}
-            </View>
-          </View>)
-        : <>
-            <Text style={styles.headline}>{next.topic}</Text>
-            {next.owner ? <Text style={styles.muted}>{next.owner}</Text> : null}
-          </>}
-      {next.signup ? <Pressable
-        accessibilityRole="button" accessibilityLabel="報名"
-        onPress={() => onOpen(next.signup!)} style={styles.primaryButton}
-      ><Text style={styles.primaryButtonText}>報名</Text></Pressable> : null}
-      {registration && registration.total > 0 ? <View accessibilityLabel="報名狀況" style={styles.signups}>
-        <Text style={styles.muted}>{`已有 ${registration.total} 人報名${registration.registered ? '，包括你' : ''}`}</Text>
-        {registration.friends.length > 0 ? <Text style={styles.friends}>{`朋友：${registration.friends.join('、')}`}</Text> : null}
-      </View> : null}
-      {next.roles && next.roles.length > 0 ? <View style={styles.roles} accessibilityLabel="服事">
-        <Text style={styles.eyebrow}>服事</Text>
-        <View style={styles.roleGrid}>
-          {next.roles.map((role) => <View key={role.label} style={styles.role}>
-            <Text style={styles.roleLabel}>{role.label}</Text>
-            <Text style={styles.roleValue}>{role.value}</Text>
-          </View>)}
-        </View>
-      </View> : null}
+    {next ? <View style={styles.nextCard} accessibilityLabel="下次聚會">
+      <View style={styles.dateBlock} accessible accessibilityLabel={`下次聚會 ${next.date}`}>
+        {block ? <><Text style={styles.dateBlockSmall}>{block.month}</Text><Text style={styles.dateBlockDay}>{block.day}</Text>{block.weekday ? <Text style={styles.dateBlockSmall}>{block.weekday}</Text> : null}</> : <Text style={styles.dateBlockDay}>{next.date}</Text>}
+      </View>
+      <View style={styles.nextCopy}>
+        <Text style={styles.nextEyebrow}>下次聚會</Text>
+        {next.sessions && next.sessions.length > 0
+          ? next.sessions.map((session) => <View key={session.label} style={styles.nextSession} accessibilityLabel={session.label}>
+              <View style={styles.titleLine}><SessionTag label={session.label} /><Text style={styles.sessionTitle}>{session.title}</Text></View>
+              {session.kind || session.owner ? <Text style={styles.nextByline}>{[session.kind, session.owner].filter(Boolean).join(' · ')}</Text> : null}
+            </View>)
+          : <>
+              <Text style={styles.sessionTitle}>{next.topic}</Text>
+              {next.owner ? <Text style={styles.byline}>{next.owner}</Text> : null}
+            </>}
+        {next.signup ? <Pressable accessibilityRole="button" accessibilityLabel="報名" onPress={() => onOpen(next.signup!)} style={styles.primaryButton}><Text style={styles.primaryButtonText}>報名</Text></Pressable> : null}
+        {registration && registration.total > 0 ? <View accessibilityLabel="報名狀況" style={styles.signups}>
+          <Text style={styles.byline}>{`已有 ${registration.total} 人報名${registration.registered ? '，包括你' : ''}`}</Text>
+          {registration.friends.length > 0 ? <Text style={styles.friends}>{`朋友：${registration.friends.join('、')}`}</Text> : null}
+        </View> : null}
+        {next.roles && next.roles.length > 0 ? <View style={styles.roleGrid} accessibilityLabel="服事">
+          {next.roles.map((role) => <Text key={role.label} style={styles.role} accessibilityLabel={`${role.label} ${role.value}`}>
+            <Text style={styles.roleLabel}>{shortRole(role.label)}</Text>{' '}<Text style={styles.roleValue}>{role.value}</Text>
+          </Text>)}
+        </View> : null}
+      </View>
     </View> : null}
 
-    {recorded.length ? <View style={styles.card} accessibilityLabel="上次講道">
-      <Text style={styles.eyebrow}>上次講道</Text>
-      <RecordedSessions sessions={recorded} onOpen={onOpen} />
-    </View> : null}
-
-    {past.length > 0 ? <View style={styles.card} accessibilityLabel="以前的主日">
-      <Text style={styles.eyebrow}>以前的主日</Text>
-      {past.map((week) => <View key={week.week} style={styles.pastRow}>
-        {week.sessions && week.sessions.length > 1
-          ? <><Text style={styles.pastTitle}>{shortWeek(week.week)}</Text><RecordedSessions sessions={week.sessions} onOpen={onOpen} /></>
-          : <><Text style={styles.pastTitle}>{[shortWeek(week.week), week.speaker, week.title].filter(Boolean).join(' · ')}</Text>
-            <LinkRow links={week.sessions?.length ? sessionLinks(week.sessions[0]) : [['錄音', week.audio], ['講道投影片', week.sermonSlides ?? null], ['報告投影片', week.slides], ['逐字稿', week.transcript]]} onOpen={onOpen} /></>}
-
-      </View>)}
-    </View> : null}
+    {weeks.length ? <>
+      <View style={styles.sectionHeader}><Text accessibilityRole="header" style={styles.sectionTitle}>講道紀錄</Text><View style={styles.sectionRule} /></View>
+      <View style={styles.weeks} accessibilityLabel="講道紀錄">
+        {weeks.map((week) => <View key={week.week} style={styles.weekCard} accessibilityLabel={`${shortWeek(week.week, today)} 的講道`}>
+          <View style={styles.weekDate}>
+            <Text style={styles.weekDateText}>{shortWeek(week.week, today)}</Text>
+            {week.latest ? <Text style={styles.latest}>上週</Text> : null}
+          </View>
+          <View style={styles.weekBody}>
+            {week.sessions.map((session, index) => <SermonSession key={`${index}:${session.label ?? ''}`} session={session} first={index === 0} onOpen={onOpen} />)}
+          </View>
+        </View>)}
+      </View>
+    </> : null}
 
     {standing ? <View style={styles.card} accessibilityLabel="常設資訊">
       {Object.entries(standing).map(([label, value]) => (/^https?:\/\//.test(value)
         ? <Pressable key={label} accessibilityRole="button" accessibilityLabel={label} onPress={() => onOpen(value)} style={styles.standingLink}>
-            <Text style={styles.linkText}>{label}</Text>
+            <Text style={styles.textLinkText}>{label}</Text>
           </Pressable>
         : <Text key={label} style={styles.standing}>{`${label}：${value}`}</Text>))}
     </View> : null}
 
     {/* Last, and quiet. Being a week out of date matters less than the board looking broken. */}
-    {stale ? <Text style={styles.stale}>{`目前顯示 ${shortWeek(announcement.week)} 的公告，還沒連上更新`}</Text> : null}
+    {stale ? <Text style={styles.stale}>{`目前顯示 ${shortWeek(announcement.week, today)} 的公告，還沒連上更新`}</Text> : null}
   </ScrollView>;
 }
 
 const styles = StyleSheet.create({
   page: { padding: theme.spacing.md, gap: theme.spacing.sm, paddingBottom: theme.spacing.xl },
   card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.xxs },
-  eyebrow: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
-  headline: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
-  muted: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  recordedSession: { gap: theme.spacing.xxs },
-  session: { flexDirection: 'row', gap: theme.spacing.sm, paddingVertical: theme.spacing.xs },
-  sessionTag: { alignSelf: 'flex-start', overflow: 'hidden', borderRadius: theme.radius.chip, backgroundColor: theme.colors.primarySoft, color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800', paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xxs },
-  sessionCopy: { flex: 1, minWidth: 0 },
-  sessionTitle: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
-  roles: { marginTop: theme.spacing.sm, paddingTop: theme.spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border, gap: theme.spacing.xs },
-  roleGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: theme.spacing.md, rowGap: theme.spacing.xxs },
-  role: { flexDirection: 'row', flexBasis: '45%', flexGrow: 1, gap: theme.spacing.xs, minWidth: 0 },
-  roleLabel: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  roleValue: { flexShrink: 1, color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
-  links: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs, paddingTop: theme.spacing.xs },
-  link: { minHeight: theme.control.tap, justifyContent: 'center', paddingHorizontal: theme.spacing.sm, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.primary },
-  linkText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  nextCard: { flexDirection: 'row', gap: theme.spacing.md, backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, padding: theme.spacing.md },
+  dateBlock: { width: 58, alignSelf: 'flex-start', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.spacing.sm, borderRadius: 10, backgroundColor: theme.colors.primary },
+  dateBlockSmall: { color: theme.colors.white, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '700' },
+  dateBlockDay: { color: theme.colors.white, fontSize: 26, lineHeight: 30, fontWeight: '800' },
+  nextCopy: { flex: 1, minWidth: 0, gap: 6 },
+  nextEyebrow: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '800' },
+  nextSession: { gap: 2 },
+  nextByline: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  titleLine: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  sessionTag: { alignSelf: 'flex-start', overflow: 'hidden', borderRadius: theme.radius.chip, backgroundColor: theme.colors.primarySoft, color: theme.colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '800', paddingHorizontal: theme.spacing.sm, paddingVertical: 2 },
+  sessionTitle: { flexShrink: 1, color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
+  byline: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  roleGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 10, rowGap: 1, borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.border, paddingTop: 6 },
+  role: { flexBasis: '45%', flexGrow: 1, minWidth: 0, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  roleLabel: { color: theme.colors.muted },
+  roleValue: { color: theme.colors.ink, fontWeight: '700' },
   primaryButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, backgroundColor: theme.colors.primary, marginTop: theme.spacing.xs },
   primaryButtonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '800' },
-  signups: { gap: 2, paddingTop: theme.spacing.xs },
+  signups: { gap: 2 },
   friends: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
-  pastRow: { flexDirection: 'column', alignItems: 'stretch', gap: theme.spacing.xxs, paddingVertical: theme.spacing.xxs },
-  pastTitle: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingTop: 6, paddingHorizontal: theme.spacing.xxs },
+  sectionTitle: { color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '800' },
+  sectionRule: { flex: 1, height: theme.control.hairline, backgroundColor: theme.colors.border },
+  weeks: { gap: theme.spacing.sm },
+  weekCard: { flexDirection: 'row', overflow: 'hidden', backgroundColor: theme.colors.surface, borderRadius: theme.radius.card },
+  weekDate: { width: 58, alignItems: 'center', gap: 2, paddingVertical: theme.spacing.md, backgroundColor: theme.colors.primarySoft },
+  weekDateText: { color: theme.colors.primary, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
+  latest: { overflow: 'hidden', color: theme.colors.white, backgroundColor: theme.colors.accent, borderRadius: 6, fontSize: 11, lineHeight: 15, fontWeight: '800', paddingHorizontal: 5, paddingVertical: 1 },
+  weekBody: { flex: 1, minWidth: 0, paddingTop: 10, paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.xs },
+  sermonSession: { flexDirection: 'column', alignItems: 'stretch', paddingBottom: 2 },
+  sessionDivider: { borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.background, paddingTop: theme.spacing.sm },
+  compactSession: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
+  compactTitle: { flexShrink: 1, color: theme.colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
+  spacer: { flex: 1 },
+  textLinks: { flexDirection: 'row', flexWrap: 'wrap' },
+  textLink: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5, paddingRight: 14 },
+  textLinkLast: { paddingRight: 0 },
+  textLinkText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
   standing: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   standingLink: { minHeight: theme.control.tap, justifyContent: 'center' },
   stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, textAlign: 'center', paddingTop: theme.spacing.xs },

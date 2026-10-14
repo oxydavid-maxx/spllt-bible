@@ -22,6 +22,8 @@ vi.mock('react-native', () => ({
   BackHandler: { addEventListener: (_name: string, handler: () => boolean) => { native.backHandlers.push(handler); return { remove: () => { native.backHandlers = native.backHandlers.filter(h => h !== handler); } }; } },
   AccessibilityInfo: { isScreenReaderEnabled: async () => native.screenReader, addEventListener: () => ({ remove: () => undefined }) },
 }));
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
+vi.mock('../../src/ui/devotion/useReaderDevotion', () => ({ useReaderDevotion: () => ({ devotion: undefined, onLastChapterNarrated: () => undefined, leave: () => undefined }) }));
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: (props: any) => React.createElement('MaterialCommunityIcons', props) }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => native.safeInsets }));
 vi.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
