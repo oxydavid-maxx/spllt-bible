@@ -71,7 +71,10 @@
     },
     "extra": {
       "contentMode": "C_PENDING_ACCESS",
-      "fixture": true
+      "fixture": true,
+      "eas": {
+        "projectId": "2aa0b072-2f45-4e8c-a2bf-9d6f4c1e0887"
+      }
     }
   }
 }
