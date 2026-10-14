@@ -35,7 +35,11 @@ export interface ReaderDevotionBinding {
   leave: () => void;
 }
 
-export function useReaderDevotion({ session, baseUrl, date, showTools }: { session: { memberId: string; sessionToken: string } | null; baseUrl: string; date: string; showTools: () => void }): ReaderDevotionBinding {
+export function useReaderDevotion({ session, baseUrl, date, showTools, textSettings }: {
+  session: { memberId: string; sessionToken: string } | null; baseUrl: string; date: string; showTools: () => void;
+  /** The member's 調整字體 settings for scripture (null: the SDK defaults); the 靈修 words follow them. */
+  textSettings?: { fontSize: number; lineSpacing: number } | null;
+}): ReaderDevotionBinding {
   const memberId = session?.memberId ?? null;
   const client = useMemo(() => session ? createDevotionClient({ baseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [baseUrl, session?.memberId, session?.sessionToken]);
   const [atEnd, setAtEnd] = useState(false);
@@ -128,6 +132,9 @@ export function useReaderDevotion({ session, baseUrl, date, showTools }: { sessi
       songFollows={follow.enabled}
       insets={insets}
       onEndChange={setAtEnd}
+      fontSize={textSettings?.fontSize}
+      lineSpacing={textSettings?.lineSpacing}
+      speaking={speaking}
     />,
     completed: done,
     disabled: markPending || date > today || !isWithinCompletionWindow(date, today),

@@ -211,6 +211,7 @@ export default function ReaderScreen() {
     baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl,
     date: selectedDate,
     showTools: chrome.showTools,
+    textSettings: preferences.preferences.settings,
   });
   const syncError = completion.syncError;
   useEffect(() => {

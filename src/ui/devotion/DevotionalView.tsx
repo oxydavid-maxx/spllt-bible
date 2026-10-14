@@ -3,6 +3,7 @@ import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, V
 import { DomWebView, type DomWebViewRef } from '@expo/dom-webview';
 import Svg, { Path } from 'react-native-svg';
 import type { DevotionalPost } from '../../services/devotionClient';
+import { READ_ALONG_HIGHLIGHT } from '../readAlongBridge';
 import { theme } from '../Theme';
 
 /**
@@ -10,7 +11,14 @@ import { theme } from '../Theme';
  * and the day's song at the end. The song's player is loaded only when it is played, so an idle tab
  * makes no request; it plays only while the screen is on (YouTube does not allow background play)
  * and pauses the moment the app leaves the screen.
+ *
+ * The words follow the reader's 調整字體 size and spacing, and the paragraph being read is lit in
+ * the same grey as scripture, so the two tabs read as one page (維護者 2026-10-14).
  */
+
+/** The SDK's own defaults (BIBLE_READER_FONT.DEFAULT, READER_LINE_SPACING.DEFAULT): unchanged readers see the old page. */
+const DEFAULT_FONT_SIZE = 16;
+const DEFAULT_LINE_SPACING = 1.7;
 
 export type DevotionalState =
   | { kind: 'loading' }
@@ -29,6 +37,11 @@ export interface DevotionalViewProps {
   songRequest: number;
   songFollows: boolean;
   insets: { top: number; bottom: number };
+  /** The reader's 調整字體 settings; the SDK defaults when the member never changed them. */
+  fontSize?: number;
+  lineSpacing?: number;
+  /** The 靈修 is being read aloud now: starting or resuming moves to the paragraph being read. */
+  speaking?: boolean;
 }
 
 type SongState = 'poster' | 'loading' | 'playing' | 'paused' | 'ended' | 'error';
@@ -47,7 +60,7 @@ export function songCaption(song: SongState, songFollows: boolean): string {
 const PLAY = 'window.qmPlay&&window.qmPlay();true;';
 const PAUSE = 'window.qmPause&&window.qmPause();true;';
 
-export function DevotionalView({ state, activeIndex, playerUrl, songRequest, songFollows, insets, onEndChange }: DevotionalViewProps) {
+export function DevotionalView({ state, activeIndex, playerUrl, songRequest, songFollows, insets, onEndChange, fontSize = DEFAULT_FONT_SIZE, lineSpacing = DEFAULT_LINE_SPACING, speaking = false }: DevotionalViewProps) {
   const viewport = useRef({ height: 0, content: 0, y: 0 });
   const reportEnd = () => {
     const v = viewport.current;
@@ -62,11 +75,15 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
   const songKey = post ? `${post.date}:${post.song.youtubeId}` : '';
 
   useEffect(() => { onEndChange?.(false); viewport.current = { height: 0, content: 0, y: 0 }; setSong('poster'); sectionTops.current.clear(); paragraphTops.current.clear(); }, [songKey]);
+  // Follows the reading only while it is heard: a paused page stays where the member scrolled it.
   useEffect(() => {
+    if (!speaking || activeIndex < 0) return;
+    // The first paragraph carries the title and heading in its speech, so the page starts at the top.
+    if (activeIndex === 0) { scroller.current?.scrollTo({ y: 0, animated: true }); return; }
     const place = paragraphTops.current.get(activeIndex);
     if (!place) return;
     scroller.current?.scrollTo({ y: Math.max(0, (sectionTops.current.get(place.section) ?? 0) + place.y - 24), animated: true });
-  }, [activeIndex]);
+  }, [activeIndex, speaking]);
   const handledRequest = useRef(songRequest);
   useEffect(() => {
     if (songRequest === handledRequest.current) return;
@@ -98,21 +115,27 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
   const caption = songCaption(song, songFollows);
   let unit = -1;
   const playerMounted = song !== 'poster' && song !== 'error';
+  const scale = fontSize / DEFAULT_FONT_SIZE;
+  const text = {
+    title: { fontSize: Math.round(19 * scale), lineHeight: Math.round(26 * scale) },
+    heading: { fontSize: Math.round(theme.type.body.size * scale), lineHeight: Math.round(theme.type.body.line * scale) },
+    paragraph: { fontSize, lineHeight: Math.round(fontSize * lineSpacing) },
+  };
   return <ScrollView ref={scroller} accessibilityLabel="靈修" scrollEventThrottle={100}
     onLayout={(event) => { viewport.current.height = event.nativeEvent.layout.height; reportEnd(); }}
     onContentSizeChange={(_width, height) => { viewport.current.content = height; reportEnd(); }}
     onScroll={(event) => { const e = event.nativeEvent; viewport.current = { y: e.contentOffset.y, height: e.layoutMeasurement.height, content: e.contentSize.height }; reportEnd(); }}
     style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: insets.top + 14, paddingBottom: insets.bottom }]}>
     <View style={styles.titleBlock}>
-      <Text accessibilityRole="header" style={styles.title}>{`《${devotional.title}》`}</Text>
+      <Text accessibilityRole="header" style={[styles.title, text.title]}>{`《${devotional.title}》`}</Text>
       <Text style={styles.meta}>{devotionMeta(devotional)}</Text>
     </View>
     {devotional.sections.map((section, sectionIndex) => <View key={`${sectionIndex}:${section.heading}`} onLayout={(event) => { sectionTops.current.set(sectionIndex, event.nativeEvent.layout.y); }} style={styles.section}>
-      <Text accessibilityRole="header" style={styles.heading}>{section.heading}</Text>
+      <Text accessibilityRole="header" style={[styles.heading, text.heading]}>{section.heading}</Text>
       {section.paragraphs.map((paragraph, paragraphIndex) => {
         unit += 1;
         const index = unit;
-        return <Text key={paragraphIndex} onLayout={(event) => { paragraphTops.current.set(index, { section: sectionIndex, y: event.nativeEvent.layout.y }); }} style={[styles.paragraph, index === activeIndex && styles.paragraphLit]}>{paragraph}</Text>;
+        return <Text key={paragraphIndex} onLayout={(event) => { paragraphTops.current.set(index, { section: sectionIndex, y: event.nativeEvent.layout.y }); }} style={[styles.paragraph, index === activeIndex && styles.paragraphLit, text.paragraph]}>{paragraph}</Text>;
       })}
     </View>)}
     {playerMounted ? <View style={styles.songCard}>
@@ -163,7 +186,7 @@ const styles = StyleSheet.create({
   section: { gap: 6 },
   heading: { color: theme.colors.primary, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
   paragraph: { color: theme.colors.ink, fontSize: 16, lineHeight: 27 },
-  paragraphLit: { backgroundColor: theme.colors.primarySoft, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8 },
+  paragraphLit: { backgroundColor: `#${READ_ALONG_HIGHLIGHT}`, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8 },
   poster: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: theme.colors.ink, aspectRatio: 16 / 9, justifyContent: 'flex-end' },
   posterCaption: { paddingHorizontal: theme.spacing.md, paddingVertical: 10, gap: 2 },
   songCard: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: theme.colors.ink },
