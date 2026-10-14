@@ -92,7 +92,9 @@ describe('the 靈修 tab', () => {
     // Paused on 第三段 after the member scrolled away: nothing pulls the page back until ▶.
     expect(scrolls).toEqual([]);
     act(() => tree.update(React.createElement(DevotionalView, props({ activeIndex: 2, speaking: true }))));
-    expect(scrolls.at(-1)).toMatchObject({ y: 516 });
+    // The date row and chapter chips lie over the top of the page (insets.top 96): the paragraph
+    // starts just under them, where the title sits on an unscrolled page, not hidden beneath them.
+    expect(scrolls.at(-1)).toMatchObject({ y: 500 + 40 - (96 + 14) });
     act(() => tree.update(React.createElement(DevotionalView, props({ activeIndex: 0, speaking: true }))));
     expect(scrolls.at(-1)).toMatchObject({ y: 0 });
     act(() => tree.unmount());

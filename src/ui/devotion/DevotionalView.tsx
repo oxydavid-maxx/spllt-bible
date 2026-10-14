@@ -75,6 +75,10 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
   const songKey = post ? `${post.date}:${post.song.youtubeId}` : '';
 
   useEffect(() => { onEndChange?.(false); viewport.current = { height: 0, content: 0, y: 0 }; setSong('poster'); sectionTops.current.clear(); paragraphTops.current.clear(); }, [songKey]);
+  // The date row and chapter chips lie over the top of the page; read at scroll time, so a header
+  // that collapses or comes back while reading does not move the page by itself.
+  const headerTop = useRef(insets.top);
+  headerTop.current = insets.top;
   // Follows the reading only while it is heard: a paused page stays where the member scrolled it.
   useEffect(() => {
     if (!speaking || activeIndex < 0) return;
@@ -82,7 +86,9 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
     if (activeIndex === 0) { scroller.current?.scrollTo({ y: 0, animated: true }); return; }
     const place = paragraphTops.current.get(activeIndex);
     if (!place) return;
-    scroller.current?.scrollTo({ y: Math.max(0, (sectionTops.current.get(place.section) ?? 0) + place.y - 24), animated: true });
+    // The paragraph starts just under the header, where the title sits on an unscrolled page.
+    const top = (sectionTops.current.get(place.section) ?? 0) + place.y;
+    scroller.current?.scrollTo({ y: Math.max(0, top - headerTop.current - 14), animated: true });
   }, [activeIndex, speaking]);
   const handledRequest = useRef(songRequest);
   useEffect(() => {
