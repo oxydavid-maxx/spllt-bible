@@ -463,6 +463,10 @@ describe('fullscreen reader layout and chrome', () => {
     expect(text()).not.toContain('完成今日讀經');
     act(() => { chrome.handleCanvasEdge({ atEnd: true }); });
     expect(text()).toContain('完成今日讀經');
+    expect(styleOf(button('完成讀經'))).toMatchObject({ paddingLeft: 14, paddingRight: 18 });
+    const readingGlyph = button('完成讀經').findAll(n => String(n.type) === 'Svg')[0];
+    expect(readingGlyph.props.width).toBe(20);
+    expect(styleOf(button('完成讀經').findAll(n => String(n.type) === 'Text')[0]).fontWeight).toBe('800');
     expect(text()).not.toContain('繼續讀');
   });
 

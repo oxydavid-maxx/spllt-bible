@@ -377,7 +377,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           android_ripple={{ color: theme.colors.primarySoft }}
           style={[styles.completionAction, completionExpanded && styles.completionExpanded, completed && styles.completionActionComplete, completionActionDisabled && styles.disabled]}
         >
-          {completionPending || completionFailed ? <MaterialCommunityIcons name={completionPending ? 'clock-outline' : 'sync-alert'} size={26} color={theme.colors.primary} /> : <BookGlyph completed={completed} size={completionExpanded ? 24 : undefined} />}
+          {completionPending || completionFailed ? <MaterialCommunityIcons name={completionPending ? 'clock-outline' : 'sync-alert'} size={26} color={theme.colors.primary} /> : <BookGlyph completed={completed} size={completionExpanded ? 20 : undefined} />}
           {completionExpanded ? <Text style={styles.completionExpandedText}>完成今日讀經</Text> : null}
         </Pressable>}
         <View accessible={false} style={styles.audioCell}>
@@ -560,13 +560,13 @@ const styles = StyleSheet.create({
   nextCardText: { color: theme.colors.white, fontSize: 17, lineHeight: 22, fontWeight: '700' },
   actionRow: { position: 'absolute', zIndex: 3, flexDirection: 'row', alignItems: 'center', gap: GAP },
   completionAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.white, ...floating },
-  completionExpanded: { width: 'auto', paddingLeft: theme.spacing.lg, paddingRight: theme.spacing.xl },
+  completionExpanded: { width: 'auto', paddingLeft: 14, paddingRight: 18 },
   completionActionComplete: { backgroundColor: theme.colors.primary },
-  completionExpandedText: { color: theme.colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '700' },
+  completionExpandedText: { color: theme.colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '800' },
   leafAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.white, ...floating },
   leafExpanded: { width: 'auto', paddingLeft: 14, paddingRight: 18 },
   leafDone: { backgroundColor: theme.colors.primary },
-  leafExpandedText: { color: theme.colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '700' },
+  leafExpandedText: { color: theme.colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '800' },
   audioInner: { width: ACTION, height: ACTION, alignItems: 'center', justifyContent: 'center' },
   hidden: { display: 'none' },
   devotionPlay: { width: ACTION, height: ACTION, borderRadius: ACTION / 2, alignItems: 'center', justifyContent: 'center' },

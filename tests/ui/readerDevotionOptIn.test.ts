@@ -7,6 +7,7 @@ const native = vi.hoisted(() => ({
 }));
 vi.hoisted(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
 vi.mock('expo-speech', () => ({ speak: native.speak, stop: async () => undefined }));
+vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove() {} }) } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async (k: string) => native.values.get(k) ?? null, setItemAsync: async (k: string, v: string) => { native.values.set(k, v); } }));
 vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => ({ getDevotionDates: async () => [], setDevotion: native.setDevotion, getDevotional: async () => native.post }) }));
 vi.mock('../../src/ui/devotion/DevotionalView', () => ({ DevotionalView: (p: any) => React.createElement('DevotionalView', p) }));
@@ -18,6 +19,21 @@ async function mount(memberId: string) {
 }
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:00:00Z')); native.speak.mockClear(); });
 afterEach(() => { act(() => view?.unmount()); vi.useRealTimers(); });
+it('expires an already visible untouched offer at the seventh Taipei midnight (#6)', async () => {
+  vi.useRealTimers();
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+  vi.setSystemTime(new Date('2026-10-20T15:59:59Z'));
+  const key = 'qingmu.devotion.follow.v1.m-' + Array.from('clock-test', c => c.codePointAt(0)!.toString(16)).join('_');
+  native.values.set(key, JSON.stringify({ enabled: false, touched: false, firstOfferedOn: '2026-10-14' }));
+  await mount('clock-test');
+  expect(binding.devotion?.followOfferEligible).toBe(true);
+  expect(vi.getTimerCount()).toBe(1);
+  await act(async () => { vi.advanceTimersByTime(1001); });
+  expect(new Date().toISOString()).toBe('2026-10-20T16:00:00.001Z');
+  expect(binding.devotion?.followOfferEligible).toBe(false);
+  await act(async () => binding.devotion!.onFollow());
+  expect(binding.devotion?.followEnabled).toBe(false); expect(binding.devotion?.selected).toBe(false);
+});
 it('ordinary leaf completion and manual tab selection never opt in or speak (#4/#7/#10)', async () => {
   await mount('manual-test');
   expect(binding.devotion?.followEnabled).toBe(false);

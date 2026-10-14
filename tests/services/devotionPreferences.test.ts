@@ -8,6 +8,15 @@ function memory(raw?: unknown) {
 }
 afterEach(() => vi.useRealTimers());
 describe('接續靈修 opt in and seven calendar day local offer (#6/#10)', () => {
+  it('does not infer an untouched member when local preference storage cannot be read', async () => {
+    const store = createDevotionPreferencesStore({ getItem: async () => { throw new Error('temporarily locked'); }, setItem: async () => undefined });
+    await store.load('m');
+    expect(store.getSnapshot('m').enabled).toBe(false);
+    expect(store.canOffer('m', '2026-10-14')).toBe(false);
+    expect(store.firstFollow('m', '2026-10-14')).toBe(false);
+    store.setEnabled('m', true); // the member can still explicitly choose from the menu
+    expect(store.getSnapshot('m')).toMatchObject({ enabled: true, touched: true });
+  });
   it.each([undefined, { enabled: true, touched: false }, { enabled: false, touched: false }])('defaults off and migrates untouched v1 %j off', async raw => {
     const store = createDevotionPreferencesStore(memory(raw));
     expect(store.getSnapshot('m').enabled).toBe(false);

@@ -50,7 +50,11 @@ export function createDevotionPreferencesStore(storage: ReaderPreferencesStorage
         const touched = value?.touched === true;
         publish(memberId, { ready: true, enabled: touched && value?.enabled === true, touched,
           ...(typeof value?.firstOfferedOn === 'string' && Number.isFinite(calendarDay(value.firstOfferedOn)) ? { firstOfferedOn: value.firstOfferedOn } : {}) });
-      } catch { if (!snapshots.get(memberId)?.ready) publish(memberId, DEFAULT); }
+      } catch {
+        // Unknown is not untouched: stay off and suppress the offer until a preference can be read
+        // or the member explicitly uses the menu. Never overwrite a choice made during the read.
+        if (!snapshots.get(memberId)?.ready) publish(memberId, LOADING);
+      }
     },
     setEnabled(memberId: string | null, enabled: boolean) { save(memberId, { ...getSnapshot(memberId), ready: true, enabled, touched: true }); },
     recordOfferShown(memberId: string | null, today: string) {
