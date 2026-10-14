@@ -17,6 +17,7 @@ import type { PushDataSender } from './friendPush';
 import type { ApnsAlertSender } from './apnsSender';
 import type { MeetingSender } from './remoteReminders';
 import { createOfficialBibleAdapter } from './officialBibleAdapter';
+import { devotionalPlayerResponse } from './devotional';
 import { deriveFormRegistrationKey } from './eventRegistrations';
 
 async function readBody(request: IncomingMessage): Promise<string> {
@@ -123,6 +124,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     ...(pushIos ? { pushIos } : {}),
     adminMemberIds: process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean),
     adminGoogleSubjects,
+    ...(process.env.QINGMU_DEVOTIONAL_DIR?.trim() ? { devotionalDir: process.env.QINGMU_DEVOTIONAL_DIR.trim() } : {}),
     ...(fixtureRoster
       ? {
           weeklyDates: ['2026-09-07', '2026-09-08'],
@@ -163,6 +165,15 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
       for (const [key,value] of Object.entries(official.headers)) response.setHeader(key,value);
       response.setHeader('x-qingmu-instance-id', process.env.QINGMU_INSTANCE_ID?.trim() || 'unconfigured');
       response.end(official.status === 204 ? '' : official.raw ? String(official.body) : JSON.stringify(official.body));
+      return;
+    }
+    // The 靈修 song player is a page, not JSON, and carries nothing private: only the video id it is given.
+    const player = devotionalPlayerResponse(request.method ?? 'GET', request.url ?? '/');
+    if (player) {
+      response.statusCode = player.status;
+      response.setHeader('content-type', player.contentType);
+      response.setHeader('cache-control', 'public, max-age=86400');
+      response.end(player.body);
       return;
     }
     const result = await handle({

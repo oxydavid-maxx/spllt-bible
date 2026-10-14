@@ -28,6 +28,8 @@ vi.mock('react-native', () => ({
   Keyboard: { isVisible: () => false, addListener: () => ({ remove() {} }) },
   AccessibilityInfo: { addEventListener: () => ({ remove() {} }), isScreenReaderEnabled: async () => false },
 }));
+vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
+vi.mock('../../src/ui/devotion/useReaderDevotion', () => ({ useReaderDevotion: () => ({ devotion: undefined, onLastChapterNarrated: () => undefined, leave: () => undefined }) }));
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 24, left: 0, right: 0 }) }));
 vi.mock('expo-application', () => ({ nativeBuildVersion: '30' }));

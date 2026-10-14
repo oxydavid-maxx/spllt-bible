@@ -52,13 +52,14 @@ describe('reading tab entry', () => {
     act(() => renderer.unmount());
   });
 
-  it('keeps four visible tabs and leaves the hidden Reader route able to show the tab bar', () => {
+  it('keeps three visible tabs (日記 hidden, 2026-10-14) and leaves the hidden Reader route able to show the tab bar', () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => { renderer = TestRenderer.create(React.createElement(TabsLayout)); });
     const screens = all(renderer, 'Screen');
     const visibleScreens = screens.filter(node => node.props.options.href !== null);
-    expect(visibleScreens.map(node => node.props.name)).toEqual(['announcements', 'today', 'progress', 'journal']);
-    expect(visibleScreens.map(node => node.props.options.title)).toEqual(['公告', '讀經', '積分', '日記']);
+    expect(visibleScreens.map(node => node.props.name)).toEqual(['announcements', 'today', 'progress']);
+    expect(visibleScreens.map(node => node.props.options.title)).toEqual(['公告', '讀經', '積分']);
+    expect(screens.find(node => node.props.name === 'journal')?.props.options.href).toBeNull();
     expect(all(renderer, 'Tabs')[0].props.initialRouteName).toBe('today');
     const reader = screens.find(node => node.props.name === 'reader');
     expect(reader?.props.options.href).toBeNull();

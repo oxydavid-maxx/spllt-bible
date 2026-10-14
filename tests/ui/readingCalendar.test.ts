@@ -28,18 +28,18 @@ const mockDone = ['2026-09-11', '2026-09-12', '2026-09-15', '2026-09-16', '2026-
 
 describe('what the selected day says', () => {
   it('writes the date the way the page does, M/D and the weekday', () => {
-    expect(dayHeading('2026-09-25')).toBe('9/25（五）');
-    expect(dayHeading('2026-09-20')).toBe('9/20（日）');
+    expect(dayHeading('2026-09-25')).toBe('9/25 (五)');
+    expect(dayHeading('2026-09-20')).toBe('9/20 (日)');
   });
 
   it('tells an old, a rest and a future day apart, each in one line', () => {
     const days = september(mockDone);
     expect(dayState('2026-09-10', TODAY, days.get('2026-09-10'))).toBe('expired');
-    expect(dayMessage('2026-09-10', 'expired')).toBe('9/10（四）已超過 7 天，不能補登');
+    expect(dayMessage('2026-09-10', 'expired')).toBe('9/10 (四) 已超過 7 天，不能補登');
     expect(dayState('2026-09-20', TODAY, days.get('2026-09-20'))).toBe('rest');
-    expect(dayMessage('2026-09-20', 'rest')).toBe('9/20（日）這天沒有讀經');
+    expect(dayMessage('2026-09-20', 'rest')).toBe('9/20 (日) 這天沒有讀經');
     expect(dayState('2026-09-29', TODAY, days.get('2026-09-29'))).toBe('future');
-    expect(dayMessage('2026-09-29', 'future')).toBe('9/29（二）還沒到，當天再來打卡');
+    expect(dayMessage('2026-09-29', 'future')).toBe('9/29 (二) 還沒到，當天再來打卡');
     expect(dayState('2026-09-25', TODAY, days.get('2026-09-25'))).toBe('open');
     expect(dayState('2026-09-26', TODAY, days.get('2026-09-26'))).toBe('completed');
     // The window is the existing seven days: 9/21 is the oldest day still open on 9/27.
@@ -49,7 +49,7 @@ describe('what the selected day says', () => {
 
   it('explains a future rest day as no reading, without promising a future check-in', () => {
     expect(dayState('2026-10-04', '2026-09-30', undefined)).toBe('rest');
-    expect(dayMessage('2026-10-04', dayState('2026-10-04', '2026-09-30', undefined))).toBe('10/4（日）這天沒有讀經');
+    expect(dayMessage('2026-10-04', dayState('2026-10-04', '2026-09-30', undefined))).toBe('10/4 (日) 這天沒有讀經');
   });
 });
 
@@ -126,7 +126,7 @@ describe('the calendar card', () => {
 
   it('puts the selected day, its passages and the action under the grid', () => {
     const view = render();
-    expect(texts(view)).toEqual(expect.arrayContaining(['9/25（五）', '多1、多2、詩101']));
+    expect(texts(view)).toEqual(expect.arrayContaining(['9/25 (五)', '多1、多2、詩101']));
     expect(view.root.findAll((node) => (node.type as unknown) === 'Action')).toHaveLength(1);
   });
 
@@ -135,7 +135,7 @@ describe('the calendar card', () => {
   });
 
   it('shows one line and no action for a day that cannot be completed', () => {
-    for (const [date, line] of [['2026-09-10', '9/10（四）已超過 7 天，不能補登'], ['2026-09-20', '9/20（日）這天沒有讀經'], ['2026-09-29', '9/29（二）還沒到，當天再來打卡']]) {
+    for (const [date, line] of [['2026-09-10', '9/10 (四) 已超過 7 天，不能補登'], ['2026-09-20', '9/20 (日) 這天沒有讀經'], ['2026-09-29', '9/29 (二) 還沒到，當天再來打卡']]) {
       const view = render({ selectedDate: date });
       expect(texts(view)).toContain(line);
       expect(view.root.findAll((node) => (node.type as unknown) === 'Action')).toHaveLength(0);

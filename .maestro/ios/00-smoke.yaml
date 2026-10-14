@@ -8,7 +8,8 @@ appId: org.qingmu.youth
     visible: "積分"
     timeout: 90000
 - assertVisible: "公告"
-- assertVisible: "靈修日記"
+# Main 0.5.27 intentionally hides Journal; verify the current public tab contract.
+- assertNotVisible: "靈修日記"
 # Tabs are already exposed while Today is replacing itself with Reader. Wait for the
 # destination; the tab hierarchy alone is not readiness.
 - extendedWaitUntil:

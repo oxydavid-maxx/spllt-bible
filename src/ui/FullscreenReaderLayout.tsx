@@ -7,6 +7,9 @@ import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationBar } from 'expo-navigation-bar';
 import { ChapterAudioAutoplayNotice, ChapterAudioAutoplayToggle, ChapterAudioControls, type ChapterAudioControlsHandle } from './ChapterAudioControls';
+import { SettingSwitchRow } from './SettingSwitchRow';
+import { goldFab } from './devotion/devotionFabModel';
+import { LeafGlyph, PlayPauseGlyph, TickGlyph } from './devotion/glyphs';
 import { formatChapterTitleZhTw, formatReferenceZhTw } from '../domain/scriptureReference';
 import { theme } from './Theme';
 import { formatReadingDateHeader, formatReadingDateLabel } from './ReadingDateNavigator';
@@ -149,6 +152,25 @@ export function useReaderChrome() {
     hideTools, showTools, revealTools, handleCanvasScroll, handleCanvasEdge, handleVerseSelection, handleSheetOpenChange, clearVerseSelection, openMore, closeMore, openAudio, closeAudio, openInfo, closeInfo,
     handleNarration, handleFollowRelease, handleFollowPosition, returnToNarration, handleReadAlongChapter };
 }
+/** The 靈修 tab and the gold corner button (維護者 2026-10-14). Absent when signed out. */
+export interface ReaderDevotion {
+  /** The 靈修 tab is showing instead of the chapter. */
+  selected: boolean;
+  onSelect: () => void;
+  /** The tab's content, laid out clear of the header above and the corner buttons below. */
+  renderView: (insets: { top: number; bottom: number }) => ReactNode;
+  completed: boolean;
+  /** Marking cannot be saved for this day (outside the 7-day window). */
+  disabled: boolean;
+  onToggle: () => void;
+  /** 「跟傳道一起讀」: open the 靈修 and read it aloud. */
+  onFollow: () => void;
+  speaking: boolean;
+  onPlayPause: () => void;
+  banner: string | null;
+  followEnabled: boolean;
+  onFollowChange: (enabled: boolean) => void;
+}
 export interface FullscreenReaderLayoutProps {
   reader: ReactNode;
   controls: ReaderOverlayControls;
@@ -185,8 +207,9 @@ export interface FullscreenReaderLayoutProps {
   updateBanner?: ReactNode;
   narrationSpeed?: number;
   onSelectNarrationSpeed?: (speed: number) => void;
+  devotion?: ReaderDevotion;
 }
-export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerActive = chrome.focused, selectionSource = 'ASSIGNED', activeReferenceIndex = 0, chapterUsfm, versionId, references, onSelectReference, selectedDate, previousDate, nextDate, onSelectDate, onOpenReadingPlan, completed = false, completionDisabled = false, completionPending = false, completionFailed = false, completionLabel, completionFeedback, onComplete, onUndo, noPlanMessage, statusMessage, canOpenYouVersion = false, onOpenYouVersion, versionOptions, onSelectVersion, metadata, accountEntry, loginGate, updateBanner, narrationSpeed = 1, onSelectNarrationSpeed }: FullscreenReaderLayoutProps) {
+export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerActive = chrome.focused, selectionSource = 'ASSIGNED', activeReferenceIndex = 0, chapterUsfm, versionId, references, onSelectReference, selectedDate, previousDate, nextDate, onSelectDate, onOpenReadingPlan, completed = false, completionDisabled = false, completionPending = false, completionFailed = false, completionLabel, completionFeedback, onComplete, onUndo, noPlanMessage, statusMessage, canOpenYouVersion = false, onOpenYouVersion, versionOptions, onSelectVersion, metadata, accountEntry, loginGate, updateBanner, narrationSpeed = 1, onSelectNarrationSpeed, devotion }: FullscreenReaderLayoutProps) {
   const insets = chrome.settledInsets;
   const { width: windowWidth, fontScale } = useWindowDimensions();
   const [versionPageOpen, setVersionPageOpen] = useState(false);
@@ -229,7 +252,10 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
     ? Math.max(0, Math.min(activeReferenceIndex, references.length - 1))
     : -1;
   const nextIndex = assignedIndex >= 0 && assignedIndex < references.length - 1 ? assignedIndex + 1 : -1;
-  const atEnd = !chrome.collapsed && chrome.atChapterEnd;
+  const onDevotion = Boolean(devotion?.selected);
+  const gold = devotion ? goldFab({ onDevotion, readingCompleted: completed, devotionCompleted: devotion.completed, crowded: chrome.returnToNarrationVisible }) : null;
+  const goldDisabled = Boolean(devotion?.disabled) && gold?.action === 'toggle';
+  const atEnd = !chrome.collapsed && chrome.atChapterEnd && !onDevotion;
   // The last chapter read to its end: the same ○ grows into the day's completion call (one button, one record).
   // Not while 回到朗讀處 holds the bottom-left: on a 360 dp phone the grown ○ would run into it.
   const completionExpanded = atEnd && assignedIndex >= 0 && nextIndex < 0 && !completed && !completionActionDisabled && !completionFailed && !chrome.returnToNarrationVisible;
@@ -244,11 +270,18 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
     handleCanvasEdge({ atEnd: false });
     onSelectReference(nextIndex);
   };
+  // ▶ on the 靈修 tab reads the 靈修; a chapter still playing stops first, so two voices never overlap.
+  const playDevotion = () => {
+    if (!devotion) return;
+    if (!devotion.speaking) void audioControlRef.current?.pause().catch(() => undefined);
+    devotion.onPlayPause();
+  };
   const feedback = isValidElement<{ bottomOffset?: number }>(completionFeedback) ? cloneElement(completionFeedback, { bottomOffset: aboveActions }) : completionFeedback;
   return (
     <View style={styles.root}>
       {chrome.focused && <><StatusBar hidden={chrome.collapsed} style="dark" /><NavigationBar hidden={chrome.barsHidden} style="dark" /></>}
-      <View accessibilityLabel="經文" style={[styles.surface, { paddingLeft: insets.left, paddingRight: insets.right }, !controls.ready && { paddingTop: insets.top + ROW * 2, paddingBottom: aboveActions }]}>{reader}</View>
+      {onDevotion && devotion ? <View style={styles.devotionLayer}>{devotion.renderView({ top: insets.top + ROW * 2, bottom: aboveActions + 56 })}</View> : null}
+      <View accessibilityLabel="經文" importantForAccessibility={onDevotion ? 'no-hide-descendants' : 'auto'} accessibilityElementsHidden={onDevotion} style={[styles.surface, { paddingLeft: insets.left, paddingRight: insets.right }, !controls.ready && { paddingTop: insets.top + ROW * 2, paddingBottom: aboveActions }]}>{reader}</View>
       {chrome.collapsed ? <Pressable
         accessibilityRole="button"
         accessibilityLabel="展開閱讀工具"
@@ -287,7 +320,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroller} contentContainerStyle={styles.chipsContent}>
             {assignedIndex < 0 ? <ReaderChip label={currentChipLabel} accessibilityLabel={`自由閱讀：${chapterTitle}`} accessibilityHint="選擇其他章節" selected onPress={openChapterPicker} /> : null}
             {references.map((reference, index) => {
-              const selected = index === assignedIndex;
+              const selected = index === assignedIndex && !onDevotion;
               return <ReaderChip
                 key={`${index}:${reference}`}
                 label={formatReferenceZhTw(reference)}
@@ -297,6 +330,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
                 onPress={selected ? openChapterPicker : () => onSelectReference(index)}
               />;
             })}
+            {devotion ? <ReaderChip label="靈修" leaf accessibilityLabel="靈修，傳道的每日靈修" selected={onDevotion} onPress={devotion.onSelect} /> : null}
             {noPlanMessage ? <Text accessibilityRole="text" numberOfLines={2} style={styles.noPlanText}>{noPlanMessage}</Text> : null}
           </ScrollView>
           <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} android_ripple={{ color: theme.colors.primarySoft }} style={styles.iconButton}>
@@ -307,12 +341,25 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
       {/* A selected verse's action sheet takes the bottom; these step aside but stay mounted (▶ owns the audio). */}
       <View pointerEvents="box-none" style={[styles.aboveActions, { left: theme.spacing.lg + insets.left, right: theme.spacing.lg + insets.right, bottom: aboveActions }, chrome.verseSelected && styles.stepAside]}>
         <ChapterAudioAutoplayNotice active={chrome.focused} />
+        {devotion?.banner ? <Text accessibilityLiveRegion="polite" style={styles.devotionBanner}>{devotion.banner}</Text> : null}
         {statusMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.statusBanner}>{statusMessage}</Text> : null}
         {nextReference ? <Pressable accessibilityRole="button" accessibilityLabel={`繼續讀 ${formatChapterTitleZhTw(nextReference)}`} onPress={continueReading} android_ripple={{ color: theme.colors.primarySoft }} style={styles.nextCard}>
           <Text numberOfLines={1} style={styles.nextCardText}>{`繼續讀 ${formatReferenceZhTw(nextReference)} ›`}</Text>
         </Pressable> : null}
       </View>
       <View accessibilityLabel="讀經動作" accessible={false} pointerEvents="box-none" style={[styles.actionRow, { right: theme.spacing.sm + insets.right, bottom: actionBottom }, chrome.verseSelected && styles.stepAside]}>
+        {chrome.collapsed || !gold || !devotion ? null : <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={gold.label}
+          accessibilityState={{ disabled: goldDisabled, checked: gold.done }}
+          disabled={goldDisabled}
+          onPress={gold.action === 'follow' ? devotion.onFollow : devotion.onToggle}
+          android_ripple={{ color: theme.colors.accentSoft }}
+          style={[styles.goldAction, gold.expanded && styles.goldExpanded, gold.done && styles.goldDone, goldDisabled && styles.disabled]}
+        >
+          {gold.done ? <TickGlyph /> : <LeafGlyph size={gold.expanded ? 20 : 24} />}
+          {gold.expanded ? <Text style={styles.goldExpandedText}>跟傳道一起讀 ›</Text> : null}
+        </Pressable>}
         {chrome.collapsed ? null : <Pressable
           accessibilityRole="button"
           accessibilityLabel={completionAccessibilityLabel}
@@ -328,7 +375,11 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           {completionExpanded ? <Text style={styles.completionExpandedText}>完成今日讀經</Text> : null}
         </Pressable>}
         <View accessible={false} style={styles.audioCell}>
-          <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={false} readerAction active={audioOwnerActive} sharedOwner />
+          {/* Kept mounted on the 靈修 tab: it owns the chapter's player. */}
+          <View style={onDevotion ? styles.hidden : styles.audioInner}>
+            <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={false} readerAction active={audioOwnerActive} sharedOwner />
+          </View>
+          {onDevotion && devotion ? <Pressable accessibilityRole="button" accessibilityLabel={devotion.speaking ? '暫停朗讀' : '朗讀靈修'} onPress={playDevotion} style={styles.devotionPlay}><PlayPauseGlyph playing={devotion.speaking} /></Pressable> : null}
         </View>
       </View>
       {/* Read-along let go (a finger drag or a selected verse): the only way back, bottom-left, clear of ▶. */}
@@ -358,6 +409,13 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
             <MenuButton label="選擇其他章節" disabled={!controls.ready} onPress={() => openOfficial(controls.openChapterPicker)} />
             <MenuButton label="在 YouVersion 開啟此章" disabled={!canOpenYouVersion || !onOpenYouVersion} onPress={openYouVersion} />
             <ChapterAudioAutoplayToggle active={chrome.focused} />
+            {devotion ? <SettingSwitchRow
+              label="跟傳道一起讀"
+              description="讀完經文自動接靈修，朗讀完播詩歌 (螢幕亮著才播)。第一次按金色圈圈就自動打開"
+              enabled={devotion.followEnabled}
+              hint={devotion.followEnabled ? '目前開啟，點一下關閉' : '目前關閉，點一下開啟'}
+              onPress={() => devotion.onFollowChange(!devotion.followEnabled)}
+            /> : null}
             <Text accessibilityRole="header" style={styles.heading}>連讀是什麼？</Text>
             <Text style={styles.body}>開啟連讀後，按播放會從目前章節依序朗讀當日剩餘章節，最後一章結束就停止。這不是加快語速。</Text>
             <Text style={styles.body}>切換設定不會立即播放。遇到沒有朗讀的章節會停下並提示。</Text>
@@ -392,9 +450,9 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   );
 }
 
-function ReaderChip({ label, accessibilityLabel, accessibilityHint, selected, onPress }: { label: string; accessibilityLabel: string; accessibilityHint?: string; selected: boolean; onPress: () => void }) {
+function ReaderChip({ label, accessibilityLabel, accessibilityHint, selected, onPress, leaf = false }: { label: string; accessibilityLabel: string; accessibilityHint?: string; selected: boolean; onPress: () => void; leaf?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityHint={accessibilityHint} accessibilityState={{ selected }} onPress={onPress} style={styles.chipTouch}>
-    <View style={[styles.chip, selected && styles.chipSelected]}><Text numberOfLines={1} style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text></View>
+    <View style={[styles.chip, leaf && styles.chipLeaf, selected && styles.chipSelected]}>{leaf ? <LeafGlyph size={15} color={selected ? theme.colors.white : theme.colors.ink} /> : null}<Text numberOfLines={1} style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text></View>
   </Pressable>;
 }
 
@@ -478,6 +536,7 @@ const styles = StyleSheet.create({
   chipTouch: { minHeight: ROW, justifyContent: 'center' },
   chip: { height: 34, justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderRadius: 17, borderWidth: theme.control.hairline, borderColor: theme.colors.border, backgroundColor: theme.colors.white },
   chipSelected: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
+  chipLeaf: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: theme.spacing.md },
   chipText: { color: theme.colors.ink, fontSize: 16, lineHeight: 20, fontWeight: '700' },
   chipTextSelected: { color: theme.colors.white },
   noPlanText: { maxWidth: 240, color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
@@ -500,6 +559,15 @@ const styles = StyleSheet.create({
   completionExpanded: { width: 'auto', paddingLeft: theme.spacing.lg, paddingRight: theme.spacing.xl },
   completionActionComplete: { backgroundColor: theme.colors.primary },
   completionExpandedText: { color: theme.colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '700' },
+  goldAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, borderWidth: 2, borderColor: theme.colors.gold, backgroundColor: theme.colors.white, ...floating },
+  goldExpanded: { width: 'auto', paddingLeft: 14, paddingRight: 18 },
+  goldDone: { backgroundColor: theme.colors.gold },
+  goldExpandedText: { color: theme.colors.gold, fontSize: 16, lineHeight: 20, fontWeight: '700' },
+  audioInner: { width: ACTION, height: ACTION, alignItems: 'center', justifyContent: 'center' },
+  hidden: { display: 'none' },
+  devotionPlay: { width: ACTION, height: ACTION, borderRadius: ACTION / 2, alignItems: 'center', justifyContent: 'center' },
+  devotionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 1, backgroundColor: theme.colors.surface },
+  devotionBanner: { alignSelf: 'flex-end', color: theme.colors.white, backgroundColor: theme.colors.ink, borderRadius: 10, overflow: 'hidden', fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 6, ...floating },
   audioCell: { width: ACTION, height: ACTION, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: ACTION / 2, backgroundColor: theme.colors.primary, ...floating },
   disabled: { opacity: 0.4 },
   stepAside: { display: 'none' },

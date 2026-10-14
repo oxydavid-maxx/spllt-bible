@@ -90,6 +90,9 @@ def launch(label):
         'EXPO_PUBLIC_QINGMU_FIXTURE': 'false',
         'EXPO_PUBLIC_QINGMU_QA_TEST_AUDIO': 'false',
         'QINGMU_REMINDER_WORKER_AUTOSTART': 'false',
+        # The pastor's daily 靈修, one YYYYMMDD.txt a day, kept private outside git (server/devotional.ts).
+        # A missing folder only means every day reads as 「還沒有上傳」.
+        'QINGMU_DEVOTIONAL_DIR': str(PILOT / 'devotionals'),
         # Estimating what a suggested prize costs uses the Claude CLI already installed for
         # this user. No path, no worker, and nominations behave exactly as they did before
         # any of this was built — which is also what every test sees, since none of them set it.

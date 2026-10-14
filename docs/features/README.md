@@ -8,22 +8,22 @@
 
 | 檔案 | 範圍 |
 |---|---|
-| [announcements.md](announcements.md) | 公告分頁：下次聚會、服事、報名狀況、上次講道、以前的主日、常設資訊 |
-| [reader.md](reader.md) | 讀經頁：版面與沉浸模式、譯本、字體、經節複製、預先載入、閱讀位置、載入失敗與重試 |
-| [narration.md](narration.md) | 朗讀：播放、速度、連讀、背景播放、朗讀跟著走 |
-| [reading-plan.md](reading-plan.md) | 讀經計畫與每日完成：開啟日期、日期列、整份計畫清單、當日章節、完成打卡、補登、撤銷、積分月曆 |
-| [points.md](points.md) | 積分與社群：自己、好友、全體（管理）、目標獎品、兌換、提名投票、一起走過 |
-| [journal.md](journal.md) | 靈修日記：寫、存、匯出、存到自選資料夾 |
+| [announcements.md](announcements.md) | 公告分頁：下次聚會、服事、報名狀況、講道紀錄、常設資訊 |
+| [reader.md](reader.md) | 讀經頁：版面與沉浸模式、靈修分頁與跟傳道一起讀、譯本、字體、經節複製、預先載入、閱讀位置、載入失敗與重試 |
+| [narration.md](narration.md) | 朗讀：播放、速度、連讀、背景播放、朗讀跟著走 (靈修朗讀見 reader.md) |
+| [reading-plan.md](reading-plan.md) | 讀經計畫與每日完成：開啟日期、日期列、整份計畫清單、當日章節、完成打卡、靈修打勾、補登、撤銷、積分月曆 |
+| [points.md](points.md) | 積分與社群：團體 (青少一起讀經、團體獎)、個人 (月曆、積分圖、目標獎品)、好友、全體 (管理)、兌換、提名投票 |
+| [journal.md](journal.md) | 靈修日記：寫、存、匯出、存到自選資料夾 (2026-10-14 起分頁列不顯示) |
 | [reminders.md](reminders.md) | 讀經提醒與推播 |
-| [account.md](account.md) | 登入、帳戶頁、登出、App 更新提示 |
+| [account.md](account.md) | 登入、帳戶頁 (含管理者的全體入口)、登出、App 更新提示 |
 
 ## 公告
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| 下次聚會 | 下次主日的日期、主題或兩堂各自的內容、服事名單、報名按鈕 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
+| 下次聚會 | 左邊深色日期塊 (月、日、星期)，右邊主題或兩堂各自的內容；下面服事名單、報名按鈕 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 報名狀況 | 已有幾人報名、有哪些朋友報名 | 公告的下次聚會卡片 | Android、iOS | [announcements.md](announcements.md) |
-| 上次講道與以前的主日 | 每週分堂列出名稱、講員與資料；單堂沿用原版面；以前的主日只含近期週聚會 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
+| 講道紀錄 | 一個主日一張卡，最新的一週標「上週」；每堂列名稱、講員和資料連結，同類兩份檔案編成 1、2；沒有內容的堂次收成一行 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 離線提示 | 抓不到最新公告時，小字註明目前顯示哪一週 | 公告分頁底部 | Android、iOS | [announcements.md](announcements.md) |
 
 ## 讀經
@@ -43,6 +43,9 @@
 | 載入失敗與重試 | 失敗時顯示說明和「重試」，回到前景自動再試 | 讀經頁載入經文時 | Android、iOS | [reader.md](reader.md) |
 | 在 YouVersion 開啟、版本資訊 | 用 YouVersion 開同一章；看譯本的出版和版權資訊 | 更多閱讀工具 | Android、iOS | [reader.md](reader.md) |
 | 完成打卡 | 讀完按圓圈打卡；讀到最後一段時圓圈展開成按鈕 | 讀經頁右下角 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 靈修分頁 | 章節籤最後一個「靈修」：傳道當天的靈修文和詩歌 | 讀經頁章節籤 | Android、iOS | [reader.md](reader.md) |
+| 跟傳道一起讀 | 金色鈕：念完經文接著朗讀靈修，再播詩歌；更多閱讀工具裡可以關 | 讀經頁右下角金色鈕 | Android、iOS | [reader.md](reader.md) |
+| 靈修打勾 | 讀完靈修按金色鈕打勾，月曆標「靈修」；不加積分，也不進團體統計 | 靈修分頁金色鈕、積分月曆下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 補登和撤銷 | 今天和前 6 天可以補打卡；撤銷要先確認並收回積分 | 讀經頁、積分月曆 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 離線打卡與跨手機 | 沒網路先記住、連上後送出；另一支手機完成的日子也顯示已完成 | 讀經頁、積分頁 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 整份讀經計畫清單 | 分月顯示 9/1–12/31，今天標底色、讀完打勾，點一天就去讀；上緣可下拉關閉 | 讀經頁點日期、積分月曆的「整份計畫」 | Android、iOS | [reading-plan.md](reading-plan.md) |
@@ -53,33 +56,36 @@
 |---|---|---|---|---|
 | 播放朗讀 | 播放這一章的朗讀，沒有朗讀或暫時失敗時會說明，能重試的有「重試」 | 讀經頁右下角播放鍵 | Android、iOS | [narration.md](narration.md) |
 | 朗讀速度 | 0.75、1、1.25、1.5 倍，立即套用 | 更多閱讀工具 | Android、iOS | [narration.md](narration.md) |
-| 連讀 | 念完一章自動接當天下一段，最後一段念完就停 | 更多閱讀工具 | Android、iOS | [narration.md](narration.md) |
+| 連讀 | 念完一章自動接當天下一段，最後一段念完就停 | 更多閱讀工具 (⋯) | Android、iOS | [narration.md](narration.md) |
 | 背景與鎖定畫面播放 | 離開讀經頁、關螢幕都繼續念，鎖定畫面可以控制 | 播放後自動 | Android、iOS | [narration.md](narration.md) |
 | 朗讀跟著走 | 畫面跟著念到的經節走並反白；手指滑開就停，按「回到朗讀處」再跟上 | 朗讀時的讀經頁 | Android、iOS | [narration.md](narration.md) |
-| 日記頁的朗讀控制 | 在日記頁控制同一段朗讀 | 日記頁播放鍵 | Android、iOS | [narration.md](narration.md) |
+| 日記頁的朗讀控制 | 在日記頁控制同一段朗讀 (日記分頁 2026-10-14 起不在分頁列) | 日記頁播放鍵 | Android、iOS | [narration.md](narration.md) |
+| 靈修朗讀 | 手機內建語音念靈修文，念到的段落反白；念完接著播詩歌 (螢幕亮著才播) | 靈修分頁 ▶、金色鈕 | Android、iOS | [reader.md](reader.md) |
 
 ## 積分
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| 積分月曆 | 點任一天看經文與狀態，未來/過期也能看；期限內可以補打卡 | 積分「自己」最上方 | Android、iOS | [reading-plan.md](reading-plan.md) |
-| 範圍切換 | 自己、好友、全體（管理）三個分頁 | 積分頁頂部 | Android、iOS | [points.md](points.md) |
-| 自己的積分 | 總積分、梯隊、目標獎品進度、累積走勢或讀經日曆 | 積分「自己」 | Android、iOS | [points.md](points.md) |
+| 青少一起讀經 | 每天讀經人數的月曆 (2 人以上才顯示)，今天、昨天各幾人 | 積分「自己」最上方「團體」 | Android、iOS | [points.md](points.md) |
+| 團體獎 | 一個月 15 天讀經的人數夠了就累積一個月：懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月；「下一個獎品，由你決定」接提名 | 積分「團體」 | Android、iOS | [points.md](points.md) |
+| 完成今日靈修/讀經 | 月曆下兩顆鈕：左金色靈修、右綠色讀經；完成後變白底打勾 | 積分「個人」月曆下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 積分月曆 | 點任一天看經文與狀態，未來/過期也能看；期限內可以補打卡；讀了靈修的日子標金色「靈修」 | 積分「自己」的「個人」 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 範圍切換 | 自己、好友兩個分頁；管理者從帳戶頁進來才多一個「全體 (管理)」 | 積分頁頂部 | Android、iOS | [points.md](points.md) |
+| 自己的積分 | 總積分、梯隊、目標獎品進度、「總積分/每月」圖 (金色虛線是靈修) | 積分「自己」的「個人」 | Android、iOS | [points.md](points.md) |
 | 目標獎品 | 選一個想換的獎品，看還差幾分 | 積分「自己」 | Android、iOS | [points.md](points.md) |
 | 好友 | 加好友後互相看積分（看不到對方的餘額和目標） | 積分「好友」 | Android、iOS | [points.md](points.md) |
 | 好友 QR | 出示或掃描 QR 馬上互加好友 | 積分頁選單 | Android、iOS | [points.md](points.md) |
 | 好友通知 | 有人加你好友時收到通知 | 系統通知 | Android、iOS | [points.md](points.md) |
 | 提名獎品投票 | 開放期間提獎品構想、最多投 3 票，管理者核准後變成獎品 | 積分頁提名提示條、選單 | Android、iOS | [points.md](points.md) |
 | AI 估價與說明建議 | 自動把提名換算成大約分數，說明不清楚時給改寫建議 | 提名板 | Android、iOS | [points.md](points.md) |
-| 一起走過 | 6 人以上才顯示的團契共讀進度，沒有排名 | 積分「自己」下方 | Android、iOS | [points.md](points.md) |
-| 全體排名（管理） | 管理者解鎖後看全體積分 | 積分「全體（管理）」 | Android、iOS | [points.md](points.md) |
+| 全體排名 (管理) | 管理者從帳戶頁最下面進來，解鎖後看全體積分 | 帳戶頁「全體 (管理) ›」 | Android、iOS | [points.md](points.md) |
 | 現場兌換（管理） | 管理者當面幫學生兌換獎品、查看或撤銷紀錄 | 積分頁選單（管理） | Android、iOS | [points.md](points.md) |
 
 ## 日記
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| 靈修日記 | 每天一篇，**只存在自己的手機，不上傳伺服器**（隱私決定）；在讀經頁複製的經文可以一鍵插入 | 分頁列「日記」 | Android、iOS | [journal.md](journal.md) |
+| 靈修日記 | 每天一篇，**只存在自己的手機，不上傳伺服器**（隱私決定）；在讀經頁複製的經文可以一鍵插入 | 目前沒有入口 (2026-10-14 起分頁列不顯示；手機裡的日記都保留) | Android、iOS | [journal.md](journal.md) |
 | 歷史記錄 | 列出寫過的日子，點一天回去編輯 | 日記頁 | Android、iOS | [journal.md](journal.md) |
 | 匯出全部 | 把全部日記整理成一份 Markdown，用系統分享存起來或傳出去 | 日記頁「匯出全部」 | Android、iOS | [journal.md](journal.md) |
 | 同時存到我選的資料夾 | 每次存檔另外寫一份 Markdown 到自選資料夾 | 日記頁 | 只有 Android | [journal.md](journal.md) |

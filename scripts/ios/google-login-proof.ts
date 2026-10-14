@@ -6,7 +6,7 @@ import { redactEvidence } from './sanitize-evidence';
 import { googleLoginFixture as input } from './google-login-fixture';
 
 // Manual wiring proof uses synthetic clients with the production config composition and a new simulator.
-// Nothing enters a Google account, chooses an account, accepts consent, or clicks Continue.
+// Only the supervisor-approved native iOS Continue is clicked once. The Google page receives no input or clicks.
 const out = 'ci-google'; mkdirSync(out, { recursive: true });
 const receipt: Record<string, unknown> = { verdict: 'FAIL', sourceCommit: process.env.GITHUB_SHA, observedAt: new Date().toISOString() };
 const secrets: string[] = [];
@@ -85,7 +85,7 @@ try {
   receipt.screenshotPrivacy = 'new isolated simulator; live hierarchy checked for email before capture';
   receipt.observedGoogleDomain = /accounts\.google\.com/.test(hierarchy);
   receipt.observedGoogleClientError = /invalid_client|OAuth client was not found|Access blocked|Authorization Error|Error 40[01]|無效的用戶端|授權錯誤/i.test(hierarchy);
-  if (!/Email or phone|電子郵件或電話/.test(hierarchy) && !(receipt.observedGoogleDomain && receipt.observedGoogleClientError)) throw Error('Google account/client-error page not reached; no Continue or consent was clicked');
+  if (!/Email or phone|電子郵件或電話/.test(hierarchy) && !(receipt.observedGoogleDomain && receipt.observedGoogleClientError)) throw Error('Google account/client-error page not reached after the approved native iOS authorization');
   receipt.verdict = 'PASS';
 } catch (error) { receipt.reason = error instanceof Error ? error.message : 'Proof failed'; process.exitCode = 1; }
 finally {

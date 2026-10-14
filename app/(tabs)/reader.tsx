@@ -29,6 +29,7 @@ import type { CompletionAwardEvent } from '../../src/services/completionControll
 import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
 import { useReaderRetrySignal } from '../../src/ui/readerRetrySignal';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
+import { useReaderDevotion } from '../../src/ui/devotion/useReaderDevotion';
 
 let handledTodayReaderTabPressRevision = 0;
 
@@ -205,6 +206,12 @@ export default function ReaderScreen() {
     onAward: (event) => setAwardEvent(event),
   });
   const record = completion.record;
+  const readerDevotion = useReaderDevotion({
+    session: auth.status === 'signed-in' && session ? session : null,
+    baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl,
+    date: selectedDate,
+    showTools: chrome.showTools,
+  });
   const syncError = completion.syncError;
   useEffect(() => {
     if (!ownsReader()) return;
@@ -364,6 +371,7 @@ export default function ReaderScreen() {
       // copied with it closed. The panel offers it on the next open rather than inserting it.
       onVerseCopied={setPendingJournalQuote}
       narrationSpeed={narrationSpeed}
+      onLastChapterNarrated={readerDevotion.onLastChapterNarrated}
       renderScreen={(reader, controls) => (
         <FullscreenReaderLayout
           reader={reader}
@@ -379,7 +387,8 @@ export default function ReaderScreen() {
           chapterUsfm={currentUsfm}
           versionId={selectedVersionId}
           references={references}
-          onSelectReference={selectAssigned}
+          onSelectReference={(index) => { readerDevotion.leave(); selectAssigned(index); }}
+          devotion={readerDevotion.devotion}
           selectedDate={selectedDate}
           previousDate={previousDate}
           nextDate={nextDate}

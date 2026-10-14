@@ -7,7 +7,10 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "積分"
     timeout: 90000
-- tapOn: "靈修日記"
+# Main 0.5.27 removed the public tab (docs/features/journal.md). Keep testing the
+# retained route via the app's declared public URL scheme, without restoring a tab.
+- assertNotVisible: "靈修日記"
+- openLink: "org.qingmu.youth:///journal"
 # The editor is found by position: by label it collides with the 靈修日記 tab, and iOS exposes no placeholder.
 # (If this misses, the failure leaves the screen's labels in 41-journal-screen.txt.)
 - extendedWaitUntil:
