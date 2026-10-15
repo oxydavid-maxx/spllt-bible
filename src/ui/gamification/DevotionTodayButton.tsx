@@ -1,7 +1,7 @@
 import { DayActionButton } from '../DayActionButton';
 
 /**
- * The gold button beside 完成今日讀經 (維護者 2026-10-14): the member also read the pastor's 靈修
+ * The green leaf button beside 完成今日讀經 (維護者 2026-10-14): the member also read the pastor's 靈修
  * that day. It earns nothing and is not in the group's numbers, so the button never mentions points.
  * The same 7-day window as reading completions applies; the server enforces it too.
  */
@@ -26,5 +26,5 @@ export function buildDevotionButtonModel(input: Omit<DevotionTodayButtonProps, '
 
 export function DevotionTodayButton(props: DevotionTodayButtonProps) {
   const model = buildDevotionButtonModel(props);
-  return <DayActionButton tone="gold" label={model.label} completed={props.completed} disabled={model.disabled} busy={props.pending} onPress={() => props.onToggle(!props.completed)} />;
+  return <DayActionButton kind="devotion" label={model.label} completed={props.completed} disabled={model.disabled} busy={props.pending} onPress={() => props.onToggle(!props.completed)} />;
 }

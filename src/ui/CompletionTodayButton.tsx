@@ -44,5 +44,5 @@ export function CompletionTodayButton(props: CompletionTodayButtonProps) {
     if (model.retry || !model.completed) props.onComplete();
     else props.onUndo();
   };
-  return <DayActionButton tone="green" label={model.label} completed={model.completed} disabled={model.disabled} busy={props.pending} onPress={press} />;
+  return <DayActionButton kind="reading" label={model.label} completed={model.completed} disabled={model.disabled} busy={props.pending} onPress={press} />;
 }

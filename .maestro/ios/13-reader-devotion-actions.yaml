@@ -1,0 +1,47 @@
+# Public reader/progress UI on the CI fixture member. No clearState, no login, no production API.
+# Labels already observed by existing native reader flows; new controls are covered by component tests.
+appId: org.qingmu.youth
+---
+- launchApp
+# The tab bar reaches the accessibility tree only after start-up (2026-10-14 run: drawn on screen,
+# 讀經入口 still missing for 20 s); wait for it the way 12-reader-verse does.
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- tapOn: "讀經入口"
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 30000
+- assertVisible: "完成今日靈修"
+- assertNotVisible: "跟傳道一起讀"
+- tapOn: "完成今日靈修"
+- extendedWaitUntil:
+    visible: "今日靈修已完成"
+    timeout: 15000
+- takeScreenshot: 13-reader-completed-leaf
+- tapOn: "今日靈修已完成"
+- extendedWaitUntil:
+    visible: "完成今日靈修"
+    timeout: 15000
+- tapOn: "更多閱讀工具"
+- assertVisible: "接續讀經"
+- assertVisible: "接續靈修"
+- assertNotVisible: "連讀是什麼？"
+- takeScreenshot: 13-reader-menu
+- tapOn: "接續讀經是什麼"
+- assertVisible: "按 ▶ 會從這一章接著念今天剩下的章節，最後一章念完就停，不是加快語速"
+- tapOn: "知道了"
+- tapOn: "接續靈修是什麼"
+- assertVisible: "接續靈修是什麼？"
+- tapOn: "知道了"
+- tapOn: "關閉"
+- tapOn: "積分"
+- extendedWaitUntil:
+    visible: "開啟積分操作"
+    timeout: 15000
+- scrollUntilVisible:
+    element: "完成今日靈修"
+    direction: DOWN
+    timeout: 30000
+- takeScreenshot: 13-progress-actions
+- tapOn: "讀經入口"

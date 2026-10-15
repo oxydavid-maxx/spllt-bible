@@ -130,7 +130,7 @@ describe('the 積分 chart: 總積分 and 每月, with 靈修 as a gold dashed l
   });
 });
 
-describe('the gold 靈修 button beside 完成今日讀經', () => {
+describe('the green 靈修 button beside 完成今日讀經', () => {
   it('speaks about today or the picked day, and is still inside the completion window only', () => {
     expect(buildDevotionButtonModel({ date: '2026-10-14', today: '2026-10-14', completed: false, pending: false, canMark: true })).toEqual({ label: '完成今日靈修', disabled: false });
     expect(buildDevotionButtonModel({ date: '2026-10-14', today: '2026-10-14', completed: true, pending: false, canMark: true }).label).toBe('今日靈修已完成');
@@ -140,8 +140,8 @@ describe('the gold 靈修 button beside 完成今日讀經', () => {
     const tree = render(React.createElement(DevotionTodayButton, { date: '2026-10-14', today: '2026-10-14', completed: true, pending: false, canMark: true, onToggle }));
     act(() => tree.root.find((node) => (node.type as unknown) === 'Pressable').props.onPress());
     expect(onToggle).toHaveBeenCalledWith(false);
-    // Done: white with a filled gold tick, like the reader's gold corner button.
-    expect(tree.root.findAll((node) => (node.type as unknown) === 'Path')).toHaveLength(1);
+    // Mock G/J: the completed leaf grows a second leaf.
+    expect(tree.root.findAll((node) => (node.type as unknown) === 'Path')).toHaveLength(4);
   });
 });
 

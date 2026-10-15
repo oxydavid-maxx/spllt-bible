@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { AppState } from 'react-native';
 import * as Speech from 'expo-speech';
 import * as SecureStore from 'expo-secure-store';
 import { createDevotionClient, type DevotionalPost } from '../../services/devotionClient';
@@ -34,9 +35,14 @@ export interface ReaderDevotionBinding {
   leave: () => void;
 }
 
-export function useReaderDevotion({ session, baseUrl, date, showTools }: { session: { memberId: string; sessionToken: string } | null; baseUrl: string; date: string; showTools: () => void }): ReaderDevotionBinding {
+export function useReaderDevotion({ session, baseUrl, date, showTools, textSettings }: {
+  session: { memberId: string; sessionToken: string } | null; baseUrl: string; date: string; showTools: () => void;
+  /** The member's 調整字體 settings for scripture (null: the SDK defaults); the 靈修 words follow them. */
+  textSettings?: { fontSize: number; lineSpacing: number } | null;
+}): ReaderDevotionBinding {
   const memberId = session?.memberId ?? null;
   const client = useMemo(() => session ? createDevotionClient({ baseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [baseUrl, session?.memberId, session?.sessionToken]);
+  const [atEnd, setAtEnd] = useState(false);
   const [selected, setSelected] = useState(false);
   const [post, setPost] = useState<{ date: string; state: DevotionalState } | null>(null);
   const [marked, setMarked] = useState<{ date: string; done: boolean } | null>(null);
@@ -44,6 +50,17 @@ export function useReaderDevotion({ session, baseUrl, date, showTools }: { sessi
   const [songRequest, setSongRequest] = useState(0);
   const speakWhenReady = useRef(false);
   const follow = useSyncExternalStore(preferences.subscribe, () => preferences.getSnapshot(memberId), () => preferences.getSnapshot(memberId));
+  const [clockRevision, refreshClock] = useState(0);
+  useEffect(() => {
+    if (!follow.ready || follow.touched || !follow.firstOfferedOn) return;
+    const expires = Date.parse(`${follow.firstOfferedOn}T00:00:00+08:00`) + 7 * 86400000;
+    const delay = expires - Date.now();
+    if (delay <= 0) return;
+    // One deadline, no polling: a visible offer also disappears at the seventh Taipei midnight.
+    const timer = setTimeout(() => refreshClock(value => value + 1), delay);
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active') refreshClock(value => value + 1); });
+    return () => { clearTimeout(timer); subscription.remove(); };
+  }, [memberId, follow.ready, follow.touched, follow.firstOfferedOn, clockRevision]);
   const followRef = useRef(follow.enabled);
   followRef.current = follow.enabled;
   const [speech] = useState(() => createDevotionSpeech(engine, () => { if (followRef.current) setSongRequest((value) => value + 1); }));
@@ -51,7 +68,7 @@ export function useReaderDevotion({ session, baseUrl, date, showTools }: { sessi
 
   useEffect(() => { void preferences.load(memberId); }, [memberId]);
   // A new day, or another member: back to the chapter, nothing read aloud from the old one.
-  useEffect(() => { setSelected(false); speakWhenReady.current = false; speech.stop(); }, [date, memberId, speech]);
+  useEffect(() => { setSelected(false); setAtEnd(false); speakWhenReady.current = false; speech.stop(); }, [date, memberId, speech]);
   useEffect(() => () => speech.stop(), [speech]);
   useEffect(() => {
     if (!client) { setMarked(null); return; }
@@ -103,6 +120,9 @@ export function useReaderDevotion({ session, baseUrl, date, showTools }: { sessi
   };
   const devotion: ReaderDevotion | undefined = client ? {
     selected,
+    atEnd,
+    followOfferEligible: preferences.canOffer(memberId, today),
+    onFollowOfferShown: () => preferences.recordOfferShown(memberId, today),
     onSelect: () => open(false),
     renderView: (insets) => <DevotionalView
       state={current ?? { kind: 'loading' }}
@@ -111,11 +131,15 @@ export function useReaderDevotion({ session, baseUrl, date, showTools }: { sessi
       songRequest={songRequest}
       songFollows={follow.enabled}
       insets={insets}
+      onEndChange={setAtEnd}
+      fontSize={textSettings?.fontSize}
+      lineSpacing={textSettings?.lineSpacing}
+      speaking={speaking}
     />,
     completed: done,
     disabled: markPending || date > today || !isWithinCompletionWindow(date, today),
     onToggle: toggle,
-    onFollow: () => { preferences.firstFollow(memberId); open(true); },
+    onFollow: () => { if (preferences.firstFollow(memberId, taipeiDate())) open(false); },
     speaking,
     onPlayPause: () => {
       if (speaking) { speech.pause(); return; }

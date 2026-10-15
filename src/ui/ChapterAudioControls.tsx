@@ -108,10 +108,11 @@ export function ChapterAudioAutoplayToggle({ active = true }: { active?: boolean
   const autoplay = useChapterAudioAutoplay();
   if (!active || !autoplay.available) return null;
   return <SettingSwitchRow
-    label="連讀"
-    description="按播放會依序朗讀今天剩下的章節"
+    label="接續讀經"
+    description="按 ▶ 接著念今天剩下的章節"
+    help="按 ▶ 會從這一章接著念今天剩下的章節，最後一章念完就停，不是加快語速"
     enabled={autoplay.enabled}
-    hint={autoplay.enabled ? '目前開啟，點一下關閉連讀' : '目前關閉，點一下開啟連讀；按播放才開始朗讀'}
+    hint={autoplay.enabled ? '目前開啟，點一下關閉接續讀經' : '目前關閉，點一下開啟接續讀經；按播放才開始朗讀'}
     onPress={autoplay.toggle}
   />;
 }
@@ -294,7 +295,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
   useEffect(() => {
     try {
       player.shouldCorrectPitch = true;
-      player.playbackRate = requestedSpeed;
+      player.setPlaybackRate(requestedSpeed);
     } catch { /* a player that has not prepared yet picks the rate up on the next binding */ }
   }, [player, requestedSpeed, resolved.source?.uri]);
   const playbackRef = useRef<ChapterBoundPlayback | null>(null);
