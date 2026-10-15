@@ -5,6 +5,7 @@ import { calculateNetPoints, type PointEvent, type PointPolicy } from '../src/do
 import type { ContentGateStatus } from '../src/domain/types';
 import { authenticate, authenticateGoogle, authenticateSessionOrGoogle, type ProductionGoogleAuth } from './authBoundary';
 import { claimMemberInvite } from './membership';
+import { isTestLabAddress } from './testLabNetwork';
 import { createSessionToken } from './session';
 import { parseCapabilityQuery } from './contentCapabilities';
 import { createChapterAudioResolver, prewarmChapterAudio } from './genericChapterAudio';
@@ -408,7 +409,11 @@ export function createApiHandler(options: ApiHandlerOptions) {
           const existing = options.db.db.prepare('SELECT member_id FROM identity_bindings WHERE provider = ? AND subject = ?').get(identity.provider, identity.subject) as { member_id: string } | undefined;
           if (existing) memberId = existing.member_id;
           else {
-            options.db.db.prepare('INSERT INTO members(id, display_name, group_id) VALUES(?,?,?)').run(memberId, identity.displayName?.trim() || '竹科聖經會員', `unassigned:${memberId}`);
+            // A Play pre-launch test device is created already turned off, so it never reads, votes or ranks
+            // (server/testLabNetwork.ts). Only new identities: an existing member is never turned off here.
+            const testDevice = isTestLabAddress(request.headers['cf-connecting-ip']);
+            options.db.db.prepare('INSERT INTO members(id, display_name, group_id, disabled_at) VALUES(?,?,?,?)').run(memberId, identity.displayName?.trim() || '竹科聖經會員', `unassigned:${memberId}`, testDevice ? Date.now() : null);
+            console.log(`AUTO_PROVISION_MEMBER testDevice=${testDevice} clientAddress=${request.headers['cf-connecting-ip'] ? 'present' : 'missing'}`);
             options.db.db.prepare('INSERT INTO identity_bindings(provider, subject, member_id, created_at) VALUES(?,?,?,?)').run(identity.provider, identity.subject, memberId, Date.now());
           }
           options.db.db.exec('COMMIT');

@@ -34,6 +34,7 @@
 - 拿到 ID token 後呼叫 `POST /api/session/google`（帶 `persistentDevice: true`，即 `session_type: 'device'`）。目前正式環境的組態（`googleAudience` 已設定且沒有 `fixtureToken`）會把 `autoProvisionGoogleMembers` 設成 `true`（`server/http.ts`），所以**新的 Google 身份第一次登入就會自動建立會員**，不會走到下面的啟用碼畫面——這與 `SignInScreen.tsx` 上寫的「第一次登入會自動建立帳號」一致。
 - 伺服器仍可能回 `UNKNOWN_MEMBER`（例如自動建立帳號被關掉的組態）：這時畫面切到「這個Google身份尚未完成帳戶啟用，請輸入同工提供的一次性啟用碼。」，輸入框送到 `POST /api/onboarding/claim`（`server/membership.ts` 的 `claimMemberInvite`）。啟用碼綁定規則：碼不存在或雜湊比不到 → 拒絕；碼已用過 → 拒絕；已過期 → 拒絕；碼對應的會員資料跟現有紀錄衝突 → 拒絕；同一個 Google 身份重複送同一支已綁定的碼 → 視為成功（`alreadyBound: true`），不會重複建立會員或報錯。
 - 帳號被停用（`disabled_at` 有值）時，無論走哪條路徑都回 403 `ACCOUNT_DISABLED`；client 端目前把它與其他失敗一起顯示成「伺服器沒有確認身份，請稍後再試。」（沒有專屬文案）。
+- Google Play 測試機器人：每次上傳新版到 Play，正式發布前測試報告會在 Firebase Test Lab 的裝置上自己用 Google 登入。新的 Google 身份第一次登入時，如果連線來自 Google 公布的 Test Lab 位址（Cloudflare 的 `cf-connecting-ip`，`server/testLabNetwork.ts`），會員一建立就是停用的，所以不會出現在讀經人數、排行、投票和好友裡。已經存在的會員從這些位址登入也不會被停用。每建立一個新會員，後端 log 記一行 `AUTO_PROVISION_MEMBER testDevice=<true|false>`（不記名字和位址）。
 
 ### 登入狀態的保存、過期與跨帳號切換（`src/services/authSession.ts`）
 
@@ -81,6 +82,7 @@
 - **不收集 Email、密碼，只存 Google 帳號給的識別碼**；也不收集位置、通訊錄、相片影片、廣告識別碼，沒有廣告或使用行為分析工具。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)）
 
 - **Google 登入第一次找不到對應帳號時會自動建立會員**，不用先請維護者手動開帳號；但「誰是管理者」不會因為誰先登入就自動取得——管理者身分是維護者在私有部署設定裡另外指定的，不會進公開原始碼。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §3.4）
+- **Play 測試機器人自動停用，不用人審新會員**（維護者 2026-10-15）：2026-10-13～14 兩次上傳 Play 後，十幾個測試機器人登入、讀經、投票，讀經人數和排行被灌，當時由維護者手動停用。「新會員要等管理者確認才算數」被否決：太慢，而且問題是上傳 Play 造成的，不該變成管理者的工作。改用 Play 說明頁指向的辦法，比對 Firebase Test Lab 公布的裝置 IP 位址（Google 大約一年更新一次清單；Test Lab 預定 2027-09-30 停止服務，換平台時要重查）。機器人登入後只看到登入失敗，正式發布前測試報告的範圍因此只到登入畫面，這是刻意的：機器人能進 App 就會投票、加好友，影響真的會員。
 - **Play 裝的 App 用 Play 的 App 內更新**（維護者 2026-10-13，取代原本「只用版本檔、不用原生模組」的做法，理由寫在 `updateCheck.ts` 開頭）：Play 自己的自動更新什麼時候跑不一定，維護者的手機放了好幾個小時都沒更新。畫面維持原本的全螢幕提示、公告卡片、讀經一行提示，只換「去哪裡問」和「按更新做什麼」。當初不用原生模組的理由是「這個專案不重新產生 android/」，現在 Expo 模組在 Gradle 建置時自動連結（`android/settings.gradle` 的 `useExpoModules()`），不用手改 android/。
 - **App 版本號放在帳戶頁最下面**（維護者 2026-10-13）：測試者要能說出 Google Play 裝的是哪一版，一般 App 也是點頭像進去的帳戶或設定頁看得到版本。括號放 versionCode，因為 Play 用它分辨版本。
 - **申請刪除帳號與資料，兩個平台顯示同一份文案**，走「App 內連結＋寄信」兩條路，不是只給 Android 看的說法，也沒有另外做一個線上申請系統。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)「刪除帳號與資料」）
@@ -110,6 +112,7 @@
 - `tests/ui/signInScreen.test.ts` — 第一個登入畫面文案與唯一的登入動作。
 - `tests/ui/googleLoginWelcome.test.ts` — 歡迎版登入按鈕的樣式與一般卡片版本一致。
 - `tests/server/onboarding.test.ts` — 未知 Google 身份先被拒絕、再用有效期限內的啟用碼完成綁定、過期或用過的碼被拒絕。
+- `tests/server/googleAutoProvision.test.ts`、`tests/server/testLabNetwork.test.ts` — 從 Test Lab 位址第一次登入的新會員一建立就停用，一般網路的新會員照常；既有會員不會被停用；位址比對涵蓋 IPv4、IPv6 和格式錯誤。
 - `tests/services/authSession.test.ts`、`tests/services/authSessionHydration.test.ts`、`tests/services/authSessionRace.test.ts` — 登入狀態的邊界（session 綁定、還原流程、多個非同步動作同時發生時不互相踩）。
 - `tests/mobileSessionServer.test.ts` — 裝置 session 的建立、撤銷、與舊式登入相容。
 - `tests/server/session.test.ts`、`tests/server/authBoundary.test.ts` — 簽名 session token 的產生/驗證、正式 Google 驗證與開發測試 token 兩種認證模式的邊界。
