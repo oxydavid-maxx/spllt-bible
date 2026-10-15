@@ -26,6 +26,7 @@ import sqlite3
 import subprocess
 import time
 from reminder_config import read_reminder_environment
+from line_config import read_line_environment
 from ai_runtime import read_ai_environment, read_committed_boundary_bytes
 from pinned_worktree import preflight_against_declared_pin
 
@@ -102,6 +103,9 @@ def launch(label):
     # Existing production data must never be overwritten by bootstrap seeds on restart.
     reminder_env, reminder_status = read_reminder_environment(PILOT / 'reminder-runtime-config.json')
     env.update(reminder_env)
+    # The church LINE group's 靈修 webhook (server/lineWebhook.ts); off unless configured.
+    line_env, line_status = read_line_environment(PILOT / 'line-runtime-config.json')
+    env.update(line_env)
     forbidden = ['QINGMU_INVITE_SEED_FILE', 'QINGMU_GROUP_PROFILE_FILE', 'QINGMU_FIXTURE_ROSTER', 'QINGMU_DEV_TOKEN', 'EXPO_PUBLIC_QINGMU_DEV_TOKEN']
     assert not any(k in env for k in forbidden)
     node = Path(r'C:/Program Files/nodejs/node.exe')
@@ -117,7 +121,7 @@ def launch(label):
     return {'pid': child.pid, 'exit_code_at_probe': child.poll(), 'config_sha256': CFG_SHA,
             'commit': commit, 'node_sha256': digest(node), 'cwd': str(LIVE), 'env_names': sorted(env),
             'bootstrap_seeds_absent': True, 'fixture_off': True, 'stdout': str(stdout_path), 'stderr': str(stderr_path),
-            'secrets_printed': False, 'reminder_config_status': reminder_status, 'ai_status': ai_status,
+            'secrets_printed': False, 'reminder_config_status': reminder_status, 'line_config_status': line_status, 'ai_status': ai_status,
             # The committed blob hash, not the working-tree file's raw bytes: this is
             # exactly the value read_ai_environment() checked the pin against, and the
             # value a private-config update should ever be pinned to. Reporting the

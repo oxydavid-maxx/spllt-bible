@@ -18,12 +18,28 @@ import type { ApnsAlertSender } from './apnsSender';
 import type { MeetingSender } from './remoteReminders';
 import { createOfficialBibleAdapter } from './officialBibleAdapter';
 import { devotionalPlayerResponse } from './devotional';
+import { createLineWebhook, LINE_WEBHOOK_BODY_LIMIT, LINE_WEBHOOK_PATH, readLineChannelSecret } from './lineWebhook';
 import { deriveFormRegistrationKey } from './eventRegistrations';
 
 async function readBody(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   return Buffer.concat(chunks).toString('utf8');
+}
+
+/** The exact bytes, for routes that check a signature over them; null once past the limit. */
+function readRawBody(request: IncomingMessage, limit: number): Promise<Buffer | null> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    request.on('data', (chunk: Buffer) => {
+      if (size > limit) return;
+      size += chunk.length;
+      if (size > limit) { chunks.length = 0; resolve(null); } else chunks.push(chunk);
+    });
+    request.on('end', () => { if (size <= limit) resolve(Buffer.concat(chunks)); });
+    request.on('error', reject);
+  });
 }
 
 export function createHttpServer(options: { fixtureToken?: string; database?: ServerDatabase; reminderDelivery?: { enabled: boolean; send: MeetingSender }; pushData?: PushDataSender; pushIos?: ApnsAlertSender; reminderWorker?: { autostart?: boolean; now?: () => Date; intervalMs?: number; timer?: ReminderWorkerTimer } } = {}) {
@@ -156,6 +172,10 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
       : { fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token', ...(process.env.QINGMU_FIXTURE_DEFAULT_MEMBER?.trim() ? { fixtureDefaultMemberId: process.env.QINGMU_FIXTURE_DEFAULT_MEMBER.trim() } : {}) }),
   });
   const officialBible = createOfficialBibleAdapter();
+  const lineChannelSecret = readLineChannelSecret(process.env.QINGMU_LINE_SECRET_FILE);
+  const lineWebhook = lineChannelSecret && process.env.QINGMU_DEVOTIONAL_DIR?.trim()
+    ? createLineWebhook({ channelSecret: lineChannelSecret, devotionalDir: process.env.QINGMU_DEVOTIONAL_DIR.trim() })
+    : null;
   const server = createServer(async (request, response) => {
     // Public, identity-checked Bible content is separate from private member APIs.
     const official = await officialBible({ method: request.method ?? 'GET', url: request.url ?? '/',
@@ -174,6 +194,20 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
       response.setHeader('content-type', player.contentType);
       response.setHeader('cache-control', 'public, max-age=86400');
       response.end(player.body);
+      return;
+    }
+    // LINE's delivery of the church group's messages; only the 靈修 is kept (server/lineWebhook.ts).
+    if (request.method === 'POST' && (request.url ?? '').split('?')[0] === LINE_WEBHOOK_PATH) {
+      const raw = lineWebhook ? await readRawBody(request, LINE_WEBHOOK_BODY_LIMIT) : null;
+      const reply = !lineWebhook ? { status: 404, body: { error: 'NOT_FOUND' } }
+        : raw === null ? { status: 413, body: { error: 'BODY_TOO_LARGE' } }
+        : await lineWebhook({ rawBody: raw, signature: request.headers['x-line-signature'] as string | undefined });
+      response.statusCode = reply.status;
+      response.setHeader('content-type', 'application/json; charset=utf-8');
+      response.setHeader('cache-control', 'no-store');
+      // A body past the limit is left unread; close the connection rather than keep reading it.
+      if (raw === null && lineWebhook) response.setHeader('connection', 'close');
+      response.end(JSON.stringify(reply.body));
       return;
     }
     const result = await handle({

@@ -113,6 +113,7 @@
 
 - 章節籤最後多一個「靈修」籤。點它換成靈修畫面 (經文留在後面不卸載)；在靈修時章節籤都不反白，點任一章回到經文。換日期也回到經文、停止朗讀。
 - 靈修文由後端提供，要登入才拿得到 (`GET /api/devotional/<日期>`，檔案放在後端主機的 `QINGMU_DEVOTIONAL_DIR`，不在這個公開 repo)。只在打開靈修分頁時才抓。
+- 靈修文怎麼進來：傳道每天早上把靈修貼在教會的 LINE 群組，群組裡有一個只收不發的 LINE bot。LINE 把群組的新訊息轉到後端 `POST /api/line/webhook` (`server/lineWebhook.ts`)，後端先用 channel secret 驗 LINE 的簽章，再只留下「群組裡、文字、能被靈修格式讀懂」的那則，寫成當天的 `YYYYMMDD.txt`；同一天再貼一次更正版就換成新的。其他訊息不存、不記 log；bot 不回話也不發訊息。看起來像靈修卻讀不懂的貼文只記一行 `LINE_DEVOTIONAL_REJECTED`，不記內容。沒設定 channel secret 時這條路徑不存在 (404)。
 - 畫面：標題《…》、「傳道 · 2026.10.14 (三) 讀經：…」、三段 (背誦經文、默想經文、用經文禱告) 各有標題和段落；最下面詩歌卡 (深色 16:9、播放圈、歌名)。
 - 字的大小和行距跟經文用同一個「調整字體」設定 (每個帳號一份，見上面「字體與行距設定」)：段落字級和經文一樣、行高＝字級 × 行距；標題和段落名稱照同樣比例放大縮小；日期那一行固定大小。沒改過設定的人看到 SDK 出廠預設 (16、1.7)，跟以前一樣。
 - 這天還沒有上傳時顯示「這一天的靈修還沒有上傳」；抓不到時顯示錯誤和「重試」。
@@ -144,6 +145,7 @@
 
 - **詩歌不在背景或關螢幕時播**：YouTube 播放器只在螢幕亮著時播，切到背景就暫停；不做背景播放。(維護者 2026-10-14)
 - **靈修文不放在公開 repo**：由後端提供，要登入才拿得到。(維護者 2026-10-14)
+- **靈修文由 LINE bot 即時收，不定時去抓**：傳道大約 5:30–7:30 之間發，要一發就進 App；定時輪詢是最後的選項。用原本就有的 LINE 官方帳號 (維護者 2026-10-15)。只存靈修、不回話，是因為 bot 在群組裡看得到所有人的訊息。
 - **不建立另一套聖經 renderer**：官方 SDK 只透過既有 bridge 注入 CSS/JS 來改版面，不重寫或另外畫經文。（來源：[../superpowers/plans/2026-09-25-reader-layout-a-immersive.md](../superpowers/plans/2026-09-25-reader-layout-a-immersive.md) Global Constraints）
 - **不會預先載入整本聖經或所有譯本**：背景只抓當天實際用得到的章節，同一時間最多 2 筆並行請求。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §4.5）
 - **不用第三方 `@gorhom/bottom-sheet`（連帶 reanimated/worklets）**：改用 App 自己的輕量底部面板。原因有兩個：這一組套件在 RN 0.85 上多吃約 155 MB 原生記憶體，還讓畫面執行緒每格都在跑動畫迴圈；而且 iOS 上把可以按的元件包成一整顆背景時，裡面的選項對 VoiceOver 和自動化測試都看不到。（來源：[../design/lean-reader-sheets.md](../design/lean-reader-sheets.md)；[../../AGENTS.md](../../AGENTS.md) iOS 注意事項第 7 點）
@@ -183,6 +185,7 @@
 - `tests/ui/readerRetrySignal.test.ts` — 回前景/回讀經頁自動重試訊號。
 - `tests/ui/readerDailyFlow.test.ts` — DOM bridge 訊息（捲動方向、邊界）的編碼/解碼。
 - `tests/ui/readerCompactHeaderContract.test.ts` — 隱藏 SDK 原生標題、精簡頁首樣式的字串契約。
+- `tests/server/lineWebhook.test.ts`、`tests/integration/lineWebhookHttp.test.ts` — LINE 簽章不對就 401、只存群組裡格式對的靈修、其他訊息不存不記、重送不變、更正版取代、不發任何網路請求、沒設定時 404、過大的內容 413。
 - `tests/ui/youVersionReader.test.ts` — `YouVersionReader` 元件的整體行為（載入狀態、錯誤卡、疊層）。
 - `tests/ui/useReaderPreferences.test.ts`、`tests/services/readerPreferences.test.ts` — 譯本/字體偏好的讀寫、遷移、錯誤處理。
 - `tests/services/sdkReaderSettingsExtension.test.ts`、`tests/services/sdkReaderRecovery.test.ts`、`tests/services/sdkReaderApiHost.test.ts` — SDK patch 的字體設定擴充、重試通道、`apiHost` 轉發，直接對安裝的 SDK 套件檔案斷言。

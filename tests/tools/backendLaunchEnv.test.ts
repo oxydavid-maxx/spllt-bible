@@ -11,4 +11,9 @@ describe('the production backend launch environment', () => {
     expect(readFileSync('server/http.ts', 'utf8')).toContain('process.env.QINGMU_DEVOTIONAL_DIR');
     expect(launcher).toMatch(/'QINGMU_DEVOTIONAL_DIR': str\(PILOT \/ 'devotionals'\)/);
   });
+
+  it('hands the server the LINE channel secret file, so the 靈修 webhook is on', () => {
+    expect(readFileSync('server/http.ts', 'utf8')).toContain('process.env.QINGMU_LINE_SECRET_FILE');
+    expect(launcher).toMatch(/read_line_environment\(PILOT \/ 'line-runtime-config\.json'\)/);
+  });
 });
