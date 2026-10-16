@@ -2,8 +2,11 @@ import { ZH_TW_BOOK_ABBREVIATIONS, ZH_TW_BOOK_NAMES } from './scriptureReference
 
 const books = Object.fromEntries(Object.entries(ZH_TW_BOOK_NAMES).flatMap(([id, name]) => [[name, id], [ZH_TW_BOOK_ABBREVIATIONS[id], id]]));
 const names = Object.keys(books).sort((a, b) => b.length - a.length).join('|');
-const reference = `(?:(${names})\\s*)?(\\d{1,3})[:：](\\d{1,3})(?:[-–—](\\d{1,3}))?`;
+// Verses may list more after ASCII commas (「119:20,23-24」, 「113:5-7, 9」); a full-width comma is prose.
+const verseRange = '\\d{1,3}(?:[-–—]\\d{1,3})?';
+const reference = `(?:(${names})\\s*)?(\\d{1,3})[:：](${verseRange}(?:\\s*,\\s*${verseRange})*)`;
 const leading = new RegExp(`^\\s*${reference}\\s*`, 'u');
+const spokenVerses = (list: string) => list.split(/\s*,\s*/u).map(range => range.split(/[-–—]/u).map(chineseNumber).join('至')).join('、');
 
 /** Split only the leading citation; concatenating the two parts always restores the exact input. */
 export function splitDevotionReference(text: string): { reference: string; body: string } {
@@ -34,8 +37,8 @@ function reader() {
   const announced = new Set<string>();
   function prose(text: string): string {
     return clean(text)
-      .replace(new RegExp(reference, 'gu'), (_all, book: string | undefined, ch: string, verse: string, end?: string) =>
-        `${book ? ZH_TW_BOOK_NAMES[books[book]] : ''}${chineseNumber(ch)}${book && books[book] === 'PSA' ? '篇' : '章'}${chineseNumber(verse)}${end ? `至${chineseNumber(end)}` : ''}節`)
+      .replace(new RegExp(reference, 'gu'), (_all, book: string | undefined, ch: string, verses: string) =>
+        `${book ? ZH_TW_BOOK_NAMES[books[book]] : ''}${chineseNumber(ch)}${book && books[book] === 'PSA' ? '篇' : '章'}${spokenVerses(verses)}節`)
       .replace(new RegExp(`(${names})\\s*(\\d{1,3})(?![\\d:：])`, 'gu'), (_all, book: string, ch: string) => {
         const id = books[book]; announced.add(id); return chapter(id, ch);
       });

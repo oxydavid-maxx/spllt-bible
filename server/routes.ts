@@ -586,15 +586,21 @@ export function createApiHandler(options: ApiHandlerOptions) {
         const voice = url.searchParams.get('voice') ?? DEFAULT_DEVOTION_VOICE;
         if (!isDevotionalDate(date) || !/^\d+$/.test(audioMatch[2]) || !isDevotionVoice(voice)) return gamificationError({ status: 400, code: 'INVALID_DEVOTIONAL_AUDIO' });
         if (!options.devotionalAudio) return gamificationError({ status: 404, code: 'DEVOTIONAL_AUDIO_UNAVAILABLE' });
+        // How long the server took, so a paragraph that fell back to device speech can be placed on the
+        // server, the network or the phone (2026-10-16). Counts only: never the text.
+        const started = Date.now();
+        const served = (status: number, source: 'cache' | 'azure' | 'none') =>
+          console.log(`DEVOTIONAL_AUDIO_REQUEST date=${date} index=${audioMatch[2]} voice=${voice} status=${status} source=${source} ms=${Date.now() - started}`);
         // Audio never needs a song-title lookup or a request to YouTube.
         const post = await readDevotional(options.devotionalDir, date, async () => null);
         const index = Number(audioMatch[2]);
         const unit = post ? speechUnits(post)[index] : undefined;
-        if (!unit?.text) return gamificationError({ status: 404, code: 'DEVOTIONAL_AUDIO_NOT_FOUND' });
+        if (!unit?.text) { served(404, 'none'); return gamificationError({ status: 404, code: 'DEVOTIONAL_AUDIO_NOT_FOUND' }); }
         try {
-          const binaryBody = await options.devotionalAudio.synthesize(date, index, voice, unit.text);
+          const { bytes: binaryBody, source } = await options.devotionalAudio.synthesize(date, index, voice, unit.text);
+          served(200, source);
           return { status: 200, body: {}, binaryBody, headers: { 'content-type': 'audio/mpeg', 'cache-control': 'private, no-store' } };
-        } catch { return gamificationJson(502, { error: { code: 'DEVOTIONAL_AUDIO_UPSTREAM', retryable: true } }); }
+        } catch { served(502, 'none'); return gamificationJson(502, { error: { code: 'DEVOTIONAL_AUDIO_UPSTREAM', retryable: true } }); }
       }
       const devotionalMatch = url.pathname.match(/^\/api\/devotional\/([^/]+)$/);
       if (request.method === 'GET' && devotionalMatch) {

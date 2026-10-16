@@ -3,7 +3,7 @@ import * as Speech from 'expo-speech';
 import type { DevotionClientOptions } from './devotionClient';
 import type { SpeechEngine } from './devotionSpeech';
 import { createDevotionAudioEngine, type DevotionSegmentAudio } from './devotionAudioEngine';
-import { fetchDevotionAudio } from './devotionAudioClient';
+import { createPrefetchingDevotionAudio, fetchDevotionAudio } from './devotionAudioClient';
 import { createChapterBoundPlayback } from './expoAudioPlayback';
 
 // Expo's inherited SharedObject listener declaration is unresolved by this TS setup, as in ChapterAudioControls.
@@ -25,10 +25,13 @@ export function createNativeDevotionEngine(connection: () => DevotionClientOptio
       }).catch(() => { if (token === speechToken) callbacks.onError(); });
     },
   };
-  return createDevotionAudioEngine({ device, async loadAudio(request, signal): Promise<DevotionSegmentAudio> {
+  const fetchAudio = createPrefetchingDevotionAudio(async (request, signal) => {
     const options = connection();
     if (!options) throw new Error('DEVOTIONAL_AUDIO_NO_SESSION');
-    const bytes = await fetchDevotionAudio(options, request, signal);
+    return fetchDevotionAudio(options, request, signal);
+  });
+  return createDevotionAudioEngine({ device, async loadAudio(request, signal): Promise<DevotionSegmentAudio> {
+    const bytes = await fetchAudio(request, signal);
     // Lazy native modules: unavailable audio never needs a file/player, and no new dependency.
     const [{ File, Paths }, { createAudioPlayer }] = await Promise.all([import('expo-file-system'), import('expo-audio')]);
     if (signal.aborted) throw new Error('DEVOTIONAL_AUDIO_CANCELLED');
