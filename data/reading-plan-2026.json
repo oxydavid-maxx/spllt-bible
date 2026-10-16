@@ -447,22 +447,22 @@
     {
       "date": "2026-10-15",
       "source_rows": [
-        "詩119篇1-88節"
-      ],
-      "references": [
-        "PSA.119.1-88"
-      ],
-      "revision": 2
-    },
-    {
-      "date": "2026-10-16",
-      "source_rows": [
         "詩119篇89-176節"
       ],
       "references": [
         "PSA.119.89-176"
       ],
-      "revision": 2
+      "revision": 3
+    },
+    {
+      "date": "2026-10-16",
+      "source_rows": [
+        "詩119篇1-88節"
+      ],
+      "references": [
+        "PSA.119.1-88"
+      ],
+      "revision": 3
     },
     {
       "date": "2026-10-17",

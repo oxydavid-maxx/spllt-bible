@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DomWebView, type DomWebViewRef } from '@expo/dom-webview';
 import Svg, { Path } from 'react-native-svg';
+import { splitDevotionReference } from '../../domain/devotionReading';
 import type { DevotionalPost } from '../../services/devotionClient';
 import { READ_ALONG_HIGHLIGHT } from '../readAlongBridge';
 import { theme } from '../Theme';
@@ -141,7 +142,8 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
       {section.paragraphs.map((paragraph, paragraphIndex) => {
         unit += 1;
         const index = unit;
-        return <Text key={paragraphIndex} onLayout={(event) => { paragraphTops.current.set(index, { section: sectionIndex, y: event.nativeEvent.layout.y }); }} style={[styles.paragraph, index === activeIndex && styles.paragraphLit, text.paragraph]}>{paragraph}</Text>;
+        const parts = splitDevotionReference(paragraph);
+        return <Text key={paragraphIndex} onLayout={(event) => { paragraphTops.current.set(index, { section: sectionIndex, y: event.nativeEvent.layout.y }); }} style={[styles.paragraph, index === activeIndex && styles.paragraphLit, text.paragraph]}>{parts.reference ? <Text testID="devotion-reference" style={[styles.reference, { fontSize: fontSize * 0.65 }]}>{parts.reference}</Text> : null}{parts.body}</Text>;
       })}
     </View>)}
     {playerMounted ? <View style={styles.songCard}>
@@ -192,6 +194,8 @@ const styles = StyleSheet.create({
   section: { gap: 6 },
   heading: { color: theme.colors.primary, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
   paragraph: { color: theme.colors.ink, fontSize: 16, lineHeight: 27 },
+  // Installed YouVersion verse labels: .65em and --yv-muted-foreground (#636161 in light mode).
+  reference: { color: '#636161' },
   paragraphLit: { backgroundColor: `#${READ_ALONG_HIGHLIGHT}`, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8 },
   poster: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: theme.colors.ink, aspectRatio: 16 / 9, justifyContent: 'flex-end' },
   posterCaption: { paddingHorizontal: theme.spacing.md, paddingVertical: 10, gap: 2 },

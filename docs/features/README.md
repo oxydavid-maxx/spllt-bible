@@ -43,9 +43,9 @@
 | 載入失敗與重試 | 失敗時顯示說明和「重試」，回到前景自動再試 | 讀經頁載入經文時 | Android、iOS | [reader.md](reader.md) |
 | 在 YouVersion 開啟、版本資訊 | 用 YouVersion 開同一章；看譯本的出版和版權資訊 | 更多閱讀工具 | Android、iOS | [reader.md](reader.md) |
 | 完成打卡 | 讀完按圓圈打卡；讀到最後一段時圓圈展開成按鈕 | 讀經頁右下角 | Android、iOS | [reading-plan.md](reading-plan.md) |
-| 靈修分頁 | 章節籤最後一個「靈修」：傳道當天的靈修文和詩歌 | 讀經頁章節籤 | Android、iOS | [reader.md](reader.md) |
+| 靈修分頁 | 章節籤最後一個「靈修」：傳道當天的靈修文、段首小灰字出處和詩歌 | 讀經頁章節籤 | Android、iOS | [reader.md](reader.md) |
 | 接續靈修 | 預設關，選單或有期限的最後章底提示可開啟；經文念完接著念靈修，再播詩歌 | 更多閱讀工具、最後一章底 | Android、iOS | [reader.md](reader.md) |
-| 靈修打勾 | 按葉子圈完成靈修，滑到底展開大按鈕，月曆標「靈修」；不加積分，也不進團體統計 | 讀經/靈修頁葉子圈、積分月曆下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 靈修打勾 | 按葉子圈完成靈修，浮出不含分數的完成小字；滑到底展開大按鈕，月曆標「靈修」，不加積分或團體統計 | 讀經/靈修頁葉子圈、積分月曆下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 補登和撤銷 | 今天和前 6 天可以補打卡；撤銷要先確認並收回積分 | 讀經頁、積分月曆 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 離線打卡與跨手機 | 沒網路先記住、連上後送出；另一支手機完成的日子也顯示已完成 | 讀經頁、積分頁 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 整份讀經計畫清單 | 分月顯示 9/1–12/31，今天標底色、讀完打勾，點一天就去讀；上緣可下拉關閉 | 讀經頁點日期、積分月曆的「整份計畫」 | Android、iOS | [reading-plan.md](reading-plan.md) |
@@ -60,7 +60,7 @@
 | 背景與鎖定畫面播放 | 離開讀經頁、關螢幕都繼續念，鎖定畫面可以控制 | 播放後自動 | Android、iOS | [narration.md](narration.md) |
 | 朗讀跟著走 | 畫面跟著念到的經節走並反白；手指滑開就停，按「回到朗讀處」再跟上 | 朗讀時的讀經頁 | Android、iOS | [narration.md](narration.md) |
 | 日記頁的朗讀控制 | 在日記頁控制同一段朗讀 (日記分頁 2026-10-14 起不在分頁列) | 日記頁播放鍵 | Android、iOS | [narration.md](narration.md) |
-| 靈修朗讀 | 手機內建語音念靈修文，念到的段落反白；念完接著播詩歌 (螢幕亮著才播) | 靈修分頁 ▶ | Android、iOS | [reader.md](reader.md) |
+| 靈修朗讀 | Azure 男聲/女聲逐段朗讀、共用速度；單段失敗退回手機語音，念到的段落反白 | 靈修分頁 ▶ | Android、iOS | [reader.md](reader.md) |
 
 ## 積分
 

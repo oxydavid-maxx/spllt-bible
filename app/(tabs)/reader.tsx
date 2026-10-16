@@ -212,6 +212,7 @@ export default function ReaderScreen() {
     date: selectedDate,
     showTools: chrome.showTools,
     textSettings: preferences.preferences.settings,
+    narrationSpeed,
   });
   const syncError = completion.syncError;
   useEffect(() => {
@@ -344,6 +345,7 @@ export default function ReaderScreen() {
       book={currentBook || undefined}
       chapter={currentChapter || undefined}
       activeReferenceIndex={assignedIndex}
+      assignedReading={selection.source === 'ASSIGNED'}
       onActiveReferenceChange={selectAssigned}
       allowedVersionIds={allowedVersionIds}
       onBookChange={(book) => moveFreely({ book })}
@@ -405,8 +407,8 @@ export default function ReaderScreen() {
           noPlanMessage={!day ? `這一天沒有排定讀經。${formatReadingDateLabel(selectedDate)}仍可自由閱讀。` : undefined}
           statusMessage={syncError ? '同步遇到問題，完成狀態已保留；連線後會重試。' : completionPending ? '已記錄，等待同步。同步成功後才會顯示加分。' : undefined}
           completionFeedback={<CompletionAwardFeedback
-            event={awardEvent}
-            onFinished={(operationId) => setAwardEvent(current => current?.operationId === operationId ? null : current)}
+            event={readerDevotion.completionEvent ?? awardEvent}
+            onFinished={(operationId) => { readerDevotion.clearCompletionFeedback(operationId); setAwardEvent(current => current?.operationId === operationId ? null : current); }}
           />}
           canOpenYouVersion={youVersionChapterUrl !== null}
           onOpenYouVersion={openYouVersionChapter}

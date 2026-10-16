@@ -14,6 +14,7 @@ import { readReadAlongMessage, type ReadAlongPosition } from './readAlongBridge'
 import { BibleContentPreloadHost } from './BibleContentPreloadHost';
 import { ChapterAudioAutoplayContext, type ChapterAudioAutoplayContextValue } from './ChapterAudioControls';
 import { createReaderAutoplayController, type AutoplayChapter, type AutoplayIntent } from '../services/readerAutoplayController';
+import { parseAssignedVerseRange } from '../domain/partialChapter';
 import type { ResolutionStatus } from '../domain/chapterAudioContract';
 
 export interface ReaderOverlayControls {
@@ -33,7 +34,7 @@ function chapterForReference(reference: string): string | null {
   return match ? `${match[1]}.${match[2]}` : null;
 }
 
-export function YouVersionReader({ date, references, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasReveal, onCanvasScroll, onCanvasEdge, canvasInsets, onVerseSelectionChange, onSheetOpenChange, followNarration = false, followRequest = 0, reduceMotion = false, onNarrationChange, onFollowRelease, onFollowPosition, clearVerseSelectionSignal = 0, retrySignal = 0, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied, narrationSpeed = 1, onLastChapterNarrated }: { date: string; references: string[]; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasReveal?: (reason: ReaderRevealReason) => void; onCanvasScroll?: (event: { direction: 'up' | 'down'; deltaY: number }) => void; onCanvasEdge?: (event: { atEnd: boolean }) => void; canvasInsets?: ReaderCanvasInsets; onVerseSelectionChange?: (selected: boolean) => void; onSheetOpenChange?: (open: boolean) => void; followNarration?: boolean; followRequest?: number; reduceMotion?: boolean; onNarrationChange?: (verse: number | null) => void; onFollowRelease?: () => void; onFollowPosition?: (position: ReadAlongPosition) => void; clearVerseSelectionSignal?: number; retrySignal?: number; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void; narrationSpeed?: number; onLastChapterNarrated?: () => void }) {
+export function YouVersionReader({ date, references, assignedReading = true, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasReveal, onCanvasScroll, onCanvasEdge, canvasInsets, onVerseSelectionChange, onSheetOpenChange, followNarration = false, followRequest = 0, reduceMotion = false, onNarrationChange, onFollowRelease, onFollowPosition, clearVerseSelectionSignal = 0, retrySignal = 0, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied, narrationSpeed = 1, onLastChapterNarrated }: { date: string; references: string[]; assignedReading?: boolean; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasReveal?: (reason: ReaderRevealReason) => void; onCanvasScroll?: (event: { direction: 'up' | 'down'; deltaY: number }) => void; onCanvasEdge?: (event: { atEnd: boolean }) => void; canvasInsets?: ReaderCanvasInsets; onVerseSelectionChange?: (selected: boolean) => void; onSheetOpenChange?: (open: boolean) => void; followNarration?: boolean; followRequest?: number; reduceMotion?: boolean; onNarrationChange?: (verse: number | null) => void; onFollowRelease?: () => void; onFollowPosition?: (position: ReadAlongPosition) => void; clearVerseSelectionSignal?: number; retrySignal?: number; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void; narrationSpeed?: number; onLastChapterNarrated?: () => void }) {
   const [readerModule, setReaderModule] = useState<YouVersionReaderUiModule | null>(null);
   const preferencesBinding = useReaderPreferencesBinding(readerModule, readerPreferences);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +83,18 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
   // exactly as before.
   const [uncontrolledIndex, setUncontrolledIndex] = useState(0);
   const activeReferenceIndex = controlledIndex ?? uncontrolledIndex;
+  const displayedChapter = book !== undefined && chapter !== undefined ? normalizeChapter(`${book}.${chapter}`) : (chapterForReference(references[activeReferenceIndex] ?? '') ?? null);
+  const passageRange = useMemo(() => {
+    const range = assignedReading ? parseAssignedVerseRange(references[activeReferenceIndex] ?? '') : null;
+    return range?.chapterUsfm === displayedChapter ? range : null;
+  }, [assignedReading, references[activeReferenceIndex], displayedChapter]);
+  const passageKey = `${date}::${versionId}::${displayedChapter}::${assignedReading ? references[activeReferenceIndex] ?? '' : 'free'}`;
+  const sdkPassageRange = useMemo(() => passageRange ? { ...passageRange, key: passageKey } : null, [passageRange, passageKey]);
+  const [rangeAudioNotice, setRangeAudioNotice] = useState<{ key: string; text: string | null } | null>(null);
+  const handleRangeAudioNotice = useCallback((key: string, text: string | null) => {
+    setRangeAudioNotice(previous => previous?.key === key && previous.text === text ? previous : { key, text });
+  }, []);
+  const passageAudioNotice = rangeAudioNotice?.key === passageKey ? rangeAudioNotice.text : null;
   const setActiveReferenceIndex = (index: number, automatic = false): void => {
     if (!automatic) cancelAutoplay();
     if (controlledIndex === undefined) setUncontrolledIndex(index);
@@ -218,7 +231,8 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
     onAutoplayUnavailable: handleAutoplayUnavailable,
     onPlayingVerse: handlePlayingVerse,
     speed: narrationSpeed,
-  }), [narrationSpeed, handlePlayingVerse, autoplayEnabled, autoplayIntent, autoplayNotice, cancelAutoplay, toggleAutoplay, handlePlaybackStarted, handlePlaybackPaused, handlePlaybackEnded, handlePlaybackError, handleAutoplayUnavailable, externalControlledChange]);
+    passageRange, passageKey, onRangeAudioNotice: handleRangeAudioNotice,
+  }), [passageRange, passageKey, handleRangeAudioNotice, narrationSpeed, handlePlayingVerse, autoplayEnabled, autoplayIntent, autoplayNotice, cancelAutoplay, toggleAutoplay, handlePlaybackStarted, handlePlaybackPaused, handlePlaybackEnded, handlePlaybackError, handleAutoplayUnavailable, externalControlledChange]);
   const [retryNonce, setRetryNonce] = useState(0);
   const configs = appKey && versionId ? references.map((reference) => buildYouVersionReaderConfig({ references: [reference], appKey, versionId, allowTechnicalProbe })) : [];
   // Assigned tasks are optional. A controlled free-browse location is sufficient
@@ -227,7 +241,6 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
     ? { book, chapter, versionId, references: [], allowTechnicalProbe }
     : null;
   const activeConfig = configs[activeReferenceIndex] ?? configs[0] ?? freeBrowseConfig;
-  const displayedChapter = book !== undefined && chapter !== undefined ? normalizeChapter(`${book}.${chapter}`) : (chapterForReference(references[activeReferenceIndex] ?? '') ?? null);
   const contentMetadata = getYouVersionContentMetadata(versionId);
   const hasVersionMetadata = Boolean(contentMetadata);
   const hasConfig = Boolean(activeConfig);
@@ -330,7 +343,7 @@ export function YouVersionReader({ date, references, appKey, versionId, book, ch
         {safeIndex < references.length - 1 && <Pressable accessibilityRole="button" accessibilityLabel="下一段指定經文" onPress={() => setActiveReferenceIndex(safeIndex + 1)} style={styles.nextButton}><Text style={styles.nextButtonText}>下一段 ›</Text></Pressable>}
       </View>}
         <View style={fullscreen ? styles.fullscreen : styles.passage}>
-          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} onFootnotePress={async (data) => { setFootnote({ verseNum: data.verseNum, notes: data.notes, reference: data.reference }); }} onVerseSelect={onVerseSelectionChange ? async (selection) => { onVerseSelectionChange(selection.verses.length > 0); } : undefined} clearSelectionSignal={clearVerseSelectionSignal} retrySignal={retrySignal} onCopy={(data) => { void copyVerses(data); }} showToolbar={!fullscreen} theme="light" playingVerse={narratedVerse} followNarration={fullscreen && followNarration} followRequest={followRequest} reduceMotion={reduceMotion} />
+          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} onFootnotePress={async (data) => { setFootnote({ verseNum: data.verseNum, notes: data.notes, reference: data.reference }); }} onVerseSelect={onVerseSelectionChange ? async (selection) => { onVerseSelectionChange(selection.verses.length > 0); } : undefined} clearSelectionSignal={clearVerseSelectionSignal} retrySignal={retrySignal} onCopy={(data) => { void copyVerses(data); }} showToolbar={!fullscreen} theme="light" passageRange={sdkPassageRange} passageAudioNotice={passageAudioNotice} playingVerse={narratedVerse} followNarration={fullscreen && followNarration} followRequest={followRequest} reduceMotion={reduceMotion} />
         </View>
       {!fullscreen && <Text style={styles.attribution} numberOfLines={2}>{attributionMode === 'compact'
         ? `${contentMetadata?.translationName ?? `YouVersion ${versionId}`}／${contentMetadata?.publisher ?? '官方內容'}`

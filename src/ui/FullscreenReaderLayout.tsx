@@ -1,3 +1,4 @@
+import { DEVOTION_VOICES, type DevotionVoice } from '../domain/devotionVoice';
 import { cloneElement, isValidElement, useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Alert, BackHandler, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SheetBackdrop } from './SheetBackdrop';
@@ -171,6 +172,8 @@ export interface ReaderDevotion {
   speaking: boolean;
   onPlayPause: () => void;
   banner: string | null;
+  voice?: DevotionVoice;
+  onVoiceChange?: (voice: DevotionVoice) => void;
   followEnabled: boolean;
   onFollowChange: (enabled: boolean) => void;
 }
@@ -430,6 +433,17 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
                   const selected = speed === narrationSpeed;
                   return <Pressable key={speed} accessibilityRole="button" accessibilityLabel={'朗讀速度 ' + speed + ' 倍'} accessibilityState={{ selected }} onPress={() => onSelectNarrationSpeed(speed)} style={[styles.speedChoice, selected && styles.speedChoiceSelected]}>
                     <Text style={[styles.speedLabel, selected && styles.speedLabelSelected]}>{String(speed) + 'x'}</Text>
+                  </Pressable>;
+                })}
+              </View>
+            </> : null}
+            {devotion?.voice && devotion.onVoiceChange ? <>
+              <Text accessibilityRole="header" style={styles.heading}>靈修朗讀聲音</Text>
+              <View style={styles.speedRow}>
+                {DEVOTION_VOICES.map(voice => {
+                  const selected = voice.id === devotion.voice;
+                  return <Pressable key={voice.id} accessibilityRole="button" accessibilityLabel={`靈修朗讀聲音 ${voice.label}`} accessibilityState={{ selected }} onPress={() => devotion.onVoiceChange?.(voice.id)} style={[styles.speedChoice, selected && styles.speedChoiceSelected]}>
+                    <Text style={[styles.speedLabel, selected && styles.speedLabelSelected]}>{voice.label}</Text>
                   </Pressable>;
                 })}
               </View>

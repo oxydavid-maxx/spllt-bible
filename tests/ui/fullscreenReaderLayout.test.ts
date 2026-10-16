@@ -840,6 +840,19 @@ describe('the 靈修 tab and the gold corner button', () => {
     devotion = makeDevotion({ selected: true, atEnd: true, completed: true }); act(() => renderer!.update(React.createElement(Harness)));
     expect(gold().findAll(n => String(n.type) === 'Text')).toHaveLength(0);
   });
+  it('offers male/female devotional voices below narration speed in More Tools', async () => {
+    const choose = vi.fn();
+    devotion = makeDevotion({ voice: 'zh-TW-YunJheNeural', onVoiceChange: choose });
+    onSelectNarrationSpeed = vi.fn(); await mount();
+    act(() => chrome.openMore());
+    const choices = renderer!.root.findAll(n => String(n.type) === 'Pressable' && /^靈修朗讀聲音 /.test(n.props.accessibilityLabel ?? ''));
+    expect(choices.map(n => n.props.accessibilityLabel)).toEqual(['靈修朗讀聲音 男聲', '靈修朗讀聲音 女聲']);
+    expect(choices[0].props.accessibilityState.selected).toBe(true);
+    expect(choices[1].props.accessibilityState.selected).toBe(false);
+    act(() => choices[1].props.onPress()); expect(choose).toHaveBeenCalledWith('zh-TW-HsiaoChenNeural');
+    const headers = renderer!.root.findAll(n => String(n.type) === 'Text' && n.props.accessibilityRole === 'header').map(n => n.children.join(''));
+    expect(headers.indexOf('靈修朗讀聲音')).toBeGreaterThan(headers.indexOf('朗讀速度'));
+  });
   const makeDevotion = (overrides: Partial<NonNullable<typeof devotion>> = {}): NonNullable<typeof devotion> => ({
     selected: false, onSelect: vi.fn(), renderView: (insets) => React.createElement('DevotionalView', { insets }),
     completed: false, disabled: false, onToggle: vi.fn(), onFollow: vi.fn(), speaking: false, onPlayPause: vi.fn(),

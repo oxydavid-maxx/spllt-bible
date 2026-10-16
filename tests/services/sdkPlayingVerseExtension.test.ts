@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 // app's injected script (src/ui/readAlongBridge.ts). docs/superpowers/plans/2026-09-29-read-along-follow.md.
 const pkg = 'node_modules/@youversion/platform-react-native-expo-ui/build';
 const native = readFileSync(`${pkg}/native/bible-reader.js`, 'utf8');
-const dom = readFileSync(`${pkg}/dom/bible-reader.js`, 'utf8');
+const dom = readFileSync(`${pkg}/dom/bible-reader.js`, 'utf8').replace(/\r\n/g, '\n');
 const types = readFileSync(`${pkg}/native/bible-reader.d.ts`, 'utf8');
 const index = readFileSync(`${pkg}/index.js`, 'utf8');
 

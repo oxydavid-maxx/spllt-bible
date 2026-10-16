@@ -1,4 +1,5 @@
 import { readAlongScript } from './readAlongBridge';
+import { partialChapterScript } from './partialChapterBridge';
 
 export const READER_SETTINGS_MESSAGE = 'qingmu.reader.settings.open';
 export const READER_CANVAS_SCROLL_MESSAGE = 'qingmu.reader.canvas.scroll';
@@ -79,7 +80,8 @@ const READER_CANVAS_BRIDGE = `
     if (!closest(target, canvasSelector) || typeof target.scrollTop !== 'number') return;
     // Read-along scrolled the page to the narrated verse: not a gesture, so neither collapse nor
     // reveal, and the next real gesture starts from here. The chapter end is still reported.
-    if (window.__qingmuFollowScrolling && window.__qingmuFollowScrolling()) {
+    if ((window.__qingmuFollowScrolling && window.__qingmuFollowScrolling())
+      || (window.__qingmuRangeScrolling && window.__qingmuRangeScrolling())) {
       anchor = target.scrollTop; run = null; upAccum = 0;
       reportEdges(target);
       return;
@@ -154,7 +156,7 @@ true;
 
 export function buildReaderDomBridge(fullscreen: boolean, hasVersionMetadata = false, insets?: ReaderCanvasInsets): string {
   // Read-along paints the narrated verse in both layouts; only the fullscreen one has the button.
-  if (!fullscreen) return READER_SETTINGS_BRIDGE + readAlongScript({ top: 0, bottom: 0 });
+  if (!fullscreen) return READER_SETTINGS_BRIDGE + partialChapterScript() + readAlongScript({ top: 0, bottom: 0 });
   // The native SDK also injects an unlayered !important padding-bottom rule.
   // The document guard adds specificity, so this wins even if that rule arrives
   // later. Only the Reader DOM receives this script; official sheets do not.
@@ -166,7 +168,7 @@ export function buildReaderDomBridge(fullscreen: boolean, hasVersionMetadata = f
     + `${renderer} .s, ${renderer} .s1 { font-weight: 600 !important; }`
     + (hasVersionMetadata ? `${scope} > footer { display: none !important; }` : '');
   // Canvas listeners first so the edge reporter exists when the layout pass runs.
-  return READER_SETTINGS_BRIDGE + readAlongScript({ top, bottom }) + READER_CANVAS_BRIDGE + readerLayoutScript(css);
+  return READER_SETTINGS_BRIDGE + partialChapterScript() + readAlongScript({ top, bottom }) + READER_CANVAS_BRIDGE + readerLayoutScript(css);
 }
 
 export function readReaderUiMessage(data: string): string | null {
