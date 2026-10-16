@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { splitDevotionReference } from '../../src/domain/devotionReading';
 import { speechUnits } from '../../src/services/devotionSpeech';
 
 const post = (paragraphs: string[], title = '測試題目') => ({
@@ -31,6 +32,18 @@ describe('devotional pronunciation, without changing the displayed words', () =>
   it('removes URLs and emoji including joiners, flags, keycaps and skin modifiers', () => {
     expect(speechUnits(post(['閱讀 https://example.invalid/abc?q=1，保持喜樂 👨‍👩‍👧‍👦 🙏🏽 🇹🇼 1️⃣。']))[0].text)
       .toBe('測試題目。背誦經文。閱讀 ，保持喜樂 。');
+  });
+  // 2026-10-16: 「119:20,23-24」 showed only 「119:20」 small and grey, and 「,23-24」 was shown and read as text.
+  it('takes a citation listing more verses after commas as one label, shown small and not read', () => {
+    for (const [label, body] of [['119:20,23-24 ', '測試甲。'], ['119:27,34 ', '測試乙。'], ['詩篇 113:5-7, 9 ', '測試丙。'], ['詩篇116:1-2,6-8 ', '測試丁。']]) {
+      expect(splitDevotionReference(label + body)).toEqual({ reference: label, body });
+    }
+    expect(speechUnits(post(['詩篇119:9-11 測試甲。', '119:20,23-24 測試乙。', '119:27,34 測試丙。'])).map(u => u.text))
+      .toEqual(['測試題目。背誦經文。詩篇第一百一十九篇。測試甲。', '測試乙。', '測試丙。']);
+  });
+  it('reads an inline verse list as one reference, and a full-width comma stays ordinary prose', () => {
+    expect(speechUnits(post(['再看 5:7, 9 與 116:1-2,6-8。']))[0].text).toBe('測試題目。背誦經文。再看 五章七、九節 與 一百一十六章一至二、六至八節。');
+    expect(splitDevotionReference('5:7，3 個人同心。')).toEqual({ reference: '5:7', body: '，3 個人同心。' });
   });
   it('does not suppress an inline reference as if it were a paragraph label', () => {
     expect(speechUnits(post(['這裡的彼前5:7是提醒。']))[0].text)
