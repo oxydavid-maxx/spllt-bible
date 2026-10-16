@@ -4,15 +4,19 @@ import type { CompletionAwardEvent } from '../services/completionController';
 import { taipeiDate } from '../domain/gamificationV1';
 import { theme } from './Theme';
 
-export function buildCompletionAwardMessage(event: CompletionAwardEvent, today = taipeiDate()): string {
+export interface DevotionCompletionEvent { kind: 'devotion'; taskDate: string; operationId: string }
+export type CompletionFeedbackEvent = CompletionAwardEvent | DevotionCompletionEvent;
+
+export function buildCompletionAwardMessage(event: CompletionFeedbackEvent, today = taipeiDate()): string {
   const dateLabel = event.taskDate === today
     ? '今日'
     : `${Number(event.taskDate.slice(5, 7))}月${Number(event.taskDate.slice(8, 10))}日`;
-  return `+${event.pointsDelta} 分　完成${dateLabel}讀經了！`;
+  if ('kind' in event && event.kind === 'devotion') return `完成${event.taskDate === today ? '' : ' '}${dateLabel}靈修了！`;
+  return `+${(event as CompletionAwardEvent).pointsDelta} 分　完成${dateLabel}讀經了！`;
 }
 
 /** `bottomOffset` floats the award up from just above a bottom action (the Reader's ○) instead of under the header. */
-export function CompletionAwardFeedback({ event, onFinished, bottomOffset }: { event: CompletionAwardEvent | null; onFinished: (operationId: string) => void; bottomOffset?: number }) {
+export function CompletionAwardFeedback({ event, onFinished, bottomOffset }: { event: CompletionFeedbackEvent | null; onFinished: (operationId: string) => void; bottomOffset?: number }) {
   const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;

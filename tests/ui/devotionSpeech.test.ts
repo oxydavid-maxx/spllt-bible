@@ -85,3 +85,21 @@ describe('the green devotion corner button', () => {
     expect(devotionBanner(false, true)).toBeNull();
   });
 });
+
+it('skips a paragraph containing only a URL or emoji without stalling or renumbering later highlights', () => {
+  const { engine, spoken } = fakeEngine();
+  const finished = vi.fn(), speech = createDevotionSpeech(engine, finished);
+  speech.start(post.date, { ...post, sections: [{ heading: '默想經文', paragraphs: ['甲', '🙏', 'https://example.invalid/a', '乙'] }] });
+  spoken[0].done();
+  expect(spoken.at(-1)?.text).toBe('乙');
+  expect(speech.getSnapshot().index).toBe(3);
+  spoken.at(-1)!.done(); expect(finished).toHaveBeenCalledOnce();
+});
+
+it('hands over to the song once even when the final native callback arrives twice', () => {
+  const { engine, spoken } = fakeEngine();
+  const finished = vi.fn(), speech = createDevotionSpeech(engine, finished);
+  speech.start(post.date, post, 2);
+  spoken[0].done(); spoken[0].done();
+  expect(finished).toHaveBeenCalledOnce();
+});
