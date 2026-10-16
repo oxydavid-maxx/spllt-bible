@@ -25,6 +25,8 @@ export interface LineWebhookConfig {
   channelSecret: string;
   devotionalDir: string;
   log?: (line: string) => void;
+  /** A day's file was written or corrected (the server prepares its audio); not awaited. */
+  onSaved?: (date: string) => void;
 }
 
 export interface LineDelivery {
@@ -77,6 +79,7 @@ export function createLineWebhook(config: LineWebhookConfig) {
     await writeFile(partial, text, 'utf8');
     await rename(partial, target);
     log(`LINE_DEVOTIONAL_SAVED date=${post.date}`);
+    try { config.onSaved?.(post.date); } catch { /* Audio preparation never changes what LINE is told. */ }
   }
 
   return async function receive(delivery: LineDelivery): Promise<{ status: number; body: Record<string, unknown> }> {

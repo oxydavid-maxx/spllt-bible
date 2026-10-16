@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { DevotionVoice } from '../src/domain/devotionVoice';
+import { speechUnits } from '../src/domain/devotionReading';
+import { DEFAULT_DEVOTION_VOICE, DEVOTION_VOICES, type DevotionVoice } from '../src/domain/devotionVoice';
+import { readDevotional } from './devotional';
 
 export interface AzureSpeechConfig { key: string; region: string }
 /** Optional configuration: never log secret bytes or make an old backend installation fail to boot. */
@@ -62,4 +64,36 @@ export function createDevotionalAudio({ config, cacheDir, fetchImpl = fetch, tim
       return job;
     },
   };
+}
+
+/**
+ * Synthesizes a day's whole post in both voices ahead of time, the default voice first. Azure answers only after
+ * a paragraph is fully spoken: on 2026-10-16 the first paragraph took 11 s, past the app's 8 s wait, so every
+ * paragraph fell back to the phone's voice. With the mp3 cached, the app's request is a file read. Runs on the
+ * same F0 queue as listeners' requests; never throws, and logs counts only.
+ */
+export async function warmDevotionalAudio(audio: DevotionalAudio | undefined, devotionalDir: string | undefined, date: string, log: (line: string) => void = line => console.log(line)): Promise<{ units: number; ready: number; failed: number }> {
+  const post = audio ? await readDevotional(devotionalDir, date, async () => null) : null;
+  const units = post ? speechUnits(post) : [];
+  if (!audio || units.length === 0) return { units: 0, ready: 0, failed: 0 };
+  const voices = [DEFAULT_DEVOTION_VOICE, ...DEVOTION_VOICES.map(voice => voice.id).filter(id => id !== DEFAULT_DEVOTION_VOICE)];
+  let ready = 0, failed = 0;
+  for (const voice of voices) {
+    for (const [index, unit] of units.entries()) {
+      try { await audio.synthesize(date, index, voice, unit.text); ready++; } catch { failed++; }
+    }
+  }
+  log(`DEVOTIONAL_AUDIO_WARMED date=${date} units=${units.length} ready=${ready} failed=${failed}`);
+  return { units: units.length, ready, failed };
+}
+
+/** The newest saved post on or before `today` (the one listeners open first), or null. */
+export function latestDevotionalDate(devotionalDir: string, today: string): string | null {
+  let names: string[];
+  try { names = readdirSync(devotionalDir); } catch { return null; }
+  const dates = names.flatMap(name => {
+    const match = /^(\d{4})(\d{2})(\d{2})\.txt$/.exec(name);
+    return match ? [`${match[1]}-${match[2]}-${match[3]}`] : [];
+  }).filter(date => date <= today).sort();
+  return dates.at(-1) ?? null;
 }

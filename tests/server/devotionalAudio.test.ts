@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDatabase } from '../../server/db';
 import { createApiHandler } from '../../server/routes';
-import { createDevotionalAudio, readAzureSpeechConfig } from '../../server/devotionalAudio';
+import { createDevotionalAudio, latestDevotionalDate, readAzureSpeechConfig, warmDevotionalAudio } from '../../server/devotionalAudio';
 
 const mp3 = new Uint8Array([0xff, 0xf3, 0x64, 0xc4, 1, 2, 3, 4]);
 const POST = '📖🌾 《 測試題目 》\n2026.10.16 (五) 讀經：彼前5、詩118\n背誦經文：\n彼得前書 5:2 測試甲。\n5:7 測試乙。\n默想經文：\n測試默想。\n用經文禱告：\n測試禱告。\nhttps://youtu.be/abcdefghijk';
@@ -90,6 +90,38 @@ describe('private devotional audio API', () => {
     expect((await f.api(f.request())).status).toBe(502);
     expect((await f.api(f.request())).status).toBe(200);
     expect((f.fetchImpl.mock.calls[1] as unknown as [string, RequestInit])[1].body).toContain('A &lt; B &amp; C &gt; D');
+  });
+  // 2026-10-16: Azure answers only after a whole paragraph is spoken (11 s for the first one), past the app's
+  // 8 s wait, so every paragraph fell back to the phone's voice. A saved post is synthesized ahead of time.
+  it('warms every paragraph of a day in both voices, default voice first, so listening is a cache read', async () => {
+    const f = setup();
+    const logs: string[] = [];
+    expect(await warmDevotionalAudio(f.options.devotionalAudio, f.dir, '2026-10-16', line => logs.push(line))).toEqual({ units: 4, ready: 8, failed: 0 });
+    const voices = f.fetchImpl.mock.calls.map(call => /name="([^"]+)"/.exec(String((call as unknown as [string, RequestInit])[1].body))?.[1]);
+    expect(voices).toEqual([...Array(4).fill('zh-TW-YunJheNeural'), ...Array(4).fill('zh-TW-HsiaoChenNeural')]);
+    expect(logs).toEqual(['DEVOTIONAL_AUDIO_WARMED date=2026-10-16 units=4 ready=8 failed=0']);
+    for (const voice of ['zh-TW-YunJheNeural', 'zh-TW-HsiaoChenNeural']) {
+      for (let index = 0; index < 4; index++) expect((await f.api(f.request(index, voice))).status).toBe(200);
+    }
+    expect(f.fetchImpl).toHaveBeenCalledTimes(8);
+  });
+  it('warming counts a failed paragraph and keeps going; a day without a post asks Azure nothing', async () => {
+    const f = setup(vi.fn().mockRejectedValueOnce(new Error('private details')).mockImplementation(async () => new Response(mp3, { headers: { 'content-type': 'audio/mpeg' } })));
+    const logs: string[] = [];
+    expect(await warmDevotionalAudio(f.options.devotionalAudio, f.dir, '2026-10-16', line => logs.push(line))).toEqual({ units: 4, ready: 7, failed: 1 });
+    expect(logs.join('\n')).not.toContain('private');
+    expect(await warmDevotionalAudio(f.options.devotionalAudio, f.dir, '2026-10-17', () => undefined)).toEqual({ units: 0, ready: 0, failed: 0 });
+    expect(f.fetchImpl).toHaveBeenCalledTimes(8);
+  });
+  it('the newest post on or before today is the one warmed when the server starts', () => {
+    const f = setup();
+    writeFileSync(join(f.dir, '20261014.txt'), POST);
+    writeFileSync(join(f.dir, '20261018.txt'), POST);
+    writeFileSync(join(f.dir, 'notes.txt'), POST);
+    expect(latestDevotionalDate(f.dir, '2026-10-17')).toBe('2026-10-16');
+    expect(latestDevotionalDate(f.dir, '2026-10-15')).toBe('2026-10-14');
+    expect(latestDevotionalDate(f.dir, '2026-10-01')).toBeNull();
+    expect(latestDevotionalDate(join(f.dir, 'missing'), '2026-10-17')).toBeNull();
   });
   it('loads only a valid optional secret file, including a UTF-8 BOM', () => {
     const f = setup(), path = join(f.dir, 'speech.json');
