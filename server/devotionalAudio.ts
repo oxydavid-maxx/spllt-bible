@@ -22,43 +22,53 @@ let synthesisTail: Promise<unknown> = Promise.resolve();
 const xml = (value: string) => value.replace(/[<>&"']/g, ch => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[ch]!);
 
 export interface DevotionalAudio {
-  synthesize(date: string, index: number, voice: DevotionVoice, text: string): Promise<Uint8Array>;
+  // `source`: already prepared, or made by Azure for this call (for the request log).
+  synthesize(date: string, index: number, voice: DevotionVoice, text: string): Promise<{ bytes: Uint8Array; source: 'cache' | 'azure' }>;
 }
 export function createDevotionalAudio({ config, cacheDir, fetchImpl = fetch, timeoutMs = 15_000 }: {
   config: AzureSpeechConfig; cacheDir: string; fetchImpl?: typeof fetch; timeoutMs?: number;
 }): DevotionalAudio {
-  const pending = new Map<string, Promise<Uint8Array>>();
+  const pending = new Map<string, Promise<{ bytes: Uint8Array; source: 'cache' | 'azure' }>>();
   return {
     synthesize(date, index, voice, text) {
       const digest = createHash('sha256').update(JSON.stringify(['devotion-tts-v1', date, index, voice, text])).digest('hex');
       const existing = pending.get(digest);
       if (existing) return existing;
       const path = join(cacheDir, `${digest}.mp3`);
-      const job = synthesisTail.catch(() => undefined).then(async () => {
-        try { const cached = await readFile(path); if (cached.length) return new Uint8Array(cached); } catch { /* Cache miss. */ }
-        const response = await fetchImpl(`https://${config.region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
-          method: 'POST', signal: AbortSignal.timeout(timeoutMs),
-          headers: {
-            'Ocp-Apim-Subscription-Key': config.key,
-            'Content-Type': 'application/ssml+xml',
-            'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
-            'User-Agent': 'qingmu-bible',
-          },
-          body: `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="zh-TW"><voice name="${voice}">${xml(text)}</voice></speak>`,
+      const readCached = async () => { try { const cached = await readFile(path); return cached.length ? new Uint8Array(cached) : null; } catch { return null; } };
+      const queued = () => {
+        const synthesis = synthesisTail.catch(() => undefined).then(async () => {
+          // Another request may have written it while this one waited for the slot.
+          const cached = await readCached();
+          if (cached) return { bytes: cached, source: 'cache' as const };
+          const response = await fetchImpl(`https://${config.region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+            method: 'POST', signal: AbortSignal.timeout(timeoutMs),
+            headers: {
+              'Ocp-Apim-Subscription-Key': config.key,
+              'Content-Type': 'application/ssml+xml',
+              'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
+              'User-Agent': 'qingmu-bible',
+            },
+            body: `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="zh-TW"><voice name="${voice}">${xml(text)}</voice></speak>`,
+          });
+          if (!response.ok || !response.headers.get('content-type')?.toLowerCase().startsWith('audio/mpeg')) {
+            await response.body?.cancel();
+            throw new Error('DEVOTIONAL_AUDIO_UPSTREAM');
+          }
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          if (!bytes.length) throw new Error('DEVOTIONAL_AUDIO_EMPTY');
+          await mkdir(cacheDir, { recursive: true, mode: 0o700 });
+          const temporary = `${path}.${randomUUID()}.tmp`;
+          try { await writeFile(temporary, bytes, { mode: 0o600 }); await rename(temporary, path); }
+          finally { await rm(temporary, { force: true }); }
+          return { bytes, source: 'azure' as const };
         });
-        if (!response.ok || !response.headers.get('content-type')?.toLowerCase().startsWith('audio/mpeg')) {
-          await response.body?.cancel();
-          throw new Error('DEVOTIONAL_AUDIO_UPSTREAM');
-        }
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        if (!bytes.length) throw new Error('DEVOTIONAL_AUDIO_EMPTY');
-        await mkdir(cacheDir, { recursive: true, mode: 0o700 });
-        const temporary = `${path}.${randomUUID()}.tmp`;
-        try { await writeFile(temporary, bytes, { mode: 0o600 }); await rename(temporary, path); }
-        finally { await rm(temporary, { force: true }); }
-        return bytes;
-      });
-      synthesisTail = job.catch(() => undefined);
+        synthesisTail = synthesis.catch(() => undefined);
+        return synthesis;
+      };
+      // A prepared paragraph is read straight away (2026-10-16: it used to wait behind any synthesis in the
+      // F0 queue); only a real synthesis waits for F0's single slot.
+      const job = readCached().then(cached => cached ? { bytes: cached, source: 'cache' as const } : queued());
       pending.set(digest, job);
       void job.finally(() => pending.delete(digest)).catch(() => undefined);
       return job;

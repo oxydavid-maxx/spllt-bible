@@ -123,6 +123,37 @@ describe('private devotional audio API', () => {
     expect(latestDevotionalDate(f.dir, '2026-10-01')).toBeNull();
     expect(latestDevotionalDate(join(f.dir, 'missing'), '2026-10-17')).toBeNull();
   });
+  it('serves a prepared paragraph at once even while Azure is busy with another one', async () => {
+    let release: () => void = () => undefined;
+    const slow = new Promise<void>(resolve => { release = resolve; });
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      if (String(init.body).includes('測試默想')) await slow;
+      return new Response(mp3, { headers: { 'content-type': 'audio/mpeg' } });
+    });
+    const f = setup(fetchImpl as never);
+    expect((await f.api(f.request(0))).status).toBe(200);
+    const busy = f.api(f.request(2));
+    try {
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+      const prepared = await Promise.race([f.api(f.request(0)), new Promise<'queued'>(resolve => setTimeout(() => resolve('queued'), 500))]);
+      expect(prepared === 'queued' ? prepared : prepared.status, 'a prepared paragraph does not queue behind Azure').toBe(200);
+    } finally { release(); }
+    expect((await busy).status).toBe(200);
+  });
+  it('logs how long each audio request took, without any of its text', async () => {
+    const f = setup();
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, 'log').mockImplementation((line: string) => { lines.push(String(line)); });
+    try {
+      await f.api(f.request(1)); await f.api(f.request(1));
+      await f.api(f.request(999));
+    } finally { spy.mockRestore(); }
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toMatch(/^DEVOTIONAL_AUDIO_REQUEST date=2026-10-16 index=1 voice=zh-TW-YunJheNeural status=200 source=azure ms=\d+$/);
+    expect(lines[1]).toMatch(/ status=200 source=cache ms=\d+$/);
+    expect(lines[2]).toMatch(/ index=999 .*status=404 source=none ms=\d+$/);
+    expect(lines.join('\n')).not.toMatch(/測試/);
+  });
   it('loads only a valid optional secret file, including a UTF-8 BOM', () => {
     const f = setup(), path = join(f.dir, 'speech.json');
     expect(readAzureSpeechConfig(undefined)).toBeNull();
