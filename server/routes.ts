@@ -18,6 +18,9 @@ import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliver
 import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
 import { notifyFriendAdded, type PushDataSender } from './friendPush';
 import type { ApnsAlertSender } from './apnsSender';
+import { speechUnits } from '../src/domain/devotionReading';
+import { DEFAULT_DEVOTION_VOICE, isDevotionVoice } from '../src/domain/devotionVoice';
+import type { DevotionalAudio } from './devotionalAudio';
 import { createSongTitleLookup, isDevotionalDate, readDevotional, type SongTitleLookup } from './devotional';
 import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDates, setDevotion } from './devotionProgress';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
@@ -56,6 +59,7 @@ export interface ApiResponse {
   status: number;
   body: Record<string, unknown>;
   headers?: Record<string, string>;
+  binaryBody?: Uint8Array;
 }
 
 export interface ApiHandlerOptions {
@@ -93,6 +97,7 @@ export interface ApiHandlerOptions {
   pushIos?: ApnsAlertSender;
   /** Private folder of the pastor's daily posts (YYYYMMDD.txt). Absent: the 靈修 tab says there is none yet. */
   devotionalDir?: string;
+  devotionalAudio?: DevotionalAudio;
   /** Song titles for the 靈修 tab; tests pass a stub so nothing reaches YouTube. */
   songTitle?: SongTitleLookup;
   now?: () => Date;
@@ -574,6 +579,22 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (devotionMatch && (request.method === 'PUT' || request.method === 'DELETE')) {
         const result = setDevotion(options.db.db, auth.memberId, decodeURIComponent(devotionMatch[1]), request.method === 'PUT', taipeiDate(now()), now().getTime());
         return 'error' in result ? gamificationError({ status: 400, code: result.error }) : gamificationJson(200, result);
+      }
+      const audioMatch = url.pathname.match(/^\/api\/devotional\/([^/]+)\/audio\/([^/]+)$/);
+      if (request.method === 'GET' && audioMatch) {
+        const date = decodeURIComponent(audioMatch[1]);
+        const voice = url.searchParams.get('voice') ?? DEFAULT_DEVOTION_VOICE;
+        if (!isDevotionalDate(date) || !/^\d+$/.test(audioMatch[2]) || !isDevotionVoice(voice)) return gamificationError({ status: 400, code: 'INVALID_DEVOTIONAL_AUDIO' });
+        if (!options.devotionalAudio) return gamificationError({ status: 404, code: 'DEVOTIONAL_AUDIO_UNAVAILABLE' });
+        // Audio never needs a song-title lookup or a request to YouTube.
+        const post = await readDevotional(options.devotionalDir, date, async () => null);
+        const index = Number(audioMatch[2]);
+        const unit = post ? speechUnits(post)[index] : undefined;
+        if (!unit?.text) return gamificationError({ status: 404, code: 'DEVOTIONAL_AUDIO_NOT_FOUND' });
+        try {
+          const binaryBody = await options.devotionalAudio.synthesize(date, index, voice, unit.text);
+          return { status: 200, body: {}, binaryBody, headers: { 'content-type': 'audio/mpeg', 'cache-control': 'private, no-store' } };
+        } catch { return gamificationJson(502, { error: { code: 'DEVOTIONAL_AUDIO_UPSTREAM', retryable: true } }); }
       }
       const devotionalMatch = url.pathname.match(/^\/api\/devotional\/([^/]+)$/);
       if (request.method === 'GET' && devotionalMatch) {

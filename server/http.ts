@@ -3,7 +3,7 @@ import { runtimeConfig } from '../src/config/runtime';
 import { createDatabase, type ServerDatabase } from './db';
 import { createApiHandler } from './routes';
 import { mkdirSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { verifyGoogleIdToken, verifyGoogleIdTokenAnyAudience } from './googleVerifier';
 import { canonicalReadingPlan } from '../src/domain/calendar';
 import { seedMemberInvite, type MemberInviteSeed } from './membership';
@@ -17,6 +17,7 @@ import type { PushDataSender } from './friendPush';
 import type { ApnsAlertSender } from './apnsSender';
 import type { MeetingSender } from './remoteReminders';
 import { createOfficialBibleAdapter } from './officialBibleAdapter';
+import { createDevotionalAudio, readAzureSpeechConfig } from './devotionalAudio';
 import { devotionalPlayerResponse } from './devotional';
 import { createLineWebhook, LINE_WEBHOOK_BODY_LIMIT, LINE_WEBHOOK_PATH, readLineChannelSecret } from './lineWebhook';
 import { deriveFormRegistrationKey } from './eventRegistrations';
@@ -44,6 +45,8 @@ function readRawBody(request: IncomingMessage, limit: number): Promise<Buffer | 
 
 export function createHttpServer(options: { fixtureToken?: string; database?: ServerDatabase; reminderDelivery?: { enabled: boolean; send: MeetingSender }; pushData?: PushDataSender; pushIos?: ApnsAlertSender; reminderWorker?: { autostart?: boolean; now?: () => Date; intervalMs?: number; timer?: ReminderWorkerTimer } } = {}) {
   const config = runtimeConfig();
+  const azureSpeech = readAzureSpeechConfig(process.env.QINGMU_AZURE_SPEECH_FILE);
+  const devotionalDir = process.env.QINGMU_DEVOTIONAL_DIR?.trim();
   const fixtureRoster = process.env.QINGMU_FIXTURE_ROSTER === 'two-member-week';
   const databaseFilename = process.env.QINGMU_DB_PATH;
   if (!options.database && databaseFilename && databaseFilename !== ':memory:') mkdirSync(dirname(resolve(databaseFilename)), { recursive: true });
@@ -140,7 +143,8 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     ...(pushIos ? { pushIos } : {}),
     adminMemberIds: process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean),
     adminGoogleSubjects,
-    ...(process.env.QINGMU_DEVOTIONAL_DIR?.trim() ? { devotionalDir: process.env.QINGMU_DEVOTIONAL_DIR.trim() } : {}),
+    ...(devotionalDir ? { devotionalDir } : {}),
+    ...(azureSpeech && devotionalDir ? { devotionalAudio: createDevotionalAudio({ config: azureSpeech, cacheDir: join(devotionalDir, '.audio') }) } : {}),
     ...(fixtureRoster
       ? {
           weeklyDates: ['2026-09-07', '2026-09-08'],
@@ -222,7 +226,8 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     response.setHeader('content-type', 'application/json; charset=utf-8');
     response.setHeader('cache-control', 'no-store');
     response.setHeader('x-qingmu-instance-id', process.env.QINGMU_INSTANCE_ID?.trim() || 'unconfigured');
-    response.end(JSON.stringify(result.body));
+    for (const [name, value] of Object.entries(result.headers ?? {})) response.setHeader(name, value);
+    response.end(result.binaryBody ?? JSON.stringify(result.body));
   });
   if (worker && autostart) worker.start();
   if (assistWorker) assistWorker.start();

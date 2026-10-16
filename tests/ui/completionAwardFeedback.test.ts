@@ -17,3 +17,9 @@ describe('completion award feedback', () => {
     expect(buildCompletionAwardMessage({ ...award, taskDate: '2026-09-14' }, '2026-09-14')).toBe('+2 分　完成今日讀經了！');
   });
 });
+
+it('announces a devotional completion without any points, including a backfilled day', () => {
+  const event = { kind: 'devotion' as const, taskDate: '2026-10-13', operationId: 'devotion-fixture' };
+  expect(buildCompletionAwardMessage(event, '2026-10-16')).toBe('完成 10月13日靈修了！');
+  expect(buildCompletionAwardMessage({ ...event, taskDate: '2026-10-16' }, '2026-10-16')).toBe('完成今日靈修了！');
+});

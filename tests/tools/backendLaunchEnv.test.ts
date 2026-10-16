@@ -16,4 +16,8 @@ describe('the production backend launch environment', () => {
     expect(readFileSync('server/http.ts', 'utf8')).toContain('process.env.QINGMU_LINE_SECRET_FILE');
     expect(launcher).toMatch(/read_line_environment\(PILOT \/ 'line-runtime-config\.json'\)/);
   });
+  it('passes the optional Azure Speech file without exposing its key', () => {
+    expect(readFileSync('server/http.ts', 'utf8')).toContain('process.env.QINGMU_AZURE_SPEECH_FILE');
+    expect(launcher).toContain("read_azure_speech_environment(PILOT / 'azure-speech-runtime-config.json')");
+  });
 });

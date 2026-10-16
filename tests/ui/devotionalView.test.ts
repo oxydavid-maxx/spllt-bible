@@ -136,3 +136,14 @@ describe('the 靈修 tab', () => {
     act(() => tree.unmount());
   });
 });
+
+it('renders leading citations as smaller grey text without changing a single displayed character', () => {
+  const paragraphs = ['彼得前書 5:2 測試甲。', '5:7 測試乙。', '5:8-9 測試丙。', '詩篇 118:15 測試丁。', '正文中的 5:7 不縮小。'];
+  let tree!: TestRenderer.ReactTestRenderer;
+  act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props({ state: { kind: 'ready', post: { ...post, sections: [{ heading: '背誦經文', paragraphs }] } }, fontSize: 20 }))); });
+  for (const paragraph of paragraphs) expect(textOf(textNamed(tree, paragraph))).toBe(paragraph);
+  const refs = tree.root.findAll(n => String(n.type) === 'Text' && n.props.testID === 'devotion-reference');
+  expect(refs.map(textOf)).toEqual(['彼得前書 5:2 ', '5:7 ', '5:8-9 ', '詩篇 118:15 ']);
+  refs.forEach(n => { expect(flat(n.props.style).fontSize).toBeLessThan(20); expect(flat(n.props.style).color).toBe('#636161'); });
+  act(() => tree.unmount());
+});
