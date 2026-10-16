@@ -17,7 +17,8 @@ import type { PushDataSender } from './friendPush';
 import type { ApnsAlertSender } from './apnsSender';
 import type { MeetingSender } from './remoteReminders';
 import { createOfficialBibleAdapter } from './officialBibleAdapter';
-import { createDevotionalAudio, readAzureSpeechConfig } from './devotionalAudio';
+import { taipeiDate } from '../src/domain/gamificationV1';
+import { createDevotionalAudio, latestDevotionalDate, readAzureSpeechConfig, warmDevotionalAudio } from './devotionalAudio';
 import { devotionalPlayerResponse } from './devotional';
 import { createLineWebhook, LINE_WEBHOOK_BODY_LIMIT, LINE_WEBHOOK_PATH, readLineChannelSecret } from './lineWebhook';
 import { deriveFormRegistrationKey } from './eventRegistrations';
@@ -47,6 +48,12 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   const config = runtimeConfig();
   const azureSpeech = readAzureSpeechConfig(process.env.QINGMU_AZURE_SPEECH_FILE);
   const devotionalDir = process.env.QINGMU_DEVOTIONAL_DIR?.trim();
+  const devotionalAudio = azureSpeech && devotionalDir ? createDevotionalAudio({ config: azureSpeech, cacheDir: join(devotionalDir, '.audio') }) : undefined;
+  // The newest post is prepared at start too: it may have arrived before this version (or Azure) was running.
+  if (devotionalAudio && devotionalDir) {
+    const latest = latestDevotionalDate(devotionalDir, taipeiDate(new Date()));
+    if (latest) void warmDevotionalAudio(devotionalAudio, devotionalDir, latest);
+  }
   const fixtureRoster = process.env.QINGMU_FIXTURE_ROSTER === 'two-member-week';
   const databaseFilename = process.env.QINGMU_DB_PATH;
   if (!options.database && databaseFilename && databaseFilename !== ':memory:') mkdirSync(dirname(resolve(databaseFilename)), { recursive: true });
@@ -144,7 +151,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     adminMemberIds: process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean),
     adminGoogleSubjects,
     ...(devotionalDir ? { devotionalDir } : {}),
-    ...(azureSpeech && devotionalDir ? { devotionalAudio: createDevotionalAudio({ config: azureSpeech, cacheDir: join(devotionalDir, '.audio') }) } : {}),
+    ...(devotionalAudio ? { devotionalAudio } : {}),
     ...(fixtureRoster
       ? {
           weeklyDates: ['2026-09-07', '2026-09-08'],
@@ -178,7 +185,8 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   const officialBible = createOfficialBibleAdapter();
   const lineChannelSecret = readLineChannelSecret(process.env.QINGMU_LINE_SECRET_FILE);
   const lineWebhook = lineChannelSecret && process.env.QINGMU_DEVOTIONAL_DIR?.trim()
-    ? createLineWebhook({ channelSecret: lineChannelSecret, devotionalDir: process.env.QINGMU_DEVOTIONAL_DIR.trim() })
+    ? createLineWebhook({ channelSecret: lineChannelSecret, devotionalDir: process.env.QINGMU_DEVOTIONAL_DIR.trim(),
+      ...(devotionalAudio ? { onSaved: (date: string) => { void warmDevotionalAudio(devotionalAudio, devotionalDir, date); } } : {}) })
     : null;
   const server = createServer(async (request, response) => {
     // Public, identity-checked Bible content is separate from private member APIs.

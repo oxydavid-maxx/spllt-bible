@@ -5,8 +5,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createDatabase } from '../../server/db';
 import { createHttpServer } from '../../server/http';
 
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
-it('serves authenticated mp3 bytes through the actual HTTP entry with an optional secret file', async () => {
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
+it('prepares the newest post at start, then serves authenticated mp3 bytes from it through the actual HTTP entry', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-16T08:00:00+08:00'));
   const dir = mkdtempSync(join(tmpdir(), 'qm-audio-http-'));
   const secret = join(dir, 'speech.json');
   writeFileSync(secret, JSON.stringify({ key: 'synthetic-key', region: 'eastasia' }));
@@ -25,12 +27,14 @@ it('serves authenticated mp3 bytes through the actual HTTP entry with an optiona
     const address = backend.server.address();
     if (!address || typeof address === 'string') throw new Error('NO_ADDRESS');
     const url = `http://127.0.0.1:${address.port}/api/devotional/2026-10-16/audio/0`;
+    // Three paragraphs in two voices, asked of Azure before anyone presses ▶.
+    await vi.waitFor(() => expect(azure).toHaveBeenCalledTimes(6));
     expect((await httpFetch(url)).status).toBe(401);
     const response = await httpFetch(url, { headers: { authorization: 'Bearer fixture', 'x-qingmu-member-id': 'test' } });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('audio/mpeg');
     expect(response.headers.get('cache-control')).toBe('private, no-store');
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(mp3);
-    expect(azure).toHaveBeenCalledTimes(1);
+    expect(azure, 'the listener is served the prepared file').toHaveBeenCalledTimes(6);
   } finally { await backend.stop(); rmSync(dir, { recursive: true, force: true }); }
 });

@@ -92,6 +92,16 @@ describe('LINE webhook for the pastor\'s daily 靈修', () => {
     expect(readdirSync(join(dir, 'devotionals'))).toEqual(['20300102.txt']);
   });
 
+  it('tells the server each newly saved or corrected day (to prepare its audio), not a redelivery or a rejected post', async () => {
+    const saved: string[] = [];
+    webhook = createLineWebhook({ channelSecret: SECRET, devotionalDir: join(dir, 'devotionals'), log: (line) => logs.push(line), onSaved: (date) => saved.push(date) });
+    await deliver(groupText(POST));
+    await deliver(groupText(POST));
+    await deliver(groupText(POST.replace('這是測試禱告。', '這是更正後的測試禱告。')));
+    await deliver(groupText(POST.replace('背誦經文：', '')));
+    expect(saved).toEqual(['2030-01-02', '2030-01-02']);
+  });
+
   it('never talks back: no network call of any kind', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     await deliver(groupText(POST));
