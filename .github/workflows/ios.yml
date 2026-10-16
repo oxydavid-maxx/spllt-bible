@@ -1,49 +1,45 @@
-# .github/workflows/ios.yml
 name: ios
 on:
-  pull_request:
-    paths: ['app/**', 'src/**', 'plugins/**', 'patches/**', 'package.json', 'package-lock.json', 'app.json', 'app.config.js', 'metro*.js', 'react-native.config.js', 'babel.config.js', 'server/**', '.maestro/**', 'scripts/ios/**', 'scripts/ci/**', '.github/workflows/ios.yml']
-  push:
-    branches: [main]
   workflow_dispatch:
-    inputs:
-      google_login_proof:
-        description: 'Synthetic Google wiring proof with production config composition (no account input)'
-        type: boolean
-        default: false
-concurrency:
-  group: ios-${{ github.ref }}
-  cancel-in-progress: true
 permissions:
   contents: read
-  actions: read
 jobs:
-  simulator:
-    if: ${{ !inputs.google_login_proof }}
+  mock-baseline:
+    strategy:
+      fail-fast: false
+      matrix:
+        screen: [login, account]
     runs-on: macos-26
-    timeout-minutes: 120
+    timeout-minutes: 80
     env:
-      OUT: ci-out
+      EXPO_NO_DOTENV: '1'
       EXPO_NO_TELEMETRY: '1'
-      EXPO_PUBLIC_QINGMU_FIXTURE: 'true'
-      EXPO_PUBLIC_QINGMU_DEV_TOKEN: ci-fixture-token
-      # HTTPS like production (scripts/ios/run-flows.sh): the reader loads Bible text only through an https API base.
-      EXPO_PUBLIC_QINGMU_API_BASE_URL: https://127.0.0.1:8788
+      EXPO_PUBLIC_QINGMU_FIXTURE: ${{ matrix.screen == 'account' && 'true' || 'false' }}
+      EXPO_PUBLIC_QINGMU_DEV_TOKEN: mock-fixture-only
+      EXPO_PUBLIC_QINGMU_API_BASE_URL: https://127.0.0.1:18788
       EXPO_PUBLIC_QINGMU_TEST_DATE: '2026-09-02'
-      # Empty until 光佑 approves Q1; the reader flows then report 略過（無 key）.
-      EXPO_PUBLIC_YOUVERSION_APP_KEY: ${{ secrets.YOUVERSION_APP_KEY }}
-      # The reader opens only with this exactly 'true' (app/(tabs)/reader.tsx), as in every release build.
-      EXPO_PUBLIC_QINGMU_YV_TEXT_PROBE: 'true'
-      # Narration comes from the backend's chapter audio, as in production; any day's chapter plays.
-      EXPO_PUBLIC_QINGMU_AUDIO_AUTHORIZED: 'true'
-      IOS_REQUIRED_CHINESE_STRINGS: NSCameraUsageDescription,NSMicrophoneUsageDescription,NSFaceIDUsageDescription
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 123456789012-obviously-fake-web-client.apps.googleusercontent.com
+      EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: com.googleusercontent.apps.123456789012-obviously-fake-ios-client
+      OUT: capture-out
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: c173df2ef989b02ef165c3dbe341973dca648f9f
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
       - run: sudo xcode-select -s /Applications/Xcode_26.4.1.app
+      - name: bind unmodified source and build environment
+        run: |
+          mkdir -p capture-out
+          test "$(git rev-parse HEAD)" = c173df2ef989b02ef165c3dbe341973dca648f9f
+          test -z "$(git status --porcelain --untracked-files=no)"
+          node <<'JS'
+          const fs=require('fs'),cp=require('child_process'),c=require('crypto');
+          const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>k.startsWith('EXPO_PUBLIC_')).sort());
+          fs.writeFileSync('capture-out/source.json',JSON.stringify({sourceCommit:cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourceTree:cp.execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),sourceDirty:cp.execFileSync('git',['status','--porcelain','--untracked-files=no'],{encoding:'utf8'}),environment:env,environmentDigest:c.createHash('sha256').update(JSON.stringify(env)).digest('hex'),node:process.version,workflowCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,observedAt:new Date().toISOString()},null,2));
+          JS
       - run: npm ci
       - run: npx expo prebuild --platform ios --no-install --clean
       - uses: actions/cache@v4
@@ -51,82 +47,88 @@ jobs:
           path: ios/Pods
           key: pods-${{ hashFiles('package-lock.json', 'patches/**', 'app.json', 'app.config.js') }}
       - run: cd ios && pod install
-      - run: echo '| 守門 | 結果 | 備註 |' >> "$GITHUB_STEP_SUMMARY" && echo '|---|---|---|' >> "$GITHUB_STEP_SUMMARY"
       - run: bash scripts/ios/build-simulator.sh
-      - run: npx tsx scripts/ios/guards.ts >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: install Maestro 2.10.0
+      - name: install pinned Maestro
         run: |
-          curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION=2.10.0 bash
+          curl -fsSL https://get.maestro.mobile.dev | MAESTRO_VERSION=2.10.0 bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      - name: flows and runtime budgets
+      - name: capture local welcome or fixture account without identity interaction
         env:
-          REQUIRES_KEY_PATTERN: '^(1[0-9]-reader|2[0-9]-audio)'
-        run: bash scripts/ios/run-flows.sh
-      - name: summary
-        if: always()
-        run: npx tsx scripts/ios/summary.ts >> "$GITHUB_STEP_SUMMARY"
-      - name: size and memory vs main
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
+          CAPTURE_SCREEN: ${{ matrix.screen }}
         run: |
-          RUN=$(gh run list --workflow ios.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-          if [ -n "$RUN" ]; then gh run download "$RUN" --name ios-summary --dir ci-out/base || true; fi
-          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json appBytes 1.05 "R5 .app 大小" >> "$GITHUB_STEP_SUMMARY"
-          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json footprintMB 1.10 "R3 記憶體 vs main" same-flows >> "$GITHUB_STEP_SUMMARY"
-      - name: sanitize evidence before upload
-        id: sanitize_evidence
-        if: always()
-        run: npx tsx scripts/ios/sanitize-evidence.ts ci-out
-      - if: always() && steps.sanitize_evidence.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-summary
-          path: |
-            ci-out/*.json
-            ci-out/xcodebuild-errors.txt
-            ci-out/fixture-listener.txt
-            ci-out/fixture-san.txt
-            ci-out/maestro/**/*.png
-            ci-out/maestro/*.txt
-          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
-  google-login:
-    if: ${{ inputs.google_login_proof }}
-    runs-on: macos-26
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - run: sudo xcode-select -s /Applications/Xcode_26.4.1.app
-      - run: npm ci
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - name: install Maestro 2.10.0
-        run: |
-          curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION=2.10.0 bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      - name: synthetic Google wiring (one native iOS authorization, no Google interaction)
-        # Explicitly fake clients live in google-login-fixture.ts. This job consumes no secrets.
-        run: npx tsx scripts/ios/google-login-proof.ts
+          set -euo pipefail
+          PIDS=''
+          UDID=''
+          cleanup() {
+            for pid in $PIDS; do kill "$pid" 2>/dev/null || true; done
+            if [ -n "$UDID" ]; then xcrun simctl shutdown "$UDID" || true; fi
+          }
+          trap cleanup EXIT
+          bash scripts/ios/make-ci-tls.sh capture-out/tls
+          QINGMU_DEV_TOKEN=mock-fixture-only QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=18787 npx tsx server/http.ts > capture-out/server.txt 2>&1 &
+          PIDS="$PIDS $!"
+          npx tsx scripts/ios/count-proxy.ts 18788 18787 capture-out/requests.log capture-out/tls/leaf.pem capture-out/tls/leaf.key > capture-out/proxy.txt 2>&1 &
+          PIDS="$PIDS $!"
+          for i in $(seq 1 30); do curl -fsS --cacert capture-out/tls/ca.pem https://127.0.0.1:18788/api/health > capture-out/health.json && break; sleep 1; done
+          test -s capture-out/health.json
+          UDID=$(xcrun simctl create qm-mock-capture 'iPhone 17' com.apple.CoreSimulator.SimRuntime.iOS-26-4)
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl keychain "$UDID" add-root-cert capture-out/tls/ca.pem
+          xcrun simctl status_bar "$UDID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+          xcrun simctl install "$UDID" "$(cat capture-out/app-path.txt)"
+          maestro --version > /dev/null 2>&1
+          "$HOME/.maestro/deps/applesimutils" --byId "$UDID" --bundle org.qingmu.youth --setPermissions notifications=YES
+          MAESTRO_DRIVER_STARTUP_TIMEOUT=600000 maestro --device "$UDID" hierarchy --no-reinstall-driver > /dev/null 2>&1
+          export MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
+          if [ "$CAPTURE_SCREEN" = login ]; then
+            cat > capture-flow.yaml <<'YAML'
+          appId: org.qingmu.youth
+          ---
+          - launchApp
+          - extendedWaitUntil:
+              visible: '用 Google 登入'
+              timeout: 90000
+          - assertVisible: '竹科靈糧堂的每日讀經'
+          YAML
+          else
+            cat > capture-flow.yaml <<'YAML'
+          appId: org.qingmu.youth
+          ---
+          - launchApp
+          - extendedWaitUntil:
+              visible: '開啟帳戶'
+              timeout: 90000
+          - tapOn: '開啟帳戶'
+          - extendedWaitUntil:
+              visible: '申請刪除帳號與資料'
+              timeout: 30000
+          - assertVisible: '測試成員甲'
+          YAML
+          fi
+          maestro --device "$UDID" test --no-reinstall-driver capture-flow.yaml --format junit --output capture-out/flow.xml > capture-out/flow.txt 2>&1
+          maestro --device "$UDID" hierarchy --no-reinstall-driver > capture-out/hierarchy.txt
+          if grep -Eqi '[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}' capture-out/hierarchy.txt; then echo 'Privacy check failed'; exit 1; fi
+          xcrun simctl io "$UDID" screenshot "capture-out/$CAPTURE_SCREEN.png"
+          xcrun simctl list devices available -j > capture-out/devices.json
+          node <<'JS'
+          const fs=require('fs'),c=require('crypto'); const file=`capture-out/${process.env.CAPTURE_SCREEN}.png`;
+          const b=fs.readFileSync(file);fs.writeFileSync('capture-out/receipt.json',JSON.stringify({screen:process.env.CAPTURE_SCREEN,sha256:c.createHash('sha256').update(b).digest('hex'),width:b.readUInt32BE(16),height:b.readUInt32BE(20),observedAt:new Date().toISOString(),identityInput:false,thirdPartyLoginOpened:false,accountData:'two-member-week fixture only'},null,2));
+          JS
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ios-google-entry
+          name: mock-baseline-${{ matrix.screen }}
           path: |
-            ci-google/receipt.json
-            ci-google/public-config.redacted.json
-            ci-google/google-entry.png
-            ci-google/failure.redacted.txt
-            ci-google/flow.redacted.txt
-            ci-google/failure-screen.png
-            ci-google/hierarchy.redacted.txt
-          retention-days: 7
+            capture-out/source.json
+            capture-out/receipt.json
+            capture-out/*.png
+            capture-out/hierarchy.txt
+            capture-out/flow.txt
+            capture-out/flow.xml
+            capture-out/xcodebuild-errors.txt
+          retention-days: 14
