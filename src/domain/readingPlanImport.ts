@@ -68,13 +68,14 @@ export function planDaysFromCells(days: readonly PlanCellDay[]): PlanFileDay[] {
 }
 
 /**
- * Where the app reads differently from the sheet, which data/source keeps as it is. The sheet put
- * Psalm 119's second half on 10/15 and its first half on 10/16; the plan's owner confirmed a layout
- * slip on 2026-09-29.
+ * Days whose rows changed after the server first stored them, with the revision that makes a server take
+ * the new row (gamification.ts only replaces a stored day from a higher revision). 10/15 and 10/16 were
+ * swapped to Psalm 119:1-88 then 89-176 on 2026-09-29 (revision 2); on 2026-10-16 they went back to the
+ * sheet's order, because the pastor's 靈修 read 119:89-176 on 10/15 and 119:1-88 on 10/16 (revision 3).
  */
-const SHEET_CORRECTIONS: Record<string, { fresh: string }> = {
-  '2026-10-15': { fresh: '詩119篇1-88節' },
-  '2026-10-16': { fresh: '詩119篇89-176節' },
+const REVISED_DAYS: Record<string, number> = {
+  '2026-10-15': 3,
+  '2026-10-16': 3,
 };
 
 /**
@@ -93,13 +94,10 @@ export function buildReadingPlan2026(
     source: `2026-09: data/september-2026.json; from 2026-10: ${cells.source.file} (${cells.source.sheet}) sha256 ${cells.source.sha256}`,
     days: [
       ...september.days.map(({ date, source_rows, references }) => ({ date, source_rows, references })),
-      ...planDaysFromCells(cells.days.filter((day) => day.date > '2026-09-30').map((day) => {
-        const correction = SHEET_CORRECTIONS[day.date];
-        return correction ? { ...day, fresh: correction.fresh } : day;
-      })).map((day) => {
-        const correction = SHEET_CORRECTIONS[day.date];
-        // 2026-09-30: keep the correction, but do not show a correction explanation to members.
-        return correction ? { ...day, revision: 2 } : day;
+      ...planDaysFromCells(cells.days.filter((day) => day.date > '2026-09-30')).map((day) => {
+        const revision = REVISED_DAYS[day.date];
+        // No explanation is shown to members for a revised day (2026-09-30).
+        return revision ? { ...day, revision } : day;
       }),
     ],
   };
