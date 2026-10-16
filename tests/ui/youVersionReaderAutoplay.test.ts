@@ -182,3 +182,29 @@ describe('YouVersionReader continuous playback orchestration', () => {
     expect(changedToggle).toHaveBeenCalledWith(false);
   });
 });
+
+
+describe('assigned partial chapter bridge wiring', () => {
+  it('passes the same range to the SDK and audio; changing the date changes the scope', async () => {
+    await mount({ date: '2026-10-15', references: ['PSA.119.89-176'], book: 'PSA', chapter: '119' });
+    const reader = () => renderer!.root.findAll(node => String(node.type) === 'Reader')[0];
+    expect(reader().props.passageRange).toMatchObject({ firstVerse: 89, lastVerse: 176, chapterUsfm: 'PSA.119' });
+    expect(boundary.context.passageRange).toMatchObject({ firstVerse: 89, lastVerse: 176 });
+    expect(boundary.context.passageKey).toBe(reader().props.passageRange.key);
+    const oldKey = reader().props.passageRange.key;
+    await act(async () => boundary.context.onRangeAudioNotice(oldKey, '這段錄音沒有分節，會從頭播整章'));
+    expect(reader().props.passageAudioNotice).toBe('這段錄音沒有分節，會從頭播整章');
+    await act(async () => renderer!.update(React.createElement(YouVersionReader, { date: '2026-10-16', references: ['PSA.119.1-88'], book: 'PSA', chapter: '119', appKey: 'test', versionId: 46, allowTechnicalProbe: true })));
+    expect(reader().props.passageRange.key).not.toBe(oldKey);
+    expect(reader().props.passageRange).toMatchObject({ firstVerse: 1, lastVerse: 88 });
+    expect(reader().props.passageAudioNotice).toBeNull();
+  });
+  it.each([
+    { references: ['PSA.119'], book: 'PSA', chapter: '119' },
+    { references: ['PSA.119.89-176'], book: 'PSA', chapter: '118' },
+    { references: ['PSA.119.89-176'], book: 'PSA', chapter: '119', assignedReading: false },
+  ])('does not restrict whole chapters or free reading: %j', async props => {
+    await mount(props);
+    expect(renderer!.root.findAll(node => String(node.type) === 'Reader')[0].props.passageRange).toBeNull();
+  });
+});

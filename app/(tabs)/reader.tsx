@@ -344,6 +344,7 @@ export default function ReaderScreen() {
       book={currentBook || undefined}
       chapter={currentChapter || undefined}
       activeReferenceIndex={assignedIndex}
+      assignedReading={selection.source === 'ASSIGNED'}
       onActiveReferenceChange={selectAssigned}
       allowedVersionIds={allowedVersionIds}
       onBookChange={(book) => moveFreely({ book })}

@@ -43,6 +43,17 @@
 - 「回到指定範圍」（`returnToAssignedRange`）與再次點「讀經」tab 且判定要重置到指派起點時（`todayReaderTabPressResetToAssignedStart`），都會把選擇重設回第一段指定經文；後者只在登入身分、日期都跟當初觸發的一致，且不是仍在「同一天再次點讀經」的情形下才會覆蓋現有選擇。
 - 未登入（訪客）時不記住/讀取任何位置，選擇只存在畫面狀態中，離開就消失。
 
+### 每日半章經文與錄音
+
+- 計畫參照帶節數 (例如 `PSA.119.89-176`、`PSA.119.1-88`、`ACT.7.1-29`) 時，只顯示排定的經節、它們的段落和標題；進入時從範圍第一節開始。整章參照和自由閱讀維持整章。
+- 起點不是第 1 節時，經文上方顯示「詩篇 119:89–176 · 看整章」；未到章末時，最後一節後顯示「今天讀到第 88 節」，下方「看整章 ›」。書卷、章與節數依當天範圍產生。
+- 點「看整章」恢復整章並盡量保留眼前閱讀位置；換日期、章節或譯本後回到指定範圍。展開只影響閱讀，錄音仍讀當天排定範圍。
+- SDK 的合節 (例如 `v="5-6"`) 是不可拆的經文單位，只要與指定範圍重疊便保留整段；同一節跨多段時全部保留。不改寫正文、不按字數猜節界。
+- 錄音來源具備範圍首節/末節的 `verseTiming` 時，播放前先跳到首節 `start`，到末節 `end` 停止，走原本的章末完成事件。因此接續讀經與接續靈修仍依原設定執行。暫停繼續保留範圍內位置，念完後再按播放重讀該範圍。
+- 錄音沒有可用的首尾分節時間時，播放整章，經文上方顯示「這段錄音沒有分節，會從頭播整章」。不借用其他譯本或章節的時間。整章參照不顯示此提示。
+- 朗讀反白與跟隨仍由原本的 read-along bridge 負責，範圍外不反白；完成鈕依裁切後內容的底部判定，仍由使用者手動完成當天，不因錄音念完自動打卡。
+- 經文仍由 YouVersion SDK 查整章與轉成 DOM。原生 `passageRange` prop 經 SDK 補丁傳到 `data-qingmu-passage-range`，`src/ui/partialChapterBridge.ts` 再處理顯示；SDK 非同步換內容後重新套用。此 DOM bridge 不發網路請求，也沒有常駐計時器。
+
 ### 章節導覽與章節籤（`src/ui/FullscreenReaderLayout.tsx`）
 
 - 一般（未收合）狀態：頁首依序是日期列（‹ 上一個排定讀經日 · 今天日期 · 下一個排定讀經日 ›，規則見 [reading-plan.md](reading-plan.md)）與章節籤列。章節籤列列出今天每一段指定經文各一個籤，目前那一段反白；沒有排定時只顯示一個「自由閱讀：《書卷章節》」籤。籤列右側是「更多閱讀工具」按鈕。
@@ -136,6 +147,9 @@
 
 **刻意不做：**
 
+- **半章只顯示和朗讀排定範圍，保留看整章入口**：避免讓使用者誤以為今天要讀完整章；範圍外段落與標題一起隱藏，提示只在有被省略的頭/尾出現。換日期/章節重設，無分節錄音明說整章播放，不猜時間。(維護者 2026-10-16 確認；工單引用當日 mock 第四區)
+- **半章首列是書名只出現一次規則的例外**：用完整範圍告知省略章首，僅非第 1 節開始時顯示。(維護者 2026-10-16)
+
 - **自己讀完按完成不跳靈修頁**：完成打卡與朗讀是兩件事，避免打斷自己閱讀的人。(維護者 2026-10-14)
 - **接續靈修預設關，只能明確選擇打開**：保留曾經開過或關過的選擇；任何自動流程都不能改成開。提示只給從未選過、首次出現後 7 個日曆天內、確實到最後一章底的人；點後切到靈修並永久停止提示。(維護者 2026-10-14)
 - **完成才填滿深綠**：圈圈一律白底 2px 深綠框 (#1A5544)，完成才深綠底白圖示；聖經打開發光，葉子長新葉。葉子圈是完成/撤銷，不是播放。(維護者 2026-10-14)
@@ -178,6 +192,11 @@
 - 朗讀章節位址登記表（`server/contentRegistry.ts`）與其評估邏輯（`server/contentCapabilities.ts`）屬於朗讀/朗讀能力查詢功能，不是本文件範圍；本文件只確認它們與 `contentGate.ts`/`readerAdapter.ts` 一樣不是譯本文字內容顯示的實際路徑。
 
 ## 守住它的測試
+
+- `tests/domain/partialChapter.test.ts` — 節數範圍、整章不限制、合節邊界。
+- `tests/ui/partialChapterBridge.test.ts` — 詩篇 119 實錄經安裝的 WebView SDK 轉換後，真瀏覽器驗證範圍、空段、標題、頭尾提示、看整章、換日/內容重設和完成邊界。
+- `tests/services/partialChapterAudio.test.ts`、`tests/ui/partialChapterAudioControls.test.ts` — 兩個譯本的實錄首尾時間、無分節退路、seek/停止/重播、背景與同章換日/延遲 seek。
+- `tests/services/sdkPartialChapter.test.ts`、`tests/ui/youVersionReaderAutoplay.test.ts` — 安裝 SDK 的 DOM 屬性更新與清除、範圍/提示 prop 串接與原本章末接續。
 
 - `tests/ui/fullscreenReaderLayout.test.ts`、`tests/ui/fullscreenReaderPadding.test.ts`、`tests/ui/fullscreenReaderScreen.test.ts`、`tests/ui/fullscreenReaderWrapper.test.ts` — Layout A 的頁首、章節籤、右下按鈕、經文可視區域尺寸與換算。
 - `tests/ui/readerLayoutA.test.ts`、`tests/ui/readerLayoutContract.test.ts` — 沉浸收合/展開時機與版面契約（`readerLayoutContract.ts`）。
