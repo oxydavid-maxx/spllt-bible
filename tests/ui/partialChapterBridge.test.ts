@@ -53,7 +53,10 @@ it('filters the real recorded Psalm after SDK transformation, restores the chapt
       function(){snap('remounted');setRange(null);},
       function(){snap('unrestricted');setRange(${json(range('PSA.119.6', 'merged'))});render('<div class="chapter"><div class="s yv-h">Outside</div><div class="p"><span class="yv-v" v="1"></span>one</div><div class="s yv-h">Inside</div><div class="p"><span class="yv-v" v="5-6"></span>combined</div><div class="p"><span class="yv-v" v="7"></span>seven</div></div>');},
       function(){snap('merged');root.setAttribute('data-qingmu-passage-audio-notice','這段錄音沒有分節，會從頭播整章');},
-      function(){snap('notice');}
+      // On the phone (2026-10-16) the SDK wraps verse 88's whitespace-only continuation as its own unit, after
+      // the heading of verse 89; that heading belongs to 89 and must hide with it.
+      function(){snap('notice');setRange(${json(range('PSA.119.1-88', 'tailHeading'))});renderer.innerHTML='<div class="chapter"><div class="q1"><span class="yv-v" v="88"><span class="yv-vlbl">88\\u00a0</span><span class="content">eighty-eight</span></span></div><div class="s yv-h"><span class="yv-h">Next section</span></div><div class="q1"><span class="yv-v" v="88"><span class="content">\\u00a0\\u00a0</span></span><span class="yv-v" v="89"><span class="yv-vlbl">89\\u00a0</span><span class="content">eighty-nine</span></span></div></div>';},
+      function(){snap('tailHeading');snaps.tailHeading.blankUnits=Array.from(renderer.querySelectorAll('.yv-v[v]')).filter(el=>!/\\S/.test(el.textContent)).length;}
     ];var i=0;
     function next(){if(i<steps.length){steps[i++]();setTimeout(next,70);}else{document.getElementById('result').textContent=JSON.stringify({snaps:snaps,messages:messages});}}
     var capture=new URLSearchParams(location.search).get('capture');
@@ -93,6 +96,10 @@ it('filters the real recorded Psalm after SDK transformation, restores the chapt
     expect(s.unrestricted.verses).toEqual(s.whole.verses);
     expect(s.merged.verses).toEqual(['5-6']); expect(s.merged.headings).toEqual(['Inside']); expect(s.merged.emptyParagraphs).toBe(0);
     expect(s.notice.notice).toBe('這段錄音沒有分節，會從頭播整章');
+    expect(s.tailHeading.blankUnits, 'the phone\'s DOM keeps verse 88\'s blank continuation as its own unit').toBe(1);
+    expect(s.tailHeading.headings, 'the next section\'s heading after the last assigned verse').toEqual([]);
+    expect(s.tailHeading.emptyParagraphs, 'no blank line left where verse 88\'s continuation sat').toBe(0);
+    expect(s.tailHeading.tail).toBe('今天讀到第 88 節看整章 ›');
     for (const name of ['second', 'first']) {
       expect(s[name].scrollWidth).toBe(s[name].width);
       for (const button of s[name].buttons) { expect(button.width).toBeGreaterThanOrEqual(44); expect(button.height).toBeGreaterThanOrEqual(44); expect(button.contrast).toBeGreaterThanOrEqual(4.5); }

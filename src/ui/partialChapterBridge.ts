@@ -77,9 +77,12 @@ export function partialChapterScript(): string {
     firstUnit = currentFirst; lastRange = rangeValue;
     clear();
     if (!range || expanded || !units.length) return;
-    var kept = units.filter(function (el) { return overlaps(el, range); });
+    // Only units with words count. On the phone (2026-10-16) verse 88's whitespace-only continuation is its own
+    // unit, inside the paragraph after verse 89's heading; counting it kept that heading and a blank line.
+    function words(el) { return /[^\\s\\u200b\\u200c\\u200d\\ufeff]/.test(el.textContent || ''); }
+    var kept = units.filter(function (el) { return overlaps(el, range) && words(el); });
     units.forEach(function (el) { if (kept.indexOf(el) < 0) hide(el); });
-    function nextUnit(el) { return units.find(function (unit) { return !!(el.compareDocumentPosition(unit) & Node.DOCUMENT_POSITION_FOLLOWING); }); }
+    function nextUnit(el) { return units.find(function (unit) { return !!(el.compareDocumentPosition(unit) & Node.DOCUMENT_POSITION_FOLLOWING) && words(unit); }); }
     // A heading belongs to the next verse, not the previous paragraph's trailing verse marker.
     Array.from(renderer.querySelectorAll('.yv-h,.s,.s1,.s2,.s3,.s4,.ms,.ms1,.ms2,.r,.qa')).forEach(function (el) {
       if (el.closest('.yv-v[v]')) return;
