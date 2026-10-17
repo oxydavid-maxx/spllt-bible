@@ -44,13 +44,13 @@
 - 先向 `POST /api/session/apple/challenge` 取得五分鐘有效、單次使用的 nonce，再交給原生 `signInAsync`。取消不建立帳號；失敗顯示「Apple 登入沒有完成，請稍後再試。」。
 - `POST /api/session/apple` 驗 Apple JWKS 的 RS256 簽章、issuer、到期、subject、單一 audience `org.qingmu.youth` 與 nonce；拒絕重放。authorization code 換得的 ID token 必須對上相同 subject，才保存加密 refresh token。
 - 首次以 provider/subject 建立會員，Apple 只第一次提供名稱也不影響後續登入；未提供名稱用「竹科聖經會員」。不以 Email 與 Google 身份自動合併。回傳既有 `qmd_` 裝置 session，沿用相同保存/登出生命週期。
-- 私有後端需提供 `QINGMU_APPLE_SIGNIN_KEY_FILE`、`QINGMU_APPLE_SIGNIN_KEY_ID`、`QINGMU_APPLE_SIGNIN_TEAM_ID`；未設定時不啟用正式 Apple API，App 顯示失敗，不假裝登入成功。不得用 ASC API key 代替 Sign in with Apple key。
+- identity token 驗證只使用 Apple 公鑰，不需要私鑰；未設定私鑰仍可驗證登入、建立會員。`QINGMU_APPLE_SIGNIN_KEY_FILE`、`QINGMU_APPLE_SIGNIN_KEY_ID`、`QINGMU_APPLE_SIGNIN_TEAM_ID` 三項齊備時，才交換 authorization code 並加密保存 refresh token，供之後撤銷。私鑰由主管安排，不在 repo 保存，也不得用 ASC API key 代替。
 
 ### 永久刪除 (`server/accountDeletion.ts`)
 
 - 帳戶頁點「刪除帳號與資料」只開啟確認畫面，不發刪除請求；顯示主管同意的三句警告，只有「取消」「確認刪除」，沒有日記匯出入口。
 - 確認後以當前 Bearer 呼叫 `DELETE /api/me`，必須帶 `confirmed: true`。伺服器只信已驗證 session 的成員，忽略 body/header 自選的 memberId。
-- Apple refresh token 先透過官方 revoke 撤銷；失敗回報錯誤可重試。資料庫在同一筆交易刪除成員、歸屬/小組、所有 session/登入綁定、進度、積分、好友、提醒/裝置代碼、報名關聯、舊日記/提名/投票與相關操作快取。失敗整筆回滾。其他會員保留；共同內容保留，其他會員紀錄中屬被刪除管理者的操作歸屬去識別。
+- 有私鑰設定且保存了 Apple refresh token 時，先透過官方 revoke 撤銷；Apple 撤銷請求失敗時回報錯誤可重試。缺少私鑰時仍刪除我們的資料，成功後只記一筆「Apple token 未撤銷」及原因 `PRIVATE_KEY_NOT_CONFIGURED`；有設定但沒有 refresh token 時則記 `REFRESH_TOKEN_NOT_AVAILABLE`。紀錄不含 token、subject、會員 ID 或姓名，不以本地刪除成功冒充 Apple 授權已撤銷。資料庫在同一筆交易刪除成員、歸屬/小組、所有 session/登入綁定、進度、積分、好友、提醒/裝置代碼、報名關聯、舊日記/提名/投票與相關操作快取。失敗整筆回滾。其他會員保留；共同內容保留，其他會員紀錄中屬被刪除管理者的操作歸屬去識別。
 - 已刪除成員的舊裝置與簽名 session 不能再讀寫。App 收到 `deleted: true` 才清掉該次 session，路由回登入頁；失敗保留登入並顯示重試，不讓舊請求登出新帳號。
 - 手機舊日記不遠端抹除；目前沒有日記入口。外部 Google 兌換試算表的列由管理者手動刪除，政策另行說明；公布欄週刊不屬個人帳號資料。
 

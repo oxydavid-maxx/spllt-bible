@@ -543,12 +543,18 @@ export function createApiHandler(options: ApiHandlerOptions) {
         const body = parseBody(request.body);
         if (body.confirmed !== true) return json(400, { error: 'CONFIRMATION_REQUIRED' });
         const stored = options.db.db.prepare('SELECT encrypted_token FROM apple_refresh_tokens WHERE member_id=?').get(auth.memberId) as { encrypted_token: string } | undefined;
-        if (stored) {
-          if (!options.productionAppleAuth?.revoke || !options.sessionSecret) return json(503, { error: 'APPLE_REVOCATION_UNAVAILABLE' });
+        const isAppleMember = Boolean(stored || options.db.db.prepare("SELECT 1 FROM identity_bindings WHERE member_id=? AND provider='apple'").get(auth.memberId));
+        const canRevoke = Boolean(options.productionAppleAuth?.revoke && options.sessionSecret);
+        if (stored && options.productionAppleAuth?.revoke && options.sessionSecret) {
           try { await options.productionAppleAuth.revoke(openAppleToken(stored.encrypted_token, options.sessionSecret)); }
           catch { return json(503, { error: 'APPLE_REVOCATION_UNAVAILABLE' }); }
         }
         deleteMemberAccount(options.db.db, auth.memberId);
+        // Missing private-key configuration must not prevent deletion of our data.
+        // The audit event deliberately contains no token, subject, member ID or name.
+        if (isAppleMember && (!canRevoke || !stored)) console.warn('Apple token 未撤銷', {
+          reason: !canRevoke ? 'PRIVATE_KEY_NOT_CONFIGURED' : 'REFRESH_TOKEN_NOT_AVAILABLE',
+        });
         return json(200, { deleted: true });
       }
       if (request.method === 'GET' && url.pathname === '/api/me/reading-days') {

@@ -1,10 +1,55 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createDatabase } from '../../server/db';
 import { createApiHandler } from '../../server/routes';
 import { createDeviceSession } from '../../server/mobileSessions';
 import { createSessionToken } from '../../server/session';
+import { sealAppleToken } from '../../server/appleTokens';
 
 describe('Apple sessions and permanent account deletion', () => {
+  it.each([false, true])('deletes Apple data without a private key, with stored token=%s, and logs no personal data', async (hasToken) => {
+    const db = createDatabase({ members: [{ id: 'self', displayName: '虛構甲', groupId: 'youth' }, { id: 'other', displayName: '虛構乙', groupId: 'main' }] });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      db.db.prepare('INSERT INTO identity_bindings VALUES(?,?,?,?)').run('apple', 'synthetic-private-subject', 'self', '2026-10-17');
+      if (hasToken) db.db.prepare('INSERT INTO apple_refresh_tokens VALUES(?,?)').run('self', sealAppleToken('synthetic-private-refresh', 'test-secret'));
+      const api = createApiHandler({ db, fixtureToken: 'fixture', productionAppleAuth: { verify: async () => { throw Error('unused'); } }, sessionSecret: 'test-secret' });
+      const result = await api({ method: 'DELETE', url: '/api/me', headers: { authorization: 'Bearer fixture', 'x-qingmu-member-id': 'self' }, body: '{"confirmed":true}' });
+      expect(result).toMatchObject({ status: 200, body: { deleted: true } });
+      expect(db.db.prepare("SELECT * FROM members WHERE id='self'").get()).toBeUndefined();
+      expect(db.db.prepare('SELECT * FROM apple_refresh_tokens').all()).toEqual([]);
+      expect(db.db.prepare('SELECT * FROM identity_bindings').all()).toEqual([]);
+      expect(db.db.prepare("SELECT * FROM members WHERE id='other'").get()?.display_name).toBe('虛構乙');
+      expect(warn.mock.calls).toEqual([['Apple token 未撤銷', { reason: 'PRIVATE_KEY_NOT_CONFIGURED' }]]);
+    } finally { warn.mockRestore(); db.close(); }
+  });
+
+  it('revokes a stored Apple token when configured before deleting our data', async () => {
+    const db = createDatabase({ members: [{ id: 'self', displayName: '虛構甲', groupId: 'youth' }] });
+    const revoke = vi.fn(async () => { expect(db.db.prepare("SELECT * FROM members WHERE id='self'").get()).toBeDefined(); });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      db.db.prepare('INSERT INTO identity_bindings VALUES(?,?,?,?)').run('apple', 'synthetic-subject', 'self', '2026-10-17');
+      db.db.prepare('INSERT INTO apple_refresh_tokens VALUES(?,?)').run('self', sealAppleToken('synthetic-refresh', 'test-secret'));
+      const api = createApiHandler({ db, fixtureToken: 'fixture', sessionSecret: 'test-secret', productionAppleAuth: { verify: async () => { throw Error('unused'); }, revoke } });
+      expect((await api({ method: 'DELETE', url: '/api/me', headers: { authorization: 'Bearer fixture', 'x-qingmu-member-id': 'self' }, body: '{"confirmed":true}' })).status).toBe(200);
+      expect(revoke).toHaveBeenCalledExactlyOnceWith('synthetic-refresh');
+      expect(warn).not.toHaveBeenCalled();
+      expect(db.db.prepare("SELECT * FROM members WHERE id='self'").get()).toBeUndefined();
+    } finally { warn.mockRestore(); db.close(); }
+  });
+
+  it('keeps deletion retryable when a configured Apple revoke request fails', async () => {
+    const db = createDatabase({ members: [{ id: 'self', displayName: '虛構甲', groupId: 'youth' }] });
+    try {
+      db.db.prepare('INSERT INTO apple_refresh_tokens VALUES(?,?)').run('self', sealAppleToken('synthetic-refresh', 'test-secret'));
+      const revoke = vi.fn(async () => { throw Error('synthetic provider failure'); });
+      const api = createApiHandler({ db, fixtureToken: 'fixture', sessionSecret: 'test-secret', productionAppleAuth: { verify: async () => { throw Error('unused'); }, revoke } });
+      const response = await api({ method: 'DELETE', url: '/api/me', headers: { authorization: 'Bearer fixture', 'x-qingmu-member-id': 'self' }, body: '{"confirmed":true}' });
+      expect(response).toMatchObject({ status: 503, body: { error: 'APPLE_REVOCATION_UNAVAILABLE' } });
+      expect(db.db.prepare("SELECT * FROM members WHERE id='self'").get()).toBeDefined();
+      expect(db.db.prepare('SELECT * FROM apple_refresh_tokens').all()).toHaveLength(1);
+    } finally { db.close(); }
+  });
   it('provisions an Apple member once and issues an ordinary device session', async () => {
     const db = createDatabase();
     try {

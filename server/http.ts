@@ -166,9 +166,11 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
       : {}),
     ...(googleAudience && !options.fixtureToken
       ? {
-          ...(appleTokens ? { productionAppleAuth: {
+          // Identity verification uses Apple's public JWKS; the private key is only
+          // needed for authorization-code exchange and token revocation.
+          productionAppleAuth: {
             verify: (token: string, nonce: string) => verifyAppleIdToken(token, { nonce }), ...appleTokens,
-          } } : {}),
+          },
           productionGoogleAuth: {
             verify: async (idToken: string) => verifyGoogleIdToken(idToken, { audience: googleAudience }),
             resolveMember: async (identity: { subject: string; provider: 'google' }) => {
