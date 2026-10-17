@@ -51,6 +51,9 @@ describe('Apple sessions and permanent account deletion', () => {
       expect(db.db.prepare("SELECT * FROM completions WHERE member_id='other'").all()).toHaveLength(1);
       expect(db.db.prepare("SELECT * FROM operations WHERE operation_id='op-other'").get()).toBeDefined();
       for (const old of [token, legacy]) expect((await api({ method: 'GET', url: '/api/me', headers: { authorization: `Bearer ${old}` } })).status).toBe(401);
+      // A delayed logout/revoke from an older installed app must not recreate deleted personal data.
+      expect((await api({ method: 'POST', url: '/api/session/revoke', headers: { authorization: `Bearer ${legacy}` } })).status).toBe(401);
+      expect(db.db.prepare("SELECT * FROM auth_sessions WHERE member_id='self'").all()).toEqual([]);
     } finally { db.close(); }
   });
 

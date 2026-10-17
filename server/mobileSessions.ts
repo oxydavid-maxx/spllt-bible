@@ -45,7 +45,8 @@ export function revokeSession(db: DatabaseSync, token: string, sessionSecret: st
     return true;
   }
   const memberId = verifySessionToken(token, sessionSecret);
-  if (!memberId) return false;
+  // A delayed logout from a deleted account must never recreate its member ID in storage.
+  if (!memberId || !db.prepare('SELECT id FROM members WHERE id=?').get(memberId)) return false;
   const hash = hashToken(token);
   db.prepare("INSERT OR IGNORE INTO auth_sessions(session_id,member_id,token_hash,kind,created_at,revoked_at) VALUES(?,?,?,'legacy-revocation',?,?)").run(`legacy:${hash}`, memberId, hash, now(), now());
   return true;
