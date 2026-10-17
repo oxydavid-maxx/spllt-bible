@@ -76,6 +76,7 @@ for flow in .maestro/ios/*.yaml; do
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
     # Narration must keep playing while the app is in the background: park it behind Settings for 20 s.
     20-audio-start) xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null ;;
+    45-account-deletion) maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/maestro/45-apple-authorization-screen.txt" 2>/dev/null || true ;;
     30-friend-push-open) npx tsx scripts/ios/make-friend-apns.ts "$OUT/friend.apns" && xcrun simctl push "$UDID" org.qingmu.youth "$OUT/friend.apns" ;;
   esac
 done

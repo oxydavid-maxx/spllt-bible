@@ -1,10 +1,10 @@
 # 帳戶、登入與 App 更新提示
 
-> 狀態：已上線（0.5.21）｜平台：Android、iOS（差異見「平台差異」）｜依據：main 1e00ca5 的程式碼，2026-09-30 核對
+> 狀態：本 PR 候選，尚待正式發布｜平台：Android、iOS (差異見「平台差異」)｜2026-10-17 更新：Apple 登入、App 內刪除、iOS 返回鍵
 
 ## 一句話
 
-用 Google 帳號登入建立或找回身份，帳戶頁能看到自己的資料、調整讀經提醒、登出或申請刪除資料；App 開機或回到前景時會順便檢查有沒有新版本可以更新（目前只有 Android 會被提醒）。
+用 Google 帳號或 iPhone 的 Apple 登入建立或找回身份，帳戶頁能看到自己的資料、調整讀經提醒、登出或永久刪除帳號與伺服器個資；App 開機或回到前景時會順便檢查有沒有新版本可以更新（目前只有 Android 會被提醒）。
 
 ## 從哪裡進
 
@@ -17,8 +17,10 @@
 | 功能 | 使用者看到什麼 |
 |---|---|
 | Google 登入 | 一個「用 Google 登入」大按鈕；第一次登入自動建立帳號 |
+| Apple 登入 | 只在支援原生 Apple 授權的 iPhone 顯示；首次登入自動建立會員，不以 Email 合併身份 |
+| 刪除帳號 | 先說明影響，第二次確認才刪除；失敗可重試，成功自動登出 |
 | 帳號啟用碼（備援路徑） | 伺服器認不出這個 Google 身份時，改顯示「輸入一次性啟用碼」欄位 |
-| 帳戶頁 | 頭像或姓名字首圖示、姓名、所屬小組名稱、讀經提醒設定、登出、申請刪除帳號與資料，最下面一行是 App 版本號 |
+| 帳戶頁 | 頭像或姓名字首圖示、姓名、所屬小組名稱、讀經提醒設定、登出、刪除帳號與資料，最下面一行是 App 版本號 |
 | 全體 (管理) 入口 | 只有管理者看得到：刪除連結上面一行淡色的「全體 (管理) ›」，按下到積分頁的全體排名 |
 | 登出 | 一個按鈕，清掉本機登入狀態並讓裝置端 session 失效 |
 | App 更新全螢幕提示 | 開機/回前景時蓋在畫面上的卡片：版本號、更新按鈕、（非強制時）稍後按鈕 |
@@ -36,6 +38,22 @@
 - 帳號被停用（`disabled_at` 有值）時，無論走哪條路徑都回 403 `ACCOUNT_DISABLED`；client 端目前把它與其他失敗一起顯示成「伺服器沒有確認身份，請稍後再試。」（沒有專屬文案）。
 - Google Play 測試機器人：每次上傳新版到 Play，正式發布前測試報告會在 Firebase Test Lab 的裝置上自己用 Google 登入。新的 Google 身份第一次登入時，如果連線來自 Google 公布的 Test Lab 位址（Cloudflare 的 `cf-connecting-ip`，`server/testLabNetwork.ts`），會員一建立就是停用的，所以不會出現在讀經人數、排行、投票和好友裡。已經存在的會員從這些位址登入也不會被停用。每建立一個新會員，後端 log 記一行 `AUTO_PROVISION_MEMBER testDevice=<true|false>`（不記名字和位址）。
 
+### Apple 登入 (`src/ui/AppleLoginCard.tsx`、`server/appleVerifier.ts`)
+
+- iOS 且系統支援 Apple 授權時才顯示 Apple 原生按鈕；Android 不顯示，也不呼叫 Apple。
+- 先向 `POST /api/session/apple/challenge` 取得五分鐘有效、單次使用的 nonce，再交給原生 `signInAsync`。取消不建立帳號；失敗顯示「Apple 登入沒有完成，請稍後再試。」。
+- `POST /api/session/apple` 驗 Apple JWKS 的 RS256 簽章、issuer、到期、subject、單一 audience `org.qingmu.youth` 與 nonce；拒絕重放。authorization code 換得的 ID token 必須對上相同 subject，才保存加密 refresh token。
+- 首次以 provider/subject 建立會員，Apple 只第一次提供名稱也不影響後續登入；未提供名稱用「竹科聖經會員」。不以 Email 與 Google 身份自動合併。回傳既有 `qmd_` 裝置 session，沿用相同保存/登出生命週期。
+- 私有後端需提供 `QINGMU_APPLE_SIGNIN_KEY_FILE`、`QINGMU_APPLE_SIGNIN_KEY_ID`、`QINGMU_APPLE_SIGNIN_TEAM_ID`；未設定時不啟用正式 Apple API，App 顯示失敗，不假裝登入成功。不得用 ASC API key 代替 Sign in with Apple key。
+
+### 永久刪除 (`server/accountDeletion.ts`)
+
+- 帳戶頁點「刪除帳號與資料」只開啟確認畫面，不發刪除請求；顯示主管同意的三句警告，只有「取消」「確認刪除」，沒有日記匯出入口。
+- 確認後以當前 Bearer 呼叫 `DELETE /api/me`，必須帶 `confirmed: true`。伺服器只信已驗證 session 的成員，忽略 body/header 自選的 memberId。
+- Apple refresh token 先透過官方 revoke 撤銷；失敗回報錯誤可重試。資料庫在同一筆交易刪除成員、歸屬/小組、所有 session/登入綁定、進度、積分、好友、提醒/裝置代碼、報名關聯、舊日記/提名/投票與相關操作快取。失敗整筆回滾。其他會員保留；共同內容保留，其他會員紀錄中屬被刪除管理者的操作歸屬去識別。
+- 已刪除成員的舊裝置與簽名 session 不能再讀寫。App 收到 `deleted: true` 才清掉該次 session，路由回登入頁；失敗保留登入並顯示重試，不讓舊請求登出新帳號。
+- 手機舊日記不遠端抹除；目前沒有日記入口。外部 Google 兌換試算表的列由管理者手動刪除，政策另行說明；公布欄週刊不屬個人帳號資料。
+
 ### 登入狀態的保存、過期與跨帳號切換（`src/services/authSession.ts`）
 
 - 登入成功後的憑證存在 `expo-secure-store`（加密），下次開 App 會自動還原，不用重新登入；每個帳號用自己的一組儲存 key（`storageOwner`），换帳號登入不會讓舊帳號的快取資料混進來。
@@ -45,11 +63,11 @@
 
 ### 帳戶頁（`src/ui/accountSurfaceComponent.tsx`）
 
-- 已登入且個人資料載入成功時：顯示頭像（`avatarUrl` 有值才顯示圖片，否則顯示姓名字首的圓形字母）、姓名、登出按鈕、讀經提醒設定、申請刪除帳號與資料的連結。
+- 已登入且個人資料載入成功時：顯示頭像（`avatarUrl` 有值才顯示圖片，否則顯示姓名字首的圓形字母）、姓名、登出按鈕、讀經提醒設定、刪除帳號與資料的按鈕。
 - 帳戶入口圖示（`AccountEntryButton`）同一套規則：有頭像顯示頭像，否則顯示姓名字首；**資料還沒回來之前一律顯示中性的「人」字**，不會用 memberId 拼出字母（避免顯示像 `google:1234567` 的 `1` 這種假身份）。
 - 讀經提醒：帳戶頁只顯示「讀經提醒」開關與時間，**不顯示「聚會提醒」**（`showMeeting={false}`）；程式註解明確寫「正式帳戶頁停用已退役的聚會提醒」——這與「小組」分頁已退役一致（見「已知限制與待辦」）。提醒設定本身的完整規則不在本文件範圍。
 - 最下面一行顯示安裝的版本，例如「版本 0.5.24 (47)」：括號裡是 Google Play 用來分辨版本的 versionCode。帳戶頁每個狀態都顯示（含載入中、載入失敗）；讀不到版本時整行不顯示，不會編一個版本（`appVersionLabel`）。頁面底部留在安全區內（`app/account.tsx` 的 `SafeAreaView`）：App 畫到系統導覽列底下，0.5.24 的版本號就是被導覽列蓋住。
-- 「申請刪除帳號與資料」連到本 repo 的 `docs/play/privacy-policy.md` 對應章節（`ACCOUNT_DELETION_URL`），兩個平台都顯示同一份文案，不是只給 Android 看的說法。
+- 「刪除帳號與資料」在兩個平台都走 App 內確認/API，不再開啟政策網頁。政策網頁保留額外聯絡支援，寄信不是刪除必要條件。iOS 返回鍵只顯示系統箭頭，不露出路由群組名稱 `(tabs)`。
 
 - 管理者 (後端 `getCapabilities` 回 `canViewAllScores`) 在刪除連結上面多一行淡色的「全體 (管理) ›」(`src/ui/AdminAllScoresEntry.tsx`)；按下回到積分頁並切到「全體 (管理)」，仍要先通過裝置解鎖 (見 [points.md](points.md))。其他人不顯示這一行，查不到權限時也不顯示。
 
@@ -77,7 +95,7 @@
 
 **刻意不做：**
 
-- **不提供「用 Apple 登入」**：這是要上 App Store 才需要補的（Apple 規則 4.8 要求同等的替代登入方式），已規劃在 iOS 移植計畫的 Phase 2/M6，不是這次漏做。（來源：[../superpowers/plans/2026-09-29-ios-parity.md](../superpowers/plans/2026-09-29-ios-parity.md) §1 第 5 項、M6）
+- **Apple 登入只在 iOS 提供**：依 2026-10-17 不公開上架決定與 M6 設計實作，Android 維持 Google；共用程式以平台分支限定原生 Apple 授權。
 - **iOS 完全不顯示 App 更新提示，也不會為了檢查版本發出任何網路請求**：Android 才需要側載安裝檔更新；引導使用者去裝安裝檔在 iOS 上會違反 App Store 審查規則 2.5.2。（來源：[../../AGENTS.md](../../AGENTS.md) iOS 注意事項第 2 點）
 - **不收集 Email、密碼，只存 Google 帳號給的識別碼**；也不收集位置、通訊錄、相片影片、廣告識別碼，沒有廣告或使用行為分析工具。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)）
 
@@ -85,7 +103,7 @@
 - **Play 測試機器人自動停用，不用人審新會員**（維護者 2026-10-15）：2026-10-13～14 兩次上傳 Play 後，十幾個測試機器人登入、讀經、投票，讀經人數和排行被灌，當時由維護者手動停用。「新會員要等管理者確認才算數」被否決：太慢，而且問題是上傳 Play 造成的，不該變成管理者的工作。改用 Play 說明頁指向的辦法，比對 Firebase Test Lab 公布的裝置 IP 位址（Google 大約一年更新一次清單；Test Lab 預定 2027-09-30 停止服務，換平台時要重查）。機器人登入後只看到登入失敗，正式發布前測試報告的範圍因此只到登入畫面，這是刻意的：機器人能進 App 就會投票、加好友，影響真的會員。
 - **Play 裝的 App 用 Play 的 App 內更新**（維護者 2026-10-13，取代原本「只用版本檔、不用原生模組」的做法，理由寫在 `updateCheck.ts` 開頭）：Play 自己的自動更新什麼時候跑不一定，維護者的手機放了好幾個小時都沒更新。畫面維持原本的全螢幕提示、公告卡片、讀經一行提示，只換「去哪裡問」和「按更新做什麼」。當初不用原生模組的理由是「這個專案不重新產生 android/」，現在 Expo 模組在 Gradle 建置時自動連結（`android/settings.gradle` 的 `useExpoModules()`），不用手改 android/。
 - **App 版本號放在帳戶頁最下面**（維護者 2026-10-13）：測試者要能說出 Google Play 裝的是哪一版，一般 App 也是點頭像進去的帳戶或設定頁看得到版本。括號放 versionCode，因為 Play 用它分辨版本。
-- **申請刪除帳號與資料，兩個平台顯示同一份文案**，走「App 內連結＋寄信」兩條路，不是只給 Android 看的說法，也沒有另外做一個線上申請系統。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)「刪除帳號與資料」）
+- **刪除帳號直接在 App 完成，不以停用或寄信代替**：2026-10-17 送審決定取代舊「連結＋寄信」流程；主管同意的 V2 不提供日記匯出，因為目前沒有日記入口。
 - **全體排名的入口放在帳戶頁最下面，淡色**：管理者一個月才看幾次，不必每天在積分頁看到。(維護者 2026-10-14)
 
 **待確認（沒有記錄，請維護者確認是否刻意）：**
@@ -118,7 +136,9 @@
 - `tests/server/session.test.ts`、`tests/server/authBoundary.test.ts` — 簽名 session token 的產生/驗證、正式 Google 驗證與開發測試 token 兩種認證模式的邊界。
 - `tests/services/googleVerifier.test.ts` — Google ID token 的簽章、發行者、audience、過期檢查。
 - `tests/ui/accountSurface.test.ts`、`tests/ui/accountProfileRecovery.test.ts` — 帳戶頁在已登入/過期/載入中/載入失敗/載入完成但空各種狀態下顯示什麼。
-- `tests/ui/accountDeletionEntry.test.ts` — 已登入時能打開刪除帳號與資料的說明頁。
+- `tests/ui/accountDeletionFlow.test.ts` — 二次確認、取消、成功登出與失敗重試。
+- `tests/server/appleAccount.test.ts`、`appleVerifier.test.ts`、`appleTokens.test.ts`、`accountDeletionCoverage.test.ts` — Apple 驗證/授權撤銷、完整刪除、其他成員保留與交易回滾。
+- `tests/ui/appleLogin.test.ts`、`tests/services/appleAccountClient.test.ts` — iOS/Android 按鈕差異、原生參數與 transport。
 - `tests/ui/accountVersionLabel.test.ts`、`tests/ui/accountSurface.test.ts`（app version label）— 帳戶頁最下面的版本號，資料載入失敗時也顯示；讀不到版本時不顯示。
 - `tests/ui/accountRouteSafeArea.test.ts` — 帳戶頁底部不會被系統導覽列蓋住。
 - `tests/ui/accountReminderPatch.test.ts` — 帳戶頁的提醒設定只送出真的被改動的欄位。
@@ -136,8 +156,8 @@
 
 ## 已知限制與待辦
 
-- iOS 的「用 Apple 登入」（App Store 審核規則 4.8：用 Google 登入當主要登入方式時必須提供對等的替代方案）尚未實作，規劃在上述 iOS 移植計畫的 Phase 2/M6，目前程式碼裡完全沒有 Apple 登入相關程式。
-- iOS 的 Google 登入設定本身也還沒補上（見「平台差異」），`plugins/withGoogleSignInPods.js` 只解決建置失敗，不是可用的登入設定。
+- Apple 原生授權/真帳號登入、刪除的 TestFlight 驗收與 App Store 正式上架仍須發布階段證據；本 PR 程式與模擬器證據不替代實機結果。
+- iOS Google/Apple 的私有設定需由正式建置/後端部署流程提供；不從公開原始碼取得憑證。
 - `src/services/googleIdentity.ts`（`createGoogleIdentity`）在正式程式碼裡沒有任何地方呼叫，只有它自己的測試 `tests/services/identityBoundary.test.ts` 在用；實際登入走的是 `src/services/googleNative.ts` 的 `obtainGoogleIdToken`，這支檔案疑似是被取代後留下的舊程式碼。
 - 帳戶頁隱藏的「聚會提醒」（`showMeeting={false}`）與 `server/reminders.ts`、`server/meetingSchedules.ts` 裡仍指向 `/groups` 的提醒路由，都是「小組」（RPG）分頁退役後留下的殘跡：`app/(tabs)/groups.tsx` 現在只是 `<Redirect href="/(tabs)/today" />`，分頁列也用 `href: null` 藏起來；伺服器端 `server/groups.ts`、`server/importMeetingSchedules.ts` 仍存在，只是為了讓已安裝的舊版 App 呼叫 `/api/me/groups` 時不會壞掉（回應已被清空社群連結與名冕），不是一個可以從目前 UI 進入的功能。
 - `server/routes.ts` 對 `/api/me/profile` 的 `avatarUrl` 目前寫死回傳 `null`（見「資料與後端」），代表帳戶相關畫面上「顯示 Google 頭像」的程式路徑目前無法被觸發；待確認這是刻意的隱私決定還是尚未接上的功能。

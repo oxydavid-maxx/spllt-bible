@@ -15,7 +15,7 @@
 | [points.md](points.md) | 積分與社群：團體 (青少一起讀經、團體獎)、個人 (月曆、積分圖、目標獎品)、好友、全體 (管理)、兌換、提名投票 |
 | [journal.md](journal.md) | 靈修日記：寫、存、匯出、存到自選資料夾 (2026-10-14 起分頁列不顯示) |
 | [reminders.md](reminders.md) | 讀經提醒與推播 |
-| [account.md](account.md) | 登入、帳戶頁 (含管理者的全體入口)、登出、App 更新提示 |
+| [account.md](account.md) | Google/Apple 登入、帳戶頁、永久刪除帳號、登出、App 更新提示 |
 
 ## 公告
 
@@ -102,8 +102,10 @@
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
 | Google 登入 | 用 Google 帳號登入，第一次登入自動建立帳號 | 開 App 時的登入畫面 | Android、iOS (iOS 需私有 OAuth 設定，TestFlight 真機另驗) | [account.md](account.md) |
+| Apple 登入 | iPhone 原生授權，首次登入建立帳號；Android 不顯示 | 登入畫面 | iOS | [account.md](account.md) |
+| 刪除帳號 | 二次確認後刪除伺服器個資並登出，無需寄信 | 帳戶頁「刪除帳號與資料」 | Android、iOS | [account.md](account.md) |
 | 啟用碼 | 認不出 Google 帳號時，用一次性啟用碼綁定 | 登入畫面（需要時才出現） | Android、iOS | [account.md](account.md) |
-| 帳戶頁 | 看自己的名字和小組、設定提醒、登出、申請刪除資料、看 App 版本 | 右上角頭像 | Android、iOS | [account.md](account.md) |
+| 帳戶頁 | 看自己的名字和小組、設定提醒、登出、刪除帳號與資料、看 App 版本 | 右上角頭像 | Android、iOS | [account.md](account.md) |
 | App 更新提示 | 有新版時提示更新：Play 裝的在 App 裡更新，側載的開安裝頁 | 開 App 或回到前景時自動出現 | 只有 Android | [account.md](account.md) |
 
 ## 其他文件放哪

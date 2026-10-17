@@ -242,6 +242,10 @@ export function markAuthExpired(expected?: AuthSession): void {
 }
 registerAuthExpiryHandler(markAuthExpired);
 
+/** An old in-flight account deletion must not sign a newer account out. */
+export function clearAuthSessionIfCurrent(session: AuthSession): void {
+  if (sameSession(snapshot.session, session)) clearAuthSession();
+}
 export function clearAuthSession(): void {
   const previous = snapshot.session;
   epoch += 1;
