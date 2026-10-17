@@ -39,7 +39,7 @@ jobs:
           node <<'JS'
           const fs=require('fs'),cp=require('child_process'),c=require('crypto');
           const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>k.startsWith('EXPO_PUBLIC_')).sort());
-          fs.writeFileSync('capture-out/source.json',JSON.stringify({sourceCommit:cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourceTree:cp.execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),sourceDirty:cp.execFileSync('git',['status','--porcelain','--untracked-files=no'],{encoding:'utf8'}),environmentNames:env.map(x=>x[0]),environmentDigest:c.createHash('sha256').update(JSON.stringify(env)).digest('hex'),node:process.version,workflowCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,observedAt:new Date().toISOString()},null,2));
+          fs.writeFileSync('capture-out/source.json',JSON.stringify({sourceCommit:cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourceTree:cp.execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),sourceDirty:cp.execFileSync('git',['status','--porcelain','--untracked-files=no'],{encoding:'utf8'}),environmentNames:Object.keys(env),environmentDigest:c.createHash('sha256').update(JSON.stringify(env)).digest('hex'),node:process.version,workflowCommit:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,observedAt:new Date().toISOString()},null,2));
           JS
       - run: npm ci
       - run: npx expo prebuild --platform ios --no-install --clean
@@ -107,10 +107,6 @@ jobs:
           const build=cp.execFileSync('/usr/libexec/PlistBuddy',['-c','Print CFBundleVersion',app+'/Info.plist'],{encoding:'utf8'}).trim();
           fs.writeFileSync('capture-out/receipt.json',JSON.stringify({files,actualVersion:version,actualBuild:build,observedAt:new Date().toISOString(),identityInput:false,thirdPartyLoginOpened:false,accountData:'two-member-week fixture only',flows:['10-reader-open','11-reader-sheets','12-reader-verse'],scope:'screenshot capture only; not CI acceptance or final common release'},null,2));
           JS
-      - name: preserve failed simulator candidate for bounded diagnostics
-        if: failure()
-        run: |
-          if [ -s capture-out/app-path.txt ]; then ditto -c -k --sequesterRsrc --keepParent "$(cat capture-out/app-path.txt)" capture-out/baseline-app.zip; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -125,6 +121,5 @@ jobs:
             capture-out/12-reader-verse.txt
             capture-out/*.xml
             capture-out/warmup.txt
-            capture-out/baseline-app.zip
             capture-out/xcodebuild-errors.txt
           retention-days: 14
