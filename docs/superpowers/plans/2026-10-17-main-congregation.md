@@ -70,4 +70,18 @@
 
 ## Tasks
 
-(依程式地圖補上，見下方各 Task。)
+| # | 內容 | 狀態 |
+|---|---|---|
+| 1 | 讀經頁讀完最後一章出現「接著讀靈修 ›」，收掉 7 天邀請 | 完成 |
+| 2 | 拿掉提名投票、AI 估價、「下一個獎品，由你決定」；舊版 App 讀提名板回空板 | 完成 |
+| 3 | 青少／主堂：後端歸屬與分開計算；新會員第一次登入選、帳戶頁可改；主堂看「全教會一起讀經」、沒有團體獎 | 完成 |
+| 4 | 獎品與兌換改 Google 試算表 (`server/rewardSheet.ts`、`tools/rewards/reward-sheet.gs`)；拿掉 App 裡的獎品管理、現場兌換、待送出兌換佇列 | 程式完成；試算表在換版時建 |
+| 5 | 公告的「青少｜主堂」分頁，主堂分頁放週刊原圖 (LINE 收圖、A4 直式一組、留 8 週、上線前用歷史回測) | 待做 |
+| 6 | 指紋解鎖的管理頁：所有後台規則和後台文件連結 (連結從私人部署設定讀)；目標獎品卡的「主日找輔導領取」依青少／主堂換字 | 待做 |
+
+### 換版 (0.5.33) 時要一起做
+
+- 後端：私人部署資料夾加 `apple-runtime-config.json` (`keyFile`、`keyId`、`teamId`，指向私人 secrets 資料夾裡的 Apple 金鑰)；`ops/apple_config.py` 把它交給 Sign in with Apple 和 APNs。啟動回報的 `apple_config_status` 要是 `CONFIGURED`。
+- 試算表：在青少處資料夾建空白試算表「竹科聖經 獎品與兌換」；把 `tools/rewards/reward-sheet.gs` 加進報名表單同一個 Apps Script 專案 (manifest 換成 `tools/registrations/appsscript.json`，多了 spreadsheets 權限)；後端換好之後執行 `setupRewardSheet()`，維護者按一次「允許」。
+- 週刊：LINE channel access token 由維護者在 LINE Developers 按「發行」。
+- 版號 0.5.33；PR、CI 三個都綠；後端換版；Play 內部測試；連同 0.5.32 一起手機驗收；再放封閉測試；通知 iOS PM 用同一個 commit 建 TestFlight。
