@@ -83,5 +83,5 @@
 
 - 後端：私人部署資料夾加 `apple-runtime-config.json` (`keyFile`、`keyId`、`teamId`，指向私人 secrets 資料夾裡的 Apple 金鑰)；`ops/apple_config.py` 把它交給 Sign in with Apple 和 APNs。啟動回報的 `apple_config_status` 要是 `CONFIGURED`。
 - 試算表：在青少處資料夾建空白試算表「竹科聖經 獎品與兌換」；把 `tools/rewards/reward-sheet.gs` 加進報名表單同一個 Apps Script 專案 (manifest 換成 `tools/registrations/appsscript.json`，多了 spreadsheets 權限)；後端換好之後執行 `setupRewardSheet()`，維護者按一次「允許」。
-- 週刊：LINE channel access token 由維護者在 LINE Developers 按「發行」。
+- 週刊：不需要維護者發行權杖。後端用頻道 ID 加頻道密鑰，每次換一張 15 分鐘的權杖 (2026-10-17 實測可用)；換版時在私人 secrets 的 LINE 設定檔加上 `channelId`。啟動程式帶 `QINGMU_BULLETIN_DIR`。上線前用 LINE 電腦版的歷史照片回測，要先問維護者什麼時候可以用電腦畫面。
 - 版號 0.5.33；PR、CI 三個都綠；後端換版；Play 內部測試；連同 0.5.32 一起手機驗收；再放封閉測試；通知 iOS PM 用同一個 commit 建 TestFlight。

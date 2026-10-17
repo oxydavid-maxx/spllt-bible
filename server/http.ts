@@ -21,6 +21,8 @@ import { taipeiDate } from '../src/domain/gamificationV1';
 import { createDevotionalAudio, latestDevotionalDate, readAzureSpeechConfig, warmDevotionalAudio } from './devotionalAudio';
 import { devotionalPlayerResponse } from './devotional';
 import { createLineWebhook, LINE_WEBHOOK_BODY_LIMIT, LINE_WEBHOOK_PATH, readLineChannelSecret } from './lineWebhook';
+import { createBulletinCollector, type LineImage } from './bulletins';
+import { createLineContentFetcher, readLineChannelIdFile } from './lineContent';
 import { deriveFormRegistrationKey } from './eventRegistrations';
 
 async function readBody(request: IncomingMessage): Promise<string> {
@@ -149,6 +151,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     adminMemberIds: process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean),
     adminGoogleSubjects,
     ...(devotionalDir ? { devotionalDir } : {}),
+    ...(process.env.QINGMU_BULLETIN_DIR?.trim() ? { bulletinDir: process.env.QINGMU_BULLETIN_DIR.trim() } : {}),
     ...(devotionalAudio ? { devotionalAudio } : {}),
     ...(fixtureRoster
       ? {
@@ -187,9 +190,15 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   });
   const officialBible = createOfficialBibleAdapter();
   const lineChannelSecret = readLineChannelSecret(process.env.QINGMU_LINE_SECRET_FILE);
+  // 主堂週刊: off unless the channel ID sits beside the secret and a folder is configured (server/bulletins.ts).
+  const lineChannelId = readLineChannelIdFile(process.env.QINGMU_LINE_SECRET_FILE);
+  const bulletins = lineChannelSecret && lineChannelId && process.env.QINGMU_BULLETIN_DIR?.trim()
+    ? createBulletinCollector({ dir: process.env.QINGMU_BULLETIN_DIR.trim(), fetchContent: createLineContentFetcher({ channelId: lineChannelId, channelSecret: lineChannelSecret }) })
+    : null;
   const lineWebhook = lineChannelSecret && process.env.QINGMU_DEVOTIONAL_DIR?.trim()
     ? createLineWebhook({ channelSecret: lineChannelSecret, devotionalDir: process.env.QINGMU_DEVOTIONAL_DIR.trim(),
-      ...(devotionalAudio ? { onSaved: (date: string) => { void warmDevotionalAudio(devotionalAudio, devotionalDir, date); } } : {}) })
+      ...(devotionalAudio ? { onSaved: (date: string) => { void warmDevotionalAudio(devotionalAudio, devotionalDir, date); } } : {}),
+      ...(bulletins ? { onImage: (image: LineImage) => bulletins.receive(image) } : {}) })
     : null;
   const server = createServer(async (request, response) => {
     // Public, identity-checked Bible content is separate from private member APIs.

@@ -12,6 +12,12 @@ describe('the production backend launch environment', () => {
     expect(launcher).toMatch(/'QINGMU_DEVOTIONAL_DIR': str\(PILOT \/ 'devotionals'\)/);
   });
 
+  it('hands the server the 週刊 folder; the LINE channel ID sits beside the secret in the same file', () => {
+    expect(readFileSync('server/http.ts', 'utf8')).toContain('process.env.QINGMU_BULLETIN_DIR');
+    expect(readFileSync('server/http.ts', 'utf8')).toContain('readLineChannelIdFile(process.env.QINGMU_LINE_SECRET_FILE)');
+    expect(launcher).toMatch(/'QINGMU_BULLETIN_DIR': str\(PILOT \/ 'bulletins'\)/);
+  });
+
   it('hands the server the LINE channel secret file, so the 靈修 webhook is on', () => {
     expect(readFileSync('server/http.ts', 'utf8')).toContain('process.env.QINGMU_LINE_SECRET_FILE');
     expect(launcher).toMatch(/read_line_environment\(PILOT \/ 'line-runtime-config\.json'\)/);

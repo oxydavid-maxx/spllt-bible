@@ -27,6 +27,7 @@ import { createSongTitleLookup, isDevotionalDate, readDevotional, type SongTitle
 import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDates, setDevotion } from './devotionProgress';
 import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
 import { applyRewardSheet, listRewards, readRewardSheetPush, sheetRedemptionsFor } from './rewardSheet';
+import { listBulletins, readBulletinPage } from './bulletins';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
 import {
   GAMIFICATION_POLICY_VERSION,
@@ -102,6 +103,8 @@ export interface ApiHandlerOptions {
   /** Private folder of the pastor's daily posts (YYYYMMDD.txt). Absent: the 靈修 tab says there is none yet. */
   devotionalDir?: string;
   devotionalAudio?: DevotionalAudio;
+  /** 主堂週刊 pages kept from the LINE group (server/bulletins.ts). */
+  bulletinDir?: string;
   /** Song titles for the 靈修 tab; tests pass a stub so nothing reaches YouTube. */
   songTitle?: SongTitleLookup;
   now?: () => Date;
@@ -137,7 +140,7 @@ function isGamificationError(value: unknown): value is GamificationError {
 }
 
 function isGamificationPath(pathname: string): boolean {
-  return pathname === '/api/me/profile' || pathname === '/api/me/congregation' || pathname.startsWith('/api/me/reading-days') || pathname.startsWith('/api/me/completions/') || pathname.startsWith('/api/me/reward-target') || pathname.startsWith('/api/me/redemptions') || pathname.startsWith('/api/me/journal') || pathname.startsWith('/api/me/devotions') || pathname === '/api/me/score-history' || pathname.startsWith('/api/devotional/') || pathname.startsWith('/api/points/') || pathname.startsWith('/api/rewards') || pathname.startsWith('/api/friends/') || pathname.startsWith('/api/admin/');
+  return pathname === '/api/me/profile' || pathname === '/api/me/congregation' || pathname.startsWith('/api/me/reading-days') || pathname.startsWith('/api/me/completions/') || pathname.startsWith('/api/me/reward-target') || pathname.startsWith('/api/me/redemptions') || pathname.startsWith('/api/me/journal') || pathname.startsWith('/api/me/devotions') || pathname === '/api/me/score-history' || pathname.startsWith('/api/devotional/') || pathname.startsWith('/api/bulletins') || pathname.startsWith('/api/points/') || pathname.startsWith('/api/rewards') || pathname.startsWith('/api/friends/') || pathname.startsWith('/api/admin/');
 }
 
 function parseBody(body: string | undefined): Record<string, unknown> {
@@ -688,6 +691,16 @@ export function createApiHandler(options: ApiHandlerOptions) {
           served(200, source);
           return { status: 200, body: {}, binaryBody, headers: { 'content-type': 'audio/mpeg', 'cache-control': 'private, no-store' } };
         } catch { served(502, 'none'); return gamificationJson(502, { error: { code: 'DEVOTIONAL_AUDIO_UPSTREAM', retryable: true } }); }
+      }
+      // 公告「主堂」 (維護者 2026-10-17): the 週刊 pages, newest Sunday first; members only.
+      if (request.method === 'GET' && url.pathname === '/api/bulletins') {
+        return gamificationJson(200, { weeks: listBulletins(options.bulletinDir) });
+      }
+      const bulletinPage = url.pathname.match(/^\/api\/bulletins\/(\d{4}-\d{2}-\d{2})\/(\d{1,2})$/);
+      if (request.method === 'GET' && bulletinPage) {
+        const bytes = readBulletinPage(options.bulletinDir, bulletinPage[1], Number(bulletinPage[2]));
+        return bytes ? { status: 200, body: {}, binaryBody: bytes, headers: { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=604800' } }
+          : gamificationError({ status: 404, code: 'BULLETIN_NOT_FOUND' });
       }
       const devotionalMatch = url.pathname.match(/^\/api\/devotional\/([^/]+)$/);
       if (request.method === 'GET' && devotionalMatch) {
