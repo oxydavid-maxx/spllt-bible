@@ -10,6 +10,14 @@ const setup = () => {
   const api = createApiHandler({ db, sessionSecret: 'secret', productionGoogleAuth: { verify: async () => { throw Error('invalid'); }, resolveMember: async () => null },
     productionAppleAuth: { verify: async () => { throw Error('invalid'); }, revoke: async token => { revoked.push(token); } } });
   db.db.exec('CREATE TABLE member_affiliations(member_id TEXT PRIMARY KEY, congregation TEXT NOT NULL)');
+  // Prize nominations were removed on 2026-10-17, but databases from before still hold these tables and the
+  // members' rows in them; deleting an account must clear those too.
+  db.db.exec(`CREATE TABLE reward_nominations(nomination_id TEXT PRIMARY KEY, name TEXT NOT NULL, note TEXT, created_by TEXT NOT NULL,
+      status TEXT NOT NULL, reward_id TEXT, decided_by TEXT, decided_at INTEGER, revision INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE TABLE reward_nomination_votes(nomination_id TEXT NOT NULL, member_id TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (nomination_id, member_id));
+    CREATE TABLE reward_nomination_rounds(round_id TEXT PRIMARY KEY, title TEXT, opened_by TEXT NOT NULL, opened_at INTEGER NOT NULL, closes_at INTEGER NOT NULL, closed_at INTEGER, state TEXT NOT NULL);
+    CREATE TABLE reward_nomination_assists(nomination_id TEXT PRIMARY KEY, estimated_twd INTEGER, note_suggestion TEXT, state TEXT NOT NULL, failure TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0, requested_at INTEGER NOT NULL, completed_at INTEGER);`);
   for (const id of ['delete-me', 'keep-me']) {
     const sql = (text: string, ...args: (string | number | null)[]) => db.db.prepare(text).run(...args);
     sql('INSERT INTO identity_bindings VALUES(?,?,?,?)', 'apple', `subject-${id}`, id, 'now');
