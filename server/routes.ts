@@ -16,7 +16,6 @@ import { getMemberGroupProfile } from './groups';
 import { ensureJournalSchema, getJournalEntry, listJournalEntries } from './journal';
 import { ensureEventRegistrationSchema, formRegistrationKeyMatches, formSyncIdentityMatches, getEventRegistrationView, readFormRegistrationPush, replaceEventRegistrations, type FormSyncIdentity } from './eventRegistrations';
 import { getCommunityProgress } from './communityProgress';
-import { closeRound, createNomination, decideNomination, ensureNominationSchema, listNominationHistory, listNominations, listNominationsForAdmin, openRound, resolveSuggestion, setVote, updateNominationQuantity, withdrawNomination, type NominationDecision } from './rewardNominations';
 import { readReminderPreferences, saveReminderPreferences, registerDeviceDeliveryToken, revokeDeviceDeliveryToken } from './reminderPreferences';
 import { authorizeDeviceMeetingSnapshot } from './remoteReminders';
 import { notifyFriendAdded, type PushDataSender } from './friendPush';
@@ -314,7 +313,6 @@ function handleProgress(db: DatabaseSync, viewerId: string, date: string, policy
 export function createApiHandler(options: ApiHandlerOptions) {
   ensureGamificationSchema(options.db.db);
   ensureJournalSchema(options.db.db);
-  ensureNominationSchema(options.db.db);
   ensureEventRegistrationSchema(options.db.db);
   ensureDevotionSchema(options.db.db);
   const songTitle = options.songTitle ?? createSongTitleLookup();
@@ -678,50 +676,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
         const post = await readDevotional(options.devotionalDir, date, songTitle);
         return post ? gamificationJson(200, post as unknown as Record<string, unknown>) : gamificationError({ status: 404, code: 'DEVOTIONAL_NOT_FOUND' });
       }
+      // Prize nominations were removed on 2026-10-17 (維護者: vote offline). Apps up to 0.5.32 still ask for the board on
+      // the 積分 page; an idle board keeps them quiet instead of showing an error.
       if (url.pathname === '/api/rewards/nominations' && request.method === 'GET') {
-        return gamificationJson(200, listNominations(options.db.db, auth.memberId, now().getTime()));
-      }
-      if (url.pathname === '/api/rewards/nominations/history' && request.method === 'GET') {
-        return gamificationJson(200, listNominationHistory(options.db.db));
-      }
-      if (url.pathname === '/api/rewards/nominations' && request.method === 'POST') {
-        const payload = parseBody(request.body);
-        const created = createNomination(options.db.db, auth.memberId, String(payload.operationId ?? ''),
-          String(payload.name ?? ''), typeof payload.note === 'string' ? payload.note : undefined, now().getTime(), payload.quantity);
-        if (isGamificationError(created)) return gamificationError(created);
-        const replayed = options.db.db.prepare('SELECT 1 FROM mutation_receipts WHERE actor_member_id = ? AND operation_id = ? AND created_at < ?')
-          .get(auth.memberId, String(payload.operationId ?? ''), now().getTime());
-        return gamificationJson(replayed ? 200 : 201, created);
-      }
-      {
-        const vote = /^\/api\/rewards\/nominations\/([^/]+)\/vote$/.exec(url.pathname);
-        if (vote && (request.method === 'PUT' || request.method === 'DELETE')) {
-          const result = setVote(options.db.db, auth.memberId, decodeURIComponent(vote[1]), request.method === 'PUT', now().getTime());
-          return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
-        }
-      }
-      {
-        const own = /^\/api\/rewards\/nominations\/([^/]+)$/.exec(url.pathname);
-        if (own && request.method === 'DELETE') {
-          const result = withdrawNomination(options.db.db, auth.memberId, decodeURIComponent(own[1]), now().getTime());
-          return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
-        }
-      }
-      {
-        const quantity = /^\/api\/rewards\/nominations\/([^/]+)\/quantity$/.exec(url.pathname);
-        if (quantity && request.method === 'PATCH') {
-          const payload = parseBody(request.body);
-          const result = updateNominationQuantity(options.db.db, auth.memberId, decodeURIComponent(quantity[1]), payload.quantity, now().getTime());
-          return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
-        }
-      }
-      {
-        const suggestion = /^\/api\/rewards\/nominations\/([^/]+)\/suggestion$/.exec(url.pathname);
-        if (suggestion && request.method === 'POST') {
-          const payload = parseBody(request.body);
-          const result = resolveSuggestion(options.db.db, auth.memberId, decodeURIComponent(suggestion[1]), payload.accept === true, now().getTime());
-          return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
-        }
+        return gamificationJson(200, { round: null, nominations: [], votesLeft: 0, votesPerMember: 3 });
       }
       if (request.method === 'GET' && url.pathname === '/api/me/redemptions') {
         // Projected, not filtered: see projectMemberRedemption for why the acting administrator
@@ -772,48 +730,6 @@ export function createApiHandler(options: ApiHandlerOptions) {
         if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.expectedRevision !== 'number') return gamificationError({ status: 400, code: 'INVALID_REWARD' });
         const result = updateReward(options.db.db, auth.memberId, body.operationId, decodeURIComponent(adminRewardMatch[1]), { name: typeof body.name === 'string' ? body.name : undefined, costPoints: typeof body.costPoints === 'number' ? body.costPoints : undefined, active: typeof body.active === 'boolean' ? body.active : undefined, expectedRevision: body.expectedRevision }, { now });
         return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
-      }
-      if (request.method === 'POST' && url.pathname === '/api/admin/rewards/nomination-rounds') {
-        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
-        const payload = parseBody(request.body);
-        if (typeof payload.operationId !== 'string' || !payload.operationId.trim() || typeof payload.closesAt !== 'number') {
-          return gamificationError({ status: 400, code: 'INVALID_ROUND' });
-        }
-        const replay = Boolean(options.db.db.prepare('SELECT 1 FROM mutation_receipts WHERE actor_member_id=? AND operation_id=?').get(auth.memberId, payload.operationId));
-        const result = openRound(options.db.db, auth.memberId, payload.operationId,
-          { title: typeof payload.title === 'string' ? payload.title : undefined, closesAt: payload.closesAt }, now().getTime());
-        return isGamificationError(result) ? gamificationError(result) : gamificationJson(replay ? 200 : 201, result);
-      }
-      {
-        const closing = /^\/api\/admin\/rewards\/nomination-rounds\/([^/]+)\/close$/.exec(url.pathname);
-        if (closing && request.method === 'POST') {
-          if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
-          const payload = parseBody(request.body);
-          if (typeof payload.operationId !== 'string' || !payload.operationId.trim()) return gamificationError({ status: 400, code: 'INVALID_ROUND' });
-          const result = closeRound(options.db.db, auth.memberId, payload.operationId, decodeURIComponent(closing[1]), now().getTime());
-          return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
-        }
-      }
-      if (request.method === 'GET' && url.pathname === '/api/admin/rewards/nominations') {
-        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
-        return gamificationJson(200, listNominationsForAdmin(options.db.db, auth.memberId, now().getTime()));
-      }
-      {
-        const decided = /^\/api\/admin\/rewards\/nominations\/([^/]+)\/(approve|decline|remove)$/.exec(url.pathname);
-        if (decided && request.method === 'POST') {
-          if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
-          const payload = parseBody(request.body);
-          const operationId = String(payload.operationId ?? '');
-          const replayed = options.db.db.prepare('SELECT 1 FROM mutation_receipts WHERE actor_member_id = ? AND operation_id = ?')
-            .get(auth.memberId, operationId);
-          const result = decideNomination(options.db.db, auth.memberId, decodeURIComponent(decided[1]), decided[2] as NominationDecision, {
-            operationId,
-            expectedRevision: typeof payload.expectedRevision === 'number' ? payload.expectedRevision : -1,
-            ...(typeof payload.costPoints === 'number' ? { costPoints: payload.costPoints } : {}),
-          }, now().getTime());
-          if (isGamificationError(result)) return gamificationError(result);
-          return gamificationJson(replayed ? 200 : (decided[2] === 'approve' ? 201 : 200), result);
-        }
       }
       if (request.method === 'GET' && url.pathname === '/api/admin/redemptions') {
         if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });

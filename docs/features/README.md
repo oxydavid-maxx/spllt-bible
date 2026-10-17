@@ -12,7 +12,7 @@
 | [reader.md](reader.md) | 讀經頁：版面與沉浸模式、靈修分頁與接續靈修、譯本、字體、經節複製、預先載入、閱讀位置、載入失敗與重試 |
 | [narration.md](narration.md) | 朗讀：播放、速度、接續讀經、背景播放、朗讀跟著走 (靈修朗讀見 reader.md) |
 | [reading-plan.md](reading-plan.md) | 讀經計畫與每日完成：開啟日期、日期列、整份計畫清單、當日章節、完成打卡、靈修打勾、補登、撤銷、積分月曆 |
-| [points.md](points.md) | 積分與社群：團體 (青少一起讀經、團體獎)、個人 (月曆、積分圖、目標獎品)、好友、全體 (管理)、兌換、提名投票 |
+| [points.md](points.md) | 積分與社群：團體 (青少一起讀經、團體獎)、個人 (月曆、積分圖、目標獎品)、好友、全體 (管理)、兌換 |
 | [journal.md](journal.md) | 靈修日記：寫、存、匯出、存到自選資料夾 (2026-10-14 起分頁列不顯示) |
 | [reminders.md](reminders.md) | 讀經提醒與推播 |
 | [account.md](account.md) | Google/Apple 登入、帳戶頁、永久刪除帳號、登出、App 更新提示 |
@@ -67,7 +67,7 @@
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
 | 青少一起讀經 | 每天讀經人數的月曆 (2 人以上才顯示)，今天、昨天各幾人 | 積分「自己」最上方「團體」 | Android、iOS | [points.md](points.md) |
-| 團體獎 | 一個月 15 天讀經的人數夠了就累積一個月：懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月；「下一個獎品，由你決定」接提名 | 積分「團體」 | Android、iOS | [points.md](points.md) |
+| 團體獎 | 一個月 15 天讀經的人數夠了就累積一個月：懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月 | 積分「團體」 | Android、iOS | [points.md](points.md) |
 | 完成今日靈修/讀經 | 月曆下兩顆鈕：左靈修葉子、右讀經書，未完成白底綠框，完成後填滿深綠白圖示 | 積分「個人」月曆下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 積分月曆 | 點任一天看經文與狀態，未來/過期也能看；期限內可以補打卡；讀了靈修的日子標金色「靈修」 | 積分「自己」的「個人」 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 範圍切換 | 自己、好友兩個分頁；管理者從帳戶頁進來才多一個「全體 (管理)」 | 積分頁頂部 | Android、iOS | [points.md](points.md) |
@@ -76,8 +76,6 @@
 | 好友 | 加好友後互相看積分（看不到對方的餘額和目標） | 積分「好友」 | Android、iOS | [points.md](points.md) |
 | 好友 QR | 出示或掃描 QR 馬上互加好友 | 積分頁選單 | Android、iOS | [points.md](points.md) |
 | 好友通知 | 有人加你好友時收到通知 | 系統通知 | Android、iOS | [points.md](points.md) |
-| 提名獎品投票 | 開放期間提獎品構想、最多投 3 票，管理者核准後變成獎品 | 積分頁提名提示條、選單 | Android、iOS | [points.md](points.md) |
-| AI 估價與說明建議 | 自動把提名換算成大約分數，說明不清楚時給改寫建議 | 提名板 | Android、iOS | [points.md](points.md) |
 | 全體排名 (管理) | 管理者從帳戶頁最下面進來，解鎖後看全體積分 | 帳戶頁「全體 (管理) ›」 | Android、iOS | [points.md](points.md) |
 | 現場兌換（管理） | 管理者當面幫學生兌換獎品、查看或撤銷紀錄 | 積分頁選單（管理） | Android、iOS | [points.md](points.md) |
 

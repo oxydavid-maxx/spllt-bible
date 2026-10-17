@@ -143,43 +143,18 @@ describe('every response is an exact key set, so a new field cannot ship silentl
   });
 });
 
-// The rewrite a model offered on somebody's nomination note is the author's business and nobody
-// else's. A 輔導 seeing "the model corrected 小明" turns a private nudge into a public one, and a
-// teenager who knows that can happen stops writing notes at all. The leak would be one boolean, so
-// the key set is pinned for both of the people who must not see it.
-describe('a nomination as somebody other than its author', () => {
-  async function boardWithSuggestion() {
-    const { database, api, headers } = setup();
-    const { ensureNominationSchema } = await import('../../server/rewardNominations');
-    ensureNominationSchema(database.db);
-    database.db.prepare(`INSERT INTO reward_nomination_rounds(round_id, title, opened_by, opened_at, closes_at, state)
-      VALUES('round-1', '十月', 'member-admin', 0, ?, 'OPEN')`).run(Date.parse('2026-09-30T16:00:00.000Z'));
-    await api({ method: 'POST', url: '/api/rewards/nominations', headers: headers('member-self'), body: JSON.stringify({ operationId: randomUUID(), name: '桌遊', note: '桌遊', quantity: '1 盒' }) });
-    const id = (database.db.prepare('SELECT nomination_id FROM reward_nominations').get() as { nomination_id: string }).nomination_id;
-    database.db.prepare(`INSERT INTO reward_nomination_assists(nomination_id, estimated_twd, note_suggestion, state, attempts, requested_at)
-      VALUES(?, 1000, '大家聚會後可以一起玩的桌遊。', 'DONE', 1, 0)`).run(id);
-    return { api, headers };
-  }
-
-  it('carries the estimate and not the rewrite', async () => {
-    const { api, headers } = await boardWithSuggestion();
-    const response = await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-friend') });
-    const entry = (response.body as { nominations: Array<Record<string, unknown>> }).nominations[0];
-    expect(keys(entry)).toEqual(['createdAt', 'displayName', 'estimatedPoints', 'mine', 'name', 'nominationId', 'note', 'quantity', 'revision', 'status', 'voteCount', 'voted']);
-    expect(JSON.stringify(response.body)).not.toContain('大家聚會後');
-  });
-
-  it('withholds it from the 輔導 too, who would otherwise read it as a correction to mention', async () => {
-    const { api, headers } = await boardWithSuggestion();
-    const response = await api({ method: 'GET', url: '/api/admin/rewards/nominations', headers: headers('member-admin') });
-    const entry = (response.body as { nominations: Array<Record<string, unknown>> }).nominations[0];
-    expect(keys(entry)).toEqual(['createdAt', 'createdBy', 'displayName', 'estimatedPoints', 'mine', 'name', 'nominationId', 'note', 'quantity', 'revision', 'status', 'voteCount', 'voted']);
-    expect(JSON.stringify(response.body)).not.toContain('大家聚會後');
-  });
-
-  it('gives it to the author, which is the whole point of computing it', async () => {
-    const { api, headers } = await boardWithSuggestion();
-    const response = await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-self') });
-    expect(JSON.stringify(response.body)).toContain('大家聚會後');
+// Prize nominations were removed on 2026-10-17 (維護者: vote offline). Apps up to 0.5.32 still read the board on the
+// 積分 page, so it answers as an idle board with nothing in it; every other nomination route is gone.
+describe('the retired nomination board', () => {
+  it('answers old apps with an idle board, and nothing else about nominations exists', async () => {
+    const { api, headers } = setup();
+    const board = await api({ method: 'GET', url: '/api/rewards/nominations', headers: headers('member-self') });
+    expect(board.status).toBe(200);
+    expect(board.body).toEqual({ round: null, nominations: [], votesLeft: 0, votesPerMember: 3 });
+    for (const [method, url] of [['POST', '/api/rewards/nominations'], ['GET', '/api/rewards/nominations/history'], ['PUT', '/api/rewards/nominations/n-1/vote'],
+      ['POST', '/api/admin/rewards/nomination-rounds'], ['GET', '/api/admin/rewards/nominations']] as const) {
+      const response = await api({ method, url, headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID() }) });
+      expect(response.status, `${method} ${url}`).toBe(404);
+    }
   });
 });

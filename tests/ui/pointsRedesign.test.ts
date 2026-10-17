@@ -67,9 +67,10 @@ describe('團體: the group reading card', () => {
     expect(tree.root.findAll((node) => (node.type as unknown) === 'View' && node.props.accessibilityLabel === '2026-10-12 19 人')).toHaveLength(1);
   });
 
-  it('lists the prizes with the member’s own line under the first one, and leaves the next prize open', () => {
+  it('lists the prizes with the member’s own line under the first one, and nothing after them (2026-10-17)', () => {
     const all = texts(render(React.createElement(GroupReadingCard, { view: group })));
-    expect(all).toEqual(expect.arrayContaining(['團體獎', '新的懶骨頭 (摩脫教室)', '0/2 個月', '15 人都讀滿一個月 (當月讀經 15 天)，累積 2 個月', '新沙發', '20 人都讀滿一個月，累積 4 個月', '你這個月讀了 6 天，再 9 天就算你一份', '下一個獎品，由你決定']));
+    expect(all).toEqual(expect.arrayContaining(['團體獎', '新的懶骨頭 (摩脫教室)', '0/2 個月', '15 人都讀滿一個月 (當月讀經 15 天)，累積 2 個月', '新沙發', '20 人都讀滿一個月，累積 4 個月', '你這個月讀了 6 天，再 9 天就算你一份']));
+    expect(all).not.toContain('下一個獎品，由你決定');
     expect(all.filter((line) => line.includes('算你一份'))).toHaveLength(1);
     expect(all.join('')).not.toMatch(/靈修|\[|\]/);
   });

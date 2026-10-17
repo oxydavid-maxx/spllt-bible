@@ -5,7 +5,7 @@ import { theme } from '../Theme';
 import { RewardGoalCard } from './RewardGoalCard';
 import { ScoreProfileChart } from './ScoreProfileChart';
 
-export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onOpenActions, onChartChange, today, lead, nominations, community, showChartViewToggle, chart }: {
+export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onOpenActions, onChartChange, today, lead, community, showChartViewToggle, chart }: {
   profile: ScoreProfileData;
   /** Active reward catalogue for the member's own shelf. */
   rewards?: Reward[];
@@ -25,7 +25,6 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
    * Rendered inside this screen's scroll container rather than beside it. Placing it as a sibling in
    * the route would nest one scroller inside another, which is how a list stops scrolling properly.
    */
-  nominations?: ReactNode;
   /** Sits below the calendar: the group's reading, never a target. */
   community?: ReactNode;
   /**
@@ -43,7 +42,7 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
       <Text style={styles.totalLabel}>總積分</Text>
       {profile.band == null ? <Text style={styles.bandPending}>滿 10 人開始分梯隊</Text> : <Text style={styles.band}>{`第 ${profile.band} 梯隊`}</Text>}
     </View>}
-    {nominations}
+    
     {chart !== undefined ? chart : <ScoreProfileChart chart={profile.chart} fallbackMonths={profile.months} onChartChange={onChartChange} today={today} showViewToggle={showChartViewToggle} />}
     {community}
     {profile.permissions.canRedeem && onOpenActions ? <Pressable accessibilityRole="button" accessibilityLabel="管理兌換" onPress={onOpenActions} style={styles.adminButton}><Text style={styles.adminText}>現場兌換</Text></Pressable> : null}

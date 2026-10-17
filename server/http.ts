@@ -13,8 +13,6 @@ import type { PointPolicy } from '../src/domain/points';
 import { seedMemberGroupProfile, type MemberGroupProfileSeed } from './groups';
 import { createRemoteConfiguration } from './remoteConfiguration';
 import { createReminderWorker, type ReminderWorkerTimer } from './reminderWorker';
-import { createClaudeCli } from './claudeCli';
-import { createNominationAssistWorker } from './nominationAssist';
 import type { PushDataSender } from './friendPush';
 import type { ApnsAlertSender } from './apnsSender';
 import type { MeetingSender } from './remoteReminders';
@@ -130,13 +128,6 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   const autostart = disableMeetingReminders ? false : options.reminderWorker?.autostart ?? process.env.QINGMU_REMINDER_WORKER_AUTOSTART === 'true';
   const remoteStatus = reminderDelivery?.enabled && autostart ? 'REMOTE_READY' as const : 'REMOTE_PENDING' as const;
   const worker = reminderDelivery?.enabled ? createReminderWorker({ db: database.db, send: reminderDelivery.send, now: options.reminderWorker?.now, intervalMs: options.reminderWorker?.intervalMs, timer: options.reminderWorker?.timer }) : null;
-  // Estimating what a suggested prize costs runs off the machine's own Claude CLI, and only when a
-  // path to it is configured. No path, no worker, and nominations behave exactly as they did before
-  // any of this was built — which is also what every test sees, since none of them set it.
-  const claudePath = process.env.QINGMU_CLAUDE_CLI_PATH?.trim();
-  const assistWorker = claudePath
-    ? createNominationAssistWorker({ db: database.db, cli: createClaudeCli({ executable: claudePath }) })
-    : null;
 
   const appleKeyFile = process.env.QINGMU_APPLE_SIGNIN_KEY_FILE;
   const appleKeyId = process.env.QINGMU_APPLE_SIGNIN_KEY_ID;
@@ -250,10 +241,9 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     response.end(result.binaryBody ?? JSON.stringify(result.body));
   });
   if (worker && autostart) worker.start();
-  if (assistWorker) assistWorker.start();
   let databaseClosing: Promise<void> | null = null;
   const closeDatabase = () => {
-    databaseClosing ??= Promise.allSettled([assistWorker?.stop(), worker?.stop()]).then(() => { database.close(); });
+    databaseClosing ??= Promise.allSettled([worker?.stop()]).then(() => { database.close(); });
     return databaseClosing;
   };
   server.on('close', () => {
@@ -269,7 +259,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     });
     return stopping;
   };
-  return { server, config, database, worker, assistWorker, stop, remoteStatus, senderConfigured: Boolean(reminderDelivery?.enabled) };
+  return { server, config, database, worker, stop, remoteStatus, senderConfigured: Boolean(reminderDelivery?.enabled) };
 }
 
 const isDirectServerEntry = process.argv.some((argument) => /(?:^|[\\/])server[\\/]http\.ts$/.test(argument));

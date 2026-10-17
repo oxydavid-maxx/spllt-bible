@@ -14,7 +14,6 @@ const { primitive, api, auth, readingDays, completion } = vi.hoisted(() => ({
     })),
     getPeople: vi.fn(async () => [{ memberId: 'friend', displayName: '小明', earnedTotal: 3 }]),
     getRewards: vi.fn(async () => []),
-    getNominations: vi.fn(async () => ({ round: { roundId: 'r1', title: '9 月獎品', closesAt: Date.parse('2026-10-06T00:00:00Z'), phase: 'VOTING' }, nominations: [], votesLeft: 3, votesPerMember: 3 })),
   },
   auth: { status: 'signed-in', session: { memberId: 'self', sessionToken: 'token' }, profile: null, profileStatus: 'ready', epoch: 1 },
   readingDays: vi.fn(),
@@ -104,13 +103,13 @@ describe('the 積分 page opens on its calendar', () => {
     expect((await import('../../src/ui/readingSession')).getReadingSessionSnapshot().selectedDate).toBe('2026-10-15');
     expect(renderer!.root.findAllByType('ReadingPlanSheet' as never)).toHaveLength(0);
   });
-  it('scrolls as one page: 團體, then 個人 with the calendar, prize banner, reward goal and chart — with no button above it', async () => {
+  it('scrolls as one page: 團體, then 個人 with the calendar, reward goal and chart — with no button above it', async () => {
     devotionApi.getGroupReading.mockResolvedValueOnce({ month: '2026-09', today: '2026-09-27', todayReaders: null, yesterdayReaders: 4, days: [], monthReads: 40, busiest: null, qualifyingDays: 15, prizes: [], myDaysThisMonth: 3 });
     devotionApi.getScoreHistory.mockResolvedValueOnce({ from: '2026-09-01', today: '2026-09-27', points: [0, 1, 2], devotions: [0, 0, 1], months: [{ month: '2026-09', points: 2, devotionDays: 1 }] });
     await mount();
     const scroll = renderer!.root.findByType('ScrollView' as never);
     const order = (scroll.children as TestRenderer.ReactTestInstance[]).map((child) => (child.type as { name?: string }).name ?? String(child.type));
-    expect(order.slice(0, 7)).toEqual(['SectionHeader', 'GroupReadingCard', 'SectionHeader', 'ReadingCalendarCard', 'NominationBanner', 'RewardGoalCard', 'ScoreHistoryCard']);
+    expect(order.slice(0, 6)).toEqual(['SectionHeader', 'GroupReadingCard', 'SectionHeader', 'ReadingCalendarCard', 'RewardGoalCard', 'ScoreHistoryCard']);
     expect(scroll.children.filter((child) => typeof child !== 'string' && (child.type as { name?: string }).name === 'SectionHeader').map((child) => (child as TestRenderer.ReactTestInstance).props.title)).toEqual(['團體', '個人']);
     // 一起走過 is gone, and 全體 is not a tab any more: only 自己 and 好友.
     expect(order).not.toContain('CommunityProgress');

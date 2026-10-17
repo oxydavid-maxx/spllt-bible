@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
 import { getAuthSnapshot, isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
-import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type NominationBoardView, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
+import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
 import type { PendingGamificationOperations } from '../../src/services/gamificationPendingStore';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../src/services/adminUnlockGuard';
 import { createProfileCache } from '../../src/services/profileCache';
@@ -18,8 +18,6 @@ import { ScoreHistoryCard } from '../../src/ui/gamification/ScoreHistoryCard';
 import { DevotionTodayButton } from '../../src/ui/gamification/DevotionTodayButton';
 import { createDevotionClient, type GroupReading, type ScoreHistory } from '../../src/services/devotionClient';
 import { consumeOpenAllScores, subscribeOpenAllScores } from '../../src/services/allScoresRequest';
-import { NominationBoard } from '../../src/ui/gamification/NominationBoard';
-import { NominationBanner } from '../../src/ui/gamification/NominationBanner';
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { theme } from '../../src/ui/Theme';
 import { createApiClient } from '../../src/services/apiClient';
@@ -36,7 +34,7 @@ import { ReadingCalendarCard } from '../../src/ui/gamification/ReadingCalendarCa
 import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
 import { consumeOpenFriendsList, subscribeFriendAdded, subscribeOpenFriendsList, type FriendAddedEvent } from '../../src/services/friendPush';
 
-type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'admin-rewards' | 'redeem' | 'redemptions' | 'pending' | 'nominations' | 'open-round' | null;
+type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'admin-rewards' | 'redeem' | 'redemptions' | 'pending' | null;
 
 export default function ProgressScreen() {
   const [planOpen, setPlanOpen] = useState(false);
@@ -97,10 +95,6 @@ export default function ProgressScreen() {
   const refreshOnForeground = useRef<(preserveScanner?: boolean) => void>(() => undefined);
   const scannerActivityRequest = useRef<object | null>(null);
   const resumeScannerAfterActivity = useRef(false);
-  const nominationRead = useRef(0);
-  const nominationPending = useRef<object | null>(null);
-  const [nominationBusy, setNominationBusy] = useState(false);
-  const [nominationError, setNominationError] = useState<string | null>(null);
   const chartCache = useRef(new Map<string, NonNullable<ScoreProfileData['chart']>>());
   const chartKey = (memberId: string, nextScope: ScoreScope, query: ScoreChartQuery) => JSON.stringify([memberId, nextScope, query.range, query.anchor ?? '']);
   const rememberChart = (memberId: string, nextScope: ScoreScope, query: ScoreChartQuery | undefined, chart: ScoreProfileData['chart']) => {
@@ -147,8 +141,8 @@ export default function ProgressScreen() {
   const stopPrefetch = useCallback(() => { if (prefetchTimer.current !== null) clearTimeout(prefetchTimer.current); prefetchTimer.current = null; }, []);
   const clearProtectedState = useCallback((preserveScanner = false, preserveOwnProfile = false, preserveOwnView = false) => {
     setPlanOpen(false);
-    requestGeneration.current += 1; viewGeneration.current += 1; profileRequest.current += 1; nominationRead.current += 1;
-    nominationPending.current = null; stopPrefetch(); client?.cancelReads?.();
+    requestGeneration.current += 1; viewGeneration.current += 1; profileRequest.current += 1;
+    stopPrefetch(); client?.cancelReads?.();
     const currentProfile = profileRef.current;
     const ownProfile = preserveOwnProfile && session && isCurrentAuthSession(session) && currentProfile?.memberId === session.memberId && currentProfile.private ? currentProfile : null;
     const preserveView = Boolean(preserveOwnView && ownProfile && activeScope.current === 'me' && activeMember.current === session?.memberId);
@@ -157,9 +151,8 @@ export default function ProgressScreen() {
     setSheet(preserveScanner ? 'scan' : null);
     if (!preserveView) {
       setProfileStale(Boolean(ownProfile)); setRewards([]); setRedemptions([]); setPendingOperations(null); setRetryAction(null); setPrimaryReady(Boolean(ownProfile));
-      setNominationError(null); setShelfRewards(null); setNominations(null); setGroupReading(null); setScoreHistory(null);
+      setShelfRewards(null); setGroupReading(null); setScoreHistory(null);
     }
-    setNominationBusy(false);
     if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
   }, [client, session, stopPrefetch]);
   useEffect(() => registerAuthLifecycleListener((change) => { if (!change.current || change.current.memberId !== session?.memberId || change.current.sessionToken !== session?.sessionToken) clearProtectedState(); }), [accountKey, clearProtectedState]);
@@ -391,7 +384,6 @@ export default function ProgressScreen() {
     catch (reason) { if (owns()) setError(messageFor(reason)); }
   };
   const [shelfRewards, setShelfRewards] = useState<Reward[] | null>(null);
-  const [nominations, setNominations] = useState<NominationBoardView | null>(null);
   // 團體 (維護者 2026-10-14): replaces 一起走過. Absent on a backend that predates it; the section then hides.
   const [groupMonth, setGroupMonth] = useState(() => today.slice(0, 7));
   const [groupReading, setGroupReading] = useState<GroupReading | null>(null);
@@ -411,22 +403,6 @@ export default function ProgressScreen() {
     });
     return () => { active = false; };
   }, [client, session, scope, hasOwnPrivateProfile, focused, primaryReady, secondaryRefresh, isViewLive]);
-  const reloadNominations = useCallback(async (reportError = false, afterMutation = false): Promise<boolean> => {
-    if (!client || !session || !focusedRef.current || !appActive.current || typeof client.getNominations !== 'function' || (nominationPending.current && !afterMutation)) return false;
-    const generation = viewGeneration.current;
-    const readId = ++nominationRead.current;
-    const owns = () => nominationRead.current === readId && isViewLive(generation);
-    try {
-      const value = await client.getNominations();
-      if (!owns()) return false;
-      setNominations(value); if (reportError) setNominationError(null);
-      return true;
-    } catch (reason) { if (owns() && reportError) setNominationError(messageFor(reason)); return false; }
-  }, [client, session, isViewLive]);
-  useEffect(() => {
-    if (!focused || !primaryReady || scope !== 'me') return;
-    void reloadNominations(true);
-  }, [focused, primaryReady, scope, secondaryRefresh, reloadNominations]);
 
   useEffect(() => {
     if (!devotionClient || !session || !focused || !primaryReady || scope !== 'me') return;
@@ -440,36 +416,6 @@ export default function ProgressScreen() {
     void devotionClient.getScoreHistory().then((value) => { if (active && isViewLive(generation)) { setScoreHistory(value); setScoreHistoryMissing(false); } }).catch(() => { if (active && isViewLive(generation)) setScoreHistoryMissing(true); });
     return () => { active = false; };
   }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, historyRefresh, isViewLive, profile?.earnedTotal]);
-  useEffect(() => {
-    if (!focused || sheet !== 'nominations') return;
-    void reloadNominations(true);
-    const timer = setInterval(() => { void reloadNominations(); }, 20000);
-    return () => clearInterval(timer);
-  }, [focused, sheet, reloadNominations]);
-  const runNomination = async (action: () => Promise<void>, options: { close?: boolean; rewards?: boolean } = {}): Promise<boolean> => {
-    if (!client || !session || nominationPending.current) return false;
-    // The same account's board survives chart/scope navigation while a write settles.
-    const generation = viewGeneration.current;
-    const owns = () => isViewLive(generation);
-    if (!owns()) return false;
-    const pending = {}; nominationPending.current = pending; nominationRead.current += 1;
-    const originatingSheet = sheetVersion.current;
-    client.cancelReads?.('/api/rewards/nominations');
-    setNominationBusy(true); setNominationError(null);
-    try {
-      await action();
-      if (!owns()) return false;
-      // A pre-mutation GET must not be reused as the post-mutation refresh.
-      client.cancelReads?.('/api/rewards/nominations');
-      const refreshed = await reloadNominations(true, true);
-      if (!owns()) return false;
-      if (options.rewards) setShelfRewards(null);
-      if (options.close && refreshed && sheetVersion.current === originatingSheet) setSheet(null);
-      return true;
-    } catch (reason) { if (owns()) setNominationError(messageFor(reason)); return false; }
-    finally { if (nominationPending.current === pending) { nominationPending.current = null; setNominationBusy(false); } }
-  };
-  const openNominationRound = (days: number) => runNomination(() => client!.openNominationRound({ title: Number(monthNow().slice(5)) + ' 月獎品', closesAt: Date.now() + days * 24 * 60 * 60 * 1000 }), { close: true });
 
   const redeemSelected = async (rewardId: string) => { if (!client || !selected) return; const reward = rewards.find((item) => item.rewardId === rewardId); if (!reward) return; const generation = requestGeneration.current; const memberId = selected.memberId; try { await client.redeem({ memberId, rewardId, expectedRewardRevision: reward.revision }); if (!isLive(generation, 'all', memberId, true)) return; setRetryAction(null); setSheet(null); await loadProfile(memberId, 'all'); } catch (reason) { if (isLive(generation, 'all', memberId, true) && reason instanceof GamificationApiError && reason.retryable) { setRetryAction(() => () => { void redeemSelected(rewardId); }); setError('尚未確認，點此重試。'); } else if (isLive(generation, 'all', memberId, true)) setError(messageFor(reason)); } };
   const openRedeem = async () => { if (!client || !session || !selected) return; const generation = requestGeneration.current; const memberId = selected.memberId; try { const value = await client.getRewards(); if (isLive(generation, 'all', memberId, true)) { setRewards(value); setSheet('redeem'); } } catch (reason) { if (isLive(generation, 'all', memberId, true)) setError(messageFor(reason)); } };
@@ -606,7 +552,6 @@ export default function ProgressScreen() {
             view={groupReading}
             onPreviousMonth={groupMonth > groupFirstMonth ? () => setGroupMonth(shiftMonth(groupMonth, -1)) : undefined}
             onNextMonth={groupMonth < today.slice(0, 7) ? () => setGroupMonth(shiftMonth(groupMonth, 1)) : undefined}
-            onSuggestPrize={nominations?.round ? () => setSheet('nominations') : undefined}
           />
           <SectionHeader title="個人" />
         </> : null}
@@ -644,12 +589,6 @@ export default function ProgressScreen() {
             {completion.syncError ? <Text accessibilityRole="alert" style={styles.stale}>{completion.record.syncStatus === 'SAVE_FAILED' && !completion.retryable ? '完成記錄無法同步，本機完成狀態仍保留。' : '同步遇到問題，完成狀態已保留，連線後會重試。'}</Text> : null}
           </View>}
         />
-        {nominations?.round ? <NominationBanner
-          round={nominations.round}
-          nowMs={Date.now()}
-          mine={nominations.nominations.some((item) => item.mine && item.status === 'OPEN')}
-          onOpen={() => setSheet('nominations')}
-        /> : null}
       </>}
       rewards={shelfRewards ?? undefined}
       chart={scoreHistory ? <ScoreHistoryCard history={scoreHistory} /> : scoreHistoryMissing ? undefined : null}
@@ -659,30 +598,7 @@ export default function ProgressScreen() {
     /> : null}
     <CompletionAwardFeedback event={completionAward} onFinished={(operationId) => setCompletionAward((current) => current?.operationId === operationId ? null : current)} />
     <ReadingPlanSheet visible={planOpen} onClose={() => setPlanOpen(false)} onSelectDate={date => { setSelectedReadingDate(date); router.replace('/reader'); }} />
-    <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: openQrSheet }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards('admin-rewards'); } }] : []), ...(capabilities?.canManageRewards && !nominations?.round ? [{ label: '開一輪獎品提案', onPress: () => setSheet('open-round') }] : []), ...(nominations?.round ? [{ label: '獎品提案', onPress: () => setSheet('nominations') }] : [])]} />
-    <ActionSheet visible={sheet === 'nominations'} title={nominations?.round?.title ?? '獎品提案'} onClose={() => setSheet(null)}>
-      {nominationBusy ? <Text accessibilityLiveRegion="polite" style={styles.note}>處理中…</Text> : null}
-      {nominationError ? <><Text accessibilityRole="alert" style={styles.error}>{nominationError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重新載入獎品提案" disabled={nominationBusy} onPress={() => { void reloadNominations(true); }} style={styles.retry}><Text style={styles.retryText}>重新載入</Text></Pressable></> : null}
-      <NominationBoard
-        round={nominations?.round ?? null}
-        nominations={nominations?.nominations ?? []}
-        canManage={Boolean(capabilities?.canManageRewards)}
-        nowMs={Date.now()}
-        votesLeft={nominations?.votesLeft}
-        votesPerMember={nominations?.votesPerMember}
-        busy={nominationBusy}
-        onNominate={(name, note, quantity) => runNomination(() => client!.nominateReward({ name, quantity, ...(note ? { note } : {}) }))}
-        onEditQuantity={(nominationId, quantity) => { void runNomination(() => client!.updateNominationQuantity(nominationId, quantity)); }}
-        onVote={(nominationId, voting) => { void runNomination(() => client!.setNominationVote(nominationId, voting)); }}
-        onWithdraw={(nominationId) => { void runNomination(() => client!.withdrawNomination(nominationId)); }}
-        onResolveSuggestion={(nominationId, accept) => { void runNomination(() => client!.resolveNoteSuggestion(nominationId, accept)); }}
-        onDecide={(nominationId, decision, revision, costPoints) => { void runNomination(() => client!.decideNomination(nominationId, decision, { expectedRevision: revision, ...(costPoints ? { costPoints } : {}) }), { rewards: true }); }}
-        onCloseRound={(roundId) => { void runNomination(() => client!.closeNominationRound(roundId), { close: true }); }}
-      />
-    </ActionSheet>
-    <ActionSheet visible={sheet === 'open-round'} title="開一輪獎品提案" dismissOnOutsideTap onClose={() => setSheet(null)}
-      actions={[7, 14, 30].map((days) => ({ label: `${days} 天後截止`, disabled: nominationBusy, onPress: () => { void openNominationRound(days); } }))}>{nominationBusy ? <Text accessibilityLiveRegion="polite" style={styles.note}>處理中…</Text> : null}
-      {nominationError ? <><Text accessibilityRole="alert" style={styles.error}>{nominationError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重新載入獎品提案" disabled={nominationBusy} onPress={() => { void reloadNominations(true); }} style={styles.retry}><Text style={styles.retryText}>重新載入</Text></Pressable></> : null}</ActionSheet>
+    <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: openQrSheet }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards('admin-rewards'); } }] : [])]} />
     <ActionSheet visible={sheet === 'qr'} title="我的好友 QR" dismissOnOutsideTap onClose={closeQrSheet}>
       {friendNotice ? <View accessible accessibilityLabel={`✓ ${friendNotice} 已加你為好友`} accessibilityLiveRegion="polite" style={styles.friendNotice}>
         <View style={styles.friendTick}><Text style={styles.friendTickText}>✓</Text></View>

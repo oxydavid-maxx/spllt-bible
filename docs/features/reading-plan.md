@@ -190,7 +190,7 @@ App 每天顯示當天該讀的經文段落，讀完按一下就完成打卡並�
 
 ## 相關文件
 
-- `docs/design/reading-gamification-v1.md`：積分/獎品/好友原始設計規格（含讀經完成計分規則 CL04、CL05），只看資料模型與 API 細節，不要照抄成現況——實際功能已多出提名投票、社群進度等 v1 沒有的部分（詳見 `points.md`）。
+- `docs/design/reading-gamification-v1.md`：積分/獎品/好友原始設計規格（含讀經完成計分規則 CL04、CL05），只看資料模型與 API 細節，不要照抄成現況——實際功能已多出社群進度等 v1 沒有的部分（詳見 `points.md`）。
 - `docs/superpowers/plans/2026-09-29-ios-parity*.md`：iOS 移植計畫。
 
 ## 已知限制與待辦

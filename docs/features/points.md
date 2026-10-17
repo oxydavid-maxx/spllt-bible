@@ -4,7 +4,7 @@
 
 ## 一句話
 
-積分頁「自己」分成「團體」和「個人」兩塊：團體看大家每天一起讀經的人數和團體獎進度；個人看自己的讀經月曆、靈修打勾、「總積分/每月」圖和目標獎品。可以加好友互相看進度；管理者從帳戶頁進全體排名，也能發獎品、開提名投票。
+積分頁「自己」分成「團體」和「個人」兩塊：團體看大家每天一起讀經的人數和團體獎進度；個人看自己的讀經月曆、靈修打勾、「總積分/每月」圖和目標獎品。可以加好友互相看進度；管理者從帳戶頁進全體排名，也能發獎品。
 
 ## 從哪裡進
 
@@ -17,7 +17,7 @@
 |---|---|
 | 範圍切換 | 上方「自己/好友」分頁；「全體 (管理)」的入口在帳戶頁最下面，只有管理者看得到，且要先解鎖 |
 | 團體：青少一起讀經 | 每天讀經人數的月曆，一天 2 人以上才顯示；今天、昨天各幾人；這個月一起讀了幾人次 |
-| 團體獎 | 一個月讀滿 15 天的人數到門檻就累積一個月；懶骨頭、沙發兩個獎品；最下面「下一個獎品，由你決定」 |
+| 團體獎 | 一個月讀滿 15 天的人數到門檻就累積一個月；懶骨頭、沙發兩個獎品 |
 | 個人：月曆與兩顆完成鍵 | 讀經月曆 (讀了靈修的日子標「靈修」)，下面左金色「完成今日靈修」、右綠色「完成今日讀經」，規則見 [reading-plan.md](reading-plan.md) |
 | 自己的積分 | 總積分、梯隊 (滿 10 人才分)、目標獎品進度條、「總積分/每月」圖 |
 | 目標獎品 | 從獎品目錄選一個要換的獎品，進度以「已累積/所需」分數呈現 |
@@ -26,8 +26,6 @@
 | 好友新增推播 | 對方掃你的 QR 加你好友時，你會收到「XX 已加你為好友」的通知 |
 | 全體排名（管理） | 管理者用裝置生物辨識解鎖後可看到所有人排名 |
 | 現場兌換（管理） | 管理者幫學生兌換獎品、查看/撤銷兌換紀錄 |
-| 提名獎品投票 | 開放投票期間內，每人可以提一個獎品構想並投最多 3 票；管理者核准後變成正式獎品 |
-| AI 估價與說明建議 | 系統背景幫忙把「多少/多久」換算成大約分數，並在說明不清楚時提供改寫建議 |
 
 ## 行為規格
 
@@ -48,7 +46,6 @@
 - 團體獎：一個人一個月有 15 天讀經就算「讀滿」(`QUALIFYING_DAYS_PER_MONTH = 15`)。讀滿的人數到門檻，那個月就累積一個月：「新的懶骨頭 (摩脫教室)」15 人 × 2 個月、「新沙發」20 人 × 4 個月，2026 年 10 月起算 (`GROUP_PRIZES`、`GROUP_PRIZES_FROM`)。
 - 每個獎品顯示「已達成/所需 個月」、進度條和「10 月已有 N/15 人讀滿 15 天」；第一個還沒達成的獎品多一行自己的進度：「你這個月讀了 X 天，再 Y 天就算你一份」或「你這個月已讀滿 15 天，算你一份」。
 - 團體的數字只算讀經；靈修打勾不進任何團體數字。
-- 最下面「下一個獎品，由你決定」：有提名投票進行中時按下打開提名板，沒有時只是一行字。
 
 ### 自己的積分卡片
 來源：`src/ui/gamification/ScoreProfile.tsx`、`src/ui/gamification/RewardGoalCard.tsx`、`server/gamification.ts:560-578`
@@ -101,27 +98,6 @@
 - 撤銷理由等審核相關欄位（`confirmedBy`/`reversedBy`/`reversalReason`）只在管理者查看時附帶，一般成員自己查看兌換紀錄看不到是哪位輔導處理的（`projectMemberRedemption`，`src/domain/gamificationV1.ts:152-162`）。
 - 兌換/撤銷若送出時沒有網路，會先存在本機待送出佇列（`gamificationPendingStore.ts`），之後在「尚未確認操作」清單中可以手動重試。
 
-### 提名獎品投票
-來源：`src/ui/gamification/NominationBanner.tsx`、`src/ui/gamification/NominationBoard.tsx`、`server/rewardNominations.ts`、`server/nominationAssist.ts`
-
-- 只有管理者能開一輪投票，設定幾天後截止（7/14/30 天三個選項）；同一時間只能有一輪在進行（`ROUND_ALREADY_OPEN`，`server/rewardNominations.ts:276`）。
-- 投票期間內（`VOTING`）：每人限提 1 個構想（`MAX_OPEN_PER_MEMBER = 1`），限投 3 票（`VOTES_PER_MEMBER = 3`，`rewardNominations.ts:28,39`），可以隨時取消一票再投別的。截止時間一到，即使伺服器整週沒有重啟，下次任何人查看都會自動變成「投票結束，等輔導決定」（`DECIDING`，`viewRound`，`rewardNominations.ts:178-186`）。
-- 提名一定要填「多少/多久」（如「2 小時」「1 杯」），最長 20 字，只有本人可以事後修改（`MAX_QUANTITY_LENGTH = 20`，`rewardNominations.ts:32`）。
-- 自己的構想可以在投票期間內隨時撤回，撤回後名額就空出來可以再提一個新的。
-- 已婉拒（DECLINED）的構想只有提名者本人能看到；已移除（REMOVED，管理者移除或本人自己撤回）的構想誰都看不到（`listNominations`，`rewardNominations.ts:202-218`）。
-- 管理者核准時要輸入這個獎品要花多少積分，才會真的變成一個新的獎品並連結回這個提名（`decideNomination`，`rewardNominations.ts:491-529`）；婉拒、移除則不會建立獎品。
-- 投票倒數文字：截止前一天顯示「投票今天截止」，其餘顯示「投票還有 N 天（M/D 截止）」（`describeDeadline`，`src/domain/nominationRound.ts:13-20`）。
-- 投票的加入/取消本身不需要重試機制，靠資料庫的組合鍵天然去重（`setVote`，`rewardNominations.ts:444-479` 的說明註解）。
-
-### AI 估價與說明改寫（背景工作）
-來源：`server/nominationAssist.ts`
-
-- 每個提名建立後，伺服器每 20 秒的背景排程會挑一個還沒處理過的提名，請 AI 依「多少/多久」估算新台幣價格，並用「電影票＝300元＝目前 75 分」的匯率換算成分數，四捨五入到 5 分的倍數（`ANCHOR_TWD = 300`、`ROUND_POINTS_TO = 5`，`nominationAssist.ts:36-40,145-153`）。
-- 換算後的分數只在成員自己有填「多少/多久」且能被合理估價時顯示「約 N 分」；估不出來（描述太模糊，如「很久」）時不顯示分數，只在提名者自己看得到的地方顯示一句提醒，例如：「小提醒：「很久」估不出分數，要不要寫多久？例如 1 小時」。
-- 估價結果如果超過目前最貴獎品的 10 倍，一律視為不可用、不顯示（`MAX_MULTIPLE_OF_DEAREST = 10`，`nominationAssist.ts:43,150-152`），避免離譜金額誤導投票。
-- 如果附了補充說明，AI 還會檢查文字是否清楚，不清楚時只有提名者自己會看到一則改寫建議，可以選擇「採用」直接換成建議文字，或「維持我寫的」；AI 沒有否決權，兩個選項最後都會送出提名者自己的文字。
-- 這個背景工作呼叫 AI 失敗時最多重試一次（`MAX_ATTEMPTS = 2`，`nominationAssist.ts:49`），失敗訊息只記錄分類代碼，不記錄提名內容或錯誤細節，避免學生寫的內容被寫進伺服器紀錄。
-
 ### 一起走過 (社群進度，2026-10-14 起 App 不顯示)
 來源：`src/ui/gamification/CommunityProgress.tsx`、`server/communityProgress.ts`
 
@@ -151,10 +127,11 @@
 - **進度用「已累積/所需」的分數格式呈現（例如「72/120 分」），不寫「還差幾分」「持續累積中」等鼓勵口號**：這是精簡文案的產品決定。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.5）
 - **兌換與撤銷兌換不影響走勢圖或總積分**：兩本帳故意分開算，讓兌換不會使歷史紀錄「倒退」。（來源：[../design/score-profile-chart.md](../design/score-profile-chart.md)「Aggregation rules」）
 - **舊版伺服器沒有回傳圖表資料時，退回誠實的「近六個月」六格簡表，不會把月資料誤讀成日資料**。（來源：[../design/score-profile-chart.md](../design/score-profile-chart.md)「UI behavior」）
-- **好友 QR 的相機掃描畫面不會被存檔或上傳；AI 估價只會拿到提名的「多少/多久」與說明文字，不會附上提名者的姓名或帳號資料**。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)）
+- **好友 QR 的相機掃描畫面不會被存檔或上傳**。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)）
 - **積分頁分成「團體」和「個人」，團體在上**：先讓人看到大家一起讀，再看自己；團體只顯示人數，不排名。(維護者 2026-10-14；來源：[../superpowers/plans/2026-10-14-mock-1014-redesign.md](../superpowers/plans/2026-10-14-mock-1014-redesign.md))
 - **團體的一天要 2 人以上才顯示人數**：只有 1 人時看得出是誰。(維護者 2026-10-14)
-- **團體獎：一個月讀滿 15 天才算一份；懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月；最後一行「下一個獎品，由你決定」接到提名投票**：門檻要大家一起努力才到得了，也讓下一個獎品由青少年自己提。(維護者 2026-10-14)
+- **團體獎：一個月讀滿 15 天才算一份；懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月**：門檻要大家一起努力才到得了。(維護者 2026-10-14)
+- **拿掉提名投票和 AI 估價，團體獎下面也不放「下一個獎品，由你決定」**：App 只做 App 才做得到的事；投票用 LINE 投票、Kahoot 這類現成工具，需要時線下進行，App 不放連結。AI 估價原本是後端每 20 秒檢查一次、再呼叫 Claude 的背景工作，一起拿掉。舊版 App (0.5.32 以前) 讀提名板時，後端回一個空的提名板，畫面不會出錯。(維護者 2026-10-17)
 - **「全體 (管理)」移到帳戶頁最下面，淡色、只有管理者看得到**：一般人的積分頁只有「自己/好友」，管理者也不會每天打開積分就看到全體排名。(維護者 2026-10-14)
 - **積分圖只留「總積分/每月」，靈修是一條淡淡的金色虛線，每月圖只在虛線中間寫數字、不加粗**：要淡，不給壓力。(維護者 2026-10-14)
 - **「一起走過」換成「團體」**：「團體」的每日人數和團體獎取代了它；後端保留給舊版 App。(維護者 2026-10-14)
@@ -162,14 +139,13 @@
 ## 平台差異
 
 - 好友 QR 掃描：Android 用系統內建的條碼掃描器（`CameraView.launchScanner`，不需要另外要求相機權限，掃描介面由系統提供）；iOS/其他平台用 App 內建相機畫面，第一次使用需要跳出相機權限請求（`src/ui/gamification/FriendQrPanel.tsx:72-104`）。
-- 其餘功能（範圍切換、積分卡片、圖表、兌換、提名投票、社群進度）兩平台共用同一份程式碼與畫面。
+- 其餘功能（範圍切換、積分卡片、圖表、兌換、社群進度）兩平台共用同一份程式碼與畫面。
 
 ## 資料與後端
 
 - 積分帳本分兩層：`daily_point_entitlements`（誰在哪天有一份「生效中」的得分，完成打卡時寫入、撤銷時標記失效）與 `wallet_entries`（每一筆加減錢包餘額的紀錄：讀經得分、讀經撤銷、兌換扣分、撤銷兌換退分）。總積分只加總 `daily_point_entitlements`，可兌換餘額只加總 `wallet_entries`，兩者故意分開算，兌換不會讓總積分或走勢圖倒退（`server/gamification.ts:322-330`）。
 - 獎品（`rewards`）、目標設定（`reward_targets`）、兌換紀錄（`redemptions`）、好友碼（`friend_tokens`）、好友關係（`friendships`）都是各自獨立的表，變更一律走同一套「操作收據」（`mutation_receipts`）機制防止重複送出時被算兩次（`writeMutationReceipt`/`readMutationReceipt`，`gamification.ts:584-594`）。
-- 提名投票另成一組表：`reward_nominations`、`reward_nomination_votes`、`reward_nomination_rounds`、`reward_nomination_assists`（AI 估價/改寫結果），定義在 `server/rewardNominations.ts`、`server/nominationAssist.ts`。核准提名會呼叫跟管理者手動新增獎品「同一個」建立函式（`insertReward`，`gamification.ts:669-674`），確保兩條路徑做出來的獎品資料一致。
-- 主要 API：`GET /api/points/profiles/:memberId`（含 `chartRange`/`chartAnchor`）、`GET /api/points/people`、`GET /api/points/community`、`GET/POST /api/rewards`、`GET/POST /api/rewards/nominations`、`GET /api/rewards/nominations/history`、`GET/POST /api/me/redemptions`、`POST /api/me/reward-target`、`POST /api/friends/qr`、`POST /api/friends/claim`、管理者專用的 `/api/admin/rewards`、`/api/admin/rewards/nomination-rounds`、`/api/admin/rewards/nominations`、`/api/admin/redemptions`（`server/routes.ts`）。
+- 主要 API：`GET /api/points/profiles/:memberId`（含 `chartRange`/`chartAnchor`）、`GET /api/points/people`、`GET /api/points/community`、`GET/POST /api/rewards`、`GET/POST /api/me/redemptions`、`POST /api/me/reward-target`、`POST /api/friends/qr`、`POST /api/friends/claim`、管理者專用的 `/api/admin/rewards`、`/api/admin/redemptions`（`server/routes.ts`）。
 - 舊版點數資料以 `server/legacyPointMigration.ts` 一次性搬進現有帳本（寫入 `LEGACY_OPENING_CREDIT` 錢包紀錄），搬移後現行帳本即為唯一計分依據。
 
 ## 守住它的測試
@@ -178,19 +154,12 @@
 |---|---|
 | `tests/domain/gamificationV1.test.ts` | 分數/梯隊/圖表相關的共用工具函式 |
 | `tests/domain/masking.test.ts` | 暱稱遮蔽函式本身的規則（目前未被畫面呼叫） |
-| `tests/domain/nominationRound.test.ts` | 提名投票倒數文字 |
 | `tests/domain/points.test.ts` | 舊版點數帳本計算（legacy，未接畫面） |
 | `tests/domain/gamification.test.ts` | 舊版每週共同目標計算（legacy，未接畫面） |
 | `tests/server/gamificationV1.test.ts` | 積分、兌換、好友、目標獎品的後端規則 |
 | `tests/server/gamificationMigration.test.ts` | 舊點數資料搬移到新帳本 |
 | `tests/server/communityProgress.test.ts` | 一起走過（社群進度）人數門檻與計算 |
 | `tests/server/scoreProfileChart.test.ts` | 積分走勢圖後端聚合（週/月/年/全部） |
-| `tests/server/rewardNominations.test.ts` | 提名/投票/管理者決定的完整規則 |
-| `tests/server/nominationRounds.test.ts` | 提名投票輪次開關與截止規則 |
-| `tests/server/nominationQuantity.test.ts` | 提名「多少/多久」欄位規則 |
-| `tests/server/nominationAssist.test.ts` | AI 估價、四捨五入、上限、說明改寫規則 |
-| `tests/server/nominationAssistRoutes.test.ts` | AI 估價相關路由行為 |
-| `tests/integration/nominationAssistShutdown.test.ts` | AI 估價背景工作的關閉流程 |
 | `tests/server/friendPush.test.ts` | 好友新增推播（後端發送規則） |
 | `tests/services/friendPush.test.ts` | 好友新增推播（App 端接收與去重規則） |
 | `tests/services/profileCache.test.ts` | 本機積分快取的帳號隔離規則 |
@@ -204,7 +173,6 @@
 | `tests/ui/scoreProfileChart.test.ts` | 積分走勢圖/日曆檢視 UI |
 | `tests/ui/rewardGoalCard.test.ts` | 目標獎品卡片 UI |
 | `tests/ui/communityBookGoal.test.ts` | 一起讀完一本書卡片 UI |
-| `tests/ui/nominationBoard.test.ts` | 提名板 UI（提名、投票、管理者操作） |
 | `tests/ui/actionSheetDismissal.test.ts` | 操作面板（ActionSheet）點外部關閉規則 |
 | `tests/ui/friendPushBridge.test.ts` | 好友推播事件橋接 |
 | `tests/ui/progressFriendPush.test.ts` | 積分頁收到好友推播時的畫面反應 |
@@ -216,7 +184,7 @@
 - `docs/design/score-profile-chart.md`：積分走勢圖的資料模型與聚合規則設計文件。
 
 **現況與 v1 設計文件的差異：**
-- v1 設計文件（CL09）只寫「維護者在同一 App 設定獎品及現場兌換」，沒有提名投票、AI 估價、說明改寫；提名投票整套（`server/rewardNominations.ts`、`server/nominationAssist.ts`）是後來加上去的，目前不在 v1 文件範圍內。
+- v1 設計文件（CL09）只寫「維護者在同一 App 設定獎品及現場兌換」，沒有提名投票、AI 估價、說明改寫；這一套後來加上，2026-10-17 已移除。
 - 「一起走過」社群進度（`CommunityProgress.tsx`、`server/communityProgress.ts`）也是 v1 文件之外的後續功能。
 - `docs/design/score-profile-chart.md` 描述的是長條圖（bar chart）搭配零基線；目前實際程式碼（`ScoreProfileChart.tsx`）是累積折線圖（走勢）加上另一個月曆熱度網格（日曆），並非長條圖。
 
