@@ -79,11 +79,11 @@ describe('exact deployed old baseline with minimal audio/profile additions', () 
     });
   });
 
-  it('returns a real missing-profile state without creating a member or changing data', async () => {
+  it('rejects a session whose member was removed, without recreating the member or changing data', async () => {
     const { request, db } = assembled();
     const before = db.db.prepare('SELECT count(*) AS n FROM members').get();
     const unknown = createSessionToken('test:missing', secret);
-    expect(await request('/api/me/profile', `Bearer ${unknown}`)).toMatchObject({ status: 404, body: { error: 'PROFILE_NOT_FOUND' } });
+    expect(await request('/api/me/profile', `Bearer ${unknown}`)).toMatchObject({ status: 401, body: { error: { code: 'AUTH_INVALID', retryable: false } } });
     expect(db.db.prepare('SELECT count(*) AS n FROM members').get()).toEqual(before);
   });
 
