@@ -1,5 +1,8 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import type { AppleIdentity } from './appleVerifier';
+import { deleteMemberAccount } from './accountDeletion';
+import { openAppleToken, sealAppleToken } from './appleTokens';
 import { maskForViewer } from '../src/domain/masking';
 import { calculateNetPoints, type PointEvent, type PointPolicy } from '../src/domain/points';
 import type { ContentGateStatus } from '../src/domain/types';
@@ -74,6 +77,11 @@ export interface ApiHandlerOptions {
   /** Development fixture only (authBoundary.authenticate): the member for a token-only request. */
   fixtureDefaultMemberId?: string;
   productionGoogleAuth?: ProductionGoogleAuth;
+  productionAppleAuth?: {
+    verify: (token: string, nonce: string) => Promise<AppleIdentity>;
+    exchangeCode?: (code: string, subject: string) => Promise<string>;
+    revoke?: (token: string) => Promise<void>;
+  };
   sessionSecret?: string;
   contentGate?: {
     status: ContentGateStatus;
@@ -348,6 +356,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
     unref(setTimeout(warm, 3_000));
     scheduleNextDay();
   }
+  const appleChallenges = new Map<string, number>();
   const sessions = { resolveDevice: (token: string) => resolveDeviceSession(options.db.db, token), isLegacyRevoked: (token: string) => isLegacySessionRevoked(options.db.db, token) };
   const remoteStatus = options.remoteReminderStatus ?? 'REMOTE_PENDING';
   const policy = options.pointPolicy ?? DEFAULT_POLICY;
@@ -398,6 +407,47 @@ export function createApiHandler(options: ApiHandlerOptions) {
         if (!snapshot) return json(403, { error: 'DEVICE_DELIVERY_REVOKED' });
         return json(200, { ...snapshot, valid: snapshot.status === 'SCHEDULED' && snapshot.scheduleRevision === body.schedule_revision });
       } catch (error) { return json(error instanceof Error && error.message === 'INVALID_JSON' ? 400 : 500, { error: error instanceof Error && error.message === 'INVALID_JSON' ? 'INVALID_JSON' : 'DEVICE_REMINDER_ERROR' }); }
+    }
+    if (request.method === 'POST' && url.pathname === '/api/session/apple/challenge' && options.productionAppleAuth) {
+      for (const [nonce, expiry] of appleChallenges) if (expiry <= now().getTime()) appleChallenges.delete(nonce);
+      if (appleChallenges.size >= 1000) return json(429, { error: 'TRY_LATER' });
+      const nonce = randomBytes(32).toString('base64url');
+      appleChallenges.set(nonce, now().getTime() + 300_000);
+      return json(200, { nonce });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/session/apple' && options.productionAppleAuth && options.sessionSecret) {
+      const token = (request.headers.authorization ?? request.headers.Authorization)?.match(/^Bearer\s+(.+)$/i)?.[1];
+      if (!token) return json(401, { error: 'AUTH_REQUIRED' });
+      let body: Record<string, unknown>;
+      try { body = parseBody(request.body); } catch { return json(400, { error: 'INVALID_JSON' }); }
+      const nonce = typeof body.nonce === 'string' ? body.nonce : '';
+      const expires = appleChallenges.get(nonce);
+      appleChallenges.delete(nonce);
+      if (!expires || expires <= now().getTime()) return json(401, { error: 'APPLE_NONCE_INVALID' });
+      let identity: AppleIdentity;
+      try { identity = await options.productionAppleAuth.verify(token, nonce); } catch { return json(401, { error: 'AUTH_INVALID' }); }
+      let refreshToken: string | undefined;
+      if (options.productionAppleAuth.exchangeCode) {
+        if (typeof body.authorization_code !== 'string' || !body.authorization_code) return json(400, { error: 'APPLE_CODE_REQUIRED' });
+        try { refreshToken = await options.productionAppleAuth.exchangeCode(body.authorization_code, identity.subject); }
+        catch { return json(503, { error: 'APPLE_AUTH_UNAVAILABLE' }); }
+      }
+      const db = options.db.db;
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        let memberId = (db.prepare("SELECT member_id FROM identity_bindings WHERE provider='apple' AND subject=?").get(identity.subject) as { member_id: string } | undefined)?.member_id;
+        if (!memberId) {
+          memberId = randomUUID();
+          const displayName = typeof body.display_name === 'string' ? body.display_name.trim().slice(0, 80) : '';
+          db.prepare('INSERT INTO members(id,display_name,group_id) VALUES(?,?,?)').run(memberId, displayName || '竹科聖經會員', `unassigned:${memberId}`);
+          db.prepare('INSERT INTO identity_bindings(provider,subject,member_id,created_at) VALUES(?,?,?,?)').run('apple', identity.subject, memberId, now().toISOString());
+        }
+        if (!isMemberEnabled(db, memberId)) { db.exec('ROLLBACK'); return json(403, { error: 'ACCOUNT_DISABLED' }); }
+        if (refreshToken) db.prepare('INSERT INTO apple_refresh_tokens(member_id,encrypted_token) VALUES(?,?) ON CONFLICT(member_id) DO UPDATE SET encrypted_token=excluded.encrypted_token').run(memberId, sealAppleToken(refreshToken, options.sessionSecret));
+        const result = createDeviceSession(db, memberId);
+        db.exec('COMMIT');
+        return json(200, result);
+      } catch { db.exec('ROLLBACK'); return json(500, { error: 'INTERNAL_ERROR' }); }
     }
     if (request.method === 'POST' && url.pathname === '/api/session/google' && options.productionGoogleAuth && options.sessionSecret) {
       const authorization = request.headers.authorization ?? request.headers.Authorization;
@@ -482,12 +532,24 @@ export function createApiHandler(options: ApiHandlerOptions) {
       ? await authenticateSessionOrGoogle(request.headers, options.productionGoogleAuth, options.sessionSecret, sessions)
       : authenticate(request.headers, options.fixtureToken ?? '', (id) => memberExists(options.db.db, id), options.fixtureDefaultMemberId);
     if ('status' in auth) return isGamificationPath(url.pathname) ? gamificationError({ status: auth.status, code: auth.error }) : json(auth.status, { error: auth.error });
-    if (memberExists(options.db.db, auth.memberId) && !isMemberEnabled(options.db.db, auth.memberId)) return isGamificationPath(url.pathname) ? gamificationError({ status: 401, code: 'AUTH_INVALID' }) : json(401, { error: 'ACCOUNT_DISABLED' });
+    if (!isMemberEnabled(options.db.db, auth.memberId)) return isGamificationPath(url.pathname) ? gamificationError({ status: 401, code: 'AUTH_INVALID' }) : json(401, { error: 'ACCOUNT_DISABLED' });
     if (request.method === 'POST' && url.pathname === '/api/session/device' && options.productionGoogleAuth && options.sessionSecret) {
       return json(200, createDeviceSession(options.db.db, auth.memberId));
     }
 
     try {
+      if (request.method === 'DELETE' && url.pathname === '/api/me') {
+        const body = parseBody(request.body);
+        if (body.confirmed !== true) return json(400, { error: 'CONFIRMATION_REQUIRED' });
+        const stored = options.db.db.prepare('SELECT encrypted_token FROM apple_refresh_tokens WHERE member_id=?').get(auth.memberId) as { encrypted_token: string } | undefined;
+        if (stored) {
+          if (!options.productionAppleAuth?.revoke || !options.sessionSecret) return json(503, { error: 'APPLE_REVOCATION_UNAVAILABLE' });
+          try { await options.productionAppleAuth.revoke(openAppleToken(stored.encrypted_token, options.sessionSecret)); }
+          catch { return json(503, { error: 'APPLE_REVOCATION_UNAVAILABLE' }); }
+        }
+        deleteMemberAccount(options.db.db, auth.memberId);
+        return json(200, { deleted: true });
+      }
       if (request.method === 'GET' && url.pathname === '/api/me/reading-days') {
         const today = taipeiDate(now());
         const from = url.searchParams.get('from') ?? today;

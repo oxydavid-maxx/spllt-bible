@@ -5,6 +5,8 @@ import { createApiHandler } from './routes';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { verifyGoogleIdToken, verifyGoogleIdTokenAnyAudience } from './googleVerifier';
+import { verifyAppleIdToken } from './appleVerifier';
+import { createAppleTokenClient } from './appleTokens';
 import { canonicalReadingPlan } from '../src/domain/calendar';
 import { seedMemberInvite, type MemberInviteSeed } from './membership';
 import type { PointPolicy } from '../src/domain/points';
@@ -136,6 +138,11 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     ? createNominationAssistWorker({ db: database.db, cli: createClaudeCli({ executable: claudePath }) })
     : null;
 
+  const appleKeyFile = process.env.QINGMU_APPLE_SIGNIN_KEY_FILE;
+  const appleKeyId = process.env.QINGMU_APPLE_SIGNIN_KEY_ID;
+  const appleTeamId = process.env.QINGMU_APPLE_SIGNIN_TEAM_ID;
+  const appleTokens = appleKeyFile && appleKeyId && appleTeamId
+    ? createAppleTokenClient({ privateKey: readFileSync(appleKeyFile, 'utf8'), keyId: appleKeyId, teamId: appleTeamId }) : null;
   const handle = createApiHandler({
     remoteReminderStatus: remoteStatus,
     prewarmChapterAudio: true,
@@ -159,6 +166,9 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
       : {}),
     ...(googleAudience && !options.fixtureToken
       ? {
+          ...(appleTokens ? { productionAppleAuth: {
+            verify: (token: string, nonce: string) => verifyAppleIdToken(token, { nonce }), ...appleTokens,
+          } } : {}),
           productionGoogleAuth: {
             verify: async (idToken: string) => verifyGoogleIdToken(idToken, { audience: googleAudience }),
             resolveMember: async (identity: { subject: string; provider: 'google' }) => {
@@ -180,7 +190,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
               }
             : {}),
         }
-      : { fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token', ...(process.env.QINGMU_FIXTURE_DEFAULT_MEMBER?.trim() ? { fixtureDefaultMemberId: process.env.QINGMU_FIXTURE_DEFAULT_MEMBER.trim() } : {}) }),
+      : { ...(fixtureRoster ? { productionAppleAuth: { verify: async () => { throw new Error('FIXTURE_APPLE_IDENTITY_REFUSED'); } } } : {}), fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token', ...(process.env.QINGMU_FIXTURE_DEFAULT_MEMBER?.trim() ? { fixtureDefaultMemberId: process.env.QINGMU_FIXTURE_DEFAULT_MEMBER.trim() } : {}) }),
   });
   const officialBible = createOfficialBibleAdapter();
   const lineChannelSecret = readLineChannelSecret(process.env.QINGMU_LINE_SECRET_FILE);
