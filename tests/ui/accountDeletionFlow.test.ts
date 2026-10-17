@@ -10,6 +10,7 @@ vi.mock('../../src/services/authSession', () => ({
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ deleteAccount: state.remove }) }));
 vi.mock('../../src/services/reminderRuntime', () => ({ getReminderRuntimeOwner: () => null, useReminderRuntimeSnapshot: () => ({}) }));
 vi.mock('../../src/ui/ReminderSettings', () => ({ ReminderSettings: () => null }));
+vi.mock('../../src/ui/congregation/CongregationSetting', () => ({ CongregationSetting: () => null }));
 vi.mock('../../src/ui/GoogleLoginCard', () => ({ GoogleLoginCard: () => null }));
 import { AccountSurface } from '../../src/ui/accountSurfaceComponent';
 beforeEach(() => { state.clear.mockClear(); state.remove.mockReset().mockResolvedValue(true); });

@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuthSnapshot, type AuthSession, type VerifiedProfile } from '../src/services/authSession';
 import { AppStack, canUseApp } from '../src/ui/AppStack';
 import { UpdatePrompt } from '../src/ui/UpdatePrompt';
+import { CongregationGate } from '../src/ui/congregation/CongregationGate';
 import { revokeConfiguredReminderDeviceBinding, revokeConfiguredReminderDeviceBindingResult } from '../src/services/configuredReminderHeadless';
 import { runtimeConfig } from '../src/config/runtime';
 import { createApiClient } from '../src/services/apiClient';
@@ -54,5 +55,5 @@ export default function RootLayout() {
   }, []);
   configureReminderRuntime(reminderRuntime);
   // The gesture root stays for react-native-gesture-handler users; the SDK's sheets no longer need it (they are the app's own, src/ui/sheet/bottomSheet.tsx).
-  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} /><UpdatePrompt /></AuthProvider></GestureHandlerRootView>;
+  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} /><CongregationGate /><UpdatePrompt /></AuthProvider></GestureHandlerRootView>;
 }

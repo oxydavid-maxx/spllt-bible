@@ -10,6 +10,7 @@ vi.mock('react-native', () => ({ Image: 'Image', Linking: {}, Pressable: 'Pressa
 vi.mock('../../src/services/authSession', () => ({ clearAuthSession: vi.fn(), retryAuthProfile: vi.fn(), useAuthSnapshot: () => ({ status: 'signed-in', session: { memberId: 'test:member', sessionToken: 'memory-only' }, profile: { memberId: 'test:member', displayName: '測試', groupName: '測試小組' }, profileStatus: 'ready' }) }));
 vi.mock('../../src/services/reminderRuntime', () => ({ getReminderRuntimeOwner: () => ({ retryLoad: state.retryLoad, retrySave: state.retrySave, savePreferences: state.save }), useReminderRuntimeSnapshot: () => ({ ready: state.error !== 'load', error: state.error, readingEnabled: false, meetingEnabled: false, readingTime: '08:00', meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'REMOTE_PENDING', permission: 'undetermined' }) }));
 vi.mock('../../src/ui/GoogleLoginCard', () => ({ GoogleLoginCard: () => null }));
+vi.mock('../../src/ui/congregation/CongregationSetting', () => ({ CongregationSetting: () => null }));
 import { AccountSurface } from '../../src/ui/accountSurfaceComponent';
 
 beforeEach(() => { vi.clearAllMocks(); state.error = 'load'; });

@@ -30,6 +30,7 @@ vi.mock('../../src/services/apiClient', () => ({
   })),
 }));
 vi.mock('../../src/ui/GoogleLoginCard', () => ({ GoogleLoginCard: () => React.createElement('GoogleLoginCard') }));
+vi.mock('../../src/ui/congregation/CongregationSetting', () => ({ CongregationSetting: () => null }));
 
 import { Image, Text } from 'react-native';
 import { clearAuthSession, persistAuthProfile, setAuthSession } from '../../src/services/authSession';

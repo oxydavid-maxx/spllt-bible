@@ -48,9 +48,11 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth }: GroupRe
   const summary = monthSummary(view);
   const firstOpen = view.prizes.findIndex((prize) => prize.achievedMonths < prize.months);
   const currentMonthName = monthName(view.today.slice(0, 7));
-  return <View style={styles.card} accessibilityLabel="青少一起讀經">
+  // 青少/主堂 (維護者 2026-10-17): 主堂 counts the whole church and has no group prizes.
+  const title = view.scope === 'main' ? '全教會一起讀經' : '青少一起讀經';
+  return <View style={styles.card} accessibilityLabel={title}>
     <View style={styles.titleRow}>
-      <Text accessibilityRole="header" style={styles.title}>青少一起讀經</Text>
+      <Text accessibilityRole="header" style={styles.title}>{title}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="上個月" accessibilityState={{ disabled: !onPreviousMonth }} disabled={!onPreviousMonth} onPress={onPreviousMonth} style={[styles.monthStep, !onPreviousMonth && styles.disabled]}><Chevron direction="left" /></Pressable>
       <Text style={styles.monthLabel}>{monthName(view.month)}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="下個月" accessibilityState={{ disabled: !onNextMonth }} disabled={!onNextMonth} onPress={onNextMonth} style={[styles.monthStep, !onNextMonth && styles.disabled]}><Chevron direction="right" /></Pressable>
@@ -82,7 +84,7 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth }: GroupRe
     </View>
     {summary ? <Text style={styles.summary}>{summary.lead}<Text style={styles.bold}>{summary.reads}</Text>{summary.middle}{summary.busiest ? <Text style={styles.bold}>{summary.busiest}</Text> : null}{summary.tail}</Text> : null}
 
-    <View style={styles.prizes}>
+    {view.prizes.length ? <View style={styles.prizes}>
       <View style={styles.prizeHeader}><Text accessibilityRole="header" style={styles.prizeTitle}>團體獎</Text><Text style={styles.prizeNote}>大家一起達成，教會買給大家</Text></View>
       {view.prizes.map((prize, index) => {
         const first = index === firstOpen;
@@ -97,7 +99,7 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth }: GroupRe
           </View>
         </View>;
       })}
-    </View>
+    </View> : null}
   </View>;
 }
 

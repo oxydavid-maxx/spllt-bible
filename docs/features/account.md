@@ -1,10 +1,10 @@
 # 帳戶、登入與 App 更新提示
 
-> 狀態：本 PR 候選，尚待正式發布｜平台：Android、iOS (差異見「平台差異」)｜2026-10-17 更新：Apple 登入、App 內刪除、iOS 返回鍵
+> 狀態：本 PR 候選，尚待正式發布｜平台：Android、iOS (差異見「平台差異」)｜2026-10-17 更新：Apple 登入、App 內刪除、iOS 返回鍵、青少/主堂
 
 ## 一句話
 
-用 Google 帳號或 iPhone 的 Apple 登入建立或找回身份，帳戶頁能看到自己的資料、調整讀經提醒、登出或永久刪除帳號與伺服器個資；App 開機或回到前景時會順便檢查有沒有新版本可以更新（目前只有 Android 會被提醒）。
+用 Google 帳號或 iPhone 的 Apple 登入建立或找回身份，帳戶頁能看到自己的資料、調整讀經提醒、改青少或主堂、登出或永久刪除帳號與伺服器個資；App 開機或回到前景時會順便檢查有沒有新版本可以更新（目前只有 Android 會被提醒）。
 
 ## 從哪裡進
 
@@ -20,7 +20,8 @@
 | Apple 登入 | 只在支援原生 Apple 授權的 iPhone 顯示；首次登入自動建立會員，不以 Email 合併身份 |
 | 刪除帳號 | 先說明影響，第二次確認才刪除；失敗可重試，成功自動登出 |
 | 帳號啟用碼（備援路徑） | 伺服器認不出這個 Google 身份時，改顯示「輸入一次性啟用碼」欄位 |
-| 帳戶頁 | 頭像或姓名字首圖示、姓名、所屬小組名稱、讀經提醒設定、登出、刪除帳號與資料，最下面一行是 App 版本號 |
+| 帳戶頁 | 頭像或姓名字首圖示、姓名、所屬小組名稱、讀經提醒設定、我在哪裡聚會、登出、刪除帳號與資料，最下面一行是 App 版本號 |
+| 青少/主堂 | 新會員第一次登入先選「青少」或「主堂」；之後在帳戶頁「我在哪裡聚會」改，改之前先確認 |
 | 全體 (管理) 入口 | 只有管理者看得到：刪除連結上面一行淡色的「全體 (管理) ›」，按下到積分頁的全體排名 |
 | 登出 | 一個按鈕，清掉本機登入狀態並讓裝置端 session 失效 |
 | App 更新全螢幕提示 | 開機/回前景時蓋在畫面上的卡片：版本號、更新按鈕、（非強制時）稍後按鈕 |
@@ -63,13 +64,21 @@
 
 ### 帳戶頁（`src/ui/accountSurfaceComponent.tsx`）
 
-- 已登入且個人資料載入成功時：顯示頭像（`avatarUrl` 有值才顯示圖片，否則顯示姓名字首的圓形字母）、姓名、登出按鈕、讀經提醒設定、刪除帳號與資料的按鈕。
+- 已登入且個人資料載入成功時：顯示頭像（`avatarUrl` 有值才顯示圖片，否則顯示姓名字首的圓形字母）、姓名、登出按鈕、讀經提醒設定、「我在哪裡聚會」、刪除帳號與資料的按鈕。
 - 帳戶入口圖示（`AccountEntryButton`）同一套規則：有頭像顯示頭像，否則顯示姓名字首；**資料還沒回來之前一律顯示中性的「人」字**，不會用 memberId 拼出字母（避免顯示像 `google:1234567` 的 `1` 這種假身份）。
 - 讀經提醒：帳戶頁只顯示「讀經提醒」開關與時間，**不顯示「聚會提醒」**（`showMeeting={false}`）；程式註解明確寫「正式帳戶頁停用已退役的聚會提醒」——這與「小組」分頁已退役一致（見「已知限制與待辦」）。提醒設定本身的完整規則不在本文件範圍。
 - 最下面一行顯示安裝的版本，例如「版本 0.5.24 (47)」：括號裡是 Google Play 用來分辨版本的 versionCode。帳戶頁每個狀態都顯示（含載入中、載入失敗）；讀不到版本時整行不顯示，不會編一個版本（`appVersionLabel`）。頁面底部留在安全區內（`app/account.tsx` 的 `SafeAreaView`）：App 畫到系統導覽列底下，0.5.24 的版本號就是被導覽列蓋住。
 - 「刪除帳號與資料」在兩個平台都走 App 內確認/API，不再開啟政策網頁。政策網頁保留額外聯絡支援，寄信不是刪除必要條件。iOS 返回鍵只顯示系統箭頭，不露出路由群組名稱 `(tabs)`。
 
 - 管理者 (後端 `getCapabilities` 回 `canViewAllScores`) 在刪除連結上面多一行淡色的「全體 (管理) ›」(`src/ui/AdminAllScoresEntry.tsx`)；按下回到積分頁並切到「全體 (管理)」，仍要先通過裝置解鎖 (見 [points.md](points.md))。其他人不顯示這一行，查不到權限時也不顯示。
+
+### 青少/主堂 (`src/ui/congregation/`、`server/congregation.ts`)
+
+- 新會員登入後的第一個畫面問「你在哪裡聚會？」，兩個大按鈕：「青少」(國中、高中、大專) 和「主堂」(成人)。存好才關掉；存不到時留在這個畫面，顯示「沒有存到，請檢查網路後再按一次。」(`CongregationGate`，在 `app/_layout.tsx` 最外層)。
+- 這個功能上線前就有帳號的會員都算青少，不會被問 (後端第一次建表時一起寫入)。
+- 帳戶頁讀經提醒下面一行「我在哪裡聚會」，顯示青少或主堂。按「改 ›」先跳確認「改到主堂？」：公告會先打開主堂那一頁、獎品改看主堂的清單、已經得到的積分不會變；按「改到主堂」才存 (`CongregationSetting`)。
+- 讀不到時不擋 App：網路斷了就不出現選擇畫面，帳戶頁也不顯示這一行，下次打開畫面再讀。舊後端沒有這個 API，一律當青少。
+- 積分「團體」的人數和團體獎依這個設定計算，見 [points.md](points.md)。
 
 ### 登出（`clearAuthSession`、`POST /api/session/revoke`）
 
@@ -105,6 +114,7 @@
 - **App 版本號放在帳戶頁最下面**（維護者 2026-10-13）：測試者要能說出 Google Play 裝的是哪一版，一般 App 也是點頭像進去的帳戶或設定頁看得到版本。括號放 versionCode，因為 Play 用它分辨版本。
 - **刪除帳號直接在 App 完成，不以停用或寄信代替**：2026-10-17 送審決定取代舊「連結＋寄信」流程；主管同意的 V2 不提供日記匯出，因為目前沒有日記入口。
 - **全體排名的入口放在帳戶頁最下面，淡色**：管理者一個月才看幾次，不必每天在積分頁看到。(維護者 2026-10-14)
+- **青少/主堂用同一個 App、同一個帳號，新會員第一次登入自己選** (維護者 2026-10-17)：主堂的成人也要用這個 App。已經在的會員都是青少，不再問；選錯可以在帳戶頁改，改之前先確認，已經得到的積分不會變。
 
 **待確認（沒有記錄，請維護者確認是否刻意）：**
 
@@ -124,6 +134,7 @@
 - 向下相容：`server/authBoundary.ts` 的 `authenticateSessionOrGoogle` 同時接受三種 Bearer token 格式——新式裝置 session（`qmd_` 開頭）、舊式簽名 session（`qms_` 開頭，可能已被登出動作標記撤銷）、以及直接送 Google ID token；舊版已安裝的 App 換到新後端不會被擋。
 - App 更新檢查同時保留兩個網址：`VERSION_URL`（現在的公開安裝頁）與 `LEGACY_VERSION_URL`（0.5.4–0.5.15 讀的 GitHub 網址），兩份內容需同步發布，讓還沒更新到能讀新網址的舊版 App 也能收到更新通知。
 - 帳號資料表：`members`（含 `disabled_at`）、`identity_bindings`（Google subject↔會員）、`member_invites`（啟用碼）、`auth_sessions`（裝置/舊式撤銷紀錄）；schema 建立在 `server/mobileSessions.ts` 的 `ensureMobileSessionSchema`。
+- 青少/主堂：`GET /api/me/congregation` 回 `{congregation}`，值是 `youth`、`main`，還沒選是 `null`；`PUT` 同一個路徑存 `{congregation}`，其他值回 400 `INVALID_CONGREGATION`。資料表 `member_affiliations` (`server/congregation.ts`)，刪除帳號時一起刪。
 
 ## 守住它的測試
 
@@ -132,6 +143,7 @@
 - `tests/server/onboarding.test.ts` — 未知 Google 身份先被拒絕、再用有效期限內的啟用碼完成綁定、過期或用過的碼被拒絕。
 - `tests/server/googleAutoProvision.test.ts`、`tests/server/testLabNetwork.test.ts` — 從 Test Lab 位址第一次登入的新會員一建立就停用，一般網路的新會員照常；既有會員不會被停用；位址比對涵蓋 IPv4、IPv6 和格式錯誤。
 - `tests/services/authSession.test.ts`、`tests/services/authSessionHydration.test.ts`、`tests/services/authSessionRace.test.ts` — 登入狀態的邊界（session 綁定、還原流程、多個非同步動作同時發生時不互相踩）。
+- `tests/ui/congregationChoice.test.ts`、`tests/services/congregationClient.test.ts`、`tests/server/congregation.test.ts` — 只問新會員、存不到會留在畫面、帳戶頁改之前先確認；舊後端當青少。
 - `tests/mobileSessionServer.test.ts` — 裝置 session 的建立、撤銷、與舊式登入相容。
 - `tests/server/session.test.ts`、`tests/server/authBoundary.test.ts` — 簽名 session token 的產生/驗證、正式 Google 驗證與開發測試 token 兩種認證模式的邊界。
 - `tests/services/googleVerifier.test.ts` — Google ID token 的簽章、發行者、audience、過期檢查。

@@ -45,7 +45,7 @@ const textOf = (node: TestRenderer.ReactTestInstance | string): string => typeof
 const texts = (tree: TestRenderer.ReactTestRenderer) => tree.root.findAll((node) => (node.type as unknown) === 'Text').map(textOf);
 
 const group: GroupReading = {
-  month: '2026-10', today: '2026-10-14', todayReaders: 7, yesterdayReaders: 15,
+  scope: 'youth', month: '2026-10', today: '2026-10-14', todayReaders: 7, yesterdayReaders: 15,
   days: [{ date: '2026-10-01', readers: 12 }, { date: '2026-10-02', readers: null }, { date: '2026-10-12', readers: 19 }, { date: '2026-10-13', readers: 15 }, { date: '2026-10-14', readers: 7 }],
   monthReads: 184, busiest: { date: '2026-10-12', readers: 19 }, qualifyingDays: 15,
   prizes: [
@@ -67,6 +67,14 @@ describe('團體: the group reading card', () => {
     expect(tree.root.findAll((node) => (node.type as unknown) === 'View' && node.props.accessibilityLabel === '2026-10-12 19 人')).toHaveLength(1);
   });
 
+  // 青少/主堂 (維護者 2026-10-17): 主堂 sees the whole church reading together and no group prizes.
+  it('titles the card for 主堂 as the whole church and leaves the group prizes to 青少', () => {
+    const youth = texts(render(React.createElement(GroupReadingCard, { view: group })));
+    expect(youth).toContain('青少一起讀經'); expect(youth).toContain('團體獎');
+    const main = texts(render(React.createElement(GroupReadingCard, { view: { ...group, scope: 'main', prizes: [] } })));
+    expect(main).toContain('全教會一起讀經');
+    expect(main).not.toContain('青少一起讀經'); expect(main).not.toContain('團體獎');
+  });
   it('lists the prizes with the member’s own line under the first one, and nothing after them (2026-10-17)', () => {
     const all = texts(render(React.createElement(GroupReadingCard, { view: group })));
     expect(all).toEqual(expect.arrayContaining(['團體獎', '新的懶骨頭 (摩脫教室)', '0/2 個月', '15 人都讀滿一個月 (當月讀經 15 天)，累積 2 個月', '新沙發', '20 人都讀滿一個月，累積 4 個月', '你這個月讀了 6 天，再 9 天就算你一份']));

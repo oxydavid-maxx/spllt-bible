@@ -26,7 +26,12 @@ export interface GroupPrizeProgress {
   achievedMonths: number;
 }
 
+/** 青少/主堂 (維護者 2026-10-17); see server/congregation.ts. */
+export type Congregation = 'youth' | 'main';
+
 export interface GroupReading {
+  /** 青少 counts 青少 and has the group prizes; 主堂 counts the whole church. An older server sends none: 青少. */
+  scope: Congregation;
   month: string;
   today: string;
   todayReaders: number | null;
@@ -53,6 +58,9 @@ export interface DevotionClient {
   setDevotion(date: string, completed: boolean): Promise<void>;
   getGroupReading(month: string): Promise<GroupReading>;
   getScoreHistory(): Promise<ScoreHistory>;
+  /** Null until the member has chosen (a member from before the split is 青少 already). */
+  getCongregation(): Promise<Congregation | null>;
+  setCongregation(value: Congregation): Promise<Congregation>;
 }
 
 export interface DevotionClientOptions { baseUrl: string; token: string; memberId: string; fetchImpl?: typeof fetch; timeoutMs?: number }
@@ -89,6 +97,7 @@ export function parseGroupReading(value: unknown): GroupReading | null {
   });
   if (days.some((day) => !day) || prizes.some((prize) => !prize) || (item.busiest !== null && !(busiest && text(busiest.date) && count(busiest.readers)))) return null;
   return {
+    scope: item.scope === 'main' ? 'main' : 'youth',
     month: item.month, today: item.today, todayReaders: item.todayReaders, yesterdayReaders: item.yesterdayReaders,
     days: days as GroupReading['days'], monthReads: item.monthReads, busiest: busiest ? { date: busiest.date as string, readers: busiest.readers as number } : null,
     qualifyingDays: item.qualifyingDays, prizes: prizes as GroupPrizeProgress[], myDaysThisMonth: item.myDaysThisMonth,
@@ -145,6 +154,20 @@ export function createDevotionClient(options: DevotionClientOptions): DevotionCl
       const view = parseGroupReading((await request(`/api/points/group?month=${encodeURIComponent(month)}`)).body);
       if (!view) throw invalid();
       return view;
+    },
+    async getCongregation() {
+      const { status, body } = await request('/api/me/congregation');
+      // A server from before the split has no such route: everybody there is 青少.
+      if (status === 404) return 'youth';
+      const value = object(body)?.congregation;
+      if (value !== null && value !== 'youth' && value !== 'main') throw invalid();
+      return value;
+    },
+    async setCongregation(value) {
+      const { status, body } = await request('/api/me/congregation', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ congregation: value }) });
+      const saved = object(body)?.congregation;
+      if (status === 404 || (saved !== 'youth' && saved !== 'main')) throw invalid();
+      return saved;
     },
     async getScoreHistory() {
       const history = parseScoreHistory((await request('/api/me/score-history')).body);
