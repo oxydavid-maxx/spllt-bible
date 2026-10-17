@@ -181,6 +181,9 @@ export function createApiClient(options: ApiClientOptions) {
         method: 'DELETE', headers: { authorization: `Bearer ${options.token}`, 'content-type': 'application/json' },
         body: JSON.stringify({ confirmed: true }),
       }, 20_000);
+      // A retry after an already-committed deletion can return 401. Expire only that credential,
+      // without claiming deletion succeeded or leaving an unusable signed-in account on screen.
+      handleAuthStatus(response);
       const body = await response.json().catch(() => null);
       if (!response.ok || body?.deleted !== true) throw new Error('ACCOUNT_DELETION_FAILED');
       return true;
