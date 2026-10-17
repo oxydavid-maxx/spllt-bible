@@ -77,10 +77,7 @@ describe('an overlay closes when you tap away from it, unless something would be
       qr: true,            // shows a code
       rewards: true,       // choosing applies immediately
       scan: false,         // camera mid-scan
-      'admin-rewards': false, // typed name and price
-      redeem: false,       // debits points in front of a student
-      redemptions: false,  // a reversal reason being typed
-      pending: false,      // finishing an unconfirmed transaction
+      redemptions: true,   // a read-only list (prizes are managed in the Google Sheet since 2026-10-17)
     });
   });
 });

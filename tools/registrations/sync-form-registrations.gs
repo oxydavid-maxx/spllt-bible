@@ -13,7 +13,10 @@
 const ENDPOINT = 'https://api.luminexhealthbiohack.com/api/integrations/form-registrations';
 
 function install() {
-  ScriptApp.getProjectTriggers().forEach((trigger) => ScriptApp.deleteTrigger(trigger));
+  // Only this sync's own timer: the prize sheet (tools/rewards/reward-sheet.gs) shares the project and its triggers.
+  ScriptApp.getProjectTriggers()
+    .filter((trigger) => trigger.getHandlerFunction() === 'syncRegistrations')
+    .forEach((trigger) => ScriptApp.deleteTrigger(trigger));
   ScriptApp.newTrigger('syncRegistrations').timeBased().everyMinutes(15).create();
   syncRegistrations();
 }

@@ -32,16 +32,13 @@ describe('shared gamification UI', () => {
     expect(renderer.root.findAll((node) => String(node.type) === 'Text').map((node) => String(node.props.children)).join(' ')).not.toContain('可兌換積分');
   });
 
-  it('requires a reason before an admin can reverse a redemption', () => {
-    const onReverse = vi.fn(); let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => { renderer = TestRenderer.create(React.createElement(RedemptionList, { redemptions: [{ redemptionId: 'r1', memberId: 'm1', rewardId: 'reward-1', rewardName: '飲料', costPoints: 2, status: 'COMPLETED', confirmedAt: 10 }], canReverse: true, onReverse })); });
-    const reverse = renderer.root.findAll((node) => node.props.accessibilityLabel === '撤銷飲料')[0];
-    act(() => { reverse.props.onPress(); });
-    const input = renderer.root.findByProps({ accessibilityLabel: '撤銷理由' });
-    act(() => { input.props.onChangeText('現場更正'); });
-    const confirm = renderer.root.findByProps({ accessibilityLabel: '確認撤銷兌換' });
-    act(() => { confirm.props.onPress(); });
-    expect(onReverse).toHaveBeenCalledWith('r1', '現場更正');
+  // A wrong row is fixed in the Google Sheet (維護者 2026-10-17): the list only shows the member's own rows.
+  it('lists a member\'s redemptions with nothing to reverse', () => {
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => { renderer = TestRenderer.create(React.createElement(RedemptionList, { redemptions: [{ redemptionId: 'r1', memberId: 'm1', rewardId: 'reward-1', rewardName: '飲料', costPoints: 2, status: 'COMPLETED', confirmedAt: 10 }] })); });
+    const texts = renderer.root.findAll((node) => String(node.type) === 'Text').map((node) => node.children.join(''));
+    expect(texts).toEqual(expect.arrayContaining(['飲料']));
+    expect(renderer.root.findAll((node) => typeof node.props.accessibilityLabel === 'string' && node.props.accessibilityLabel.includes('撤銷'))).toHaveLength(0);
   });
 
   it('keeps modal actions above the system bottom inset and scrollable across keyboard show-hide cycles', async () => {

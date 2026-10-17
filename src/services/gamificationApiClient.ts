@@ -1,6 +1,5 @@
 import { notifyAuthExpired } from './authState';
 import { isScoreChartRange, type MonthPoints, type PersonListItem, type ScoreChart, type ScoreChartBucket, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile, type ScoreScope, type ViewerCapabilities } from '../domain/gamificationV1';
-import { createDefaultGamificationPendingStore, GamificationPendingStoreError, type GamificationPendingStore, type PendingGamificationOperations, type PendingRedemptionOperation, type PendingReverseOperation } from './gamificationPendingStore';
 
 export type { MonthPoints, PersonListItem, ScoreChart, ScoreChartBucket, ScoreChartQuery, ScoreChartRange, ScoreProfile, ScoreScope, ViewerCapabilities };
 
@@ -15,7 +14,7 @@ export interface Reward {
 export interface FriendQr { payload: string; token: string; expiresAt: number; }
 export interface Redemption { redemptionId: string; memberId: string; rewardId: string; rewardName: string; costPoints: number; status: 'COMPLETED' | 'REVERSED'; confirmedAt: number | null; }
 
-export interface GamificationApiClientOptions { baseUrl: string; token: string; memberId: string; fetchImpl?: typeof fetch; pendingStore?: GamificationPendingStore; }
+export interface GamificationApiClientOptions { baseUrl: string; token: string; memberId: string; fetchImpl?: typeof fetch; }
 
 export class GamificationApiError extends Error {
   readonly code: string;
@@ -146,108 +145,10 @@ function operationId(): string {
   return `${part(8)}-${part(4)}-4${part(3)}-8${part(3)}-${part(12)}`;
 }
 
-const pendingRuntimeQueues = new Map<string, Promise<void>>();
-const pendingRuntimeInFlight = new Map<string, Promise<unknown>>();
-
 export function createGamificationApiClient(options: GamificationApiClientOptions) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const reads = new Map<string, { controller: AbortController; promise: Promise<unknown> }>();
-  const pendingStore = options.pendingStore ?? createDefaultGamificationPendingStore();
   const pendingClaimOperations = new Map<string, string>();
-  const pendingRedemptionOperations = new Map<string, PendingRedemptionOperation>();
-  const pendingReverseOperations = new Map<string, PendingReverseOperation>();
-  let pendingLoaded: Promise<void> | null = null;
-  function pendingError(reason: unknown): GamificationApiError { return new GamificationApiError(reason instanceof GamificationPendingStoreError ? reason.code : 'PENDING_STORAGE_ERROR', true, 0); }
-  async function ensurePendingLoaded(): Promise<void> {
-    if (!pendingLoaded) {
-      const load = pendingStore.read(options.memberId).then((state) => {
-        if (state && state.ownerMemberId !== options.memberId) throw new GamificationPendingStoreError('PENDING_DATA_INVALID');
-        for (const row of state?.redemptions ?? []) pendingRedemptionOperations.set(`${row.memberId}\u0000${row.rewardId}`, { ...row });
-        for (const row of state?.reversals ?? []) pendingReverseOperations.set(row.redemptionId, { ...row });
-      }).catch((reason) => { throw pendingError(reason); });
-      pendingLoaded = load;
-      void load.catch(() => { if (pendingLoaded === load) pendingLoaded = null; });
-    }
-    return pendingLoaded;
-  }
-  async function reloadPending(): Promise<void> {
-    pendingLoaded = null;
-    pendingRedemptionOperations.clear();
-    pendingReverseOperations.clear();
-    await ensurePendingLoaded();
-  }
-  function pendingSnapshot(): PendingGamificationOperations { return { ownerMemberId: options.memberId, redemptions: [...pendingRedemptionOperations.values()].map((row) => ({ ...row })), reversals: [...pendingReverseOperations.values()].map((row) => ({ ...row })) }; }
-  async function persistPending(): Promise<void> { const state = pendingSnapshot(); try { if (state.redemptions.length || state.reversals.length) await pendingStore.write(options.memberId, state); else await pendingStore.clear(options.memberId); } catch (reason) { throw pendingError(reason); } }
-  function enqueueOperation<T>(key: string, work: () => Promise<T>): Promise<T> {
-    const runtimeKey = `${options.memberId}\u0000${key}`;
-    const existing = pendingRuntimeInFlight.get(runtimeKey) as Promise<T> | undefined;
-    if (existing) return existing;
-    const task = (pendingRuntimeQueues.get(options.memberId) ?? Promise.resolve()).then(work);
-    const queueTail = task.then(() => undefined, () => undefined);
-    pendingRuntimeQueues.set(options.memberId, queueTail);
-    pendingRuntimeInFlight.set(runtimeKey, task);
-    void task.finally(() => {
-      if (pendingRuntimeInFlight.get(runtimeKey) === task) pendingRuntimeInFlight.delete(runtimeKey);
-      if (pendingRuntimeQueues.get(options.memberId) === queueTail) pendingRuntimeQueues.delete(options.memberId);
-    }).catch(() => undefined);
-    return task;
-  }
-  function runRedemption(input: { memberId: string; rewardId: string; expectedRewardRevision: number; operationId?: string }): Promise<unknown> {
-    const mapKey = `${input.memberId}\u0000${input.rewardId}`;
-    return enqueueOperation(`redeem:${mapKey}\u0000${input.expectedRewardRevision}\u0000${input.operationId ?? ''}`, async () => {
-      await reloadPending();
-      if (input.operationId && !validUuid(input.operationId)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 400);
-      const prior = pendingRedemptionOperations.get(mapKey);
-      if (prior && (prior.memberId !== input.memberId || prior.rewardId !== input.rewardId || prior.expectedRewardRevision !== input.expectedRewardRevision || (input.operationId && input.operationId !== prior.operationId))) throw new GamificationApiError('OPERATION_ID_REUSED', false, 409);
-      const record = prior ?? { operationId: input.operationId ?? operationId(), memberId: input.memberId, rewardId: input.rewardId, expectedRewardRevision: input.expectedRewardRevision };
-      if (!prior) {
-        pendingRedemptionOperations.set(mapKey, record);
-        try { await persistPending(); } catch (reason) { pendingRedemptionOperations.delete(mapKey); throw reason; }
-      }
-      try {
-        const result = await request('/api/admin/redemptions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ memberId: record.memberId, rewardId: record.rewardId, expectedRewardRevision: record.expectedRewardRevision, operationId: record.operationId }) });
-        const resultItem = object(result);
-        if (!resultItem || !string(resultItem.redemptionId) || resultItem.memberId !== record.memberId || resultItem.rewardId !== record.rewardId || (resultItem.status !== 'COMPLETED' && resultItem.status !== 'REVERSED')) throw new GamificationApiError('AMBIGUOUS_MUTATION_RESPONSE', true, 200);
-        pendingRedemptionOperations.delete(mapKey);
-        try { await persistPending(); } catch (reason) { pendingRedemptionOperations.set(mapKey, record); throw reason; }
-        return result;
-      } catch (error) {
-        const unresolvedAuthorization = Boolean(prior && error instanceof GamificationApiError && (error.status === 401 || error.status === 403));
-        if (!unresolvedAuthorization && (!(error instanceof GamificationApiError) || !error.retryable)) {
-          pendingRedemptionOperations.delete(mapKey);
-          try { await persistPending(); } catch (reason) { pendingRedemptionOperations.set(mapKey, record); throw reason; }
-        }
-        throw error;
-      }
-    });
-  }
-  function runReversal(input: { redemptionId: string; reason: string; operationId?: string }): Promise<void> {
-    const mapKey = input.redemptionId;
-    return enqueueOperation(`reverse:${mapKey}\u0000${input.reason}\u0000${input.operationId ?? ''}`, async () => {
-      await reloadPending();
-      if (input.operationId && !validUuid(input.operationId)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 400);
-      const prior = pendingReverseOperations.get(mapKey);
-      if (prior && (prior.reason !== input.reason || (input.operationId && prior.operationId !== input.operationId))) throw new GamificationApiError('OPERATION_ID_REUSED', false, 409);
-      const record: PendingReverseOperation = prior ?? { operationId: input.operationId ?? operationId(), redemptionId: input.redemptionId, reason: input.reason };
-      if (!prior) {
-        pendingReverseOperations.set(mapKey, record);
-        try { await persistPending(); } catch (reason) { pendingReverseOperations.delete(mapKey); throw reason; }
-      }
-      try {
-        const result = object(await request(`/api/admin/redemptions/${encodeURIComponent(record.redemptionId)}/reverse`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: record.operationId, reason: record.reason }) }));
-        if (!result || result.redemptionId !== record.redemptionId || result.status !== 'REVERSED') throw new GamificationApiError('AMBIGUOUS_MUTATION_RESPONSE', true, 200);
-        pendingReverseOperations.delete(mapKey);
-        try { await persistPending(); } catch (reason) { pendingReverseOperations.set(mapKey, record); throw reason; }
-      } catch (error) {
-        const unresolvedAuthorization = Boolean(prior && error instanceof GamificationApiError && (error.status === 401 || error.status === 403));
-        if (!unresolvedAuthorization && (!(error instanceof GamificationApiError) || !error.retryable)) {
-          pendingReverseOperations.delete(mapKey);
-          try { await persistPending(); } catch (reason) { pendingReverseOperations.set(mapKey, record); throw reason; }
-        }
-        throw error;
-      }
-    });
-  }
   async function performRequest(path: string, init: RequestInit = {}): Promise<unknown> {
     let response: Response;
     try { response = await fetchImpl(`${options.baseUrl}${path}`, { ...init, headers: { authorization: `Bearer ${options.token}`, ...(init.headers ?? {}) } }); }
@@ -309,34 +210,16 @@ export function createGamificationApiClient(options: GamificationApiClientOption
     },
     async getRewards(): Promise<Reward[]> { const body = object(await request('/api/rewards')); const values = body?.rewards; if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); const rewards = values.map(parseReward); if (rewards.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return rewards as Reward[]; },
     async getMyRedemptions(): Promise<Redemption[]> { const parsed = parseRedemptions(await request('/api/me/redemptions')); if (!parsed) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return parsed; },
-    async getAdminRedemptions(memberId?: string): Promise<Redemption[]> { const query = memberId ? `?memberId=${encodeURIComponent(memberId)}` : ''; const parsed = parseRedemptions(await request(`/api/admin/redemptions${query}`)); if (!parsed) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return parsed; },
     async setRewardTarget(rewardId: string | null): Promise<void> { await request('/api/me/reward-target', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rewardId }) }); },
     async createFriendQr(): Promise<FriendQr> { const body = object(await request('/api/friends/qr', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })); if (!body || !string(body.payload) || !string(body.token) || !validEpoch(body.expiresAt)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return { payload: body.payload, token: body.token, expiresAt: body.expiresAt }; },
     async claimFriendQr(token: string, operationIdValue?: string): Promise<{ memberId: string }> { const resolvedOperationId = operationIdValue ?? pendingClaimOperations.get(token) ?? operationId(); pendingClaimOperations.set(token, resolvedOperationId); if (!validUuid(resolvedOperationId)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 400); try { const body = object(await request('/api/friends/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: resolvedOperationId, token }) })); if (!body || !string(body.memberId)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); pendingClaimOperations.delete(token); return { memberId: body.memberId }; } catch (error) { throw error; } },
     async removeFriend(memberId: string): Promise<void> { await request(`/api/friends/${encodeURIComponent(memberId)}`, { method: 'DELETE' }); },
-    async createReward(input: { name: string; costPoints: number; operationId?: string }): Promise<Reward> { const body = object(await request('/api/admin/rewards', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: input.operationId ?? operationId(), name: input.name, costPoints: input.costPoints }) })); const reward = parseReward(body); if (!reward) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return reward; },
-    async updateReward(rewardId: string, patch: { name?: string; costPoints?: number; active?: boolean }, expectedRevision = 1, operationIdValue = operationId()): Promise<Reward> { const body = object(await request(`/api/admin/rewards/${encodeURIComponent(rewardId)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...patch, expectedRevision, operationId: operationIdValue }) })); const reward = parseReward(body); if (!reward) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return reward; },
     async getCommunityProgress(): Promise<CommunityProgressView> {
       const body = object(await request('/api/points/community'));
       if (!body || !Array.isArray(body.books) || !body.books.every((value) => string(value))) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       const personDays = body.personDays;
       if (personDays !== null && !nonNegativeInt(personDays)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       return { books: body.books as string[], personDays: personDays as number | null, currentBook: parseBookGoal(body.currentBook) };
-    },
-    async getPendingOperations(): Promise<PendingGamificationOperations> { await reloadPending(); return pendingSnapshot(); },
-    async redeem(input: { memberId: string; rewardId: string; expectedRewardRevision: number; operationId?: string }): Promise<unknown> { return runRedemption(input); },
-    async retryPendingRedemption(operationIdValue: string): Promise<unknown> {
-      await ensurePendingLoaded();
-      const record = [...pendingRedemptionOperations.values()].find((row) => row.operationId === operationIdValue);
-      if (!record) throw new GamificationApiError('PENDING_OPERATION_NOT_FOUND', false, 404);
-      return runRedemption({ ...record });
-    },
-    async reverseRedemption(redemptionId: string, reason: string, operationIdValue?: string): Promise<void> { return runReversal({ operationId: operationIdValue, redemptionId, reason }); },
-    async retryPendingReversal(operationIdValue: string): Promise<void> {
-      await ensurePendingLoaded();
-      const record = [...pendingReverseOperations.values()].find((row) => row.operationId === operationIdValue);
-      if (!record) throw new GamificationApiError('PENDING_OPERATION_NOT_FOUND', false, 404);
-      return runReversal({ ...record });
     },
   };
 }

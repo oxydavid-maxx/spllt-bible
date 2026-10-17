@@ -7,9 +7,8 @@ const { primitive, api, auth, appListeners, focusCallbacks, focusCleanupRef, aut
   primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children),
   api: {
     getCapabilities: vi.fn(async () => ({ canViewAllScores: true, canManageRewards: false, canRedeemRewards: false })),
-    getProfile: vi.fn(), getPeople: vi.fn(async () => []), getMyRedemptions: vi.fn(), getAdminRedemptions: vi.fn(),
+    getProfile: vi.fn(), getPeople: vi.fn(async () => []), getMyRedemptions: vi.fn(),
     getRewards: vi.fn(async () => [{ rewardId: 'goal', name: '電影票', costPoints: 10, active: true, revision: 1 }]),
-    getPendingOperations: vi.fn(async () => ({ ownerMemberId: 'self', redemptions: [], reversals: [] })),
   },
   auth: { status: 'signed-in' as 'signed-in' | 'signed-out', session: { memberId: 'self', sessionToken: 'token' } as { memberId: string; sessionToken: string } | null, profile: null, profileStatus: 'ready', epoch: 1 },
   appListeners: [] as Array<(state: string) => void>, focusCallbacks: [] as Array<() => (() => void) | void>, focusCleanupRef: { current: null as (() => void) | null },
@@ -125,14 +124,15 @@ describe('progress protected response lifecycle', () => {
     expect(renderer.root.findAll((node) => String(node.type) === 'ScoreProfile')).toHaveLength(1);
   });
 
-  it('does not enter the admin scope when pending recovery finishes after background', async () => {
+  it('does not enter the admin scope when the device unlock finishes after background', async () => {
     api.getProfile.mockResolvedValue({ memberId: 'self', displayName: '自己', earnedTotal: 1, band: null, months: [], private: { redeemableBalance: 1, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } });
-    let resolvePending!: (value: any) => void;
-    api.getPendingOperations.mockImplementationOnce(() => new Promise((resolve) => { resolvePending = resolve; }));
+    let resolveUnlock!: (value: any) => void;
+    const { authenticateAsync } = await import('expo-local-authentication');
+    vi.mocked(authenticateAsync).mockImplementationOnce(() => new Promise((resolve) => { resolveUnlock = resolve; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
     await act(async () => { requestOpenAllScores(); await Promise.resolve(); });
-    await act(async () => { [...appListeners].forEach((listener) => listener('background')); resolvePending({ ownerMemberId: 'self', redemptions: [], reversals: [] }); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); resolveUnlock({ success: true }); });
     expect(api.getPeople).not.toHaveBeenCalledWith('all');
     expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '全體 (管理)' && node.props.accessibilityState?.selected)).toHaveLength(0);
   });

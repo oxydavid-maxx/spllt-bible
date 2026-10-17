@@ -72,12 +72,12 @@
 | 積分月曆 | 點任一天看經文與狀態，未來/過期也能看；期限內可以補打卡；讀了靈修的日子標金色「靈修」 | 積分「自己」的「個人」 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 範圍切換 | 自己、好友兩個分頁；管理者從帳戶頁進來才多一個「全體 (管理)」 | 積分頁頂部 | Android、iOS | [points.md](points.md) |
 | 自己的積分 | 總積分、梯隊、目標獎品進度、「總積分/每月」圖 (金色虛線是靈修) | 積分「自己」的「個人」 | Android、iOS | [points.md](points.md) |
-| 目標獎品 | 選一個想換的獎品，看還差幾分 | 積分「自己」 | Android、iOS | [points.md](points.md) |
+| 目標獎品 | 從自己那一邊 (青少或主堂) 的獎品選一個，看還差幾分 | 積分「自己」 | Android、iOS | [points.md](points.md) |
 | 好友 | 加好友後互相看積分（看不到對方的餘額和目標） | 積分「好友」 | Android、iOS | [points.md](points.md) |
 | 好友 QR | 出示或掃描 QR 馬上互加好友 | 積分頁選單 | Android、iOS | [points.md](points.md) |
 | 好友通知 | 有人加你好友時收到通知 | 系統通知 | Android、iOS | [points.md](points.md) |
 | 全體排名 (管理) | 管理者從帳戶頁最下面進來，解鎖後看全體積分 | 帳戶頁「全體 (管理) ›」 | Android、iOS | [points.md](points.md) |
-| 現場兌換（管理） | 管理者當面幫學生兌換獎品、查看或撤銷紀錄 | 積分頁選單（管理） | Android、iOS | [points.md](points.md) |
+| 獎品與兌換 | 獎品清單和兌換紀錄在 Google 試算表；紙本兌換後同工寫一列，可兌換積分跟著扣 | 試算表；App 的積分「自己」和「我的領取紀錄」 | Android、iOS | [points.md](points.md) |
 
 ## 日記
 

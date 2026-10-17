@@ -2,7 +2,7 @@ import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { api, auth, nav, store, appListeners, storageGet, cameraPermission, requestCameraPermission, platform, launchScanner, scannerListeners, cameraScanner } = vi.hoisted(() => ({
-  api: Object.fromEntries(['getCapabilities', 'getProfile', 'getPeople', 'getRewards', 'getCommunityProgress', 'getPendingOperations', 'setRewardTarget', 'claimFriendQr', 'cancelReads'].map((name) => [name, vi.fn()])),
+  api: Object.fromEntries(['getCapabilities', 'getProfile', 'getPeople', 'getRewards', 'getCommunityProgress', 'getMyRedemptions', 'setRewardTarget', 'claimFriendQr', 'cancelReads'].map((name) => [name, vi.fn()])),
   auth: { status: 'signed-in' as 'signed-in' | 'signed-out', session: { memberId: 'pilot:qa', sessionToken: 'qa' } as { memberId: string; sessionToken: string } | null },
   nav: { focused: true }, store: new Map<string, string>(), appListeners: [] as Array<(state: string) => void>, storageGet: vi.fn(),
   cameraPermission: { granted: false, status: 'undetermined' }, requestCameraPermission: vi.fn(),
@@ -50,7 +50,7 @@ beforeEach(() => {
   vi.clearAllMocks(); nav.focused = true; store.clear(); storageGet.mockImplementation(async (key) => store.get(key) ?? null);
   api.cancelReads.mockReset();
   cameraPermission.granted = false; requestCameraPermission.mockReset(); platform.OS = 'ios'; launchScanner.mockReset(); scannerListeners.length = 0; cameraScanner.available = true; api.claimFriendQr.mockReset();
-  api.getCapabilities.mockResolvedValue({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true }); api.getProfile.mockImplementation(async (id: string) => profile(id)); api.getPeople.mockResolvedValue([{ memberId: 'friend', displayName: 'Friend', earnedTotal: 2 }]); api.getRewards.mockResolvedValue([]); api.getCommunityProgress.mockResolvedValue({ books: [], personDays: null, currentBook: null }); api.getPendingOperations.mockResolvedValue({ redemptions: [], reversals: [] });
+  api.getCapabilities.mockResolvedValue({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true }); api.getProfile.mockImplementation(async (id: string) => profile(id)); api.getPeople.mockResolvedValue([{ memberId: 'friend', displayName: 'Friend', earnedTotal: 2 }]); api.getRewards.mockResolvedValue([]); api.getCommunityProgress.mockResolvedValue({ books: [], personDays: null, currentBook: null }); api.getMyRedemptions.mockResolvedValue([]);
 });
 afterEach(async () => { await act(async () => { for (const tree of trees.splice(0)) tree.unmount(); }); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -85,19 +85,19 @@ describe('focused progress loading', () => {
     await act(async () => { changeAppState('background'); changeAppState('active'); });
     expect(api.getProfile).toHaveBeenCalledTimes(before);
   });
-  it('does not reopen the admin rewards sheet from a request completed after blur', async () => {
-    const tree = await render(ProgressScreen); const rewards = deferred<any>(); api.getRewards.mockReturnValueOnce(rewards.promise);
+  it('does not reopen the records sheet from a request completed after blur', async () => {
+    const tree = await render(ProgressScreen); const records = deferred<any>(); api.getMyRedemptions.mockReturnValueOnce(records.promise);
     await press(tree, '開啟積分操作');
-    await act(async () => { tree.root.findByType('ActionSheet' as any).props.actions.find((a: any) => a.label === '管理獎品').onPress(); });
+    await act(async () => { tree.root.findByType('ActionSheet' as any).props.actions.find((a: any) => a.label === '我的領取紀錄').onPress(); });
     nav.focused = false; await act(async () => tree.update(React.createElement(ProgressScreen)));
-    await act(async () => rewards.resolve([]));
+    await act(async () => records.resolve([]));
     expect(tree.root.findAllByType('ActionSheet' as any)).toHaveLength(0);
   });
   it('does not reopen a menu request after the user closes that menu', async () => {
-    const tree = await render(ProgressScreen); const rewards = deferred<any>(); api.getRewards.mockReturnValueOnce(rewards.promise);
+    const tree = await render(ProgressScreen); const records = deferred<any>(); api.getMyRedemptions.mockReturnValueOnce(records.promise);
     await press(tree, '開啟積分操作');
-    await act(async () => { const sheet = tree.root.findByType('ActionSheet' as any); sheet.props.actions.find((a: any) => a.label === '管理獎品').onPress(); sheet.props.onClose(); });
-    await act(async () => rewards.resolve([]));
+    await act(async () => { const sheet = tree.root.findByType('ActionSheet' as any); sheet.props.actions.find((a: any) => a.label === '我的領取紀錄').onPress(); sheet.props.onClose(); });
+    await act(async () => records.resolve([]));
     expect(tree.root.findAllByType('ActionSheet' as any)).toHaveLength(0);
   });
   it('does not apply a target mutation failure after its screen has blurred', async () => {

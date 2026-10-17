@@ -4,7 +4,7 @@
 
 ## 一句話
 
-積分頁「自己」分成「團體」和「個人」兩塊：團體看大家每天一起讀經的人數和團體獎進度；個人看自己的讀經月曆、靈修打勾、「總積分/每月」圖和目標獎品。可以加好友互相看進度；管理者從帳戶頁進全體排名，也能發獎品。
+積分頁「自己」分成「團體」和「個人」兩塊：團體看大家每天一起讀經的人數和團體獎進度；個人看自己的讀經月曆、靈修打勾、「總積分/每月」圖和目標獎品。可以加好友互相看進度；管理者從帳戶頁進全體排名。獎品清單和兌換紀錄放在一份 Google 試算表，App 只顯示。
 
 ## 從哪裡進
 
@@ -20,12 +20,12 @@
 | 團體獎 | 一個月讀滿 15 天的人數到門檻就累積一個月；懶骨頭、沙發兩個獎品；只有青少有 |
 | 個人：月曆與兩顆完成鍵 | 讀經月曆 (讀了靈修的日子標「靈修」)，下面左金色「完成今日靈修」、右綠色「完成今日讀經」，規則見 [reading-plan.md](reading-plan.md) |
 | 自己的積分 | 總積分、梯隊 (滿 10 人才分)、目標獎品進度條、「總積分/每月」圖 |
-| 目標獎品 | 從獎品目錄選一個要換的獎品，進度以「已累積/所需」分數呈現 |
+| 目標獎品 | 從自己那一邊 (青少或主堂) 的獎品清單選一個要換的獎品，進度以「已累積/所需」分數呈現 |
 | 好友清單 | 加好友後可以看到彼此的積分（不含對方的餘額、目標獎品等私人資料） |
 | 好友 QR | 出示或掃描 QR code 立即互相加好友，不需要對方同意 |
 | 好友新增推播 | 對方掃你的 QR 加你好友時，你會收到「XX 已加你為好友」的通知 |
 | 全體排名（管理） | 管理者用裝置生物辨識解鎖後可看到所有人排名 |
-| 現場兌換（管理） | 管理者幫學生兌換獎品、查看/撤銷兌換紀錄 |
+| 獎品與兌換 (Google 試算表) | 青少、主堂各一份獎品清單；紙本兌換後同工在試算表寫一列，App 的可兌換積分跟著扣，「我的領取紀錄」也看得到 |
 
 ## 行為規格
 
@@ -90,14 +90,16 @@
 - App 在背景或未開啟時（僅 Android）：只有在使用者已經允許通知的情況下才會發出一則本機通知，從不主動要求開啟通知權限；點通知會開啟積分頁的好友清單。
 - 同一位好友加入的推播 30 秒內視為重複，只處理一次，不會重複跳出（`DUPLICATE_WINDOW_MS = 30000`，`friendPush.ts:33`）。
 
-### 管理者：獎品與兌換
-來源：`src/ui/gamification/RewardControls.tsx`、`src/ui/gamification/RedemptionList.tsx`、`server/gamification.ts:636-760`
+### 獎品與兌換 (Google 試算表，2026-10-17 起)
+來源：`server/rewardSheet.ts`、`tools/rewards/reward-sheet.gs`、`src/ui/gamification/RewardControls.tsx`、`src/ui/gamification/RedemptionList.tsx`
 
-- 管理者可以直接新增/編輯/下架獎品（名稱、所需分數）；下架的獎品不會再出現在任何人的獎品架或兌換清單。
-- 兌換由管理者在學生面前操作：選獎品、確認交付，扣的分數立刻反映在該學生的可兌換餘額；餘額不足時伺服器拒絕（`INSUFFICIENT_POINTS`，`gamification.ts:733`）。
-- 撤銷兌換必須填撤銷理由才能送出（`REVERSAL_REASON_REQUIRED`，`gamification.ts:748`），撤銷會把分數還給該學生的可兌換餘額。
-- 撤銷理由等審核相關欄位（`confirmedBy`/`reversedBy`/`reversalReason`）只在管理者查看時附帶，一般成員自己查看兌換紀錄看不到是哪位輔導處理的（`projectMemberRedemption`，`src/domain/gamificationV1.ts:152-162`）。
-- 兌換/撤銷若送出時沒有網路，會先存在本機待送出佇列（`gamificationPendingStore.ts`），之後在「尚未確認操作」清單中可以手動重試。
+- 一份試算表「竹科聖經 獎品與兌換」，放在青少處的雲端資料夾，四個分頁：青少獎品、青少兌換、主堂獎品、主堂兌換。獎品分頁三欄：獎品、分數、上架；兌換分頁五欄：日期、名字、獎品、分數、照片連結。
+- 獎品清單：青少的人只看到「青少獎品」裡打勾上架的，主堂的人只看到「主堂獎品」的；目標獎品也只能選自己那一邊的。試算表第一次送來之前，青少看到的是原本在 App 裡設定的獎品，第一次整理試算表時這些獎品會先抄進「青少獎品」，選了的目標跟著換過去。
+- 兌換：當面用紙本領，同工事後在兌換分頁寫一列。名字從下拉選單選 (選單由 App 更新，同名的第二個人是「小明 (2)」)；選了獎品，日期和分數會先帶入，看得到也可以改。
+- 可兌換積分＝讀經積分減掉兌換分頁每一列的分數，青少、主堂兩個分頁都算。刪掉那一列，分數就回來，沒有別的規則。扣超過的時候顯示 0，不顯示負數。
+- 試算表一改就送到後端，刪列也是，另外每 15 分鐘再送一次。沒算進去的格子會塗淡紅色並加一段說明 (例如「App 找不到這個名字，這一列沒有扣分」)，改好之後下一次送出就清掉。
+- 「我的領取紀錄」列出自己的每一列 (獎品、分數)，以前在 App 裡兌換的紀錄也還在。
+- App 裡不再有「管理獎品」「現場兌換」「尚未確認操作」，全體 (管理) 也不能兌換。舊版 App 的管理者呼叫這些功能會得到「找不到」。
 
 ### 一起走過 (社群進度，2026-10-14 起 App 不顯示)
 來源：`src/ui/gamification/CommunityProgress.tsx`、`server/communityProgress.ts`
@@ -119,7 +121,7 @@
 **刻意不做：**
 
 - **靈修不加積分，也不進團體數字，畫面上也不寫「不算分」**：靈修是個人和神的事，不拿來排名或換獎品；說「不算分」反而讓人覺得它比讀經次要，所以只用顏色和位置分開，不加說明。(維護者 2026-10-14)
-- **不做聊天、共同任務、獎品庫存系統、推播好友動態、獨立管理網站**：這波功能收斂時就把這些排除在範圍外，維護者在同一個 App 裡設定獎品和現場兌換。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.1）
+- **不做聊天、共同任務、獎品庫存系統、推播好友動態、獨立管理網站**：這波功能收斂時就把這些排除在範圍外。獎品和兌換原本在 App 裡管理，2026-10-17 改放 Google 試算表 (見下)。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.1）
 - **加好友不需要對方同意，掃到有效 QR 就立刻雙向成立**：沒有等待接受的步驟。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.1 CL10）
 - **錢包餘額不會季度歸零，也沒有使用期限**：沒兌換掉的分數全部保留。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §1.1 CL06）
 - **好友之間沒有聊天或私訊，也不交換電話、LINE 等聯絡資料**：這是給青少年用的功能，刻意把好友關係限制在「看得到彼此讀經進度」而已。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)「兒童與青少年」）
@@ -133,6 +135,7 @@
 - **團體的一天要 2 人以上才顯示人數**：只有 1 人時看得出是誰。(維護者 2026-10-14)
 - **團體獎：一個月讀滿 15 天才算一份；懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月**：門檻要大家一起努力才到得了。(維護者 2026-10-14)
 - **青少的數字只算青少，主堂算全教會；團體獎只有青少有** (維護者 2026-10-17)：青少會算進全教會，主堂的成人不算進青少。
+- **獎品清單和兌換紀錄放在一份 Google 試算表，App 不當後台** (維護者 2026-10-17)：用 App 管理獎品太複雜，主堂的同工多半 60 歲以上。兌換用紙本，同工事後在試算表寫一列並附照片連結，不做自動化。可兌換積分就是讀經積分減掉兌換列，刪掉那一列就退回，不放「撤銷」這類藏起來的規則。青少、主堂同一份試算表四個分頁，方便同一個地方找；每人一個積分帳戶，只在自己那一邊領。
 - **拿掉提名投票和 AI 估價，團體獎下面也不放「下一個獎品，由你決定」**：App 只做 App 才做得到的事；投票用 LINE 投票、Kahoot 這類現成工具，需要時線下進行，App 不放連結。AI 估價原本是後端每 20 秒檢查一次、再呼叫 Claude 的背景工作，一起拿掉。舊版 App (0.5.32 以前) 讀提名板時，後端回一個空的提名板，畫面不會出錯。(維護者 2026-10-17)
 - **「全體 (管理)」移到帳戶頁最下面，淡色、只有管理者看得到**：一般人的積分頁只有「自己/好友」，管理者也不會每天打開積分就看到全體排名。(維護者 2026-10-14)
 - **積分圖只留「總積分/每月」，靈修是一條淡淡的金色虛線，每月圖只在虛線中間寫數字、不加粗**：要淡，不給壓力。(維護者 2026-10-14)
@@ -147,7 +150,8 @@
 
 - 積分帳本分兩層：`daily_point_entitlements`（誰在哪天有一份「生效中」的得分，完成打卡時寫入、撤銷時標記失效）與 `wallet_entries`（每一筆加減錢包餘額的紀錄：讀經得分、讀經撤銷、兌換扣分、撤銷兌換退分）。總積分只加總 `daily_point_entitlements`，可兌換餘額只加總 `wallet_entries`，兩者故意分開算，兌換不會讓總積分或走勢圖倒退（`server/gamification.ts:322-330`）。
 - 獎品（`rewards`）、目標設定（`reward_targets`）、兌換紀錄（`redemptions`）、好友碼（`friend_tokens`）、好友關係（`friendships`）都是各自獨立的表，變更一律走同一套「操作收據」（`mutation_receipts`）機制防止重複送出時被算兩次（`writeMutationReceipt`/`readMutationReceipt`，`gamification.ts:584-594`）。
-- 主要 API：`GET /api/points/profiles/:memberId`（含 `chartRange`/`chartAnchor`）、`GET /api/points/people`、`GET /api/points/community`、`GET/POST /api/rewards`、`GET/POST /api/me/redemptions`、`POST /api/me/reward-target`、`POST /api/friends/qr`、`POST /api/friends/claim`、管理者專用的 `/api/admin/rewards`、`/api/admin/redemptions`（`server/routes.ts`）。
+- 主要 API：`GET /api/points/profiles/:memberId`（含 `chartRange`/`chartAnchor`）、`GET /api/points/people`、`GET /api/points/community`、`GET /api/rewards` (自己那一邊的獎品)、`GET /api/me/redemptions`、`PUT /api/me/reward-target`、`POST /api/friends/qr`、`POST /api/friends/claim`（`server/routes.ts`）。試算表用 `POST /api/integrations/reward-sheet` 送來，驗證方式跟報名表單一樣 (管理者帳號的 Google 身分權杖)。
+- 試算表的資料：`rewards` 多一欄 `congregation` (試算表的獎品；原本 App 裡的是空的)、`sheet_redemptions` (兌換列，每次送來整批換掉)、`member_sheet_labels` (每人一個下拉選單名字，給了就不改)、`reward_sheet_sync` (哪一邊送來過)。
 - 舊版點數資料以 `server/legacyPointMigration.ts` 一次性搬進現有帳本（寫入 `LEGACY_OPENING_CREDIT` 錢包紀錄），搬移後現行帳本即為唯一計分依據。
 
 ## 守住它的測試
@@ -162,6 +166,7 @@
 | `tests/server/gamificationMigration.test.ts` | 舊點數資料搬移到新帳本 |
 | `tests/server/communityProgress.test.ts` | 一起走過（社群進度）人數門檻與計算 |
 | `tests/server/congregation.test.ts` | 青少、主堂各自的團體人數，團體獎只給青少 |
+| `tests/server/rewardSheet.test.ts` | 試算表的獎品清單分兩邊、兌換列扣分與刪列退回、沒算進去的格子、下拉選單名字、App 不再管理獎品 |
 | `tests/server/scoreProfileChart.test.ts` | 積分走勢圖後端聚合（週/月/年/全部） |
 | `tests/server/friendPush.test.ts` | 好友新增推播（後端發送規則） |
 | `tests/services/friendPush.test.ts` | 好友新增推播（App 端接收與去重規則） |
@@ -172,7 +177,6 @@
 | `tests/ui/gamificationProgressRoute.test.ts` | 積分頁路由整合行為 |
 | `tests/ui/gamificationProgressSecurity.test.ts` | 積分頁隱私欄位過濾規則 |
 | `tests/ui/gamificationSecurity.test.ts` | 積分相關安全規則 |
-| `tests/ui/gamificationPendingStore.test.ts` | 兌換/撤銷待送出佇列的安全儲存 |
 | `tests/ui/scoreProfileChart.test.ts` | 積分走勢圖/日曆檢視 UI |
 | `tests/ui/rewardGoalCard.test.ts` | 目標獎品卡片 UI |
 | `tests/ui/communityBookGoal.test.ts` | 一起讀完一本書卡片 UI |
@@ -187,7 +191,7 @@
 - `docs/design/score-profile-chart.md`：積分走勢圖的資料模型與聚合規則設計文件。
 
 **現況與 v1 設計文件的差異：**
-- v1 設計文件（CL09）只寫「維護者在同一 App 設定獎品及現場兌換」，沒有提名投票、AI 估價、說明改寫；這一套後來加上，2026-10-17 已移除。
+- v1 設計文件（CL09）只寫「維護者在同一 App 設定獎品及現場兌換」，沒有提名投票、AI 估價、說明改寫；這一套後來加上，2026-10-17 已移除。同一天獎品和兌換也改放 Google 試算表，CL09 的 App 內兌獎不再適用。
 - 「一起走過」社群進度（`CommunityProgress.tsx`、`server/communityProgress.ts`）也是 v1 文件之外的後續功能。
 - `docs/design/score-profile-chart.md` 描述的是長條圖（bar chart）搭配零基線；目前實際程式碼（`ScoreProfileChart.tsx`）是累積折線圖（走勢）加上另一個月曆熱度網格（日曆），並非長條圖。
 

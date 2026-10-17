@@ -4,7 +4,6 @@ import { router, useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
 import { getAuthSnapshot, isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
 import { createGamificationApiClient, GamificationApiError, type PersonListItem, type Reward, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile as ScoreProfileData, type ScoreScope, type ViewerCapabilities } from '../../src/services/gamificationApiClient';
-import type { PendingGamificationOperations } from '../../src/services/gamificationPendingStore';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../src/services/adminUnlockGuard';
 import { createProfileCache } from '../../src/services/profileCache';
 import * as SecureStore from 'expo-secure-store';
@@ -34,7 +33,8 @@ import { ReadingCalendarCard } from '../../src/ui/gamification/ReadingCalendarCa
 import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
 import { consumeOpenFriendsList, subscribeFriendAdded, subscribeOpenFriendsList, type FriendAddedEvent } from '../../src/services/friendPush';
 
-type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'admin-rewards' | 'redeem' | 'redemptions' | 'pending' | null;
+// Prizes and redemptions are kept in the Google Sheet (維護者 2026-10-17): no 管理獎品 or 現場兌換 here.
+type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'redemptions' | null;
 
 export default function ProgressScreen() {
   const [planOpen, setPlanOpen] = useState(false);
@@ -65,14 +65,12 @@ export default function ProgressScreen() {
   profileRef.current = profile;
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [redemptions, setRedemptions] = useState<Awaited<ReturnType<NonNullable<typeof client>['getMyRedemptions']>>>([]);
-  const [pendingOperations, setPendingOperations] = useState<PendingGamificationOperations | null>(null);
   const [sheet, updateSheet] = useState<Sheet>(null);
   const sheetVersion = useRef(0);
   const activeSheet = useRef<Sheet>(null);
   const setSheet = useCallback((next: Sheet) => { activeSheet.current = next; sheetVersion.current += 1; updateSheet(next); }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const [focused, setFocused] = useState(false);
   const [primaryReady, setPrimaryReady] = useState(false);
   const [appForeground, setAppForeground] = useState(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
@@ -150,7 +148,7 @@ export default function ProgressScreen() {
     setScope('me'); setPeople([]); setSelected(null); setProfile(ownProfile); setBusy(false); setError(null);
     setSheet(preserveScanner ? 'scan' : null);
     if (!preserveView) {
-      setProfileStale(Boolean(ownProfile)); setRewards([]); setRedemptions([]); setPendingOperations(null); setRetryAction(null); setPrimaryReady(Boolean(ownProfile));
+      setProfileStale(Boolean(ownProfile)); setRewards([]); setRedemptions([]); setPrimaryReady(Boolean(ownProfile));
       setShelfRewards(null); setGroupReading(null); setScoreHistory(null);
     }
     if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
@@ -286,7 +284,6 @@ export default function ProgressScreen() {
 
   const chooseScope = async (nextScope: ScoreScope) => {
     if (!client || !session || !focusedRef.current || !appActive.current || (nextScope === scope && !(nextScope !== 'me' && selected))) return;
-    let restoredPending: PendingGamificationOperations | null = null;
     if (nextScope === 'all') {
       if (!capabilities?.canViewAllScores) { setError('此功能僅限管理者。'); return; }
       const generation = ++requestGeneration.current; const expectedScope = activeScope.current;
@@ -297,16 +294,13 @@ export default function ProgressScreen() {
         const unlocked = await attempt.unlock();
         if (!owns()) { attempt.clear(); return; }
         if (!unlocked) { setError('需要完成身分驗證才能查看全體。'); return; }
-        restoredPending = await client.getPendingOperations();
-        if (!owns()) { attempt.clear(); return; }
-      } catch (reason) { if (owns()) { setPendingOperations(null); setError(messageFor(reason)); } else return; }
+      } catch (reason) { if (owns()) setError(messageFor(reason)); else return; }
       finally { if (owns()) setBusy(false); }
       if (!owns() || attempt.state !== 'unlocked') return;
     } else if (scope === 'all') guard.current.clear();
     requestGeneration.current += 1; stopPrefetch();
     activeScope.current = nextScope; activeMember.current = nextScope === 'me' ? session.memberId : null;
     setScope(nextScope); setSheet(null); setSelected(null); setProfile(null); setProfileStale(false);
-    setPendingOperations(nextScope === 'all' ? restoredPending : null);
     if (nextScope !== 'me') void loadPeople(nextScope);
     else void loadProfile(session.memberId, 'me');
   };
@@ -315,23 +309,22 @@ export default function ProgressScreen() {
     requestGeneration.current += 1; stopPrefetch(); activeMember.current = person.memberId;
     setSelected(person); setProfile(null); void loadProfile(person.memberId, scope);
   };
-  const loadRewards = async (destination: 'rewards' | 'admin-rewards' = 'rewards') => {
+  const loadRewards = async () => {
     if (!client || !session) return;
     const generation = requestGeneration.current; const expectedScope = activeScope.current;
     const origin = sheetVersion.current;
     const owns = () => sheetVersion.current === origin && isLive(generation, expectedScope, undefined, expectedScope === 'all');
     if (!owns()) return;
-    try { const value = await client.getRewards(); if (owns()) { setRewards(value); setSheet(destination); } }
+    try { const value = await client.getRewards(); if (owns()) { setRewards(value); setSheet('rewards'); } }
     catch (reason) { if (owns()) setError(messageFor(reason)); }
   };
-  const loadRedemptions = async (admin: boolean, memberId?: string) => {
+  const loadRedemptions = async () => {
     if (!client || !session) return;
     const generation = requestGeneration.current; const expectedScope = activeScope.current;
-    const expectedMember = admin ? memberId ?? selected?.memberId ?? null : undefined;
     const origin = sheetVersion.current;
-    const owns = () => sheetVersion.current === origin && isLive(generation, expectedScope, expectedMember, expectedScope === 'all');
+    const owns = () => sheetVersion.current === origin && isLive(generation, expectedScope, undefined, expectedScope === 'all');
     if (!owns()) return;
-    try { const value = admin ? await client.getAdminRedemptions(memberId) : await client.getMyRedemptions(); if (owns()) { setRedemptions(value); setRetryAction(null); setSheet('redemptions'); } }
+    try { const value = await client.getMyRedemptions(); if (owns()) { setRedemptions(value); setSheet('redemptions'); } }
     catch (reason) { if (owns()) setError(messageFor(reason)); }
   };
   const removeSelectedFriend = async () => {
@@ -375,14 +368,6 @@ export default function ProgressScreen() {
     try { await client.setRewardTarget(rewardId); if (!owns()) return; if (sheetVersion.current === origin) setSheet(null); await loadProfile(session.memberId, 'me'); }
     catch (reason) { if (owns()) setError(messageFor(reason)); }
   };
-  const mutateRewards = async (action: () => Promise<unknown>) => {
-    if (!client || !session) return;
-    const generation = requestGeneration.current; const expectedScope = activeScope.current;
-    const owns = () => isLive(generation, expectedScope, undefined, expectedScope === 'all');
-    if (!owns()) return;
-    try { await action(); if (!owns()) return; const value = await client.getRewards(); if (owns()) { setRewards(value); setShelfRewards(null); } }
-    catch (reason) { if (owns()) setError(messageFor(reason)); }
-  };
   const [shelfRewards, setShelfRewards] = useState<Reward[] | null>(null);
   // 團體 (維護者 2026-10-14): replaces 一起走過. Absent on a backend that predates it; the section then hides.
   const [groupMonth, setGroupMonth] = useState(() => today.slice(0, 7));
@@ -416,20 +401,6 @@ export default function ProgressScreen() {
     void devotionClient.getScoreHistory().then((value) => { if (active && isViewLive(generation)) { setScoreHistory(value); setScoreHistoryMissing(false); } }).catch(() => { if (active && isViewLive(generation)) setScoreHistoryMissing(true); });
     return () => { active = false; };
   }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, historyRefresh, isViewLive, profile?.earnedTotal]);
-
-  const redeemSelected = async (rewardId: string) => { if (!client || !selected) return; const reward = rewards.find((item) => item.rewardId === rewardId); if (!reward) return; const generation = requestGeneration.current; const memberId = selected.memberId; try { await client.redeem({ memberId, rewardId, expectedRewardRevision: reward.revision }); if (!isLive(generation, 'all', memberId, true)) return; setRetryAction(null); setSheet(null); await loadProfile(memberId, 'all'); } catch (reason) { if (isLive(generation, 'all', memberId, true) && reason instanceof GamificationApiError && reason.retryable) { setRetryAction(() => () => { void redeemSelected(rewardId); }); setError('尚未確認，點此重試。'); } else if (isLive(generation, 'all', memberId, true)) setError(messageFor(reason)); } };
-  const openRedeem = async () => { if (!client || !session || !selected) return; const generation = requestGeneration.current; const memberId = selected.memberId; try { const value = await client.getRewards(); if (isLive(generation, 'all', memberId, true)) { setRewards(value); setSheet('redeem'); } } catch (reason) { if (isLive(generation, 'all', memberId, true)) setError(messageFor(reason)); } };
-  const reverseSelected = async (redemptionId: string, reason: string) => { if (!client || !session) return; const generation = requestGeneration.current; const expectedScope = scope; const memberId = selected?.memberId; try { await client.reverseRedemption(redemptionId, reason); if (!isLive(generation, expectedScope, memberId, expectedScope === 'all')) return; setRetryAction(null); await loadRedemptions(expectedScope === 'all', memberId); if (!isLive(generation, expectedScope, memberId, expectedScope === 'all')) return; if (expectedScope === 'all' && memberId) await loadProfile(memberId, 'all'); else await loadProfile(session.memberId, 'me'); } catch (errorValue) { if (isLive(generation, expectedScope, memberId, expectedScope === 'all') && errorValue instanceof GamificationApiError && errorValue.retryable) { setRetryAction(() => () => { void reverseSelected(redemptionId, reason); }); setError('尚未確認，點此重試。'); } else if (isLive(generation, expectedScope, memberId, expectedScope === 'all')) setError(messageFor(errorValue)); } };
-  const refreshPending = async () => { if (!client || !session || scope !== 'all' || guard.current.state !== 'unlocked') return; const generation = requestGeneration.current; try { const value = await client.getPendingOperations(); if (isLive(generation, 'all', undefined, true)) setPendingOperations(value); } catch (reason) { if (isLive(generation, 'all', undefined, true)) setError(messageFor(reason)); } };
-  const retrySaved = async (operationId: string, reversal: boolean) => {
-    if (!client || !isLive(requestGeneration.current, 'all', undefined, true)) return;
-    const generation = requestGeneration.current;
-    try { if (reversal) await client.retryPendingReversal(operationId); else await client.retryPendingRedemption(operationId); }
-    catch (reason) { if (isLive(generation, 'all', undefined, true)) setError(messageFor(reason)); }
-    if (isLive(generation, 'all', undefined, true)) await refreshPending();
-  };
-  const retrySavedRedemption = (operationId: string) => retrySaved(operationId, false);
-  const retrySavedReversal = (operationId: string) => retrySaved(operationId, true);
 
   const [friendNotice, setFriendNotice] = useState<string | null>(null);
   const openQrSheet = () => { setFriendNotice(null); setSheet('qr'); };
@@ -541,7 +512,7 @@ export default function ProgressScreen() {
     {profileStale && ownProfile ? <Text style={styles.stale}>目前顯示上次的積分，還沒連上更新</Text> : null}
     {scope === 'me' && !ownProfile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
     {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
-    {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { requestGeneration.current += 1; stopPrefetch(); activeMember.current = null; setBusy(false); setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} onOpenActions={scope === 'all' && capabilities?.canRedeemRewards ? () => { void openRedeem(); } : undefined} /></> : null}
+    {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { requestGeneration.current += 1; stopPrefetch(); activeMember.current = null; setBusy(false); setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} /></> : null}
     {scope === 'me' && ownProfile ? <ScoreProfile
       profile={ownProfile}
       showChartViewToggle={false}
@@ -598,7 +569,7 @@ export default function ProgressScreen() {
     /> : null}
     <CompletionAwardFeedback event={completionAward} onFinished={(operationId) => setCompletionAward((current) => current?.operationId === operationId ? null : current)} />
     <ReadingPlanSheet visible={planOpen} onClose={() => setPlanOpen(false)} onSelectDate={date => { setSelectedReadingDate(date); router.replace('/reader'); }} />
-    <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: openQrSheet }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(false); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : []), ...(scope === 'all' && selected && capabilities?.canRedeemRewards ? [{ label: '查看領取紀錄', onPress: () => { void loadRedemptions(true, selected.memberId); } }] : []), ...(scope === 'all' && capabilities?.canRedeemRewards && pendingOperations && pendingOperations.redemptions.length + pendingOperations.reversals.length > 0 ? [{ label: `尚未確認操作 (${pendingOperations.redemptions.length + pendingOperations.reversals.length})`, onPress: () => setSheet('pending') }] : []), ...(capabilities?.canManageRewards ? [{ label: '管理獎品', onPress: () => { void loadRewards('admin-rewards'); } }] : [])]} />
+    <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: openQrSheet }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : [])]} />
     <ActionSheet visible={sheet === 'qr'} title="我的好友 QR" dismissOnOutsideTap onClose={closeQrSheet}>
       {friendNotice ? <View accessible accessibilityLabel={`✓ ${friendNotice} 已加你為好友`} accessibilityLiveRegion="polite" style={styles.friendNotice}>
         <View style={styles.friendTick}><Text style={styles.friendTickText}>✓</Text></View>
@@ -609,17 +580,7 @@ export default function ProgressScreen() {
     </ActionSheet>
     <ActionSheet visible={sheet === 'scan'} title="掃描好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="scan" onClaimed={scanClaimed} onActivityStart={beginScannerActivity} /></ActionSheet>
     <ActionSheet visible={sheet === 'rewards'} title="選擇目標獎品" dismissOnOutsideTap onClose={() => setSheet(null)}><RewardControls rewards={rewards} selectedRewardId={selectedRewardId} canEdit onSelect={(rewardId) => void setTarget(rewardId)} /></ActionSheet>
-    <ActionSheet visible={sheet === 'admin-rewards'} title="管理獎品" onClose={() => setSheet(null)}><RewardControls rewards={rewards} selectedRewardId={null} canEdit admin
-      onCreate={(name, costPoints) => mutateRewards(() => client!.createReward({ name, costPoints }))}
-      onUpdate={(rewardId, patch) => mutateRewards(async () => { const reward = rewards.find((item) => item.rewardId === rewardId); if (reward) await client!.updateReward(rewardId, patch, reward.revision); })}
-      onArchive={(rewardId) => mutateRewards(async () => { const reward = rewards.find((item) => item.rewardId === rewardId); if (reward) await client!.updateReward(rewardId, { active: false }, reward.revision); })} /></ActionSheet>
-    <ActionSheet visible={sheet === 'redeem'} title="現場兌換" onClose={() => setSheet(null)} actions={[{ label: '關閉', onPress: () => setSheet(null) }]}><Text style={styles.note}>請選擇獎品並確認交付。</Text><RewardControls rewards={rewards} selectedRewardId={null} canEdit={false} redeemableBalance={profile?.private?.redeemableBalance} onRedeem={(rewardId) => { void redeemSelected(rewardId); }} />{retryAction ? <Pressable accessibilityRole="button" accessibilityLabel="重試尚未確認兌換" onPress={() => { const retry = retryAction; setRetryAction(null); retry(); }} style={styles.retry}><Text style={styles.retryText}>重試尚未確認兌換</Text></Pressable> : null}</ActionSheet>
-    <ActionSheet visible={sheet === 'redemptions'} title="領取紀錄" onClose={() => setSheet(null)}><RedemptionList redemptions={redemptions} canReverse={scope === 'all' && Boolean(capabilities?.canRedeemRewards)} onReverse={(redemptionId, reason) => { void reverseSelected(redemptionId, reason); }} />{retryAction ? <Pressable accessibilityRole="button" accessibilityLabel="重試尚未確認操作" onPress={() => { const retry = retryAction; setRetryAction(null); retry(); }} style={styles.retry}><Text style={styles.retryText}>重試尚未確認操作</Text></Pressable> : null}</ActionSheet>
-    <ActionSheet visible={sheet === 'pending' && scope === 'all' && guard.current.state === 'unlocked'} title="尚未確認操作" onClose={() => setSheet(null)}>
-      <Text style={styles.note}>這些操作將使用首次送出時保存的內容重新確認。</Text>
-      {pendingOperations?.redemptions.map((item) => <Pressable key={item.operationId} accessibilityRole="button" accessibilityLabel={`重試尚未確認兌換 ${item.rewardId}`} onPress={() => { void retrySavedRedemption(item.operationId); }} style={styles.retry}><Text style={styles.retryText}>重試兌換：{item.memberId}/{item.rewardId}</Text></Pressable>)}
-      {pendingOperations?.reversals.map((item) => <Pressable key={item.operationId} accessibilityRole="button" accessibilityLabel={`重試尚未確認撤銷 ${item.redemptionId}`} onPress={() => { void retrySavedReversal(item.operationId); }} style={styles.retry}><Text style={styles.retryText}>重試撤銷：{item.redemptionId}</Text></Pressable>)}
-    </ActionSheet>
+    <ActionSheet visible={sheet === 'redemptions'} title="領取紀錄" dismissOnOutsideTap onClose={() => setSheet(null)}><RedemptionList redemptions={redemptions} /></ActionSheet>
     {!appForeground ? <View testID="progress-inactive-cover" pointerEvents="auto" style={styles.inactiveCover} /> : null}
   </View>;
 }
@@ -631,4 +592,4 @@ function SectionHeader({ title }: { title: string }) {
   return <View style={styles.section}><Text accessibilityRole="header" style={styles.sectionTitle}>{title}</Text><View style={styles.sectionRule} /></View>;
 }
 
-const styles = StyleSheet.create({ section: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingTop: theme.spacing.xs, paddingHorizontal: theme.spacing.xxs }, sectionTitle: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, sectionRule: { flex: 1, height: 2, borderRadius: 1, backgroundColor: theme.colors.primary }, dayActions: { flexDirection: 'row', gap: theme.spacing.sm }, screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, inactiveCover: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: theme.colors.background }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, completionAction: { gap: theme.spacing.xs }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, retry: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.accentSoft }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, retryText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '800' }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNotice: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.sm, borderRadius: theme.radius.card, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, friendTick: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary }, friendTickText: { color: theme.colors.white, fontSize: theme.type.caption.size, fontWeight: '900' }, friendNoticeText: { flexShrink: 1, color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNoticeHint: { textAlign: 'center' } });
+const styles = StyleSheet.create({ section: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingTop: theme.spacing.xs, paddingHorizontal: theme.spacing.xxs }, sectionTitle: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, sectionRule: { flex: 1, height: 2, borderRadius: 1, backgroundColor: theme.colors.primary }, dayActions: { flexDirection: 'row', gap: theme.spacing.sm }, screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, inactiveCover: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: theme.colors.background }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, completionAction: { gap: theme.spacing.xs }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNotice: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.sm, borderRadius: theme.radius.card, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, friendTick: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary }, friendTickText: { color: theme.colors.white, fontSize: theme.type.caption.size, fontWeight: '900' }, friendNoticeText: { flexShrink: 1, color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNoticeHint: { textAlign: 'center' } });

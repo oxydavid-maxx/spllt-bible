@@ -5,13 +5,12 @@ import { theme } from '../Theme';
 import { RewardGoalCard } from './RewardGoalCard';
 import { ScoreProfileChart } from './ScoreProfileChart';
 
-export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onOpenActions, onChartChange, today, lead, community, showChartViewToggle, chart }: {
+export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onChartChange, today, lead, community, showChartViewToggle, chart }: {
   profile: ScoreProfileData;
   /** Active reward catalogue for the member's own shelf. */
   rewards?: Reward[];
   onChooseReward?: () => void;
   onChooseTarget?: (rewardId: string) => void;
-  onOpenActions?: () => void;
   onChartChange?: (query: ScoreChartQuery) => void;
   today?: string;
   /**
@@ -45,7 +44,6 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
     
     {chart !== undefined ? chart : <ScoreProfileChart chart={profile.chart} fallbackMonths={profile.months} onChartChange={onChartChange} today={today} showViewToggle={showChartViewToggle} />}
     {community}
-    {profile.permissions.canRedeem && onOpenActions ? <Pressable accessibilityRole="button" accessibilityLabel="管理兌換" onPress={onOpenActions} style={styles.adminButton}><Text style={styles.adminText}>現場兌換</Text></Pressable> : null}
   </ScrollView>;
 }
 

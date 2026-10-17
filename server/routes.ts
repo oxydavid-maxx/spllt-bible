@@ -25,28 +25,24 @@ import { DEFAULT_DEVOTION_VOICE, isDevotionVoice } from '../src/domain/devotionV
 import type { DevotionalAudio } from './devotionalAudio';
 import { createSongTitleLookup, isDevotionalDate, readDevotional, type SongTitleLookup } from './devotional';
 import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDates, setDevotion } from './devotionProgress';
-import { chosenCongregation, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
+import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
+import { applyRewardSheet, listRewards, readRewardSheetPush, sheetRedemptionsFor } from './rewardSheet';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
 import {
   GAMIFICATION_POLICY_VERSION,
   GAMIFICATION_POINT_AMOUNT,
   canViewMember,
   claimFriend,
-  createReward,
   ensureGamificationSchema,
   getPeople,
   getRedemptions,
-  getRewards,
   getScoreProfile,
   getViewerCapabilities,
   issueFriendToken,
   mutateCompletion,
   readReadingDays,
   removeFriend,
-  redeemReward,
-  reverseRedemption,
   setRewardTarget,
-  updateReward,
   type GamificationError,
 } from './gamification';
 import { isScoreChartRange, isValidDateOnly, projectMemberRedemption, taipeiDate, type ScoreChartQuery } from '../src/domain/gamificationV1';
@@ -517,12 +513,24 @@ export function createApiHandler(options: ApiHandlerOptions) {
       const token = (request.headers.authorization ?? request.headers.Authorization)?.match(/^Bearer\s+(.+)$/i)?.[1];
       return token && revokeSession(options.db.db, token, options.sessionSecret) ? json(200, { revoked: true }) : json(401, { error: 'AUTH_INVALID' });
     }
-    if (request.method === 'POST' && url.pathname === '/api/integrations/form-registrations' && (options.formRegistrationKey || options.formSyncIdentity)) {
+    // The owner's Apps Scripts (sign-up forms, and the prize sheet below) prove themselves the same way.
+    const integrationAuthorized = async () => {
       const provided = request.headers['x-qingmu-registration-key'] ?? request.headers['X-Qingmu-Registration-Key'];
       const idToken = (request.headers.authorization ?? request.headers.Authorization)?.match(/^Bearer\s+(.+)$/i)?.[1];
-      const authorized = (options.formRegistrationKey !== undefined && formRegistrationKeyMatches(typeof provided === 'string' ? provided : undefined, options.formRegistrationKey))
+      return (options.formRegistrationKey !== undefined && formRegistrationKeyMatches(typeof provided === 'string' ? provided : undefined, options.formRegistrationKey))
         || (options.formSyncIdentity !== undefined && idToken !== undefined && await formSyncIdentityMatches(options.db.db, options.formSyncIdentity, idToken, now()));
-      if (!authorized) return json(401, { error: 'AUTH_INVALID' });
+    };
+    // 獎品與兌換 (維護者 2026-10-17): the Google Sheet sends its four tabs; see server/rewardSheet.ts.
+    if (request.method === 'POST' && url.pathname === '/api/integrations/reward-sheet' && (options.formRegistrationKey || options.formSyncIdentity)) {
+      if (!await integrationAuthorized()) return json(401, { error: 'AUTH_INVALID' });
+      let push: ReturnType<typeof readRewardSheetPush>;
+      try { push = readRewardSheetPush(parseBody(request.body)); } catch { return json(400, { error: 'INVALID_JSON' }); }
+      if (!push) return json(400, { error: 'INVALID_REWARD_SHEET' });
+      ensureCongregationSchema(options.db.db);
+      return json(200, { ok: true, ...applyRewardSheet(options.db.db, push, now().toISOString()) });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/integrations/form-registrations' && (options.formRegistrationKey || options.formSyncIdentity)) {
+      if (!await integrationAuthorized()) return json(401, { error: 'AUTH_INVALID' });
       let push: ReturnType<typeof readFormRegistrationPush>;
       try { push = readFormRegistrationPush(parseBody(request.body)); } catch { return json(400, { error: 'INVALID_JSON' }); }
       if (!push) return json(400, { error: 'INVALID_REGISTRATIONS' });
@@ -566,8 +574,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
         if (span > 62) return gamificationError({ status: 400, code: 'DATE_RANGE_TOO_LARGE' });
         return gamificationJson(200, { days: readReadingDays(options.db.db, from, to, today, auth.memberId), timezone: 'Asia/Taipei', today });
       }
+      // Each congregation has its own prize list (維護者 2026-10-17); a member aims only at their own side's.
       if (request.method === 'GET' && url.pathname === '/api/rewards') {
-        return gamificationJson(200, { rewards: getRewards(options.db.db) });
+        return gamificationJson(200, { rewards: listRewards(options.db.db, congregationOf(options.db.db, auth.memberId)) });
       }
       if (request.method === 'GET' && url.pathname === '/api/points/people') {
         const scope = url.searchParams.get('scope');
@@ -695,11 +704,14 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (request.method === 'GET' && url.pathname === '/api/me/redemptions') {
         // Projected, not filtered: see projectMemberRedemption for why the acting administrator
         // never appears in a member's own history.
-        return gamificationJson(200, { redemptions: getRedemptions(options.db.db, auth.memberId).map(projectMemberRedemption) });
+        // In-app redemptions from before 2026-10-17, then the sheet's rows, newest first.
+        const rows = [...getRedemptions(options.db.db, auth.memberId).map(projectMemberRedemption), ...sheetRedemptionsFor(options.db.db, auth.memberId)];
+        return gamificationJson(200, { redemptions: rows.sort((left, right) => Number(right.confirmedAt ?? 0) - Number(left.confirmedAt ?? 0)) });
       }
       if (request.method === 'PUT' && url.pathname === '/api/me/reward-target') {
         const body = parseBody(request.body);
         if (typeof body.rewardId !== 'string' || !body.rewardId.trim()) return gamificationError({ status: 400, code: 'INVALID_REWARD' });
+        if (!listRewards(options.db.db, congregationOf(options.db.db, auth.memberId)).some((reward) => reward.rewardId === body.rewardId)) return gamificationError({ status: 409, code: 'REWARD_NOT_AVAILABLE' });
         const result = setRewardTarget(options.db.db, auth.memberId, body.rewardId, { now });
         return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
       }
@@ -724,45 +736,6 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (request.method === 'DELETE' && removeFriendMatch) {
         const result = removeFriend(options.db.db, auth.memberId, decodeURIComponent(removeFriendMatch[1]), { now });
         return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, { removed: result });
-      }
-      const admin = resolvedAdminMemberIds().includes(auth.memberId);
-      if (request.method === 'POST' && url.pathname === '/api/admin/rewards') {
-        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
-        const body = parseBody(request.body);
-        if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.name !== 'string' || typeof body.costPoints !== 'number') return gamificationError({ status: 400, code: 'INVALID_REWARD' });
-        const replay = Boolean(options.db.db.prepare('SELECT 1 FROM mutation_receipts WHERE actor_member_id=? AND operation_id=?').get(auth.memberId, body.operationId));
-        const result = createReward(options.db.db, auth.memberId, body.operationId, body.name, body.costPoints, { now });
-        return isGamificationError(result) ? gamificationError(result) : gamificationJson(replay ? 200 : 201, result);
-      }
-      const adminRewardMatch = url.pathname.match(/^\/api\/admin\/rewards\/([^/]+)$/);
-      if (request.method === 'PATCH' && adminRewardMatch) {
-        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
-        const body = parseBody(request.body);
-        if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.expectedRevision !== 'number') return gamificationError({ status: 400, code: 'INVALID_REWARD' });
-        const result = updateReward(options.db.db, auth.memberId, body.operationId, decodeURIComponent(adminRewardMatch[1]), { name: typeof body.name === 'string' ? body.name : undefined, costPoints: typeof body.costPoints === 'number' ? body.costPoints : undefined, active: typeof body.active === 'boolean' ? body.active : undefined, expectedRevision: body.expectedRevision }, { now });
-        return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
-      }
-      if (request.method === 'GET' && url.pathname === '/api/admin/redemptions') {
-        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
-        const memberId = url.searchParams.get('memberId');
-        const rows = memberId ? getRedemptions(options.db.db, memberId) : [...new Set((options.db.db.prepare('SELECT member_id FROM redemptions ORDER BY confirmed_at DESC').all() as Array<{ member_id: string }>).map((row) => row.member_id))].flatMap((id) => getRedemptions(options.db.db, id));
-        return gamificationJson(200, { redemptions: rows });
-      }
-      if (request.method === 'POST' && url.pathname === '/api/admin/redemptions') {
-        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
-        const body = parseBody(request.body);
-        if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.memberId !== 'string' || typeof body.rewardId !== 'string' || typeof body.expectedRewardRevision !== 'number') return gamificationError({ status: 400, code: 'INVALID_REDEMPTION' });
-        const replay = Boolean(options.db.db.prepare('SELECT 1 FROM mutation_receipts WHERE actor_member_id=? AND operation_id=?').get(auth.memberId, body.operationId));
-        const result = redeemReward(options.db.db, auth.memberId, { operationId: body.operationId, memberId: body.memberId, rewardId: body.rewardId, expectedRewardRevision: body.expectedRewardRevision }, { now });
-        return isGamificationError(result) ? gamificationError(result) : gamificationJson(replay ? 200 : 201, result);
-      }
-      const redemptionReverseMatch = url.pathname.match(/^\/api\/admin\/redemptions\/([^/]+)\/reverse$/);
-      if (request.method === 'POST' && redemptionReverseMatch) {
-        if (!admin) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
-        const body = parseBody(request.body);
-        if (typeof body.operationId !== 'string' || !body.operationId.trim() || typeof body.reason !== 'string') return gamificationError({ status: 400, code: 'REVERSAL_REASON_REQUIRED' });
-        const result = reverseRedemption(options.db.db, auth.memberId, decodeURIComponent(redemptionReverseMatch[1]), body.operationId, body.reason, { now });
-        return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, result);
       }
       if (url.pathname === '/api/me/reminders' || url.pathname === '/api/me/reminders/device-token' || url.pathname === '/api/me/reminders/device-token/revoke') {
         if (!options.db.db.prepare('SELECT id FROM members WHERE id = ?').get(auth.memberId)) return json(404, { error: 'PROFILE_NOT_FOUND' });
