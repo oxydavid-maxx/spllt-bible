@@ -1,0 +1,35 @@
+# Same synthetic member/backend as 00-smoke; no account credentials or destructive submission.
+appId: org.qingmu.youth
+---
+- launchApp
+# The tab bar can appear while Today is still replacing itself with Reader (00-smoke).
+# Observe the real reader destination first, then confirm that the requested tab was reached.
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 90000
+- repeat:
+    times: 3
+    while:
+      notVisible: "開啟積分操作"
+    commands:
+      - tapOn:
+          text: "積分"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "開啟積分操作"
+    timeout: 30000
+- tapOn: "開啟帳戶"
+- extendedWaitUntil:
+    visible: "刪除帳號與資料"
+    timeout: 15000
+- tapOn: "刪除帳號與資料"
+- assertVisible: "這會永久刪除你的帳號與伺服器上的個人資料，無法復原。"
+- assertVisible: "讀經進度、積分和好友資料也會刪除。"
+- assertVisible: "刪除完成後會登出，回到登入頁。"
+- assertVisible: "確認刪除"
+- assertNotVisible: "先匯出日記"
+- takeScreenshot: 45-delete-confirmation
+- tapOn: "取消"
+- assertVisible: "登出"
+- takeScreenshot: 45-account
+- assertNotVisible: "(tabs)"

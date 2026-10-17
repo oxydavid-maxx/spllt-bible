@@ -2,6 +2,7 @@ import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BRAND_ICON } from './brandIcon';
 import { GoogleLoginCard } from './GoogleLoginCard';
+import { AppleLoginCard } from './AppleLoginCard';
 import { theme } from './Theme';
 
 const FEATURES = [
@@ -28,6 +29,7 @@ export function SignInScreen({ baseUrl }: { baseUrl: string }) {
         </View>)}
       </View>
       <GoogleLoginCard baseUrl={baseUrl} variant="welcome" />
+      <AppleLoginCard baseUrl={baseUrl} />
       <Text style={styles.fine}>第一次登入會自動建立帳號</Text>
     </ScrollView>
   </SafeAreaView>;

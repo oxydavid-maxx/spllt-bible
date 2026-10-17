@@ -1,0 +1,35 @@
+# Independent from account confirmation/back-label checks so each gets its own live oracle.
+appId: org.qingmu.youth
+---
+- launchApp
+# The tab bar can appear while Today is still replacing itself with Reader (00-smoke).
+# Observe the real reader destination first, then confirm that the requested tab was reached.
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 90000
+- repeat:
+    times: 3
+    while:
+      notVisible: "開啟積分操作"
+    commands:
+      - tapOn:
+          text: "積分"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "開啟積分操作"
+    timeout: 30000
+- tapOn: "開啟帳戶"
+- extendedWaitUntil:
+    visible: "登出"
+    timeout: 15000
+- tapOn: "登出"
+- extendedWaitUntil:
+    visible: "使用Apple登入"
+    timeout: 15000
+- takeScreenshot: 46-apple-button
+- tapOn: "使用Apple登入"
+- extendedWaitUntil:
+    notVisible: "正在登入…"
+    timeout: 20000
+# The screenshot/hierarchy is judged separately; completing this capture is not an OAuth success claim.
+- takeScreenshot: 46-apple-authorization

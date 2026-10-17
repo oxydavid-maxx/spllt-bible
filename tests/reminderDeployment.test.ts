@@ -78,7 +78,7 @@ describe('live-baseline reminder deployment candidate', () => {
 
   it('does not create reminder data for a signed session whose member no longer exists', async () => {
     const { request, database } = assembled();
-    expect(await request('PUT', '/api/me/reminders', { reading_enabled: true, meeting_enabled: true }, 'test:missing')).toMatchObject({ status: 404, body: { error: 'PROFILE_NOT_FOUND' } });
+    expect(await request('PUT', '/api/me/reminders', { reading_enabled: true, meeting_enabled: true }, 'test:missing')).toMatchObject({ status: 401, body: { error: 'AUTH_INVALID' } });
     expect(database.db.prepare('SELECT count(*) AS n FROM reminder_preferences').get()).toMatchObject({ n: 0 });
   });
 

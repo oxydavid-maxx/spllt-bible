@@ -59,6 +59,10 @@ export function createDatabase(options: { filename?: string; members?: ServerMem
       PRIMARY KEY (provider, subject),
       UNIQUE (provider, member_id)
     );
+    CREATE TABLE IF NOT EXISTS apple_refresh_tokens (
+      member_id TEXT PRIMARY KEY,
+      encrypted_token TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS member_invites (
       invite_id TEXT PRIMARY KEY,
       code_hash TEXT NOT NULL UNIQUE,

@@ -135,6 +135,13 @@ function responseObject(value: unknown): Record<string, unknown> | null {
 
 export function createApiClient(options: ApiClientOptions) {
   const fetchImpl = options.fetchImpl ?? fetch;
+  // React Native uses abort-controller, whose AbortSignal has no static timeout method.
+  const timedFetch = async (url: string, init: RequestInit, timeout: number) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try { return await fetchImpl(url, { ...init, signal: controller.signal }); }
+    finally { clearTimeout(timer); }
+  };
   const handleAuthStatus = (response: Response): void => { if (response.status === 401 && options.token) notifyAuthExpired({ memberId: options.memberId, sessionToken: options.token }); };
   const sessionRequest = async (path: string): Promise<Response> => {
     const abort = new AbortController();
@@ -154,6 +161,32 @@ export function createApiClient(options: ApiClientOptions) {
         return { status: response.status, error: String(body.error ?? 'SESSION_ERROR') };
       }
       return parseSessionResult(await response.json());
+    },
+    async appleChallenge(): Promise<string> {
+      const response = await timedFetch(`${options.baseUrl}/api/session/apple/challenge`, { method: 'POST' }, 10_000);
+      const body = await response.json();
+      if (!response.ok || typeof body.nonce !== 'string' || !body.nonce) throw new Error('APPLE_CHALLENGE_FAILED');
+      return body.nonce;
+    },
+    async establishAppleSession(input: { identityToken: string; authorizationCode: string; nonce: string; displayName?: string }): Promise<SessionResult | SessionFailure | null> {
+      const response = await timedFetch(`${options.baseUrl}/api/session/apple`, {
+        method: 'POST', headers: { authorization: `Bearer ${input.identityToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ authorization_code: input.authorizationCode, nonce: input.nonce, display_name: input.displayName }),
+      }, 15_000);
+      const body = await response.json().catch(() => null);
+      return response.ok ? parseSessionResult(body) : { status: response.status, error: String(body?.error ?? 'SESSION_ERROR') };
+    },
+    async deleteAccount(): Promise<boolean> {
+      const response = await timedFetch(`${options.baseUrl}/api/me`, {
+        method: 'DELETE', headers: { authorization: `Bearer ${options.token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ confirmed: true }),
+      }, 20_000);
+      // A retry after an already-committed deletion can return 401. Expire only that credential,
+      // without claiming deletion succeeded or leaving an unusable signed-in account on screen.
+      handleAuthStatus(response);
+      const body = await response.json().catch(() => null);
+      if (!response.ok || body?.deleted !== true) throw new Error('ACCOUNT_DELETION_FAILED');
+      return true;
     },
     async claimInvite(idToken: string, inviteCode: string, sessionOptions: { persistentDevice?: boolean } = {}): Promise<SessionResult | SessionFailure | null> {
       const response = await fetchImpl(`${options.baseUrl}/api/onboarding/claim`, {

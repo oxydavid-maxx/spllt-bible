@@ -19,6 +19,15 @@ describe('iOS app config', () => {
     expect(resolved.ios.buildNumber).toBe(String(expo.android.versionCode));
     expect(resolve({ config: { ...expo, plugins: [], android: { ...expo.android, versionCode: 57 } } }).ios.buildNumber).toBe('57');
   });
+  it('enables native Apple authorization without changing the shared release number', () => {
+    const resolve = require('../../app.config.js');
+    const result = resolve({ config: expo });
+    expect(result.ios.usesAppleSignIn).toBe(true);
+    expect(result.plugins).toContain('expo-apple-authentication');
+    expect(result.android.versionCode).toBe(expo.android.versionCode);
+    const moduleConfig = JSON.parse(readFileSync('node_modules/expo-apple-authentication/expo-module.config.json', 'utf8'));
+    expect(moduleConfig.platforms).toEqual(['apple']);
+  });
   it('is an iPhone app that declares no non-exempt encryption', () => {
     expect(expo.ios.supportsTablet).toBe(false);
     expect(expo.ios.infoPlist.ITSAppUsesNonExemptEncryption).toBe(false);

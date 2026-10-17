@@ -361,7 +361,20 @@ export function createGamificationApiClient(options: GamificationApiClientOption
       controller.signal.addEventListener('abort', () => reject(new GamificationApiError(timedOut ? 'READ_TIMEOUT' : 'REQUEST_CANCELLED', true, 0)), { once: true });
     });
     const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 8000);
-    const promise = Promise.race([performRequest(path, { ...init, signal: controller.signal }), cancelled]).finally(() => {
+    const promise = Promise.race([performRequest(path, { ...init, signal: controller.signal }), cancelled]).catch((reason: unknown) => {
+      // CI-only evidence for the actual rejected read. Never log a URL, member,
+      // credential, response body or free-form provider message; production is silent.
+      if (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true') {
+        const rawCode = reason instanceof GamificationApiError ? reason.code : '';
+        const knownCodes = ['NETWORK_ERROR', 'READ_TIMEOUT', 'REQUEST_CANCELLED', 'AUTH_REQUIRED', 'AUTH_INVALID', 'ACCOUNT_DISABLED', 'INVALID_API_RESPONSE', 'API_ERROR'];
+        console.error('CI_GAMIFICATION_READ_ERROR', {
+          operation: path.startsWith('/api/points/profiles/') ? 'SCORE_PROFILE' : path === '/api/me/profile' ? 'CAPABILITIES' : 'OTHER_READ',
+          code: knownCodes.includes(rawCode) ? rawCode : 'OTHER_API_ERROR',
+          status: reason instanceof GamificationApiError && Number.isInteger(reason.status) ? reason.status : 0,
+        });
+      }
+      throw reason;
+    }).finally(() => {
       clearTimeout(timer);
       if (reads.get(path)?.controller === controller) reads.delete(path);
     });

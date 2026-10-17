@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 // absorb the system navigation bar, so on 0.5.24 the version line at the bottom sat under the bar and
 // showed only as 版本 0.5.24 (4. The route keeps its bottom edge in the safe area.
 vi.mock('react-native', () => ({ StyleSheet: { create: (value: unknown) => value } }));
-vi.mock('expo-router', () => ({ Stack: { Screen: () => null } }));
+vi.mock('expo-router', () => ({ Stack: { Screen: 'StackScreen' } }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
 vi.mock('../../src/ui/accountSurfaceComponent', () => ({ AccountSurface: 'AccountSurface' }));
 vi.mock('../../src/ui/AdminAllScoresEntry', () => ({ AdminAllScoresEntry: 'AdminAllScoresEntry' }));
@@ -21,6 +21,7 @@ describe('account route', () => {
     expect(area.props.edges).toContain('bottom');
     expect(area.props.style).toMatchObject({ flex: 1, backgroundColor: theme.colors.background });
     expect(area.findAll(node => String(node.type) === 'AccountSurface')).toHaveLength(1);
+    expect(renderer.root.findByType('StackScreen' as never).props.options).toMatchObject({ headerBackButtonDisplayMode: 'minimal', headerBackTitle: '返回' });
     await act(async () => { renderer.unmount(); });
   });
 });

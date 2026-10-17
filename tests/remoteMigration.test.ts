@@ -31,10 +31,10 @@ describe('deployed nine-table reminder data migration', () => {
           expect(next.db.prepare('PRAGMA quick_check').get()).toMatchObject({ quick_check: 'ok' });
           // Tables added since the deployed nine: reminder delivery + sessions, then the gamification v1
           // ledgers, friends, journal mirror and migration receipts. Any other new table is a surprise.
-          const added = ['reminder_deliveries', 'auth_sessions', 'daily_point_entitlements', 'friend_tokens', 'friendships', 'journal_entries',
+          const added = ['apple_refresh_tokens', 'reminder_deliveries', 'auth_sessions', 'daily_point_entitlements', 'friend_tokens', 'friendships', 'journal_entries',
             'migration_receipts', 'mutation_receipts', 'reading_days', 'redemptions', 'reward_targets', 'rewards', 'wallet_entries'];
           expect(next.db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(row => row.name)).toEqual([...tableNames, ...added].sort());
-          for (const ledger of ['wallet_entries', 'redemptions', 'friendships', 'journal_entries']) expect(next.db.prepare(`SELECT count(*) AS n FROM "${ledger}"`).get()).toMatchObject({ n: 0 });
+          for (const ledger of ['apple_refresh_tokens', 'wallet_entries', 'redemptions', 'friendships', 'journal_entries']) expect(next.db.prepare(`SELECT count(*) AS n FROM "${ledger}"`).get()).toMatchObject({ n: 0 });
         } finally { next.close(); }
       }
     } finally { if (!resolve(dir).startsWith(resolve(tmpdir())+sep) || !basename(dir).startsWith('qingmu-remote-migration-')) throw new Error('UNSAFE_TEST_CLEANUP'); rmSync(dir,{recursive:true}); }

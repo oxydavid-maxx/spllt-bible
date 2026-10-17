@@ -9,6 +9,7 @@ export default defineConfig({
       // keeps component tests runnable. The double is inert: it can never make a playback claim pass.
       // Real adapter behaviour is asserted in tests/expoAudioPlayback.test.ts, and actual playback is
       // only ever claimed from device evidence off the real player.
+      'expo-apple-authentication': fileURLToPath(new URL('./tests/doubles/expo-apple-authentication.ts', import.meta.url)),
       'expo-audio': fileURLToPath(new URL('./tests/doubles/expo-audio.ts', import.meta.url)),
       // Same reason, arriving through the update banner on the reading tab: expo-application reads
       // the native registry at import time, so every component test that renders that tab failed to
