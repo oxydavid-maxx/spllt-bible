@@ -28,10 +28,33 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "開啟積分操作"
     timeout: 15000
+# A cold simulator can finish TLS responses after the App's bounded read has
+# already failed (39009631525). Exercise the existing public focus-reload path
+# once; never change the 8s deadline or accept an error/stale-cache final state.
+- extendedWaitUntil:
+    notVisible: "載入中…"
+    timeout: 20000
+- runFlow:
+    when:
+      visible: "目前無法完成操作，請稍後再試。"
+    commands:
+      - tapOn: "讀經入口"
+      - extendedWaitUntil:
+          visible: "更多閱讀工具"
+          timeout: 30000
+      - tapOn: "積分"
+      - extendedWaitUntil:
+          visible: "開啟積分操作"
+          timeout: 15000
+      - extendedWaitUntil:
+          notVisible: "載入中…"
+          timeout: 20000
 # 0.5.27: the member's own name sits in the goal card under the calendar, below an iPhone's fold.
 - scrollUntilVisible:
     element: "測試成員甲"
     direction: DOWN
     timeout: 30000
+- assertNotVisible: "目前無法完成操作，請稍後再試。"
+- assertNotVisible: "目前顯示上次的積分，還沒連上更新"
 - takeScreenshot: 00-smoke
 - tapOn: "讀經入口"
