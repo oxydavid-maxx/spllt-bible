@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { isWithinCompletionWindow } from '../src/domain/gamificationV1';
+import { congregationOf, countsFor, type Congregation } from './congregation';
 
 /**
  * The 積分 page's two blocks (維護者 2026-10-14):
@@ -80,18 +81,19 @@ export function setDevotion(db: DatabaseSync, memberId: string, taskDate: string
   return { taskDate, completed };
 }
 
-function readersByDate(db: DatabaseSync, from: string, to: string): Map<string, number> {
+function readersByDate(db: DatabaseSync, from: string, to: string, scope: Congregation): Map<string, number> {
   const rows = db.prepare(`SELECT c.task_date AS task_date, COUNT(DISTINCT c.member_id) AS readers
     FROM completions c JOIN members m ON m.id = c.member_id
-    WHERE c.status = 'COMPLETED' AND c.task_date >= ? AND c.task_date <= ? AND (m.disabled_at IS NULL OR m.disabled_at = 0)
+    WHERE c.status = 'COMPLETED' AND c.task_date >= ? AND c.task_date <= ? AND (m.disabled_at IS NULL OR m.disabled_at = 0) AND ${countsFor(scope, 'm')}
     GROUP BY c.task_date`).all(from, to) as Array<{ task_date: string; readers: number }>;
   return new Map(rows.map((row) => [row.task_date, Number(row.readers)]));
 }
 
 function qualifiedMembers(db: DatabaseSync, month: string): number {
+  // Group prizes belong to 青少 alone.
   const row = db.prepare(`SELECT COUNT(*) AS qualified FROM (
       SELECT c.member_id FROM completions c JOIN members m ON m.id = c.member_id
-      WHERE c.status = 'COMPLETED' AND c.task_date >= ? AND c.task_date <= ? AND (m.disabled_at IS NULL OR m.disabled_at = 0)
+      WHERE c.status = 'COMPLETED' AND c.task_date >= ? AND c.task_date <= ? AND (m.disabled_at IS NULL OR m.disabled_at = 0) AND ${countsFor('youth', 'm')}
       GROUP BY c.member_id HAVING COUNT(DISTINCT c.task_date) >= ?)`).get(`${month}-01`, monthEnd(month), QUALIFYING_DAYS_PER_MONTH) as { qualified: number };
   return Number(row.qualified);
 }
@@ -105,6 +107,8 @@ function memberReadingDays(db: DatabaseSync, memberId: string, month: string): n
 const shown = (readers: number | undefined): number | null => readers !== undefined && readers >= MIN_GROUP_READERS ? readers : null;
 
 export interface GroupReadingView {
+  /** 青少 counts 青少 only and has the prizes; 主堂 counts the whole church and has none (2026-10-17). */
+  scope: Congregation;
   month: string;
   today: string;
   /** Null under MIN_GROUP_READERS. */
@@ -121,20 +125,21 @@ export interface GroupReadingView {
   myDaysThisMonth: number;
 }
 
-export function getGroupReading(db: DatabaseSync, memberId: string, month: string, today: string): GroupReadingView | null {
+export function getGroupReading(db: DatabaseSync, memberId: string, month: string, today: string, scope: Congregation = congregationOf(db, memberId)): GroupReadingView | null {
   if (!MONTH.test(month) || month > today.slice(0, 7)) return null;
   const last = month === today.slice(0, 7) ? today : monthEnd(month);
-  const counts = readersByDate(db, `${month}-01`, last);
+  const counts = readersByDate(db, `${month}-01`, last, scope);
   const days: GroupReadingView['days'] = [];
   for (let date = `${month}-01`; date <= last; date = shiftDate(date, 1)) days.push({ date, readers: shown(counts.get(date)) });
   const visible = days.filter((day): day is { date: string; readers: number } => day.readers !== null);
   const busiest = visible.reduce<{ date: string; readers: number } | null>((best, day) => !best || day.readers > best.readers ? day : best, null);
-  const around = readersByDate(db, shiftDate(today, -1), today);
+  const around = readersByDate(db, shiftDate(today, -1), today, scope);
   const currentMonth = today.slice(0, 7);
-  const qualifiedNow = qualifiedMembers(db, currentMonth);
+  const qualifiedNow = scope === 'youth' ? qualifiedMembers(db, currentMonth) : 0;
   const qualifiedByMonth: number[] = [];
-  for (let value = GROUP_PRIZES_FROM; value <= currentMonth; value = nextMonth(value)) qualifiedByMonth.push(value === currentMonth ? qualifiedNow : qualifiedMembers(db, value));
+  if (scope === 'youth') for (let value = GROUP_PRIZES_FROM; value <= currentMonth; value = nextMonth(value)) qualifiedByMonth.push(value === currentMonth ? qualifiedNow : qualifiedMembers(db, value));
   return {
+    scope,
     month,
     today,
     todayReaders: shown(around.get(today)),
@@ -143,7 +148,7 @@ export function getGroupReading(db: DatabaseSync, memberId: string, month: strin
     monthReads: visible.reduce((total, day) => total + day.readers, 0),
     busiest,
     qualifyingDays: QUALIFYING_DAYS_PER_MONTH,
-    prizes: GROUP_PRIZES.map((prize) => ({
+    prizes: scope === 'main' ? [] : GROUP_PRIZES.map((prize) => ({
       ...prize,
       qualifiedThisMonth: qualifiedNow,
       achievedMonths: Math.min(prize.months, qualifiedByMonth.filter((qualified) => qualified >= prize.members).length),

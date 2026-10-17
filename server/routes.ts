@@ -25,6 +25,7 @@ import { DEFAULT_DEVOTION_VOICE, isDevotionVoice } from '../src/domain/devotionV
 import type { DevotionalAudio } from './devotionalAudio';
 import { createSongTitleLookup, isDevotionalDate, readDevotional, type SongTitleLookup } from './devotional';
 import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDates, setDevotion } from './devotionProgress';
+import { chosenCongregation, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
 import {
   GAMIFICATION_POLICY_VERSION,
@@ -140,7 +141,7 @@ function isGamificationError(value: unknown): value is GamificationError {
 }
 
 function isGamificationPath(pathname: string): boolean {
-  return pathname === '/api/me/profile' || pathname.startsWith('/api/me/reading-days') || pathname.startsWith('/api/me/completions/') || pathname.startsWith('/api/me/reward-target') || pathname.startsWith('/api/me/redemptions') || pathname.startsWith('/api/me/journal') || pathname.startsWith('/api/me/devotions') || pathname === '/api/me/score-history' || pathname.startsWith('/api/devotional/') || pathname.startsWith('/api/points/') || pathname.startsWith('/api/rewards') || pathname.startsWith('/api/friends/') || pathname.startsWith('/api/admin/');
+  return pathname === '/api/me/profile' || pathname === '/api/me/congregation' || pathname.startsWith('/api/me/reading-days') || pathname.startsWith('/api/me/completions/') || pathname.startsWith('/api/me/reward-target') || pathname.startsWith('/api/me/redemptions') || pathname.startsWith('/api/me/journal') || pathname.startsWith('/api/me/devotions') || pathname === '/api/me/score-history' || pathname.startsWith('/api/devotional/') || pathname.startsWith('/api/points/') || pathname.startsWith('/api/rewards') || pathname.startsWith('/api/friends/') || pathname.startsWith('/api/admin/');
 }
 
 function parseBody(body: string | undefined): Record<string, unknown> {
@@ -315,6 +316,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
   ensureJournalSchema(options.db.db);
   ensureEventRegistrationSchema(options.db.db);
   ensureDevotionSchema(options.db.db);
+  ensureCongregationSchema(options.db.db);
   const songTitle = options.songTitle ?? createSongTitleLookup();
   if (options.scheduleDates && options.scheduleDates.length > 0) {
     // Existing tests and local deployments can narrow the aggregate period without
@@ -634,6 +636,15 @@ export function createApiHandler(options: ApiHandlerOptions) {
         const today = taipeiDate(now());
         const view = getGroupReading(options.db.db, auth.memberId, url.searchParams.get('month') ?? today.slice(0, 7), today);
         return view ? gamificationJson(200, view as unknown as Record<string, unknown>) : gamificationError({ status: 400, code: 'INVALID_MONTH' });
+      }
+      // 青少/主堂 (維護者 2026-10-17): null until a new member chooses; see server/congregation.ts.
+      if (url.pathname === '/api/me/congregation' && request.method === 'GET') {
+        return gamificationJson(200, { congregation: chosenCongregation(options.db.db, auth.memberId) });
+      }
+      if (url.pathname === '/api/me/congregation' && request.method === 'PUT') {
+        const value = parseBody(request.body).congregation;
+        if (!isCongregation(value)) return gamificationError({ status: 400, code: 'INVALID_CONGREGATION' });
+        return gamificationJson(200, { congregation: setCongregation(options.db.db, auth.memberId, value, now().toISOString()) });
       }
       if (request.method === 'GET' && url.pathname === '/api/me/score-history') {
         return gamificationJson(200, getScoreHistory(options.db.db, auth.memberId, taipeiDate(now())) as unknown as Record<string, unknown>);
