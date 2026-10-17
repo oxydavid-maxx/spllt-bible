@@ -45,9 +45,9 @@ export function AccountSurface({ adminEntry }: { adminEntry?: ReactNode } = {}) 
     <Text style={styles.body}>這會永久刪除你的帳號與伺服器上的個人資料，無法復原。</Text>
     <Text style={styles.body}>讀經進度、積分和好友資料也會刪除。</Text>
     <Text style={styles.body}>刪除完成後會登出，回到登入頁。</Text>
-    {deleteError ? <Text accessibilityRole="alert" style={styles.error}>刪除沒有完成，請稍後重試。</Text> : null}
+    {deleteError ? <Text accessibilityRole="alert" style={styles.error}>目前無法刪除帳號，請檢查網路後重試。</Text> : null}
     <Pressable accessibilityRole="button" accessibilityLabel="取消" disabled={deleting} onPress={() => { setConfirmDelete(false); setDeleteError(false); }} style={styles.secondary}><Text style={styles.secondaryText}>取消</Text></Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel="確認刪除" accessibilityState={{ busy: deleting, disabled: deleting }} disabled={deleting} onPress={deleteAccount} style={styles.destructive}><Text style={styles.destructiveText}>{deleting ? '正在刪除…' : '確認刪除'}</Text></Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel="確認刪除" accessibilityState={{ busy: deleting, disabled: deleting }} disabled={deleting} onPress={deleteAccount} style={styles.destructive}><Text style={styles.destructiveText}>{deleting ? '正在刪除帳號…' : '確認刪除'}</Text></Pressable>
   </View>;
   return (
     <View style={styles.card}>
@@ -97,5 +97,5 @@ const styles = StyleSheet.create({
   error: { color: theme.colors.danger, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   quiet: { minHeight: theme.control.tap, alignSelf: 'flex-start', justifyContent: 'center' },
   version: { marginTop: 'auto', color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  quietText: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, textDecorationLine: 'underline' },
+  quietText: { color: theme.colors.danger, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, textDecorationLine: 'underline' },
 });

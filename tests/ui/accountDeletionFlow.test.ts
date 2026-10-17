@@ -34,7 +34,7 @@ describe('in-app permanent account deletion', () => {
     await act(async () => { tree = TestRenderer.create(React.createElement(AccountSurface)); });
     await act(async () => tree.root.findByProps({ accessibilityLabel: '刪除帳號與資料' }).props.onPress());
     await act(async () => tree.root.findByProps({ accessibilityLabel: '確認刪除' }).props.onPress());
-    expect(JSON.stringify(tree.toJSON())).toContain('刪除沒有完成，請稍後重試。'); expect(state.clear).not.toHaveBeenCalled();
+    expect(JSON.stringify(tree.toJSON())).toContain('目前無法刪除帳號，請檢查網路後重試。'); expect(state.clear).not.toHaveBeenCalled();
     await act(async () => tree.root.findByProps({ accessibilityLabel: '確認刪除' }).props.onPress());
     expect(state.clear).toHaveBeenCalledOnce(); await act(async () => tree.unmount());
   });

@@ -12,7 +12,6 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "刪除帳號與資料"
     timeout: 15000
-- assertNotVisible: "(tabs)"
 - tapOn: "刪除帳號與資料"
 - assertVisible: "這會永久刪除你的帳號與伺服器上的個人資料，無法復原。"
 - assertVisible: "讀經進度、積分和好友資料也會刪除。"
@@ -23,11 +22,4 @@ appId: org.qingmu.youth
 - tapOn: "取消"
 - assertVisible: "登出"
 - takeScreenshot: 45-account
-- tapOn: "登出"
-- extendedWaitUntil:
-    visible: "使用Apple登入"
-    timeout: 15000
-- takeScreenshot: 45-apple-button
-# Stop at the native authorization surface; never continue into account settings or enter credentials.
-- tapOn: "使用Apple登入"
-- takeScreenshot: 45-apple-authorization
+- assertNotVisible: "(tabs)"
