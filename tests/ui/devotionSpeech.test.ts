@@ -66,14 +66,15 @@ describe('reading the 靈修 aloud', () => {
 });
 
 describe('the green devotion corner button', () => {
-  const input = { onDevotion: false, readingCompleted: true, devotionCompleted: false, crowded: false, atReadingEnd: false, atDevotionEnd: false, followOfferEligible: true };
+  const input = { onDevotion: false, devotionCompleted: false, crowded: false, atDevotionEnd: false };
   it('ordinary circles always toggle completion, without playing or enabling follow (#1/#4)', () => {
     expect(devotionFab(input)).toMatchObject({ expanded: false, label: '完成今日靈修', action: 'toggle' });
   });
-  it('only offers follow at the actual final chapter end within an untouched offer (#6)', () => {
-    expect(devotionFab({ ...input, atReadingEnd: true })).toMatchObject({ expanded: true, label: '接續靈修', action: 'follow' });
-    for (const change of [{ readingCompleted: false }, { followOfferEligible: false }, { crowded: true }, { devotionCompleted: true }]) {
-      expect(devotionFab({ ...input, atReadingEnd: true, ...change }).action).toBe('toggle');
+  // 2026-10-17 (維護者): the reading end shows 接著讀靈修 › instead; the leaf never grows into a follow offer.
+  it('never grows into a follow offer on the chapter', () => {
+    for (const change of [{}, { crowded: true }, { devotionCompleted: true }]) {
+      expect(devotionFab({ ...input, ...change }).action).toBe('toggle');
+      expect(devotionFab({ ...input, ...change }).expanded).toBe(false);
     }
   });
   it('grows the completion button only at the devotional bottom (#8)', () => {

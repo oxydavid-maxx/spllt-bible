@@ -1,11 +1,13 @@
 import type { ReaderPreferencesStorage } from './readerPreferences';
 
-/** Member-local opt in. Untouched v1 installs migrate off; explicit choices survive upgrades. */
+/**
+ * Member-local opt in, chosen only in the ⋯ menu (2026-10-17: the seven-day offer is gone; the reading end shows
+ * 接著讀靈修 › instead). Untouched v1 installs migrate off; explicit choices survive upgrades.
+ */
 export interface DevotionFollowSnapshot {
   readonly ready: boolean;
   readonly enabled: boolean;
   readonly touched: boolean;
-  readonly firstOfferedOn?: string;
 }
 function storageKey(memberId: string): string {
   const encoded = Array.from(memberId, (character) => character.codePointAt(0)!.toString(16)).join('_');
@@ -13,7 +15,6 @@ function storageKey(memberId: string): string {
 }
 const DEFAULT: DevotionFollowSnapshot = Object.freeze({ ready: true, enabled: false, touched: false });
 const LOADING: DevotionFollowSnapshot = Object.freeze({ ready: false, enabled: false, touched: false });
-const calendarDay = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T00:00:00Z`) / 86400000 : NaN;
 
 export function createDevotionPreferencesStore(storage: ReaderPreferencesStorage) {
   const snapshots = new Map<string | null, DevotionFollowSnapshot>();
@@ -24,48 +25,31 @@ export function createDevotionPreferencesStore(storage: ReaderPreferencesStorage
   const save = (memberId: string | null, next: DevotionFollowSnapshot) => {
     publish(memberId, next);
     if (memberId) {
-      const value = JSON.stringify({ schemaVersion: 1, enabled: next.enabled, touched: next.touched, firstOfferedOn: next.firstOfferedOn });
+      const value = JSON.stringify({ schemaVersion: 1, enabled: next.enabled, touched: next.touched });
       const write = (writes.get(memberId) ?? Promise.resolve()).then(() => storage.setItem(storageKey(memberId), value)).catch(() => undefined);
       writes.set(memberId, write);
       void write.then(() => { if (writes.get(memberId) === write) writes.delete(memberId); });
     }
   };
   const getSnapshot = (memberId: string | null): DevotionFollowSnapshot => snapshots.get(memberId) ?? (memberId ? LOADING : DEFAULT);
-  const canOffer = (memberId: string | null, today: string) => {
-    const current = getSnapshot(memberId);
-    if (!memberId || !current.ready || current.touched) return false;
-    if (!current.firstOfferedOn) return true;
-    const days = calendarDay(today) - calendarDay(current.firstOfferedOn);
-    return days >= 0 && days < 7;
-  };
   return {
-    getSnapshot, canOffer,
+    getSnapshot,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     async load(memberId: string | null) {
       if (!memberId || snapshots.get(memberId)?.ready) return;
       try {
         const raw = await storage.getItem(storageKey(memberId));
-        const value = raw ? JSON.parse(raw) as { enabled?: unknown; touched?: unknown; firstOfferedOn?: unknown } : null;
+        const value = raw ? JSON.parse(raw) as { enabled?: unknown; touched?: unknown } : null;
         if (snapshots.get(memberId)?.ready) return;
         const touched = value?.touched === true;
-        publish(memberId, { ready: true, enabled: touched && value?.enabled === true, touched,
-          ...(typeof value?.firstOfferedOn === 'string' && Number.isFinite(calendarDay(value.firstOfferedOn)) ? { firstOfferedOn: value.firstOfferedOn } : {}) });
+        publish(memberId, { ready: true, enabled: touched && value?.enabled === true, touched });
       } catch {
-        // Unknown is not untouched: stay off and suppress the offer until a preference can be read
-        // or the member explicitly uses the menu. Never overwrite a choice made during the read.
+        // Unknown is not untouched: stay off until a preference can be read or the member explicitly
+        // uses the menu. Never overwrite a choice made during the read.
         if (!snapshots.get(memberId)?.ready) publish(memberId, LOADING);
       }
     },
-    setEnabled(memberId: string | null, enabled: boolean) { save(memberId, { ...getSnapshot(memberId), ready: true, enabled, touched: true }); },
-    recordOfferShown(memberId: string | null, today: string) {
-      const current = getSnapshot(memberId);
-      if (canOffer(memberId, today) && !current.firstOfferedOn) save(memberId, { ...current, firstOfferedOn: today });
-    },
-    firstFollow(memberId: string | null, today: string) {
-      if (!canOffer(memberId, today)) return false;
-      save(memberId, { ...getSnapshot(memberId), enabled: true, touched: true });
-      return true;
-    },
+    setEnabled(memberId: string | null, enabled: boolean) { save(memberId, { ready: true, enabled, touched: true }); },
   };
 }
 export type DevotionPreferencesStore = ReturnType<typeof createDevotionPreferencesStore>;

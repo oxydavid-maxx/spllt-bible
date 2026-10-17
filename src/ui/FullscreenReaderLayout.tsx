@@ -161,14 +161,13 @@ export interface ReaderDevotion {
   /** The tab's content, laid out clear of the header above and the corner buttons below. */
   renderView: (insets: { top: number; bottom: number }) => ReactNode;
   atEnd?: boolean;
-  followOfferEligible?: boolean;
-  onFollowOfferShown?: () => void;
+  /** The day's post has been fetched and exists (asked for by `prepare` at the last chapter's end). */
+  available: boolean;
+  prepare: () => void;
   completed: boolean;
   /** Marking cannot be saved for this day (outside the 7-day window). */
   disabled: boolean;
   onToggle: () => void;
-  /** Explicit bounded offer: enable follow and open the devotional tab. */
-  onFollow: () => void;
   speaking: boolean;
   onPlayPause: () => void;
   banner: string | null;
@@ -259,12 +258,15 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
     : -1;
   const nextIndex = assignedIndex >= 0 && assignedIndex < references.length - 1 ? assignedIndex + 1 : -1;
   const onDevotion = Boolean(devotion?.selected);
-  const leaf = devotion ? devotionFab({ onDevotion, readingCompleted: completed, devotionCompleted: devotion.completed, crowded: chrome.returnToNarrationVisible, atReadingEnd: !chrome.collapsed && chrome.atChapterEnd && assignedIndex >= 0 && nextIndex < 0, atDevotionEnd: devotion.atEnd, followOfferEligible: devotion.followOfferEligible }) : null;
-  const offerVisible = leaf?.action === 'follow' && !chrome.collapsed && !chrome.verseSelected && !chrome.moreOpen && !chrome.infoOpen && chrome.focused;
-  const onFollowOfferShown = devotion?.onFollowOfferShown;
-  useEffect(() => { if (offerVisible) onFollowOfferShown?.(); }, [offerVisible, onFollowOfferShown]);
-  const leafDisabled = Boolean(devotion?.disabled) && leaf?.action === 'toggle';
+  const leaf = devotion ? devotionFab({ onDevotion, devotionCompleted: devotion.completed, crowded: chrome.returnToNarrationVisible, atDevotionEnd: devotion.atEnd }) : null;
+  const leafDisabled = Boolean(devotion?.disabled);
   const atEnd = !chrome.collapsed && chrome.atChapterEnd && !onDevotion;
+  // 2026-10-17 (維護者): the last chapter's end points to the day's 靈修 every day, like 繼續讀 between chapters.
+  // Not when it is done or not posted, nor while a narrated chapter with auto-follow will carry over by itself.
+  const atLastChapterEnd = atEnd && assignedIndex >= 0 && nextIndex < 0;
+  const prepareDevotion = devotion?.prepare;
+  useEffect(() => { if (atLastChapterEnd) prepareDevotion?.(); }, [atLastChapterEnd, prepareDevotion]);
+  const devotionNext = Boolean(atLastChapterEnd && devotion?.available && !devotion.completed && !(chrome.readAlong.narrating && devotion.followEnabled));
   // The last chapter read to its end: the same ○ grows into the day's completion call (one button, one record).
   // Not while 回到朗讀處 holds the bottom-left: on a 360 dp phone the grown ○ would run into it.
   const completionExpanded = atEnd && assignedIndex >= 0 && nextIndex < 0 && !completed && !completionActionDisabled && !completionFailed && !chrome.returnToNarrationVisible;
@@ -355,6 +357,9 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
         {nextReference ? <Pressable accessibilityRole="button" accessibilityLabel={`繼續讀 ${formatChapterTitleZhTw(nextReference)}`} onPress={continueReading} android_ripple={{ color: theme.colors.primarySoft }} style={styles.nextCard}>
           <Text numberOfLines={1} style={styles.nextCardText}>{`繼續讀 ${formatReferenceZhTw(nextReference)} ›`}</Text>
         </Pressable> : null}
+        {devotionNext && devotion ? <Pressable accessibilityRole="button" accessibilityLabel="接著讀靈修" onPress={devotion.onSelect} android_ripple={{ color: theme.colors.primarySoft }} style={styles.nextCard}>
+          <Text numberOfLines={1} style={styles.nextCardText}>接著讀靈修 ›</Text>
+        </Pressable> : null}
       </View>
       <View accessibilityLabel="讀經動作" accessible={false} pointerEvents="box-none" style={[styles.actionRow, { right: theme.spacing.sm + insets.right, bottom: actionBottom }, chrome.verseSelected && styles.stepAside]}>
         {chrome.collapsed || !leaf || !devotion ? null : <Pressable
@@ -362,12 +367,12 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           accessibilityLabel={leaf.label}
           accessibilityState={{ disabled: leafDisabled, checked: leaf.done }}
           disabled={leafDisabled}
-          onPress={leaf.action === 'follow' ? devotion.onFollow : devotion.onToggle}
+          onPress={devotion.onToggle}
           android_ripple={{ color: theme.colors.primarySoft }}
           style={[styles.leafAction, leaf.expanded && styles.leafExpanded, leaf.done && styles.leafDone, leafDisabled && styles.disabled]}
         >
           {leaf.done ? <GrownLeafGlyph /> : <LeafGlyph size={leaf.expanded ? 20 : 24} />}
-          {leaf.expanded ? <Text style={styles.leafExpandedText}>{leaf.label + (leaf.action === 'follow' ? ' ›' : '')}</Text> : null}
+          {leaf.expanded ? <Text style={styles.leafExpandedText}>{leaf.label}</Text> : null}
         </Pressable>}
         {chrome.collapsed ? null : <Pressable
           accessibilityRole="button"

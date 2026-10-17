@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { createDevotionClient, type DevotionalPost } from '../../services/devotionClient';
 import { createDevotionSpeech } from '../../services/devotionSpeech';
@@ -60,17 +59,6 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   const [songRequest, setSongRequest] = useState(0);
   const speakWhenReady = useRef(false);
   const follow = useSyncExternalStore(preferences.subscribe, () => preferences.getSnapshot(memberId), () => preferences.getSnapshot(memberId));
-  const [clockRevision, refreshClock] = useState(0);
-  useEffect(() => {
-    if (!follow.ready || follow.touched || !follow.firstOfferedOn) return;
-    const expires = Date.parse(`${follow.firstOfferedOn}T00:00:00+08:00`) + 7 * 86400000;
-    const delay = expires - Date.now();
-    if (delay <= 0) return;
-    // One deadline, no polling: a visible offer also disappears at the seventh Taipei midnight.
-    const timer = setTimeout(() => refreshClock(value => value + 1), delay);
-    const subscription = AppState.addEventListener('change', state => { if (state === 'active') refreshClock(value => value + 1); });
-    return () => { clearTimeout(timer); subscription.remove(); };
-  }, [memberId, follow.ready, follow.touched, follow.firstOfferedOn, clockRevision]);
   const followRef = useRef(follow.enabled);
   followRef.current = follow.enabled;
   const [speech] = useState(() => createDevotionSpeech(createNativeDevotionEngine(() => connection.current), () => { if (followRef.current) setSongRequest((value) => value + 1); }));
@@ -140,8 +128,8 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   const devotion: ReaderDevotion | undefined = client ? {
     selected,
     atEnd,
-    followOfferEligible: preferences.canOffer(memberId, today),
-    onFollowOfferShown: () => preferences.recordOfferShown(memberId, today),
+    available: current?.kind === 'ready',
+    prepare: ensureLoaded,
     onSelect: () => open(false),
     renderView: (insets) => <DevotionalView
       state={current ?? { kind: 'loading' }}
@@ -158,7 +146,6 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
     completed: done,
     disabled: markPending || date > today || !isWithinCompletionWindow(date, today),
     onToggle: toggle,
-    onFollow: () => { if (preferences.firstFollow(memberId, taipeiDate())) open(false); },
     speaking,
     onPlayPause: () => {
       if (speaking) { speech.pause(); return; }
