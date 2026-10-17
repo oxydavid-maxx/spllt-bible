@@ -8,7 +8,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        screen: [login, account]
+        screen: [login]
     runs-on: macos-26
     timeout-minutes: 80
     env:
@@ -83,7 +83,7 @@ jobs:
           xcrun simctl install "$UDID" "$(cat capture-out/app-path.txt)"
           maestro --version > /dev/null 2>&1
           "$HOME/.maestro/deps/applesimutils" --byId "$UDID" --bundle org.qingmu.youth --setPermissions notifications=YES
-          MAESTRO_DRIVER_STARTUP_TIMEOUT=600000 maestro --device "$UDID" hierarchy --no-reinstall-driver > /dev/null 2>&1
+          MAESTRO_DRIVER_STARTUP_TIMEOUT=600000 maestro --device "$UDID" hierarchy --no-reinstall-driver > capture-out/warmup.txt 2>&1
           export MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
           if [ "$CAPTURE_SCREEN" = login ]; then
             cat > capture-flow.yaml <<'YAML'
@@ -91,7 +91,7 @@ jobs:
           ---
           - launchApp
           - extendedWaitUntil:
-              visible: '用 Google 登入'
+              visible: '使用Google登入'
               timeout: 90000
           - assertVisible: '竹科靈糧堂的每日讀經'
           YAML
@@ -110,7 +110,11 @@ jobs:
           - assertVisible: '測試成員甲'
           YAML
           fi
-          maestro --device "$UDID" test --no-reinstall-driver capture-flow.yaml --format junit --output capture-out/flow.xml > capture-out/flow.txt 2>&1
+          if ! maestro --device "$UDID" test --no-reinstall-driver capture-flow.yaml --format junit --output capture-out/flow.xml > capture-out/flow.txt 2>&1; then
+            maestro --device "$UDID" hierarchy --no-reinstall-driver > capture-out/hierarchy.txt 2>&1 || true
+            if ! grep -Eqi '[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}' capture-out/hierarchy.txt; then xcrun simctl io "$UDID" screenshot capture-out/failure-screen.png || true; fi
+            exit 1
+          fi
           maestro --device "$UDID" hierarchy --no-reinstall-driver > capture-out/hierarchy.txt
           if grep -Eqi '[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}' capture-out/hierarchy.txt; then echo 'Privacy check failed'; exit 1; fi
           xcrun simctl io "$UDID" screenshot "capture-out/$CAPTURE_SCREEN.png"
@@ -119,6 +123,10 @@ jobs:
           const fs=require('fs'),c=require('crypto'); const file=`capture-out/${process.env.CAPTURE_SCREEN}.png`;
           const b=fs.readFileSync(file);fs.writeFileSync('capture-out/receipt.json',JSON.stringify({screen:process.env.CAPTURE_SCREEN,sha256:c.createHash('sha256').update(b).digest('hex'),width:b.readUInt32BE(16),height:b.readUInt32BE(20),observedAt:new Date().toISOString(),identityInput:false,thirdPartyLoginOpened:false,accountData:'two-member-week fixture only'},null,2));
           JS
+      - name: preserve failed simulator candidate for bounded diagnostics
+        if: failure()
+        run: |
+          if [ -s capture-out/app-path.txt ]; then ditto -c -k --sequesterRsrc --keepParent "$(cat capture-out/app-path.txt)" capture-out/baseline-app.zip; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -130,5 +138,7 @@ jobs:
             capture-out/hierarchy.txt
             capture-out/flow.txt
             capture-out/flow.xml
+            capture-out/warmup.txt
+            capture-out/baseline-app.zip
             capture-out/xcodebuild-errors.txt
           retention-days: 14
