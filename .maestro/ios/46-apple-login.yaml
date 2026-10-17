@@ -2,9 +2,19 @@
 appId: org.qingmu.youth
 ---
 - launchApp
-- tapOn:
-    text: "積分"
-    retryTapIfNoChange: false
+# The tab bar can appear while Today is still replacing itself with Reader (00-smoke).
+# Observe the real reader destination first, then confirm that the requested tab was reached.
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 90000
+- repeat:
+    times: 3
+    while:
+      notVisible: "開啟積分操作"
+    commands:
+      - tapOn:
+          text: "積分"
+          retryTapIfNoChange: false
 - extendedWaitUntil:
     visible: "開啟積分操作"
     timeout: 30000
