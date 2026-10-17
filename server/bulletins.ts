@@ -4,16 +4,23 @@ import { join } from 'node:path';
 
 /**
  * 主堂週刊 (維護者 2026-10-17): the church office posts the weekly bulletin to 「竹科靈糧堂訊息公布欄」 as a few
- * photos sent together. LINE marks photos sent at once with an imageSet; a bulletin is such a set of two or more
- * A4 portrait pages. Every other photo in the group is looked at for its size only and dropped at once: not
- * stored, and logged without anything that identifies it. The bot never posts.
+ * A4 pages. A bulletin is two or more A4 portrait pages from one person, each within 10 minutes of the one before;
+ * an A4 page the same person adds within 3 hours joins that bulletin. Every other photo is looked at for its size
+ * only and dropped at once: not stored, and logged without anything that identifies it. The bot never posts.
  *
- * Saved under <dir>/<Sunday>/ (1.jpg, 2.jpg, … and meta.json), dated by the Sunday on or after the post (Taipei);
- * a second set for the same Sunday replaces the first. The newest 8 Sundays are kept.
+ * Checked against the group's history on 2026-10-17 (7/12–10/13, 74 photos): all 13 weekly bulletins were three
+ * exact A4 pages (1722 × 2435) from the same person early on Sunday, pages within two minutes of each other, except
+ * 9/27, whose third page came 46 minutes later. The other photos were posters, greetings, photos and screenshots,
+ * plus two lone A4-shaped flyers from other people. LINE's own "sent together" mark cannot be seen in that history,
+ * so the rule does not rely on it.
+ *
+ * Saved under <dir>/<Sunday>/ (1.jpg, 2.jpg, … and meta.json), dated by the Sunday on or after the first page
+ * (Taipei); a later bulletin for the same Sunday replaces the earlier one. The newest 8 Sundays are kept.
  */
 export interface BulletinPage { index: number; width: number; height: number }
 export interface BulletinWeek { date: string; postedAt: string; pages: BulletinPage[] }
-export interface LineImage { messageId: string; timestamp: number; imageSet?: { id: string; index?: number; total?: number } }
+/** A photo posted in a group. The sender's LINE id is used to tell posts apart and is never stored or logged. */
+export interface LineImage { messageId: string; timestamp: number; senderId?: string }
 
 export const KEEP_WEEKS = 8;
 const MIN_PAGES = 2;
@@ -21,8 +28,10 @@ const MIN_WIDTH = 600;
 // A4 is 297 / 210 = 1.414; a phone photo of a page or a scan with a margin lands a little either side.
 const A4_MIN = 1.36;
 const A4_MAX = 1.47;
-// A set whose sender's phone leaves out the total (LINE for Android 11.15 and earlier) is closed after this quiet time.
-const OPEN_SET_MS = 120_000;
+// Pages of one bulletin follow each other within this; the backtest's widest gap inside a post was about a minute.
+const PAGE_GAP_MS = 10 * 60_000;
+// A page the same person adds afterwards (9/27: 46 minutes) still belongs to that bulletin.
+const LATE_PAGE_MS = 3 * 3_600_000;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Width and height from a JPEG's frame header; null for anything else. */
@@ -52,7 +61,8 @@ export function bulletinSunday(postedAtMs: number): string {
   return new Date(Date.UTC(taipei.getUTCFullYear(), taipei.getUTCMonth(), taipei.getUTCDate() + ((7 - day) % 7))).toISOString().slice(0, 10);
 }
 
-interface OpenSet { firstAt: number; total?: number; received: number; misfit: boolean; pages: Array<{ index: number; bytes: Uint8Array; width: number; height: number }>; timer?: ReturnType<typeof setTimeout> }
+interface Page { at: number; order: number; bytes: Uint8Array; width: number; height: number }
+interface Post { pages: Page[]; lastAt: number; date?: string; timer?: ReturnType<typeof setTimeout> | void }
 
 export interface BulletinCollectorOptions {
   dir: string;
@@ -60,7 +70,7 @@ export interface BulletinCollectorOptions {
   fetchContent: (messageId: string) => Promise<Uint8Array>;
   log?: (line: string) => void;
   keepWeeks?: number;
-  /** For tests: closes a set that never says how many photos it has. */
+  /** For tests: runs `close` once a post has been quiet for PAGE_GAP_MS. */
   schedule?: (run: () => void, ms: number) => ReturnType<typeof setTimeout> | void;
 }
 
@@ -68,26 +78,29 @@ export function createBulletinCollector(options: BulletinCollectorOptions) {
   const log = options.log ?? ((line: string) => console.log(line));
   const keepWeeks = options.keepWeeks ?? KEEP_WEEKS;
   const schedule = options.schedule ?? ((run: () => void, ms: number) => { const timer = setTimeout(run, ms); (timer as { unref?: () => void }).unref?.(); return timer; });
-  const open = new Map<string, OpenSet>();
+  // Per sender: the post still being added to, and the last bulletin saved (late pages join it).
+  const open = new Map<string, Post>();
+  const saved = new Map<string, Post>();
+  let order = 0;
 
-  function close(id: string): void {
-    const set = open.get(id);
-    if (!set) return;
-    open.delete(id);
-    if (set.timer) clearTimeout(set.timer);
-    if (set.misfit || set.pages.length < MIN_PAGES) {
-      log(`LINE_IMAGE_SET_SKIPPED pages=${set.received} reason=${set.misfit ? 'SHAPE' : 'TOO_FEW'}`);
-      return;
-    }
-    const date = bulletinSunday(set.firstAt);
-    save(date, new Date(set.firstAt).toISOString(), [...set.pages].sort((a, b) => a.index - b.index));
+  function close(sender: string): void {
+    const post = open.get(sender);
+    if (!post) return;
+    open.delete(sender);
+    if (post.timer) clearTimeout(post.timer);
+    if (post.pages.length < MIN_PAGES) { log('LINE_IMAGE_SKIPPED reason=SINGLE'); return; }
+    post.date = bulletinSunday(post.pages[0].at);
+    save(post);
+    saved.set(sender, post);
   }
 
-  function save(date: string, postedAt: string, pages: OpenSet['pages']): void {
+  function save(post: Post): void {
+    const pages = [...post.pages].sort((a, b) => a.at - b.at || a.order - b.order);
+    const date = post.date!;
     mkdirSync(options.dir, { recursive: true });
     const partial = join(options.dir, `.${date}.${randomUUID()}.partial`);
     mkdirSync(partial);
-    const meta: BulletinWeek = { date, postedAt, pages: pages.map((page, position) => ({ index: position + 1, width: page.width, height: page.height })) };
+    const meta: BulletinWeek = { date, postedAt: new Date(pages[0].at).toISOString(), pages: pages.map((page, position) => ({ index: position + 1, width: page.width, height: page.height })) };
     pages.forEach((page, position) => writeFileSync(join(partial, `${position + 1}.jpg`), page.bytes));
     writeFileSync(join(partial, 'meta.json'), JSON.stringify(meta));
     const target = join(options.dir, date);
@@ -99,22 +112,26 @@ export function createBulletinCollector(options: BulletinCollectorOptions) {
   }
 
   return {
-    /** One photo from a group. Photos not sent as a set are never kept. */
     async receive(image: LineImage): Promise<void> {
-      if (!image.imageSet?.id) { log('LINE_IMAGE_SKIPPED reason=SINGLE'); return; }
       const bytes = await options.fetchContent(image.messageId);
       const size = jpegSize(bytes);
-      const id = image.imageSet.id;
-      const set = open.get(id) ?? { firstAt: image.timestamp, received: 0, misfit: false, pages: [] };
-      open.set(id, set);
-      set.firstAt = Math.min(set.firstAt, image.timestamp);
-      set.received += 1;
-      if (image.imageSet.total) set.total = image.imageSet.total;
-      if (size && isA4Portrait(size.width, size.height)) set.pages.push({ index: image.imageSet.index ?? set.received, bytes, ...size });
-      else set.misfit = true;
-      if (set.total && set.received >= set.total) { close(id); return; }
-      if (set.timer) clearTimeout(set.timer);
-      set.timer = schedule(() => close(id), OPEN_SET_MS) ?? undefined;
+      if (!size || !isA4Portrait(size.width, size.height)) { log('LINE_IMAGE_SKIPPED reason=SHAPE'); return; }
+      const sender = image.senderId ?? 'group';
+      const page: Page = { at: image.timestamp, order: order += 1, bytes, ...size };
+      const late = saved.get(sender);
+      if (!open.has(sender) && late && page.at >= late.lastAt && page.at - late.lastAt <= LATE_PAGE_MS) {
+        late.pages.push(page); late.lastAt = page.at;
+        save(late);
+        return;
+      }
+      const post = open.get(sender);
+      if (post && Math.abs(page.at - post.lastAt) > PAGE_GAP_MS) close(sender);
+      const current = open.get(sender) ?? { pages: [], lastAt: page.at };
+      open.set(sender, current);
+      current.pages.push(page);
+      current.lastAt = Math.max(current.lastAt, page.at);
+      if (current.timer) clearTimeout(current.timer);
+      current.timer = schedule(() => close(sender), PAGE_GAP_MS);
     },
   };
 }

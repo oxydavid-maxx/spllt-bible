@@ -57,8 +57,8 @@ function signedByLine(secret: string, rawBody: Buffer, signature: string | undef
 interface LineEvent {
   type?: unknown;
   timestamp?: unknown;
-  source?: { type?: unknown };
-  message?: { type?: unknown; text?: unknown; id?: unknown; contentProvider?: { type?: unknown }; imageSet?: { id?: unknown; index?: unknown; total?: unknown } };
+  source?: { type?: unknown; userId?: unknown };
+  message?: { type?: unknown; text?: unknown; id?: unknown; contentProvider?: { type?: unknown } };
 }
 
 function groupImage(event: LineEvent): LineImage | null {
@@ -66,12 +66,10 @@ function groupImage(event: LineEvent): LineImage | null {
   if (event.type !== 'message' || event.source?.type !== 'group' || message?.type !== 'image' || typeof message.id !== 'string') return null;
   // Only a photo sent from LINE itself can be downloaded; one linked from elsewhere has no content to fetch.
   if (message.contentProvider?.type !== 'line') return null;
-  const set = message.imageSet;
-  const count = (value: unknown) => (typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined);
   return {
     messageId: message.id,
     timestamp: typeof event.timestamp === 'number' ? event.timestamp : Date.now(),
-    ...(set && typeof set.id === 'string' ? { imageSet: { id: set.id, index: count(set.index), total: count(set.total) } } : {}),
+    ...(typeof event.source.userId === 'string' ? { senderId: event.source.userId } : {}),
   };
 }
 
