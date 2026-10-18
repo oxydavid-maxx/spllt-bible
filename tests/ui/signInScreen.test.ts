@@ -31,7 +31,7 @@ describe('the first screen a new member sees', () => {
     let tree!: ReturnType<typeof create>;
     act(() => { tree = create(React.createElement(SignInScreen, { baseUrl: 'https://api.example.test' })); });
     const text = JSON.stringify(tree.toJSON());
-    for (const line of ['竹科聖經', '竹科靈糧堂的每日讀經', '每天讀完按「完成」，記下自己的進度', '寫靈修日記，只有自己看得到', '和朋友互相鼓勵、看誰報名活動', '第一次登入會自動建立帳號']) {
+    for (const line of ['竹科聖經', '竹科靈糧堂的每日讀經', '跟著教會的進度讀經，讀完按完成', '經文和靈修都可以聽朗讀', '累積積分換獎品，和朋友互相加油', '第一次登入會自動建立帳號']) {
       expect(text).toContain(line);
     }
     expect(tree.root.findAll((node) => String(node.type) === 'GoogleLoginCard')).toHaveLength(1);

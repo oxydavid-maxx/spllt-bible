@@ -6,9 +6,9 @@ import { AppleLoginCard } from './AppleLoginCard';
 import { theme } from './Theme';
 
 const FEATURES = [
-  ['✓', '每天讀完按「完成」，記下自己的進度'],
-  ['✎', '寫靈修日記，只有自己看得到'],
-  ['♡', '和朋友互相鼓勵、看誰報名活動'],
+  ['✓', '跟著教會的進度讀經，讀完按完成'],
+  ['♪', '經文和靈修都可以聽朗讀'],
+  ['♡', '累積積分換獎品，和朋友互相加油'],
 ] as const;
 
 /**
