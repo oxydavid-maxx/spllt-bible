@@ -65,7 +65,7 @@ export default function ProgressScreen() {
   const [profile, setProfile] = useState<Awaited<ReturnType<NonNullable<typeof client>['getProfile']>> | null>(null);
   const profileRef = useRef(profile);
   profileRef.current = profile;
-  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [rewards, setRewards] = useState<Reward[] | null>(null);
   const [redemptions, setRedemptions] = useState<Awaited<ReturnType<NonNullable<typeof client>['getMyRedemptions']>>>([]);
   const [sheet, updateSheet] = useState<Sheet>(null);
   const sheetVersion = useRef(0);
@@ -150,7 +150,7 @@ export default function ProgressScreen() {
     setScope('me'); setPeople([]); setSelected(null); setProfile(ownProfile); setBusy(false); setError(null);
     setSheet(preserveScanner ? 'scan' : null);
     if (!preserveView) {
-      setProfileStale(Boolean(ownProfile)); setRewards([]); setRedemptions([]); setPrimaryReady(Boolean(ownProfile));
+      setProfileStale(Boolean(ownProfile)); setRewards(null); setRedemptions([]); setPrimaryReady(Boolean(ownProfile));
       setShelfRewards(null); setGroupReading(null); setScoreHistory(null);
     }
     if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
@@ -314,11 +314,15 @@ export default function ProgressScreen() {
   const loadRewards = async () => {
     if (!client || !session) return;
     const generation = requestGeneration.current; const expectedScope = activeScope.current;
+    if (!isLive(generation, expectedScope, undefined, expectedScope === 'all')) return;
+    // Open with the last known list; slow/offline refreshes must not hide the picker.
+    setSheet('rewards');
     const origin = sheetVersion.current;
     const owns = () => sheetVersion.current === origin && isLive(generation, expectedScope, undefined, expectedScope === 'all');
-    if (!owns()) return;
-    try { const value = await client.getRewards(); if (owns()) { setRewards(value); setSheet('rewards'); } }
-    catch (reason) { if (owns()) setError(messageFor(reason)); }
+    // Replace an in-flight shelf/previous picker read so every opening asks afresh.
+    client.cancelReads?.('/api/rewards');
+    try { const value = await client.getRewards(); if (owns()) setRewards(value); }
+    catch { /* Keep the existing list silently; the next opening retries. */ }
   };
   const loadRedemptions = async () => {
     if (!client || !session) return;
@@ -384,7 +388,7 @@ export default function ProgressScreen() {
     if (!client || !session || !focused || !primaryReady || scope !== 'me' || !hasOwnPrivateProfile || typeof client.getRewards !== 'function') return;
     let active = true; const generation = viewGeneration.current;
     void client.getRewards().then((value) => { if (active && isViewLive(generation)) setShelfRewards(value); }).catch((reason) => {
-      if (!active || !isViewLive(generation)) return;
+      if (!active || !isViewLive(generation) || (reason instanceof GamificationApiError && reason.code === 'REQUEST_CANCELLED')) return;
       if (shelfRewardsRef.current === null) setShelfRewards([]);
       else setError(messageFor(reason));
     });
@@ -582,7 +586,7 @@ export default function ProgressScreen() {
       {friendNotice ? <Text style={[styles.note, styles.friendNoticeHint]}>名單已經更新，可以關掉了</Text> : null}
     </ActionSheet>
     <ActionSheet visible={sheet === 'scan'} title="掃描好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="scan" onClaimed={scanClaimed} onActivityStart={beginScannerActivity} /></ActionSheet>
-    <ActionSheet visible={sheet === 'rewards'} title="選擇目標獎品" dismissOnOutsideTap onClose={() => setSheet(null)}><RewardControls rewards={rewards} selectedRewardId={selectedRewardId} canEdit onSelect={(rewardId) => void setTarget(rewardId)} /></ActionSheet>
+    <ActionSheet visible={sheet === 'rewards'} title="選擇目標獎品" dismissOnOutsideTap onClose={() => setSheet(null)}><RewardControls rewards={rewards ?? shelfRewards ?? []} selectedRewardId={selectedRewardId} canEdit onSelect={(rewardId) => void setTarget(rewardId)} /></ActionSheet>
     <ActionSheet visible={sheet === 'redemptions'} title="領取紀錄" dismissOnOutsideTap onClose={() => setSheet(null)}><RedemptionList redemptions={redemptions} /></ActionSheet>
     {!appForeground ? <View testID="progress-inactive-cover" pointerEvents="auto" style={styles.inactiveCover} /> : null}
   </View>;

@@ -5,7 +5,8 @@ import { theme } from '../Theme';
 
 /** 選擇目標獎品. The prizes are kept in the Google Sheet (維護者 2026-10-17); the app only lists them. */
 export function RewardControls({ rewards, selectedRewardId, canEdit, onSelect }: { rewards: Reward[]; selectedRewardId?: string | null; canEdit: boolean; onSelect?: (rewardId: string) => void }) {
-  const [expanded, setExpanded] = useState(false);
+  // This component lives inside the picker: opening it should show the choices immediately.
+  const [expanded, setExpanded] = useState(true);
   const active = rewards.filter((reward) => reward.active);
   const visible = expanded || Boolean(selectedRewardId) ? active : [];
   return <View style={styles.container}><Text style={styles.label}>選擇目標獎品</Text>{visible.length === 0 ? <Text style={styles.empty}>尚未設定獎品</Text> : null}{visible.map((reward) => <View key={reward.rewardId} style={styles.row}><Pressable accessibilityRole="radio" accessibilityState={{ selected: selectedRewardId === reward.rewardId }} disabled={!canEdit} onPress={() => reward.rewardId !== selectedRewardId ? onSelect?.(reward.rewardId) : undefined} style={styles.choice}><Text style={styles.name}>{reward.name}</Text><Text style={styles.cost}>{reward.costPoints} 分</Text></Pressable></View>)}{canEdit ? <Pressable accessibilityRole="button" accessibilityLabel="顯示獎品選擇" onPress={() => setExpanded(!expanded)} style={styles.toggle}><Text style={styles.toggleText}>{expanded ? '收起' : '選擇獎品'}</Text></Pressable> : null}</View>;
