@@ -32,7 +32,7 @@ import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificat
 import type { CompletionRecord } from '../../src/domain/completion';
 import { ReadingCalendarCard } from '../../src/ui/gamification/ReadingCalendarCard';
 import { ReadingCardExportSheet } from '../../src/ui/gamification/ReadingCardExportSheet';
-import { buildReadingCardHtml, type ReadingCardScope } from '../../src/domain/readingCard';
+import { buildReadingCardHtml, readingCardFileName, type ReadingCardScope } from '../../src/domain/readingCard';
 import { loadReadingCardSnapshot } from '../../src/services/readingCardSnapshot';
 import { shareReadingCard } from '../../src/ui/readingCardShare';
 import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
@@ -559,8 +559,8 @@ export default function ProgressScreen() {
       });
       const memberName = auth.profile?.memberId === session.memberId ? auth.profile.displayName : profile?.memberId === session.memberId ? profile.displayName : null;
       if (!memberName) throw new Error('目前沒有你的名字，請稍後重試。');
-      const html = buildReadingCardHtml({ today: taipeiDate(), memberName, scope: period, days: snapshot });
-      await shareReadingCard(html, owns);
+      const card = { today: taipeiDate(), memberName, scope: period };
+      await shareReadingCard(buildReadingCardHtml({ ...card, days: snapshot }), readingCardFileName(card), owns);
       if (owns()) setExportOpen(false);
     } catch (reason) {
       if (owns()) setExportError(reason instanceof Error ? reason.message : '產生讀經卡失敗，請重試。');
