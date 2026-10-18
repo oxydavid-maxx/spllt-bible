@@ -11,14 +11,17 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "(積分|展開閱讀工具)"
     timeout: 15000
-- runFlow:
-    when:
+- repeat:
+    times: 3
+    while:
       notVisible: "積分"
     commands:
       - extendedWaitUntil:
           visible: "展開閱讀工具"
           timeout: 15000
-      - tapOn: "展開閱讀工具"
+      - tapOn:
+          text: "展開閱讀工具"
+          retryTapIfNoChange: false
 - extendedWaitUntil:
     visible: "積分"
     timeout: 10000
