@@ -57,4 +57,17 @@ describe('offline reading card snapshot', () => {
     await cache.saveDays('a', '2026-10-01', '2026-10-31', []);
     expect(readingCardDays(plan, await cache.read('a'), () => undefined)).toEqual([]);
   });
+
+  it('retains the response shown by the calendar even if persisting it fails', async () => {
+    const storage = {
+      read: async () => JSON.stringify({ version: 1, days: { '2026-10-01': remote('2026-10-01', 'UNREPORTED') }, devotionDates: [] }),
+      write: async () => { throw new Error('disk full'); },
+    };
+    const cache = createReadingProgressCache(storage);
+    await expect(cache.saveDays('a', '2026-10-01', '2026-10-31', [remote('2026-10-01')])).rejects.toThrow('disk full');
+    expect(readingCardDays(plan, await cache.read('a'), () => undefined)[0].completed).toBe(true);
+    await expect(cache.setDevotion('a', '2026-10-01', true)).rejects.toThrow('disk full');
+    expect((await cache.read('a')).devotionDates).toEqual(['2026-10-01']);
+    expect((await cache.read('b')).days['2026-10-01'].status).toBe('UNREPORTED');
+  });
 });

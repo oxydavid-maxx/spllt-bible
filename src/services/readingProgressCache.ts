@@ -7,8 +7,13 @@ const empty = (): CachedReadingProgress => ({ days: {}, devotionDates: [] });
 /** One file per account. Serial writes keep simultaneous reading/devotion responses from losing data. */
 export function createReadingProgressCache(storage: Storage) {
   const queues = new Map<string, Promise<void>>();
+  // A response already shown on screen remains authoritative if the disk is temporarily full.
+  // Keep only failed writes in memory, and discard them after the next successful persistence.
+  const unsaved = new Map<string, CachedReadingProgress>();
   const key = (memberId: string) => `reading-progress-v1-${encodeURIComponent(memberId)}.json`;
   async function load(memberId: string): Promise<CachedReadingProgress> {
+    const pending = unsaved.get(memberId);
+    if (pending) return JSON.parse(JSON.stringify(pending)) as CachedReadingProgress;
     const text = await storage.read(key(memberId));
     if (!text) return empty();
     try {
@@ -26,7 +31,9 @@ export function createReadingProgressCache(storage: Storage) {
     const next = (queues.get(memberId) ?? Promise.resolve()).catch(() => undefined).then(async () => {
       const snapshot = await load(memberId);
       mutate(snapshot);
+      unsaved.set(memberId, snapshot);
       await storage.write(key(memberId), JSON.stringify({ version: 1, ...snapshot }));
+      unsaved.delete(memberId);
     });
     queues.set(memberId, next);
     void next.finally(() => { if (queues.get(memberId) === next) queues.delete(memberId); }).catch(() => undefined);
