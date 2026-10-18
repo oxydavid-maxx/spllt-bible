@@ -1,0 +1,407 @@
+{
+  "week": "2026-10-18",
+  "generatedAt": "2026-10-18T01:01:14.061Z",
+  "sermon": {
+    "label": "第一堂",
+    "title": "洪水，挪亞方舟",
+    "speaker": "德馨",
+    "passage": "創6-10",
+    "audio": null,
+    "slides": null,
+    "sermonSlides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
+    "transcript": null,
+    "youtube": null,
+    "materials": [
+      {
+        "name": "20261018青崇分享：舵.pptx",
+        "role": "sermonSlides",
+        "url": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view"
+      }
+    ]
+  },
+  "sessions": [
+    {
+      "label": "第一堂",
+      "title": "洪水，挪亞方舟",
+      "speaker": "德馨",
+      "passage": "創6-10",
+      "audio": null,
+      "slides": null,
+      "sermonSlides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
+      "transcript": null,
+      "youtube": null,
+      "materials": [
+        {
+          "name": "20261018青崇分享：舵.pptx",
+          "role": "sermonSlides",
+          "url": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view"
+        }
+      ]
+    },
+    {
+      "label": "第二堂",
+      "title": "青少團契",
+      "speaker": null,
+      "passage": null,
+      "audio": null,
+      "slides": null,
+      "sermonSlides": null,
+      "transcript": null,
+      "youtube": null
+    }
+  ],
+  "next": {
+    "date": "10/25",
+    "topic": "信心：怎麼得著信心？",
+    "owner": "中亮/大專",
+    "signup": null,
+    "sessions": [
+      {
+        "label": "第一堂",
+        "kind": "青年啟發",
+        "title": "信心：怎麼得著信心？",
+        "owner": "中亮/大專"
+      },
+      {
+        "label": "第二堂",
+        "kind": null,
+        "title": "青少團契",
+        "owner": null
+      }
+    ],
+    "roles": [
+      {
+        "label": "講員",
+        "value": "中亮"
+      },
+      {
+        "label": "敬拜團+詩歌",
+        "value": "大專團"
+      },
+      {
+        "label": "主領(報告)",
+        "value": "中亮"
+      },
+      {
+        "label": "招待",
+        "value": "正慧/悅心"
+      },
+      {
+        "label": "影音(投影/音控)",
+        "value": "欣儀＆柏羽"
+      },
+      {
+        "label": "愛筵",
+        "value": "淑君及大廚們"
+      },
+      {
+        "label": "清潔",
+        "value": "全體"
+      }
+    ]
+  },
+  "standing": null,
+  "past": [
+    {
+      "week": "2026-10-11",
+      "title": "十架：耶穌為什麼死？",
+      "speaker": "中亮",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "十架：耶穌為什麼死？",
+          "speaker": "中亮",
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "一本書終結你的拖延症",
+          "speaker": null,
+          "passage": null,
+          "audio": "https://drive.google.com/file/d/1D27APCjNOvfNtlKo1CVJPzQ2qMIojNUK/view",
+          "slides": null,
+          "sermonSlides": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view",
+          "transcript": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view",
+          "youtube": null,
+          "materials": [
+            {
+              "name": "20261011 第二堂 逐字稿 青崇講座 小丁 - 克服拖延症.pdf",
+              "role": "transcript",
+              "url": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view"
+            },
+            {
+              "name": "20261011 第二堂 錄音 青崇講座 小丁 - 克服拖延症.mp4",
+              "role": "audio",
+              "url": "https://drive.google.com/file/d/1D27APCjNOvfNtlKo1CVJPzQ2qMIojNUK/view"
+            },
+            {
+              "name": "20261011_青崇讀書會_拖延症_可編輯投影片.pptx",
+              "role": "sermonSlides",
+              "url": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view"
+            }
+          ]
+        }
+      ],
+      "audio": null,
+      "slides": null,
+      "transcript": null
+    },
+    {
+      "week": "2026-10-04",
+      "title": "你的兄弟在哪裡",
+      "speaker": "佑駿",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "你的兄弟在哪裡",
+          "speaker": "佑駿",
+          "passage": "創4-5",
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view",
+          "sermonSlides": "https://drive.google.com/file/d/1NuNctCuTdwt7UMQTa2roRcGevQUJgGnQ/view",
+          "transcript": null,
+          "youtube": null,
+          "materials": [
+            {
+              "name": "20261004青崇(全)PPT.pptx",
+              "role": "slides",
+              "url": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view"
+            },
+            {
+              "name": "你的兄弟在哪裡_V3.pptx",
+              "role": "sermonSlides",
+              "url": "https://drive.google.com/file/d/1NuNctCuTdwt7UMQTa2roRcGevQUJgGnQ/view"
+            }
+          ]
+        },
+        {
+          "label": "第二堂",
+          "title": "青少團契",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null,
+          "materials": [
+            {
+              "name": "20261004 青少契小組時間.docx",
+              "role": "sermonDoc",
+              "url": "https://drive.google.com/file/d/1C6H-I-h26Gs-nYqPFAijscRF-MODhjz5/view"
+            }
+          ]
+        }
+      ],
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view",
+      "transcript": null,
+      "sermonSlides": "https://drive.google.com/file/d/1NuNctCuTdwt7UMQTa2roRcGevQUJgGnQ/view"
+    },
+    {
+      "week": "2026-09-27",
+      "title": "耶穌：耶穌是誰？",
+      "speaker": "中亮",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "耶穌：耶穌是誰？",
+          "speaker": "中亮",
+          "passage": null,
+          "audio": null,
+          "slides": "https://docs.google.com/presentation/d/1FZvb7J25OFkecgwUcD1TTS5umyvQaDlB66ohskjfgLQ/preview",
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null,
+          "materials": [
+            {
+              "name": "20260927青崇(全)PPT",
+              "role": "slides",
+              "url": "https://docs.google.com/presentation/d/1FZvb7J25OFkecgwUcD1TTS5umyvQaDlB66ohskjfgLQ/preview"
+            }
+          ]
+        },
+        {
+          "label": "第二堂",
+          "title": "青少團契",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/1FZvb7J25OFkecgwUcD1TTS5umyvQaDlB66ohskjfgLQ/preview",
+      "transcript": null
+    },
+    {
+      "week": "2026-09-20",
+      "title": "先",
+      "speaker": "光佑",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "先",
+          "speaker": "光佑",
+          "passage": "創3",
+          "audio": "https://drive.google.com/file/d/1CX5pHpYDmNPN-2_9E082QikMMWPhlHtg/view",
+          "slides": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview",
+          "sermonSlides": "https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview",
+          "transcript": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view",
+          "youtube": null,
+          "materials": [
+            {
+              "name": "2026-09-20 09_16_45.mp3",
+              "role": "audio",
+              "url": "https://drive.google.com/file/d/1CX5pHpYDmNPN-2_9E082QikMMWPhlHtg/view"
+            },
+            {
+              "name": "20260920 青崇講道｜先",
+              "role": "sermonSlides",
+              "url": "https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview"
+            },
+            {
+              "name": "20260920 青崇講道｜先｜現場逐字稿",
+              "role": "transcript",
+              "url": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view"
+            },
+            {
+              "name": "20260920青崇(全)PPT",
+              "role": "slides",
+              "url": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview"
+            }
+          ]
+        },
+        {
+          "label": "第二堂",
+          "title": "青少團契",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": "https://drive.google.com/file/d/1CX5pHpYDmNPN-2_9E082QikMMWPhlHtg/view",
+      "slides": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview",
+      "transcript": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view",
+      "sermonSlides": "https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview"
+    },
+    {
+      "week": "2026-09-13",
+      "title": "生命：這就是人生嗎？",
+      "speaker": "中亮",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "生命：這就是人生嗎？",
+          "speaker": "中亮",
+          "passage": null,
+          "audio": null,
+          "slides": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview",
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null,
+          "materials": [
+            {
+              "name": "20260913青崇(全)PPT",
+              "role": "slides",
+              "url": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview"
+            },
+            {
+              "name": "岩手短宣.pptx",
+              "role": "slides",
+              "url": "https://drive.google.com/file/d/150KiXW32avJZFS-hUbXHiTDWYbOlNb7q/view"
+            }
+          ]
+        },
+        {
+          "label": "第二堂",
+          "title": "健身是什麼？",
+          "speaker": "張珉銓",
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": "https://drive.google.com/file/d/1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD/view",
+          "transcript": null,
+          "youtube": null,
+          "materials": [
+            {
+              "name": "913健身是什麼？.pptx",
+              "role": "sermonSlides",
+              "url": "https://drive.google.com/file/d/1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD/view"
+            },
+            {
+              "name": "未命名文件",
+              "role": "sermonSlides",
+              "url": "https://docs.google.com/document/d/1cuaRcYwP_RytcnXpIwyblcGNlEXuCOgS6yC_ZFM0dzI/view"
+            }
+          ]
+        }
+      ],
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview",
+      "transcript": null
+    },
+    {
+      "week": "2026-09-06",
+      "title": "創造，亞當和夏娃",
+      "speaker": "為潔",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "創造，亞當和夏娃",
+          "speaker": "為潔",
+          "passage": "創1-2",
+          "audio": null,
+          "slides": "https://docs.google.com/presentation/d/1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ/preview",
+          "sermonSlides": "https://drive.google.com/file/d/1FVOvVG9Egjr_NYTgoYIqaQzaJQOONt3y/view",
+          "transcript": null,
+          "youtube": null,
+          "materials": [
+            {
+              "name": "20260906青崇(全)PPT",
+              "role": "slides",
+              "url": "https://docs.google.com/presentation/d/1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ/preview"
+            },
+            {
+              "name": "260906 亞當與夏娃.pptx",
+              "role": "sermonSlides",
+              "url": "https://drive.google.com/file/d/1FVOvVG9Egjr_NYTgoYIqaQzaJQOONt3y/view"
+            },
+            {
+              "name": "聖餐.pptx",
+              "role": "slides",
+              "url": "https://drive.google.com/file/d/1LeXLcKFSaiPJR3x6GPqx5t20dHxWhP61/view"
+            }
+          ]
+        },
+        {
+          "label": "第二堂",
+          "title": "青少團契",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ/preview",
+      "transcript": null,
+      "sermonSlides": "https://drive.google.com/file/d/1FVOvVG9Egjr_NYTgoYIqaQzaJQOONt3y/view"
+    }
+  ]
+}
