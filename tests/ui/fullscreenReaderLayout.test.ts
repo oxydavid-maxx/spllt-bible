@@ -825,14 +825,45 @@ describe('the 靈修 tab and the gold corner button', () => {
     act(() => chrome.handleCanvasEdge({ atEnd: true }));
     act(() => button('完成讀經').props.onPress());
     expect(onComplete).toHaveBeenCalledOnce();
-    expect(devotion.onSelect).not.toHaveBeenCalled(); expect(devotion.onFollow).not.toHaveBeenCalled();
+    expect(devotion.onSelect).not.toHaveBeenCalled();
   });
-  it.each([false, true])('the final end only offers follow to eligible members (%s) (#6)', async eligible => {
-    completed = true; devotion = makeDevotion({ followOfferEligible: eligible }); await mount();
+  // 2026-10-17 (維護者): at the last chapter's end the reading points to the 靈修 every day, like 繼續讀 between
+  // chapters; it only switches tabs (no reading aloud, no completion) and never expires.
+  it('at the last chapter’s end shows 接著讀靈修 ›, which only switches to the 靈修 tab', async () => {
+    onComplete = vi.fn(); devotion = makeDevotion(); await mount();
+    expect(text()).not.toContain('接著讀靈修');
     act(() => chrome.handleCanvasEdge({ atEnd: true }));
-    expect(text().includes('接續靈修 ›')).toBe(eligible);
-    act(() => chrome.handleCanvasEdge({ atEnd: false }));
+    expect(devotion.prepare).toHaveBeenCalled();
+    expect(text()).toContain('接著讀靈修 ›');
+    expect(text()).toContain('完成今日讀經');
+    expect(styleOf(button('接著讀靈修'))).toMatchObject({ height: 52, borderRadius: 26, backgroundColor: '#1A5544' });
+    act(() => button('接著讀靈修').props.onPress());
+    expect(devotion.onSelect).toHaveBeenCalledOnce();
+    expect(devotion.onPlayPause).not.toHaveBeenCalled(); expect(onComplete).not.toHaveBeenCalled();
     expect(text()).not.toContain('接續靈修 ›');
+    act(() => chrome.handleCanvasEdge({ atEnd: false }));
+    expect(text()).not.toContain('接著讀靈修');
+  });
+  it.each([
+    ['the 靈修 is already completed', { completed: true }],
+    ['the 靈修 has not been posted', { available: false }],
+  ] as const)('does not offer 接著讀靈修 when %s', async (_case, overrides) => {
+    devotion = makeDevotion(overrides); await mount();
+    act(() => chrome.handleCanvasEdge({ atEnd: true }));
+    expect(text()).not.toContain('接著讀靈修');
+  });
+  it('lets auto-follow carry a narrated last chapter into the 靈修, and points there once it stops', async () => {
+    devotion = makeDevotion({ followEnabled: true }); await mount();
+    act(() => { chrome.handleNarration(16); chrome.handleCanvasEdge({ atEnd: true }); });
+    expect(text()).not.toContain('接著讀靈修');
+    act(() => chrome.handleNarration(null));
+    expect(text()).toContain('接著讀靈修 ›');
+  });
+  it('keeps 繼續讀 between chapters and offers the 靈修 only after the last one', async () => {
+    devotion = makeDevotion(); currentChapter = 'PSA.90'; activeReferenceIndex = 0; await mount();
+    act(() => chrome.handleCanvasEdge({ atEnd: true }));
+    expect(text()).toContain('繼續讀 詩91 ›');
+    expect(text()).not.toContain('接著讀靈修');
   });
   it('the devotional bottom grows completion, then returns to the filled circle (#8)', async () => {
     devotion = makeDevotion({ selected: true, atEnd: true }); await mount();
@@ -855,8 +886,8 @@ describe('the 靈修 tab and the gold corner button', () => {
   });
   const makeDevotion = (overrides: Partial<NonNullable<typeof devotion>> = {}): NonNullable<typeof devotion> => ({
     selected: false, onSelect: vi.fn(), renderView: (insets) => React.createElement('DevotionalView', { insets }),
-    completed: false, disabled: false, onToggle: vi.fn(), onFollow: vi.fn(), speaking: false, onPlayPause: vi.fn(),
-    banner: null, followEnabled: false, followOfferEligible: true, onFollowOfferShown: vi.fn(), onFollowChange: vi.fn(), ...overrides,
+    completed: false, disabled: false, onToggle: vi.fn(), speaking: false, onPlayPause: vi.fn(),
+    banner: null, followEnabled: false, onFollowChange: vi.fn(), available: true, prepare: vi.fn(), ...overrides,
   });
   const gold = () => actionRow().findAll(node => String(node.type) === 'Pressable' && /靈修|跟傳道/.test(String(node.props.accessibilityLabel ?? '')))[0];
   beforeEach(() => {
@@ -883,19 +914,18 @@ describe('the 靈修 tab and the gold corner button', () => {
     expect(text()).not.toContain('跟傳道一起讀 ›');
     act(() => gold().props.onPress());
     expect(devotion.onToggle).toHaveBeenCalledOnce();
-    expect(devotion.onFollow).not.toHaveBeenCalled();
+    expect(devotion.onSelect).not.toHaveBeenCalled();
   });
 
-  it('after the reading is completed, gold grows into 跟傳道一起讀 ›', async () => {
+  it('after the reading is completed, the leaf stays a circle and 接著讀靈修 › leads on', async () => {
     completed = true; devotion = makeDevotion();
     await mount();
-    expect(text()).not.toContain('接續靈修 ›');
     act(() => chrome.handleCanvasEdge({ atEnd: true }));
-    expect(text()).toContain('接續靈修 ›');
-    expect(devotion.onFollowOfferShown).toHaveBeenCalled();
+    expect(text()).not.toContain('接續靈修 ›');
     expect(text()).not.toContain('完成今日讀經');
+    expect(text()).toContain('接著讀靈修 ›');
     act(() => gold().props.onPress());
-    expect(devotion.onFollow).toHaveBeenCalledOnce();
+    expect(devotion.onToggle).toHaveBeenCalledOnce(); expect(devotion.onSelect).not.toHaveBeenCalled();
   });
 
   it('on the 靈修 tab: its view covers the chapter, gold marks it, ▶ reads it and stops a playing chapter first', async () => {

@@ -1,6 +1,5 @@
 import { notifyAuthExpired } from './authState';
 import { isScoreChartRange, type MonthPoints, type PersonListItem, type ScoreChart, type ScoreChartBucket, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile, type ScoreScope, type ViewerCapabilities } from '../domain/gamificationV1';
-import { createDefaultGamificationPendingStore, GamificationPendingStoreError, type GamificationPendingStore, type PendingGamificationOperations, type PendingRedemptionOperation, type PendingReverseOperation } from './gamificationPendingStore';
 
 export type { MonthPoints, PersonListItem, ScoreChart, ScoreChartBucket, ScoreChartQuery, ScoreChartRange, ScoreProfile, ScoreScope, ViewerCapabilities };
 
@@ -15,7 +14,7 @@ export interface Reward {
 export interface FriendQr { payload: string; token: string; expiresAt: number; }
 export interface Redemption { redemptionId: string; memberId: string; rewardId: string; rewardName: string; costPoints: number; status: 'COMPLETED' | 'REVERSED'; confirmedAt: number | null; }
 
-export interface GamificationApiClientOptions { baseUrl: string; token: string; memberId: string; fetchImpl?: typeof fetch; pendingStore?: GamificationPendingStore; }
+export interface GamificationApiClientOptions { baseUrl: string; token: string; memberId: string; fetchImpl?: typeof fetch; }
 
 export class GamificationApiError extends Error {
   readonly code: string;
@@ -114,97 +113,6 @@ function parseBookGoal(value: unknown): CommunityBookGoal | null {
   return { book: item.book, chapters, complete: item.complete };
 }
 
-export interface RewardNomination {
-  nominationId: string;
-  name: string;
-  /** 多少/多久 in the proposer's words; absent on ideas from before it was asked. */
-  quantity?: string;
-  note?: string;
-  displayName: string;
-  status: 'OPEN' | 'APPROVED' | 'DECLINED';
-  voteCount: number;
-  voted: boolean;
-  mine: boolean;
-  revision: number;
-  /** Roughly what it would cost, in points, or absent when nothing usable came back. */
-  estimatedPoints?: number;
-  /** A clearer way to say it, offered to the author and sent to nobody else. */
-  noteSuggestion?: string;
-  /** Why the quantity could not be priced, sent to the author alone. */
-  quantityReminder?: string;
-}
-
-export type NominationRoundPhase = 'VOTING' | 'DECIDING';
-export interface NominationRound {
-  roundId: string;
-  title: string | null;
-  closesAt: number;
-  phase: NominationRoundPhase;
-}
-export interface NominationBoardView {
-  round: NominationRound | null;
-  nominations: RewardNomination[];
-  /** Votes this member has left in the round. Three are given because three prizes are chosen. */
-  votesLeft: number;
-  votesPerMember: number;
-}
-export interface NominationRoundResult {
-  roundId: string;
-  title: string | null;
-  closedAt: number;
-  places: Array<{ name: string; displayName: string; voteCount: number; approved: boolean }>;
-}
-
-/**
- * Built from named keys, like every other parser here.
- *
- * It also REJECTS a payload carrying a member id: the board shows who suggested something by name,
- * and a member id arriving would mean the server had started handing out a handle into every other
- * endpoint. Better to fail loudly here than to render it.
- */
-/** The round, or none at all: no round running is an ordinary state and not a malformed reply. */
-function parseRound(value: unknown): NominationRound | null {
-  const item = object(value);
-  if (!item || !string(item.roundId) || !nonNegativeInt(item.closesAt)) return null;
-  if (item.phase !== 'VOTING' && item.phase !== 'DECIDING') return null;
-  return { roundId: item.roundId, title: string(item.title) ? item.title : null, closesAt: item.closesAt, phase: item.phase };
-}
-
-function parseRoundResult(value: unknown): NominationRoundResult | null {
-  const item = object(value);
-  if (!item || !string(item.roundId) || !nonNegativeInt(item.closedAt) || !Array.isArray(item.places)) return null;
-  const places: NominationRoundResult['places'] = [];
-  for (const entry of item.places) {
-    const place = object(entry);
-    if (!place || !string(place.name) || !string(place.displayName) || !nonNegativeInt(place.voteCount) || typeof place.approved !== 'boolean') return null;
-    places.push({ name: place.name, displayName: place.displayName, voteCount: place.voteCount, approved: place.approved });
-  }
-  return { roundId: item.roundId, title: string(item.title) ? item.title : null, closedAt: item.closedAt, places };
-}
-
-function parseNomination(value: unknown): RewardNomination | null {
-  const item = object(value);
-  if (!item || item.createdBy !== undefined || item.memberId !== undefined) return null;
-  if (!string(item.nominationId) || !string(item.name) || !string(item.displayName) || !positiveInt(item.revision)) return null;
-  if (item.status !== 'OPEN' && item.status !== 'APPROVED' && item.status !== 'DECLINED') return null;
-  if (!nonNegativeInt(item.voteCount) || typeof item.voted !== 'boolean' || typeof item.mine !== 'boolean') return null;
-  return {
-    nominationId: item.nominationId,
-    name: item.name,
-    ...(string(item.quantity) ? { quantity: item.quantity } : {}),
-    ...(string(item.note) ? { note: item.note } : {}),
-    displayName: item.displayName,
-    status: item.status,
-    voteCount: item.voteCount,
-    voted: item.voted,
-    mine: item.mine,
-    revision: item.revision,
-    ...(positiveInt(item.estimatedPoints) ? { estimatedPoints: item.estimatedPoints } : {}),
-    ...(string(item.noteSuggestion) ? { noteSuggestion: item.noteSuggestion } : {}),
-    ...(string(item.quantityReminder) ? { quantityReminder: item.quantityReminder } : {}),
-  };
-}
-
 function parseRedemption(value: unknown): Redemption | null {
   const item = object(value);
   return item && string(item.redemptionId) && string(item.memberId) && string(item.rewardId) && string(item.rewardName)
@@ -237,108 +145,10 @@ function operationId(): string {
   return `${part(8)}-${part(4)}-4${part(3)}-8${part(3)}-${part(12)}`;
 }
 
-const pendingRuntimeQueues = new Map<string, Promise<void>>();
-const pendingRuntimeInFlight = new Map<string, Promise<unknown>>();
-
 export function createGamificationApiClient(options: GamificationApiClientOptions) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const reads = new Map<string, { controller: AbortController; promise: Promise<unknown> }>();
-  const pendingStore = options.pendingStore ?? createDefaultGamificationPendingStore();
   const pendingClaimOperations = new Map<string, string>();
-  const pendingRedemptionOperations = new Map<string, PendingRedemptionOperation>();
-  const pendingReverseOperations = new Map<string, PendingReverseOperation>();
-  let pendingLoaded: Promise<void> | null = null;
-  function pendingError(reason: unknown): GamificationApiError { return new GamificationApiError(reason instanceof GamificationPendingStoreError ? reason.code : 'PENDING_STORAGE_ERROR', true, 0); }
-  async function ensurePendingLoaded(): Promise<void> {
-    if (!pendingLoaded) {
-      const load = pendingStore.read(options.memberId).then((state) => {
-        if (state && state.ownerMemberId !== options.memberId) throw new GamificationPendingStoreError('PENDING_DATA_INVALID');
-        for (const row of state?.redemptions ?? []) pendingRedemptionOperations.set(`${row.memberId}\u0000${row.rewardId}`, { ...row });
-        for (const row of state?.reversals ?? []) pendingReverseOperations.set(row.redemptionId, { ...row });
-      }).catch((reason) => { throw pendingError(reason); });
-      pendingLoaded = load;
-      void load.catch(() => { if (pendingLoaded === load) pendingLoaded = null; });
-    }
-    return pendingLoaded;
-  }
-  async function reloadPending(): Promise<void> {
-    pendingLoaded = null;
-    pendingRedemptionOperations.clear();
-    pendingReverseOperations.clear();
-    await ensurePendingLoaded();
-  }
-  function pendingSnapshot(): PendingGamificationOperations { return { ownerMemberId: options.memberId, redemptions: [...pendingRedemptionOperations.values()].map((row) => ({ ...row })), reversals: [...pendingReverseOperations.values()].map((row) => ({ ...row })) }; }
-  async function persistPending(): Promise<void> { const state = pendingSnapshot(); try { if (state.redemptions.length || state.reversals.length) await pendingStore.write(options.memberId, state); else await pendingStore.clear(options.memberId); } catch (reason) { throw pendingError(reason); } }
-  function enqueueOperation<T>(key: string, work: () => Promise<T>): Promise<T> {
-    const runtimeKey = `${options.memberId}\u0000${key}`;
-    const existing = pendingRuntimeInFlight.get(runtimeKey) as Promise<T> | undefined;
-    if (existing) return existing;
-    const task = (pendingRuntimeQueues.get(options.memberId) ?? Promise.resolve()).then(work);
-    const queueTail = task.then(() => undefined, () => undefined);
-    pendingRuntimeQueues.set(options.memberId, queueTail);
-    pendingRuntimeInFlight.set(runtimeKey, task);
-    void task.finally(() => {
-      if (pendingRuntimeInFlight.get(runtimeKey) === task) pendingRuntimeInFlight.delete(runtimeKey);
-      if (pendingRuntimeQueues.get(options.memberId) === queueTail) pendingRuntimeQueues.delete(options.memberId);
-    }).catch(() => undefined);
-    return task;
-  }
-  function runRedemption(input: { memberId: string; rewardId: string; expectedRewardRevision: number; operationId?: string }): Promise<unknown> {
-    const mapKey = `${input.memberId}\u0000${input.rewardId}`;
-    return enqueueOperation(`redeem:${mapKey}\u0000${input.expectedRewardRevision}\u0000${input.operationId ?? ''}`, async () => {
-      await reloadPending();
-      if (input.operationId && !validUuid(input.operationId)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 400);
-      const prior = pendingRedemptionOperations.get(mapKey);
-      if (prior && (prior.memberId !== input.memberId || prior.rewardId !== input.rewardId || prior.expectedRewardRevision !== input.expectedRewardRevision || (input.operationId && input.operationId !== prior.operationId))) throw new GamificationApiError('OPERATION_ID_REUSED', false, 409);
-      const record = prior ?? { operationId: input.operationId ?? operationId(), memberId: input.memberId, rewardId: input.rewardId, expectedRewardRevision: input.expectedRewardRevision };
-      if (!prior) {
-        pendingRedemptionOperations.set(mapKey, record);
-        try { await persistPending(); } catch (reason) { pendingRedemptionOperations.delete(mapKey); throw reason; }
-      }
-      try {
-        const result = await request('/api/admin/redemptions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ memberId: record.memberId, rewardId: record.rewardId, expectedRewardRevision: record.expectedRewardRevision, operationId: record.operationId }) });
-        const resultItem = object(result);
-        if (!resultItem || !string(resultItem.redemptionId) || resultItem.memberId !== record.memberId || resultItem.rewardId !== record.rewardId || (resultItem.status !== 'COMPLETED' && resultItem.status !== 'REVERSED')) throw new GamificationApiError('AMBIGUOUS_MUTATION_RESPONSE', true, 200);
-        pendingRedemptionOperations.delete(mapKey);
-        try { await persistPending(); } catch (reason) { pendingRedemptionOperations.set(mapKey, record); throw reason; }
-        return result;
-      } catch (error) {
-        const unresolvedAuthorization = Boolean(prior && error instanceof GamificationApiError && (error.status === 401 || error.status === 403));
-        if (!unresolvedAuthorization && (!(error instanceof GamificationApiError) || !error.retryable)) {
-          pendingRedemptionOperations.delete(mapKey);
-          try { await persistPending(); } catch (reason) { pendingRedemptionOperations.set(mapKey, record); throw reason; }
-        }
-        throw error;
-      }
-    });
-  }
-  function runReversal(input: { redemptionId: string; reason: string; operationId?: string }): Promise<void> {
-    const mapKey = input.redemptionId;
-    return enqueueOperation(`reverse:${mapKey}\u0000${input.reason}\u0000${input.operationId ?? ''}`, async () => {
-      await reloadPending();
-      if (input.operationId && !validUuid(input.operationId)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 400);
-      const prior = pendingReverseOperations.get(mapKey);
-      if (prior && (prior.reason !== input.reason || (input.operationId && prior.operationId !== input.operationId))) throw new GamificationApiError('OPERATION_ID_REUSED', false, 409);
-      const record: PendingReverseOperation = prior ?? { operationId: input.operationId ?? operationId(), redemptionId: input.redemptionId, reason: input.reason };
-      if (!prior) {
-        pendingReverseOperations.set(mapKey, record);
-        try { await persistPending(); } catch (reason) { pendingReverseOperations.delete(mapKey); throw reason; }
-      }
-      try {
-        const result = object(await request(`/api/admin/redemptions/${encodeURIComponent(record.redemptionId)}/reverse`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: record.operationId, reason: record.reason }) }));
-        if (!result || result.redemptionId !== record.redemptionId || result.status !== 'REVERSED') throw new GamificationApiError('AMBIGUOUS_MUTATION_RESPONSE', true, 200);
-        pendingReverseOperations.delete(mapKey);
-        try { await persistPending(); } catch (reason) { pendingReverseOperations.set(mapKey, record); throw reason; }
-      } catch (error) {
-        const unresolvedAuthorization = Boolean(prior && error instanceof GamificationApiError && (error.status === 401 || error.status === 403));
-        if (!unresolvedAuthorization && (!(error instanceof GamificationApiError) || !error.retryable)) {
-          pendingReverseOperations.delete(mapKey);
-          try { await persistPending(); } catch (reason) { pendingReverseOperations.set(mapKey, record); throw reason; }
-        }
-        throw error;
-      }
-    });
-  }
   async function performRequest(path: string, init: RequestInit = {}): Promise<unknown> {
     let response: Response;
     try { response = await fetchImpl(`${options.baseUrl}${path}`, { ...init, headers: { authorization: `Bearer ${options.token}`, ...(init.headers ?? {}) } }); }
@@ -400,78 +210,16 @@ export function createGamificationApiClient(options: GamificationApiClientOption
     },
     async getRewards(): Promise<Reward[]> { const body = object(await request('/api/rewards')); const values = body?.rewards; if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); const rewards = values.map(parseReward); if (rewards.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return rewards as Reward[]; },
     async getMyRedemptions(): Promise<Redemption[]> { const parsed = parseRedemptions(await request('/api/me/redemptions')); if (!parsed) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return parsed; },
-    async getAdminRedemptions(memberId?: string): Promise<Redemption[]> { const query = memberId ? `?memberId=${encodeURIComponent(memberId)}` : ''; const parsed = parseRedemptions(await request(`/api/admin/redemptions${query}`)); if (!parsed) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return parsed; },
     async setRewardTarget(rewardId: string | null): Promise<void> { await request('/api/me/reward-target', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rewardId }) }); },
     async createFriendQr(): Promise<FriendQr> { const body = object(await request('/api/friends/qr', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })); if (!body || !string(body.payload) || !string(body.token) || !validEpoch(body.expiresAt)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return { payload: body.payload, token: body.token, expiresAt: body.expiresAt }; },
     async claimFriendQr(token: string, operationIdValue?: string): Promise<{ memberId: string }> { const resolvedOperationId = operationIdValue ?? pendingClaimOperations.get(token) ?? operationId(); pendingClaimOperations.set(token, resolvedOperationId); if (!validUuid(resolvedOperationId)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 400); try { const body = object(await request('/api/friends/claim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: resolvedOperationId, token }) })); if (!body || !string(body.memberId)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); pendingClaimOperations.delete(token); return { memberId: body.memberId }; } catch (error) { throw error; } },
     async removeFriend(memberId: string): Promise<void> { await request(`/api/friends/${encodeURIComponent(memberId)}`, { method: 'DELETE' }); },
-    async createReward(input: { name: string; costPoints: number; operationId?: string }): Promise<Reward> { const body = object(await request('/api/admin/rewards', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: input.operationId ?? operationId(), name: input.name, costPoints: input.costPoints }) })); const reward = parseReward(body); if (!reward) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return reward; },
-    async updateReward(rewardId: string, patch: { name?: string; costPoints?: number; active?: boolean }, expectedRevision = 1, operationIdValue = operationId()): Promise<Reward> { const body = object(await request(`/api/admin/rewards/${encodeURIComponent(rewardId)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...patch, expectedRevision, operationId: operationIdValue }) })); const reward = parseReward(body); if (!reward) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return reward; },
     async getCommunityProgress(): Promise<CommunityProgressView> {
       const body = object(await request('/api/points/community'));
       if (!body || !Array.isArray(body.books) || !body.books.every((value) => string(value))) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       const personDays = body.personDays;
       if (personDays !== null && !nonNegativeInt(personDays)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       return { books: body.books as string[], personDays: personDays as number | null, currentBook: parseBookGoal(body.currentBook) };
-    },
-    async getNominations(): Promise<NominationBoardView> {
-      const body = object(await request('/api/rewards/nominations'));
-      const values = body?.nominations;
-      if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
-      const parsed = values.map(parseNomination);
-      if (parsed.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
-      // An older server that does not send these leaves the member with their three, which reads as
-      // the behaviour that existed before the limit rather than as a board with nothing to spend.
-      const perMember = Number.isInteger(body?.votesPerMember) ? Number(body?.votesPerMember) : 3;
-      const left = Number.isInteger(body?.votesLeft) ? Number(body?.votesLeft) : perMember;
-      return { round: parseRound(body?.round), nominations: parsed as RewardNomination[], votesLeft: left, votesPerMember: perMember };
-    },
-    async getNominationHistory(): Promise<NominationRoundResult[]> {
-      const body = object(await request('/api/rewards/nominations/history'));
-      const values = body?.rounds;
-      if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
-      const parsed = values.map(parseRoundResult);
-      if (parsed.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
-      return parsed as NominationRoundResult[];
-    },
-    async withdrawNomination(nominationId: string): Promise<void> {
-      await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}`, { method: 'DELETE' });
-    },
-    async resolveNoteSuggestion(nominationId: string, accept: boolean): Promise<void> {
-      await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}/suggestion`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accept }) });
-    },
-    async openNominationRound(input: { title?: string; closesAt: number }): Promise<void> {
-      await request('/api/admin/rewards/nomination-rounds', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), ...(input.title ? { title: input.title } : {}), closesAt: input.closesAt }) });
-    },
-    async closeNominationRound(roundId: string): Promise<void> {
-      await request(`/api/admin/rewards/nomination-rounds/${encodeURIComponent(roundId)}/close`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId() }) });
-    },
-    async nominateReward(input: { name: string; note?: string; quantity?: string }): Promise<void> {
-      await request('/api/rewards/nominations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), name: input.name, ...(input.note ? { note: input.note } : {}), ...(input.quantity ? { quantity: input.quantity } : {}) }) });
-    },
-    async updateNominationQuantity(nominationId: string, quantity: string): Promise<void> {
-      await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}/quantity`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ quantity }) });
-    },
-    async setNominationVote(nominationId: string, voting: boolean): Promise<void> {
-      await request(`/api/rewards/nominations/${encodeURIComponent(nominationId)}/vote`, { method: voting ? 'PUT' : 'DELETE' });
-    },
-    async decideNomination(nominationId: string, decision: 'approve' | 'decline' | 'remove', input: { expectedRevision: number; costPoints?: number }): Promise<void> {
-      await request(`/api/admin/rewards/nominations/${encodeURIComponent(nominationId)}/${decision}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operationId: operationId(), expectedRevision: input.expectedRevision, ...(input.costPoints ? { costPoints: input.costPoints } : {}) }) });
-    },
-    async getPendingOperations(): Promise<PendingGamificationOperations> { await reloadPending(); return pendingSnapshot(); },
-    async redeem(input: { memberId: string; rewardId: string; expectedRewardRevision: number; operationId?: string }): Promise<unknown> { return runRedemption(input); },
-    async retryPendingRedemption(operationIdValue: string): Promise<unknown> {
-      await ensurePendingLoaded();
-      const record = [...pendingRedemptionOperations.values()].find((row) => row.operationId === operationIdValue);
-      if (!record) throw new GamificationApiError('PENDING_OPERATION_NOT_FOUND', false, 404);
-      return runRedemption({ ...record });
-    },
-    async reverseRedemption(redemptionId: string, reason: string, operationIdValue?: string): Promise<void> { return runReversal({ operationId: operationIdValue, redemptionId, reason }); },
-    async retryPendingReversal(operationIdValue: string): Promise<void> {
-      await ensurePendingLoaded();
-      const record = [...pendingReverseOperations.values()].find((row) => row.operationId === operationIdValue);
-      if (!record) throw new GamificationApiError('PENDING_OPERATION_NOT_FOUND', false, 404);
-      return runReversal({ ...record });
     },
   };
 }

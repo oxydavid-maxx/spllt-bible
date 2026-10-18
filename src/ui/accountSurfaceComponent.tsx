@@ -8,6 +8,7 @@ import { GoogleLoginCard } from './GoogleLoginCard';
 import { appVersionLabel, buildAccountSurfaceModel } from './accountSurface';
 import { theme } from './Theme';
 import { ReminderSettings } from './ReminderSettings';
+import { CongregationSetting } from './congregation/CongregationSetting';
 import { getReminderRuntimeOwner, useReminderRuntimeSnapshot } from '../services/reminderRuntime';
 
 /** `adminEntry`: the route hands in 全體 (管理), so this surface stays free of navigation. */
@@ -65,6 +66,7 @@ export function AccountSurface({ adminEntry }: { adminEntry?: ReactNode } = {}) 
           onOpenSettings={() => { void Linking.openSettings(); }}
           showMeeting={false}
         />
+        <CongregationSetting />
         {adminEntry}
 
       </> : model.mode === 'loading' || model.mode === 'error' || model.mode === 'empty' ? <>

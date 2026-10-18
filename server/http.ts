@@ -13,8 +13,6 @@ import type { PointPolicy } from '../src/domain/points';
 import { seedMemberGroupProfile, type MemberGroupProfileSeed } from './groups';
 import { createRemoteConfiguration } from './remoteConfiguration';
 import { createReminderWorker, type ReminderWorkerTimer } from './reminderWorker';
-import { createClaudeCli } from './claudeCli';
-import { createNominationAssistWorker } from './nominationAssist';
 import type { PushDataSender } from './friendPush';
 import type { ApnsAlertSender } from './apnsSender';
 import type { MeetingSender } from './remoteReminders';
@@ -23,6 +21,8 @@ import { taipeiDate } from '../src/domain/gamificationV1';
 import { createDevotionalAudio, latestDevotionalDate, readAzureSpeechConfig, warmDevotionalAudio } from './devotionalAudio';
 import { devotionalPlayerResponse } from './devotional';
 import { createLineWebhook, LINE_WEBHOOK_BODY_LIMIT, LINE_WEBHOOK_PATH, readLineChannelSecret } from './lineWebhook';
+import { createBulletinCollector, type LineImage } from './bulletins';
+import { createLineContentFetcher, readLineChannelIdFile } from './lineContent';
 import { deriveFormRegistrationKey } from './eventRegistrations';
 
 async function readBody(request: IncomingMessage): Promise<string> {
@@ -130,13 +130,6 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   const autostart = disableMeetingReminders ? false : options.reminderWorker?.autostart ?? process.env.QINGMU_REMINDER_WORKER_AUTOSTART === 'true';
   const remoteStatus = reminderDelivery?.enabled && autostart ? 'REMOTE_READY' as const : 'REMOTE_PENDING' as const;
   const worker = reminderDelivery?.enabled ? createReminderWorker({ db: database.db, send: reminderDelivery.send, now: options.reminderWorker?.now, intervalMs: options.reminderWorker?.intervalMs, timer: options.reminderWorker?.timer }) : null;
-  // Estimating what a suggested prize costs runs off the machine's own Claude CLI, and only when a
-  // path to it is configured. No path, no worker, and nominations behave exactly as they did before
-  // any of this was built — which is also what every test sees, since none of them set it.
-  const claudePath = process.env.QINGMU_CLAUDE_CLI_PATH?.trim();
-  const assistWorker = claudePath
-    ? createNominationAssistWorker({ db: database.db, cli: createClaudeCli({ executable: claudePath }) })
-    : null;
 
   const appleKeyFile = process.env.QINGMU_APPLE_SIGNIN_KEY_FILE;
   const appleKeyId = process.env.QINGMU_APPLE_SIGNIN_KEY_ID;
@@ -158,6 +151,8 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     adminMemberIds: process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean),
     adminGoogleSubjects,
     ...(devotionalDir ? { devotionalDir } : {}),
+    ...(process.env.QINGMU_BULLETIN_DIR?.trim() ? { bulletinDir: process.env.QINGMU_BULLETIN_DIR.trim() } : {}),
+    ...(process.env.QINGMU_ADMIN_LINKS_FILE?.trim() ? { adminLinksFile: process.env.QINGMU_ADMIN_LINKS_FILE.trim() } : {}),
     ...(devotionalAudio ? { devotionalAudio } : {}),
     ...(fixtureRoster
       ? {
@@ -196,9 +191,15 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   });
   const officialBible = createOfficialBibleAdapter();
   const lineChannelSecret = readLineChannelSecret(process.env.QINGMU_LINE_SECRET_FILE);
+  // 主堂週刊: off unless the channel ID sits beside the secret and a folder is configured (server/bulletins.ts).
+  const lineChannelId = readLineChannelIdFile(process.env.QINGMU_LINE_SECRET_FILE);
+  const bulletins = lineChannelSecret && lineChannelId && process.env.QINGMU_BULLETIN_DIR?.trim()
+    ? createBulletinCollector({ dir: process.env.QINGMU_BULLETIN_DIR.trim(), fetchContent: createLineContentFetcher({ channelId: lineChannelId, channelSecret: lineChannelSecret }) })
+    : null;
   const lineWebhook = lineChannelSecret && process.env.QINGMU_DEVOTIONAL_DIR?.trim()
     ? createLineWebhook({ channelSecret: lineChannelSecret, devotionalDir: process.env.QINGMU_DEVOTIONAL_DIR.trim(),
-      ...(devotionalAudio ? { onSaved: (date: string) => { void warmDevotionalAudio(devotionalAudio, devotionalDir, date); } } : {}) })
+      ...(devotionalAudio ? { onSaved: (date: string) => { void warmDevotionalAudio(devotionalAudio, devotionalDir, date); } } : {}),
+      ...(bulletins ? { onImage: (image: LineImage) => bulletins.receive(image) } : {}) })
     : null;
   const server = createServer(async (request, response) => {
     // Public, identity-checked Bible content is separate from private member APIs.
@@ -250,10 +251,9 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     response.end(result.binaryBody ?? JSON.stringify(result.body));
   });
   if (worker && autostart) worker.start();
-  if (assistWorker) assistWorker.start();
   let databaseClosing: Promise<void> | null = null;
   const closeDatabase = () => {
-    databaseClosing ??= Promise.allSettled([assistWorker?.stop(), worker?.stop()]).then(() => { database.close(); });
+    databaseClosing ??= Promise.allSettled([worker?.stop()]).then(() => { database.close(); });
     return databaseClosing;
   };
   server.on('close', () => {
@@ -269,7 +269,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     });
     return stopping;
   };
-  return { server, config, database, worker, assistWorker, stop, remoteStatus, senderConfigured: Boolean(reminderDelivery?.enabled) };
+  return { server, config, database, worker, stop, remoteStatus, senderConfigured: Boolean(reminderDelivery?.enabled) };
 }
 
 const isDirectServerEntry = process.argv.some((argument) => /(?:^|[\\/])server[\\/]http\.ts$/.test(argument));

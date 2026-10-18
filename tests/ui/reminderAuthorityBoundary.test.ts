@@ -22,6 +22,7 @@ vi.mock('../../src/services/apiClient', () => ({
   })),
 }));
 vi.mock('../../src/ui/GoogleLoginCard', () => ({ GoogleLoginCard: () => React.createElement('GoogleLoginCard') }));
+vi.mock('../../src/ui/congregation/CongregationSetting', () => ({ CongregationSetting: () => null }));
 vi.mock('react-native', () => ({
   Linking: { openSettings: vi.fn() },
   Pressable: 'Pressable',

@@ -18,6 +18,7 @@ import {
   type ScoreProfile,
   type ViewerCapabilities,
 } from '../src/domain/gamificationV1';
+import { ensureRewardSheetSchema, sheetRedeemedPoints } from './rewardSheet';
 export { applyPreparedLegacyPointMigration, prepareLegacyPointMigration } from './legacyPointMigration';
 export type { LegacyMigrationError, LegacyMigrationPreparation, LegacyMigrationResult, LegacyPointPolicy, PreparedLegacyPointMigration } from './legacyPointMigration';
 
@@ -242,6 +243,7 @@ export function ensureGamificationSchema(db: DatabaseSync): void {
       created_at INTEGER NOT NULL
     );
   `);
+  ensureRewardSheetSchema(db);
 }
 
 export function seedReadingDays(db: DatabaseSync, days: readonly ReadingDaySeed[], now = new Date()): void {
@@ -324,9 +326,12 @@ function totalEarned(db: DatabaseSync, memberId: string): number {
   return Math.max(0, readInt(row, 'total'));
 }
 
+// Redeemable points: the ledger (reading, and any redemption made in the app before 2026-10-17) minus the
+// redemption rows of the Google Sheet (server/rewardSheet.ts). A sheet that takes off more than there was shows 0:
+// every app reads a negative balance as a broken reply.
 function walletBalance(db: DatabaseSync, memberId: string): number {
   const row = db.prepare('SELECT COALESCE(SUM(delta), 0) AS total FROM wallet_entries WHERE member_id = ?').get(memberId);
-  return readInt(row, 'total');
+  return Math.max(0, readInt(row, 'total') - sheetRedeemedPoints(db, memberId));
 }
 
 function monthPoints(db: DatabaseSync, memberId: string, buckets: readonly string[]): MonthPoints[] {
@@ -525,7 +530,8 @@ function targetReward(db: DatabaseSync, memberId: string): ScoreProfile['private
 
 export function getViewerCapabilities(db: DatabaseSync, memberId: string, adminMemberIds: readonly string[] = []): ViewerCapabilities {
   const admin = adminMemberIds.includes(memberId);
-  return { canViewAllScores: admin, canManageRewards: admin, canRedeemRewards: admin };
+  // Prizes and redemptions are kept in the Google Sheet (維護者 2026-10-17); the app manages neither.
+  return { canViewAllScores: admin, canManageRewards: false, canRedeemRewards: false };
 }
 
 function friendshipExists(db: DatabaseSync, first: string, second: string): boolean {
@@ -571,14 +577,10 @@ export function getScoreProfile(db: DatabaseSync, viewerId: string, memberId: st
     band: calculateBand(earnedTotal, totals),
     months: monthPoints(db, memberId, buckets),
     chart: getScoreChart(db, memberId, { range: chartQuery.range, ...(chartQuery.anchor ? { anchor: chartQuery.anchor } : {}) }, today, anchorMonth),
-    permissions: { canEditTarget: viewerId === memberId, canRedeem: adminMemberIds.includes(viewerId) },
+    permissions: { canEditTarget: viewerId === memberId, canRedeem: false },
   };
   if (isPrivate) result.private = { redeemableBalance: walletBalance(db, memberId), targetReward: targetReward(db, memberId) };
   return result;
-}
-
-export function getRewards(db: DatabaseSync): Array<{ rewardId: string; name: string; costPoints: number; active: boolean; revision: number }> {
-  return (db.prepare('SELECT reward_id, name, cost_points, active, revision FROM rewards WHERE active = 1 ORDER BY cost_points, name, reward_id').all() as Array<{ reward_id: string; name: string; cost_points: number; active: number; revision: number }>).map((row) => ({ rewardId: row.reward_id, name: row.name, costPoints: row.cost_points, active: true, revision: row.revision }));
 }
 
 export function readMutationReceipt(db: DatabaseSync, actorMemberId: string, operationId: string, payload: unknown): { result: Record<string, unknown> } | GamificationError | null {
@@ -657,106 +659,6 @@ export function getRedemptions(db: DatabaseSync, memberId: string): Array<Record
     ...(row.reversed_at ? { reversedAt: row.reversed_at } : {}),
     ...(row.reversal_reason ? { reversalReason: row.reversal_reason } : {}),
   }));
-}
-
-/**
- * The single place a `rewards` row is born.
- *
- * Two paths create rewards now — a 輔導 adding one directly, and a 輔導 approving a student's
- * nomination — and a prize created down one path must be indistinguishable from the other. Sharing
- * the insert is what guarantees that rather than hoping two call sites stay in step.
- */
-export function insertReward(db: DatabaseSync, actorMemberId: string, name: string, costPoints: number, nowMs: number): Record<string, unknown> {
-  const rewardId = randomUUID();
-  db.prepare('INSERT INTO rewards(reward_id, name, cost_points, active, revision, created_at, updated_at, updated_by) VALUES(?,?,?,?,?,?,?,?)')
-    .run(rewardId, name.trim(), costPoints, 1, 1, nowMs, nowMs, actorMemberId);
-  return { rewardId, name: name.trim(), costPoints, active: true, revision: 1 };
-}
-
-export function createReward(db: DatabaseSync, actorMemberId: string, operationId: string, name: string, costPoints: number, options: GamificationDatabaseOptions = {}): Record<string, unknown> | GamificationError {
-  const payload = { name, costPoints };
-  const prior = readMutationReceipt(db, actorMemberId, operationId, payload);
-  if (prior) return 'result' in prior ? prior.result : prior;
-  if (!name.trim() || !Number.isSafeInteger(costPoints) || costPoints <= 0) return { status: 400, code: 'INVALID_REWARD' };
-  const now = nowMs(undefined, options.now ?? (() => new Date()));
-  return transaction(db, () => {
-    const result = insertReward(db, actorMemberId, name, costPoints, now);
-    const rewardId = result.rewardId as string;
-    writeMutationReceipt(db, actorMemberId, operationId, 'REWARD_CREATE', payload, 'reward', rewardId, result, now);
-    return result;
-  });
-}
-
-export function updateReward(db: DatabaseSync, actorMemberId: string, operationId: string, rewardId: string, input: { name?: string; costPoints?: number; active?: boolean; expectedRevision: number }, options: GamificationDatabaseOptions = {}): Record<string, unknown> | GamificationError {
-  const payload = { rewardId, ...input };
-  const prior = readMutationReceipt(db, actorMemberId, operationId, payload);
-  if (prior) return 'result' in prior ? prior.result : prior;
-  const now = nowMs(undefined, options.now ?? (() => new Date()));
-  return transaction(db, () => {
-    const current = db.prepare('SELECT name, cost_points, active, revision FROM rewards WHERE reward_id = ?').get(rewardId) as { name: string; cost_points: number; active: number; revision: number } | undefined;
-    if (!current) return { status: 404, code: 'REWARD_NOT_FOUND' };
-    if (current.revision !== input.expectedRevision) return { status: 409, code: 'REWARD_CHANGED', details: { revision: current.revision } };
-    const name = input.name === undefined ? current.name : input.name.trim();
-    const costPoints = input.costPoints === undefined ? current.cost_points : input.costPoints;
-    const active = input.active === undefined ? bool(current.active) : input.active;
-    if (!name || !Number.isSafeInteger(costPoints) || costPoints <= 0) return { status: 400, code: 'INVALID_REWARD' };
-    const revision = current.revision + 1;
-    db.prepare('UPDATE rewards SET name=?, cost_points=?, active=?, revision=?, updated_at=?, updated_by=? WHERE reward_id=?').run(name, costPoints, active ? 1 : 0, revision, now, actorMemberId, rewardId);
-    const result = { rewardId, name, costPoints, active, revision };
-    writeMutationReceipt(db, actorMemberId, operationId, 'REWARD_UPDATE', payload, 'reward', rewardId, result, now);
-    return result;
-  });
-}
-
-function currentRedemptionResult(db: DatabaseSync, cached: Record<string, unknown>): Record<string, unknown> {
-  const redemptionId = typeof cached.redemptionId === 'string' ? cached.redemptionId : null;
-  if (!redemptionId) return cached;
-  const current = db.prepare('SELECT member_id, status FROM redemptions WHERE redemption_id = ?').get(redemptionId) as { member_id: string; status: string } | undefined;
-  if (!current) return cached;
-  // A receipt is an idempotency record, not a frozen view of a mutable
-  // redemption. A later reversal must be visible when the original create
-  // operation is retried, while the wallet balance is read from the ledger.
-  return { ...cached, memberId: current.member_id, status: current.status, redeemableBalance: walletBalance(db, current.member_id) };
-}
-
-export function redeemReward(db: DatabaseSync, actorMemberId: string, input: { operationId: string; memberId: string; rewardId: string; expectedRewardRevision: number }, options: GamificationDatabaseOptions = {}): Record<string, unknown> | GamificationError {
-  const payload = { memberId: input.memberId, rewardId: input.rewardId, expectedRewardRevision: input.expectedRewardRevision };
-  const prior = readMutationReceipt(db, actorMemberId, input.operationId, payload);
-  if (prior) return 'result' in prior ? currentRedemptionResult(db, prior.result) : prior;
-  const now = nowMs(undefined, options.now ?? (() => new Date()));
-  return transaction(db, () => {
-    const reward = db.prepare('SELECT name, cost_points, active, revision FROM rewards WHERE reward_id = ?').get(input.rewardId) as { name: string; cost_points: number; active: number; revision: number } | undefined;
-    if (!reward || !bool(reward.active)) return { status: 409, code: 'REWARD_NOT_AVAILABLE' };
-    if (reward.revision !== input.expectedRewardRevision) return { status: 409, code: 'REWARD_CHANGED', details: { revision: reward.revision } };
-    if (!memberEnabled(db, input.memberId)) return { status: 404, code: 'MEMBER_NOT_ACCESSIBLE' };
-    const balance = walletBalance(db, input.memberId);
-    if (balance < reward.cost_points) return { status: 409, code: 'INSUFFICIENT_POINTS', details: { balance } };
-    const redemptionId = randomUUID();
-    db.prepare(`INSERT INTO redemptions(redemption_id, member_id, reward_id, reward_name_snapshot, cost_points_snapshot, reward_revision, status, confirmed_by, confirmed_at, operation_id)
-      VALUES(?,?,?,?,?,?,?,?,?,?)`).run(redemptionId, input.memberId, input.rewardId, reward.name, reward.cost_points, reward.revision, 'COMPLETED', actorMemberId, now, input.operationId);
-    db.prepare(`INSERT INTO wallet_entries(entry_id, member_id, kind, delta, redemption_id, operation_id, created_at) VALUES(?,?,?,?,?,?,?)`).run(randomUUID(), input.memberId, 'REDEMPTION_DEBIT', -reward.cost_points, redemptionId, input.operationId, now);
-    const result = { redemptionId, memberId: input.memberId, rewardId: input.rewardId, rewardName: reward.name, costPoints: reward.cost_points, status: 'COMPLETED', redeemableBalance: balance - reward.cost_points };
-    writeMutationReceipt(db, actorMemberId, input.operationId, 'REDEMPTION_CREATE', payload, 'redemption', redemptionId, result, now);
-    return result;
-  });
-}
-
-export function reverseRedemption(db: DatabaseSync, actorMemberId: string, redemptionId: string, operationId: string, reason: string, options: GamificationDatabaseOptions = {}): Record<string, unknown> | GamificationError {
-  const payload = { redemptionId, reason };
-  const prior = readMutationReceipt(db, actorMemberId, operationId, payload);
-  if (prior) return 'result' in prior ? prior.result : prior;
-  if (!reason.trim()) return { status: 400, code: 'REVERSAL_REASON_REQUIRED' };
-  const now = nowMs(undefined, options.now ?? (() => new Date()));
-  return transaction(db, () => {
-    const redemption = db.prepare('SELECT member_id, cost_points_snapshot, status FROM redemptions WHERE redemption_id = ?').get(redemptionId) as { member_id: string; cost_points_snapshot: number; status: string } | undefined;
-    if (!redemption) return { status: 404, code: 'REDEMPTION_NOT_FOUND' };
-    if (redemption.status === 'REVERSED') return { status: 409, code: 'REDEMPTION_ALREADY_REVERSED' };
-    db.prepare('UPDATE redemptions SET status=?, reversed_by=?, reversed_at=?, reversal_reason=?, reversal_operation_id=? WHERE redemption_id=? AND status=\'COMPLETED\'').run('REVERSED', actorMemberId, now, reason.trim(), operationId, redemptionId);
-    db.prepare(`INSERT INTO wallet_entries(entry_id, member_id, kind, delta, redemption_id, operation_id, created_at) VALUES(?,?,?,?,?,?,?)`).run(randomUUID(), redemption.member_id, 'REDEMPTION_REVERSAL', redemption.cost_points_snapshot, redemptionId, operationId, now);
-    const result = { redemptionId, memberId: redemption.member_id, status: 'REVERSED', redeemableBalance: walletBalance(db, redemption.member_id) };
-    writeMutationReceipt(db, actorMemberId, operationId, 'REDEMPTION_REVERSE', payload, 'redemption', redemptionId, result, now);
-    return result;
-  });
 }
 
 function completionFingerprint(input: CompletionMutationInput): string {

@@ -74,7 +74,7 @@ App 每天顯示當天該讀的經文段落，讀完按一下就完成打卡並�
 - 在另一支手機已經完成的日子，這支手機的按鈕顯示「已完成」但不能撤銷（沒有本機記錄可以撤銷，避免看起來能撤銷卻什麼都不會發生）（`finishedElsewhere`/`undoable`，`app/(tabs)/progress.tsx:536,565-573`，`CompletionTodayButton.tsx:25-26`）。
 
 ### 離線與同步失敗
-來源：`src/storage/outbox.ts`、`src/services/outboxRecovery.ts`、`src/services/gamificationPendingStore.ts`
+來源：`src/storage/outbox.ts`、`src/services/outboxRecovery.ts`
 
 - 完成或撤銷一律先寫進本機資料庫再嘗試送出：沒有網路或送出失敗時，畫面顯示「已記錄，等待同步」，按鈕仍是完成勾勾但標成待同步狀態（`SyncStatus = 'PENDING_SAVE'`，`completion.ts:3`）。
 - App 回到前景（從背景切回、或重新打開）時會自動重送一次；持續失敗時以 10 秒起、每次加倍、最多 60 秒的間隔背景重試（`createOutboxRecoveryController`，`outboxRecovery.ts:56-92`）。
@@ -186,11 +186,10 @@ App 每天顯示當天該讀的經文段落，讀完按一下就完成打卡並�
 | `tests/storage/outbox.test.ts` | 離線佇列的送出、失敗中止規則 |
 | `tests/services/outboxRecovery.test.ts` | 背景重試退避（10 秒起，加倍到 60 秒） |
 | `tests/services/useOutboxRecovery.test.ts` | App 回前景時掛上重試的 hook |
-| `tests/ui/gamificationPendingStore.test.ts` | 待送出操作的安全儲存（也覆蓋積分頁兌換/撤銷佇列） |
 
 ## 相關文件
 
-- `docs/design/reading-gamification-v1.md`：積分/獎品/好友原始設計規格（含讀經完成計分規則 CL04、CL05），只看資料模型與 API 細節，不要照抄成現況——實際功能已多出提名投票、社群進度等 v1 沒有的部分（詳見 `points.md`）。
+- `docs/design/reading-gamification-v1.md`：積分/獎品/好友原始設計規格（含讀經完成計分規則 CL04、CL05），只看資料模型與 API 細節，不要照抄成現況——實際功能已多出社群進度等 v1 沒有的部分（詳見 `points.md`）。
 - `docs/superpowers/plans/2026-09-29-ios-parity*.md`：iOS 移植計畫。
 
 ## 已知限制與待辦

@@ -28,6 +28,7 @@ import time
 from reminder_config import read_reminder_environment
 from line_config import read_line_environment
 from azure_speech_config import read_azure_speech_environment
+from apple_config import read_apple_environment
 from ai_runtime import read_ai_environment, read_committed_boundary_bytes
 from pinned_worktree import preflight_against_declared_pin
 
@@ -95,6 +96,10 @@ def launch(label):
         # The pastor's daily 靈修, one YYYYMMDD.txt a day, kept private outside git (server/devotional.ts).
         # A missing folder only means every day reads as 「還沒有上傳」.
         'QINGMU_DEVOTIONAL_DIR': str(PILOT / 'devotionals'),
+        # 主堂週刊 pages from the LINE group, newest 8 Sundays (server/bulletins.ts).
+        'QINGMU_BULLETIN_DIR': str(PILOT / 'bulletins'),
+        # 後台規則與文件: the back-office links, private ([{"name", "url"}]); missing lists nothing.
+        'QINGMU_ADMIN_LINKS_FILE': str(PILOT / 'admin-links.json'),
         # Estimating what a suggested prize costs uses the Claude CLI already installed for
         # this user. No path, no worker, and nominations behave exactly as they did before
         # any of this was built — which is also what every test sees, since none of them set it.
@@ -109,6 +114,9 @@ def launch(label):
     env.update(line_env)
     speech_env, speech_status = read_azure_speech_environment(PILOT / 'azure-speech-runtime-config.json')
     env.update(speech_env)
+    # One Apple key for Sign in with Apple (revocation on account deletion) and APNs (iPhone friend pushes).
+    apple_env, apple_status = read_apple_environment(PILOT / 'apple-runtime-config.json')
+    env.update(apple_env)
     forbidden = ['QINGMU_INVITE_SEED_FILE', 'QINGMU_GROUP_PROFILE_FILE', 'QINGMU_FIXTURE_ROSTER', 'QINGMU_DEV_TOKEN', 'EXPO_PUBLIC_QINGMU_DEV_TOKEN']
     assert not any(k in env for k in forbidden)
     node = Path(r'C:/Program Files/nodejs/node.exe')
@@ -124,7 +132,7 @@ def launch(label):
     return {'pid': child.pid, 'exit_code_at_probe': child.poll(), 'config_sha256': CFG_SHA,
             'commit': commit, 'node_sha256': digest(node), 'cwd': str(LIVE), 'env_names': sorted(env),
             'bootstrap_seeds_absent': True, 'fixture_off': True, 'stdout': str(stdout_path), 'stderr': str(stderr_path),
-            'secrets_printed': False, 'reminder_config_status': reminder_status, 'line_config_status': line_status, 'azure_speech_config_status': speech_status, 'ai_status': ai_status,
+            'secrets_printed': False, 'reminder_config_status': reminder_status, 'line_config_status': line_status, 'azure_speech_config_status': speech_status, 'apple_config_status': apple_status, 'ai_status': ai_status,
             # The committed blob hash, not the working-tree file's raw bytes: this is
             # exactly the value read_ai_environment() checked the pin against, and the
             # value a private-config update should ever be pinned to. Reporting the

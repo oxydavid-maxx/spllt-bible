@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -15,6 +15,9 @@ import { NO_UPDATE, type UpdateState } from '../../src/services/updateCheck';
 import { UpdateCard } from '../../src/ui/UpdateCard';
 import { installedVersionCode } from '../../src/ui/UpdatePrompt';
 import { theme } from '../../src/ui/Theme';
+import { useCongregation } from '../../src/ui/congregation/congregationStore';
+import { BulletinBoard } from '../../src/ui/bulletin/BulletinBoard';
+import { bulletinPageSource, fetchBulletins, type BulletinWeek } from '../../src/services/bulletinClient';
 
 /**
  * The one tab that does not need the backend.
@@ -27,7 +30,13 @@ import { theme } from '../../src/ui/Theme';
  * Links open in a Chrome Custom Tab rather than a WebView: the reader already keeps one of those
  * alive at around 170 MB, and Google's own viewers handle a deck or an audio file better than
  * anything built here would.
+ *
+ * 「青少｜主堂」 (維護者 2026-10-17): the tab opens on the member's own side and either can be chosen. 主堂 shows
+ * only the 週刊 kept from the church LINE group; that side does need the backend.
  */
+
+const SIDES = [{ value: 'youth', name: '青少' }, { value: 'main', name: '主堂' }] as const;
+type Side = typeof SIDES[number]['value'];
 
 export default function AnnouncementsScreen() {
   const [client] = useState(() => createAnnouncementClient({
@@ -86,13 +95,48 @@ export default function AnnouncementsScreen() {
   }, []);
   useFocusEffect(loadUpdate);
 
+  const congregation = useCongregation();
+  const [picked, setPicked] = useState<Side | null>(null);
+  const side: Side = picked ?? (congregation.value === 'main' ? 'main' : 'youth');
+  const apiBaseUrl = runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl;
+  const [bulletins, setBulletins] = useState<{ status: 'loading' | 'ready' | 'error'; weeks: BulletinWeek[] }>({ status: 'loading', weeks: [] });
+  const [bulletinRetry, setBulletinRetry] = useState(0);
+  const loadBulletins = useCallback(() => {
+    if (side !== 'main' || !session) return;
+    let active = true;
+    void fetchBulletins({ baseUrl: apiBaseUrl, token: session.sessionToken, memberId: session.memberId }).then((weeks) => {
+      if (active) setBulletins((now) => (weeks ? { status: 'ready', weeks } : { status: 'error', weeks: now.weeks }));
+    });
+    return () => { active = false; };
+  }, [side, apiBaseUrl, session?.sessionToken, session?.memberId, bulletinRetry]);
+  useFocusEffect(loadBulletins);
+
   return <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
     <View style={styles.toolbar}>
       <Text accessibilityRole="header" style={styles.title}>公告</Text>
       <AccountEntryButton />
     </View>
+    <View accessibilityRole="tablist" style={styles.sides}>
+      {SIDES.map((item) => <Pressable
+        key={item.value}
+        accessibilityRole="tab"
+        accessibilityLabel={item.name}
+        accessibilityState={{ selected: side === item.value }}
+        onPress={() => setPicked(item.value)}
+        style={[styles.side, side === item.value && styles.sideActive]}
+      >
+        <Text style={[styles.sideText, side === item.value && styles.sideTextActive]}>{item.name}</Text>
+      </Pressable>)}
+    </View>
     <UpdateCard state={update} onUpdate={() => { void startAppUpdate(update, (url) => { void Linking.openURL(url).catch(() => undefined); }); }} />
-    {announcement
+    {side === 'main'
+      ? <BulletinBoard
+          weeks={bulletins.weeks}
+          status={bulletins.status}
+          sourceFor={(date, index) => bulletinPageSource(apiBaseUrl, session?.sessionToken ?? '', date, index)}
+          onRetry={() => { setBulletins((now) => ({ ...now, status: 'loading' })); setBulletinRetry((count) => count + 1); }}
+        />
+      : announcement
       ? <AnnouncementBoard
           announcement={announcement}
           stale={stale}
@@ -107,5 +151,10 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.background },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm },
   title: { color: theme.colors.ink, fontSize: theme.type.title.size, fontWeight: '800' },
+  sides: { flexDirection: 'row', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.sm },
+  side: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface },
+  sideActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+  sideText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  sideTextActive: { color: theme.colors.white },
   empty: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md },
 });

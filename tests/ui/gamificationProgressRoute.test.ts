@@ -5,7 +5,7 @@ vi.mock('react-native-safe-area-context', () => ({ SafeAreaProvider: (props: any
 
 const { primitive, api, auth, ApiError, appListeners } = vi.hoisted(() => ({
   primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children),
-  api: { getCapabilities: vi.fn(async () => ({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true })), getProfile: vi.fn(async (memberId: string, scope: string = 'me') => ({ memberId, displayName: memberId === 'self' ? '自己' : '好友', earnedTotal: 4, band: 2, months: [{ month: '2026-09', earnedPoints: 4 }], permissions: { canEditTarget: memberId === 'self', canRedeem: true }, ...(scope !== 'friends' ? { private: { redeemableBalance: 4, targetReward: null } } : {}) })), getPeople: vi.fn(async () => [{ memberId: 'friend', displayName: '好友', earnedTotal: 3 }]), getRewards: vi.fn(async () => [{ rewardId: 'reward-1', name: '飲料', costPoints: 2, active: true, revision: 1 }]), setRewardTarget: vi.fn(async () => undefined), getMyRedemptions: vi.fn(async () => []), getAdminRedemptions: vi.fn(async () => [{ redemptionId: 'r1', memberId: 'friend', rewardId: 'reward-1', rewardName: '飲料', costPoints: 2, status: 'COMPLETED', confirmedAt: 10 }]), getPendingOperations: vi.fn(async (): Promise<any> => ({ ownerMemberId: 'self', redemptions: [], reversals: [] })), retryPendingRedemption: vi.fn(async () => ({})), retryPendingReversal: vi.fn(async () => undefined), removeFriend: vi.fn(async () => undefined), redeem: vi.fn(async () => ({})), reverseRedemption: vi.fn(async () => undefined) },
+  api: { getCapabilities: vi.fn(async () => ({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true })), getProfile: vi.fn(async (memberId: string, scope: string = 'me') => ({ memberId, displayName: memberId === 'self' ? '自己' : '好友', earnedTotal: 4, band: 2, months: [{ month: '2026-09', earnedPoints: 4 }], permissions: { canEditTarget: memberId === 'self', canRedeem: true }, ...(scope !== 'friends' ? { private: { redeemableBalance: 4, targetReward: null } } : {}) })), getPeople: vi.fn(async () => [{ memberId: 'friend', displayName: '好友', earnedTotal: 3 }]), getRewards: vi.fn(async () => [{ rewardId: 'reward-1', name: '飲料', costPoints: 2, active: true, revision: 1 }]), setRewardTarget: vi.fn(async () => undefined), getMyRedemptions: vi.fn(async () => []), removeFriend: vi.fn(async () => undefined) },
   auth: { status: 'signed-in', session: { memberId: 'self', sessionToken: 'token' }, profile: null, profileStatus: 'ready', epoch: 1 },
   ApiError: class extends Error { retryable = true; userMessage = 'error'; },
   appListeners: [] as Array<(state: string) => void>,
@@ -62,7 +62,7 @@ describe('progress gamification route', () => {
     const alternative = { rewardId: 'reward-2', name: '電影票', costPoints: 5, active: true, revision: 1 };
     api.getProfile.mockResolvedValueOnce({ memberId: 'self', displayName: '自己', earnedTotal: 4, band: 2, months: [], private: { redeemableBalance: 3, targetReward: current }, permissions: { canEditTarget: true, canRedeem: false } } as any);
     api.getRewards.mockResolvedValueOnce([current, alternative]).mockResolvedValueOnce([current, alternative]);
-    api.setRewardTarget.mockClear(); api.redeem.mockClear();
+    api.setRewardTarget.mockClear();
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
     const profile = renderer.root.findByType('ScoreProfile' as any);
@@ -74,7 +74,6 @@ describe('progress gamification route', () => {
     expect(controls.props.rewards).toEqual([current, alternative]);
     await act(async () => { controls.props.onSelect('reward-2'); await Promise.resolve(); await Promise.resolve(); });
     expect(api.setRewardTarget).toHaveBeenCalledWith('reward-2');
-    expect(api.redeem).not.toHaveBeenCalled();
   });
 
   it('reloads the selected profile with the requested chart period through the same scope', async () => {
@@ -125,23 +124,18 @@ describe('progress gamification route', () => {
     expect(api.removeFriend).toHaveBeenCalledWith('friend');
   });
 
-  it('requires admin unlock before the all scope and reaches redeem/reverse actions', async () => {
+  // Prizes and redemptions are kept in the Google Sheet (維護者 2026-10-17): 全體 shows scores and nothing to redeem.
+  it('requires admin unlock before the all scope, and offers no redeem, record or prize management there', async () => {
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
     await act(async () => { requestOpenAllScores(); });
     expect(api.getPeople).toHaveBeenCalledWith('all');
     const list = renderer.root.findByType('PeopleList' as any);
     await act(async () => { list.props.onSelect(list.props.people[0]); });
-    await act(async () => { renderer.root.findByType('ScoreProfile' as any).props.onOpenActions(); });
-    const controls = renderer.root.findByType('RewardControls' as any);
-    await act(async () => { controls.props.onRedeem('reward-1'); });
-    expect(api.redeem).toHaveBeenCalledWith({ memberId: 'friend', rewardId: 'reward-1', expectedRewardRevision: 1 });
+    expect(renderer.root.findByType('ScoreProfile' as any).props.onOpenActions).toBeUndefined();
     await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); });
-    const recordsAction = renderer.root.findByType('ActionSheet' as any).props.actions.find((action: any) => action.label === '查看領取紀錄');
-    await act(async () => { await recordsAction.onPress(); });
-    const redemptionList = renderer.root.findByType('RedemptionList' as any);
-    await act(async () => { redemptionList.props.onReverse('r1', '現場更正'); });
-    expect(api.reverseRedemption).toHaveBeenCalledWith('r1', '現場更正');
+    const labels = renderer.root.findByType('ActionSheet' as any).props.actions.map((action: any) => action.label);
+    expect(labels).toEqual(['我的好友 QR', '掃描好友 QR', '我的領取紀錄']);
   });
 
   it('opens the claimed friend profile immediately from the scanner callback', async () => {
@@ -153,61 +147,6 @@ describe('progress gamification route', () => {
     await act(async () => { renderer.root.findByType('FriendQrPanel' as any).props.onClaimed('friend'); });
     expect(api.getProfile).toHaveBeenCalledWith('friend', 'friends', expect.stringMatching(/^\d{4}-\d{2}$/));
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.private).toBeUndefined();
-  });
-
-  it('keeps the same redemption operation available from the visible retry action after timeout', async () => {
-    api.redeem.mockRejectedValueOnce(new ApiError('timeout')).mockResolvedValueOnce({});
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { requestOpenAllScores(); });
-    const list = renderer.root.findByType('PeopleList' as any);
-    await act(async () => { list.props.onSelect(list.props.people[0]); });
-    await act(async () => { renderer.root.findByType('ScoreProfile' as any).props.onOpenActions(); });
-    await act(async () => { renderer.root.findByType('RewardControls' as any).props.onRedeem('reward-1'); });
-    const retry = renderer.root.findByProps({ accessibilityLabel: '重試尚未確認兌換' });
-    await act(async () => { retry.props.onPress(); });
-    expect(api.redeem).toHaveBeenCalledTimes(2);
-    const redeemCalls = api.redeem.mock.calls as unknown as Array<[unknown]>;
-    expect(redeemCalls[0][0]).toEqual(redeemCalls[1][0]);
-  });
-
-  it('reopens saved pending operations after admin unlock and retries the original stored request', async () => {
-    api.getPendingOperations.mockResolvedValueOnce({
-      ownerMemberId: 'self',
-      redemptions: [{ operationId: '11111111-1111-4111-8111-111111111111', memberId: 'friend', rewardId: 'reward-original', expectedRewardRevision: 7 }],
-      reversals: [{ operationId: '22222222-2222-4222-8222-222222222222', redemptionId: 'r-old', reason: '原始理由' }],
-    });
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { requestOpenAllScores(); });
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); });
-    const pendingAction = renderer.root.findByType('ActionSheet' as any).props.actions.find((action: any) => action.label === '尚未確認操作 (2)');
-    await act(async () => { pendingAction.onPress(); });
-    const retryRedemption = renderer.root.findByProps({ accessibilityLabel: '重試尚未確認兌換 reward-original' });
-    const retryReversal = renderer.root.findByProps({ accessibilityLabel: '重試尚未確認撤銷 r-old' });
-    await act(async () => { retryRedemption.props.onPress(); retryReversal.props.onPress(); });
-    expect(api.retryPendingRedemption).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111');
-    expect(api.retryPendingReversal).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222');
-  });
-
-  it('clears pending recovery on background and reloads it only after a fresh admin unlock', async () => {
-    api.getPendingOperations.mockResolvedValue({ ownerMemberId: 'self', redemptions: [{ operationId: '11111111-1111-4111-8111-111111111111', memberId: 'friend', rewardId: 'reward-1', expectedRewardRevision: 1 }], reversals: [] });
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    const openMenu = async () => { await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); }); };
-    await openMenu();
-    expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label.startsWith('尚未確認操作'))).toBe(false);
-    await act(async () => { requestOpenAllScores(); });
-    await openMenu();
-    expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label === '尚未確認操作 (1)')).toBe(true);
-
-    await act(async () => { [...appListeners].forEach((listener) => listener('background')); [...appListeners].forEach((listener) => listener('active')); await Promise.resolve(); });
-    await openMenu();
-    expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label.startsWith('尚未確認操作'))).toBe(false);
-    await act(async () => { requestOpenAllScores(); });
-    await openMenu();
-    expect(renderer.root.findByType('ActionSheet' as any).props.actions.some((action: any) => action.label === '尚未確認操作 (1)')).toBe(true);
-    expect(api.getPendingOperations).toHaveBeenCalledTimes(2);
   });
 
   it('ignores a late profile response from the first person after a rapid second selection', async () => {
@@ -235,24 +174,5 @@ describe('progress gamification route', () => {
     await act(async () => { await action.onPress(); });
     expect(api.getMyRedemptions).toHaveBeenCalledTimes(1);
     expect(renderer.root.findByType('ActionSheet' as any).props.title).toBe('領取紀錄');
-  });
-
-  it('does not resurrect a redemption retry after a late timeout resolves while locked', async () => {
-    (api.getProfile as any).mockImplementation(async (memberId: string) => ({ memberId, displayName: memberId === 'self' ? '自己' : '好友', earnedTotal: 4, band: 2, months: [{ month: '2026-09', earnedPoints: 4 }], permissions: { canEditTarget: false, canRedeem: true }, private: { redeemableBalance: 4, targetReward: null } }));
-    let rejectRedeem!: (error: unknown) => void;
-    api.redeem.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRedeem = reject; }));
-    let renderer!: TestRenderer.ReactTestRenderer;
-    await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { requestOpenAllScores(); });
-    const list = renderer.root.findByType('PeopleList' as any);
-    await act(async () => { list.props.onSelect(list.props.people[0]); });
-    await act(async () => { renderer.root.findByType('ScoreProfile' as any).props.onOpenActions(); });
-    await act(async () => { renderer.root.findByType('RewardControls' as any).props.onRedeem('reward-1'); });
-    await act(async () => { [...appListeners].forEach((listener) => listener('background')); rejectRedeem(new ApiError('timeout')); });
-    await act(async () => { [...appListeners].forEach((listener) => listener('active')); await Promise.resolve(); });
-    await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); });
-    const recordAction = renderer.root.findByType('ActionSheet' as any).props.actions.find((action: any) => action.label === '我的領取紀錄');
-    await act(async () => { await recordAction.onPress(); });
-    expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '重試尚未確認兌換')).toHaveLength(0);
   });
 });

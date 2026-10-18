@@ -2,7 +2,7 @@ import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { api, auth, nav, store, appListeners, storageGet, cameraPermission, requestCameraPermission, platform, launchScanner, scannerListeners, cameraScanner } = vi.hoisted(() => ({
-  api: Object.fromEntries(['getCapabilities', 'getProfile', 'getPeople', 'getRewards', 'getNominations', 'getCommunityProgress', 'getPendingOperations', 'setNominationVote', 'nominateReward', 'setRewardTarget', 'claimFriendQr', 'cancelReads'].map((name) => [name, vi.fn()])),
+  api: Object.fromEntries(['getCapabilities', 'getProfile', 'getPeople', 'getRewards', 'getCommunityProgress', 'getMyRedemptions', 'setRewardTarget', 'claimFriendQr', 'cancelReads'].map((name) => [name, vi.fn()])),
   auth: { status: 'signed-in' as 'signed-in' | 'signed-out', session: { memberId: 'pilot:qa', sessionToken: 'qa' } as { memberId: string; sessionToken: string } | null },
   nav: { focused: true }, store: new Map<string, string>(), appListeners: [] as Array<(state: string) => void>, storageGet: vi.fn(),
   cameraPermission: { granted: false, status: 'undetermined' }, requestCameraPermission: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn() }));
 vi.mock('react-native', () => ({ Platform: platform, AppState: { currentState: 'active', addEventListener: (_: string, callback: (state: string) => void) => { appListeners.push(callback); return { remove: () => { appListeners.splice(appListeners.indexOf(callback), 1); } }; } }, ActivityIndicator: (p: any) => React.createElement('ActivityIndicator', p), Pressable: (p: any) => React.createElement('Pressable', p, p.children), View: (p: any) => React.createElement('View', p, p.children), Text: (p: any) => React.createElement('Text', p, p.children), TextInput: (p: any) => React.createElement('TextInput', p), StyleSheet: { create: (x: any) => x } }));
 vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
-vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => ({ getDevotionDates: async () => [], setDevotion: async () => undefined, getGroupReading: async () => { throw new Error('not served'); }, getScoreHistory: async () => { throw new Error('not served'); }, getDevotional: async () => null }) }));
+vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => ({ getCongregation: async () => 'youth', getDevotionDates: async () => [], setDevotion: async () => undefined, getGroupReading: async () => { throw new Error('not served'); }, getScoreHistory: async () => { throw new Error('not served'); }, getDevotional: async () => null }) }));
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => any) => { React.useEffect(() => nav.focused ? callback() : undefined, [callback, nav.focused]); } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: (key: string) => storageGet(key), setItemAsync: async (key: string, value: string) => { if (!/^[\w.-]+$/.test(key)) throw Error('invalid key'); store.set(key, value); } }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn() }));
@@ -27,8 +27,8 @@ vi.mock('../../src/services/gamificationApiClient', () => ({ createGamificationA
 vi.mock('../../src/services/adminUnlockGuard', () => ({ createNativeAdminAuthenticator: () => null, createAdminUnlockGuard: () => ({ state: 'locked', clear() { this.state = 'locked'; }, async unlock() { this.state = 'unlocked'; return true; } }) }));
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => null }));
 vi.mock('../../src/ui/AnnouncementBoard', () => ({ AnnouncementBoard: (p: any) => React.createElement('AnnouncementBoard', p) }));
-// The real ScoreProfile renders its slots; the nomination banner lives in `lead` since the 0.5.18 layout.
-vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (p: any) => React.createElement('ScoreProfile', p, p.lead, p.nominations) }));
+// The real ScoreProfile renders its slots, including `lead`.
+vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (p: any) => React.createElement('ScoreProfile', p, p.lead) }));
 vi.mock('../../src/ui/gamification/PeopleList', () => ({ PeopleList: (p: any) => React.createElement('PeopleList', p) }));
 vi.mock('expo-camera', () => { const CameraView = Object.assign((props: any) => React.createElement('CameraView', props), { launchScanner, onModernBarcodeScanned: (listener: (event: { data: string }) => void) => { scannerListeners.push(listener); return { remove: () => { scannerListeners.splice(scannerListeners.indexOf(listener), 1); } }; } }); Object.defineProperty(CameraView, 'isModernBarcodeScannerAvailable', { get: () => cameraScanner.available }); return { CameraView, useCameraPermissions: () => [cameraPermission, requestCameraPermission] }; });
 vi.mock('react-native-qrcode-svg', () => ({ default: () => null }));
@@ -38,11 +38,9 @@ import { requestOpenAllScores } from '../../src/services/allScoresRequest';
 import ProgressScreen from '../../app/(tabs)/progress';
 import AnnouncementsScreen from '../../app/(tabs)/announcements';
 import { createProfileCache } from '../../src/services/profileCache';
-import { NominationBoard } from '../../src/ui/gamification/NominationBoard';
 
 const deferred = <T,>() => { let resolve!: (value: T) => void; let reject!: (reason: unknown) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const profile = (memberId = 'pilot:qa') => ({ memberId, displayName: memberId, earnedTotal: 3, band: null, months: [], permissions: { canEditTarget: true, canRedeem: false }, private: { redeemableBalance: 3, targetReward: null } });
-const board = () => ({ round: { roundId: 'r1', title: 'QA輪', phase: 'VOTING', closesAt: Date.now() + 1000000 }, nominations: [{ nominationId: 'n1', name: 'QA獎品', displayName: 'QA', status: 'OPEN', voted: false, voteCount: 0, mine: false, revision: 1 }], votesLeft: 3, votesPerMember: 3 });
 const trees: ReactTestRenderer[] = [];
 async function render(Component: React.ComponentType) { let tree!: ReactTestRenderer; await act(async () => { tree = create(React.createElement(Component)); }); trees.push(tree); return tree; }
 const press = async (tree: ReactTestRenderer, label: string) => { await act(async () => { tree.root.findAll((n) => String(n.type) === 'Pressable' && n.props.accessibilityLabel === label)[0].props.onPress(); }); };
@@ -52,7 +50,7 @@ beforeEach(() => {
   vi.clearAllMocks(); nav.focused = true; store.clear(); storageGet.mockImplementation(async (key) => store.get(key) ?? null);
   api.cancelReads.mockReset();
   cameraPermission.granted = false; requestCameraPermission.mockReset(); platform.OS = 'ios'; launchScanner.mockReset(); scannerListeners.length = 0; cameraScanner.available = true; api.claimFriendQr.mockReset();
-  api.getCapabilities.mockResolvedValue({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true }); api.getProfile.mockImplementation(async (id: string) => profile(id)); api.getPeople.mockResolvedValue([{ memberId: 'friend', displayName: 'Friend', earnedTotal: 2 }]); api.getRewards.mockResolvedValue([]); api.getNominations.mockImplementation(async () => board()); api.getCommunityProgress.mockResolvedValue({ books: [], personDays: null, currentBook: null }); api.getPendingOperations.mockResolvedValue({ redemptions: [], reversals: [] }); api.setNominationVote.mockResolvedValue(undefined); api.nominateReward.mockResolvedValue(undefined);
+  api.getCapabilities.mockResolvedValue({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true }); api.getProfile.mockImplementation(async (id: string) => profile(id)); api.getPeople.mockResolvedValue([{ memberId: 'friend', displayName: 'Friend', earnedTotal: 2 }]); api.getRewards.mockResolvedValue([]); api.getCommunityProgress.mockResolvedValue({ books: [], personDays: null, currentBook: null }); api.getMyRedemptions.mockResolvedValue([]);
 });
 afterEach(async () => { await act(async () => { for (const tree of trees.splice(0)) tree.unmount(); }); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -63,7 +61,6 @@ describe('focused progress loading', () => {
     const tree = await render(ProgressScreen);
     expect(tree.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(3);
     expect(api.getProfile).toHaveBeenCalledTimes(1);
-    expect(api.getNominations).not.toHaveBeenCalled();
     await act(async () => remote.resolve({ ...profile(), earnedTotal: 5 }));
     expect(tree.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(5);
   });
@@ -88,19 +85,19 @@ describe('focused progress loading', () => {
     await act(async () => { changeAppState('background'); changeAppState('active'); });
     expect(api.getProfile).toHaveBeenCalledTimes(before);
   });
-  it('does not reopen the admin rewards sheet from a request completed after blur', async () => {
-    const tree = await render(ProgressScreen); const rewards = deferred<any>(); api.getRewards.mockReturnValueOnce(rewards.promise);
+  it('does not reopen the records sheet from a request completed after blur', async () => {
+    const tree = await render(ProgressScreen); const records = deferred<any>(); api.getMyRedemptions.mockReturnValueOnce(records.promise);
     await press(tree, '開啟積分操作');
-    await act(async () => { tree.root.findByType('ActionSheet' as any).props.actions.find((a: any) => a.label === '管理獎品').onPress(); });
+    await act(async () => { tree.root.findByType('ActionSheet' as any).props.actions.find((a: any) => a.label === '我的領取紀錄').onPress(); });
     nav.focused = false; await act(async () => tree.update(React.createElement(ProgressScreen)));
-    await act(async () => rewards.resolve([]));
+    await act(async () => records.resolve([]));
     expect(tree.root.findAllByType('ActionSheet' as any)).toHaveLength(0);
   });
   it('does not reopen a menu request after the user closes that menu', async () => {
-    const tree = await render(ProgressScreen); const rewards = deferred<any>(); api.getRewards.mockReturnValueOnce(rewards.promise);
+    const tree = await render(ProgressScreen); const records = deferred<any>(); api.getMyRedemptions.mockReturnValueOnce(records.promise);
     await press(tree, '開啟積分操作');
-    await act(async () => { const sheet = tree.root.findByType('ActionSheet' as any); sheet.props.actions.find((a: any) => a.label === '管理獎品').onPress(); sheet.props.onClose(); });
-    await act(async () => rewards.resolve([]));
+    await act(async () => { const sheet = tree.root.findByType('ActionSheet' as any); sheet.props.actions.find((a: any) => a.label === '我的領取紀錄').onPress(); sheet.props.onClose(); });
+    await act(async () => records.resolve([]));
     expect(tree.root.findAllByType('ActionSheet' as any)).toHaveLength(0);
   });
   it('does not apply a target mutation failure after its screen has blurred', async () => {
@@ -120,13 +117,6 @@ describe('focused progress loading', () => {
     await act(async () => warm.resolve({ ...profile(), chart: { ...chart, range: 'week' } }));
     expect(api.getProfile).toHaveBeenCalledTimes(2);
   });
-  it('does not lose the initial nomination board when a chart range changes during its read', async () => {
-    const pendingBoard = deferred<any>(); api.getNominations.mockReturnValue(pendingBoard.promise);
-    const tree = await render(ProgressScreen);
-    await act(async () => tree.root.findByType('ScoreProfile' as any).props.onChartChange({ range: 'week' }));
-    await act(async () => pendingBoard.resolve(board()));
-    expect(tree.root.findAll((node) => node.props.accessibilityLabel === 'QA輪，我要提案').length).toBeGreaterThan(0);
-  });
   it('keeps the pending account capabilities read alive through an early scope change, then honours a waiting 全體 request', async () => {
     const capabilities = deferred<any>(); let started = false;
     api.getCapabilities.mockImplementationOnce(() => { started = true; return capabilities.promise; });
@@ -141,84 +131,6 @@ describe('focused progress loading', () => {
     await act(async () => capabilities.resolve({ canViewAllScores: true, canManageRewards: true, canRedeemRewards: true }));
     expect(api.getPeople).toHaveBeenCalledWith('all');
     expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '全體 (管理)' && node.props.accessibilityState?.selected)).toHaveLength(1);
-  });
-});
-
-describe('nomination action feedback', () => {
-  async function openBoard(scope = 'me') {
-    const tree = await render(ProgressScreen);
-    if (scope === 'all') await act(async () => { requestOpenAllScores(); });
-    await press(tree, '開啟積分操作');
-    await act(async () => tree.root.findByType('ActionSheet' as any).props.actions.find((a: any) => a.label === '獎品提案').onPress());
-    return tree;
-  }
-  it('refreshes in all scope without blanking the current board and ignores duplicate active actions', async () => {
-    const tree = await openBoard('all'); const mutation = deferred<void>(); api.setNominationVote.mockReturnValue(mutation.promise);
-    const before = api.getNominations.mock.calls.length;
-    await act(async () => { const fn = tree.root.findByType(NominationBoard).props.onVote; void fn('n1', true); void fn('n1', true); });
-    expect(api.setNominationVote).toHaveBeenCalledTimes(1);
-    expect(tree.root.findByType(NominationBoard).props.nominations).toHaveLength(1);
-    await act(async () => mutation.resolve());
-    expect(api.getNominations.mock.calls.length).toBeGreaterThan(before);
-    expect(tree.root.findByType(NominationBoard).props.round?.roundId).toBe('r1');
-  });
-  it('uses a fresh real-client GET after a vote while an older poll body is still pending', async () => {
-    vi.useFakeTimers();
-    const { createGamificationApiClient } = await vi.importActual<typeof import('../../src/services/gamificationApiClient')>('../../src/services/gamificationApiClient');
-    const staleBody = deferred<any>(); let getCount = 0; let writeCount = 0;
-    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      if (init?.method === 'PUT') { writeCount++; return new Response('{}'); }
-      getCount++;
-      if (getCount === 3) return { ok: true, status: 200, json: () => staleBody.promise } as Response;
-      const value = board();
-      if (writeCount) { value.votesLeft = 2; value.nominations[0].voted = true; value.nominations[0].voteCount = 1; }
-      return new Response(JSON.stringify(value));
-    });
-    const real = createGamificationApiClient({ baseUrl: 'https://qa.invalid', token: 'qa', memberId: 'pilot:qa', fetchImpl });
-    api.getNominations.mockImplementation(() => real.getNominations());
-    api.setNominationVote.mockImplementation((id, voting) => real.setNominationVote(id, voting));
-    api.cancelReads.mockImplementation((path?: string) => real.cancelReads(path));
-    const tree = await openBoard();
-    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
-    expect(getCount).toBe(3);
-    await act(async () => { void tree.root.findByType(NominationBoard).props.onVote('n1', true); });
-    expect(writeCount).toBe(1);
-    expect(getCount).toBe(4);
-    expect(tree.root.findByType(NominationBoard).props.votesLeft).toBe(2);
-    expect(tree.root.findByType(NominationBoard).props.nominations[0].voted).toBe(true);
-    await act(async () => staleBody.resolve(board()));
-    expect(tree.root.findByType(NominationBoard).props.nominations[0].voted).toBe(true);
-  }, 20_000); // several real-client round trips; the 5 s default ran out on a loaded machine
-  it.each(['chart', 'scope'])('finishes one nomination mutation after the sheet closes and the %s changes', async (change) => {
-    const tree = await openBoard(); const mutation = deferred<void>(); api.setNominationVote.mockReturnValueOnce(mutation.promise);
-    await act(async () => { void tree.root.findByType(NominationBoard).props.onVote('n1', true); });
-    await act(async () => tree.root.findByType('ActionSheet' as any).props.onClose());
-    if (change === 'chart') await act(async () => tree.root.findByType('ScoreProfile' as any).props.onChartChange({ range: 'week' }));
-    else await press(tree, '好友');
-    await press(tree, '開啟積分操作');
-    await act(async () => tree.root.findByType('ActionSheet' as any).props.actions.find((action: any) => action.label === '獎品提案').onPress());
-    await act(async () => { void tree.root.findByType(NominationBoard).props.onVote('n1', true); });
-    expect(api.setNominationVote).toHaveBeenCalledTimes(1);
-    api.getNominations.mockResolvedValue({ ...board(), votesLeft: 2, nominations: [{ ...board().nominations[0], voted: true }] });
-    await act(async () => mutation.resolve());
-    expect(tree.root.findByType(NominationBoard).props.busy).toBe(false);
-    expect(tree.root.findByType(NominationBoard).props.nominations[0].voted).toBe(true);
-  });
-  it('shows rejected mutation feedback inside the sheet and preserves the submitted draft', async () => {
-    const tree = await openBoard(); api.nominateReward.mockRejectedValueOnce(Error('offline'));
-    await act(async () => tree.root.findAll((n) => String(n.type) === 'TextInput' && n.props.accessibilityLabel === '獎品名稱')[0].props.onChangeText('保留文字'));
-    // Since 0.5.18 an idea needs its 多少/多久 before it can be sent.
-    await act(async () => tree.root.findAll((n) => String(n.type) === 'TextInput' && n.props.accessibilityLabel === '多少或多久')[0].props.onChangeText('1 小時'));
-    await press(tree, '提名獎品');
-    const sheet = tree.root.findByType('ActionSheet' as any);
-    expect(sheet.findAll((n) => String(n.type) === 'Text' && n.props.accessibilityRole === 'alert').length).toBeGreaterThan(0);
-    expect(tree.root.findAll((n) => String(n.type) === 'TextInput' && n.props.accessibilityLabel === '獎品名稱')[0].props.value).toBe('保留文字');
-    const beforeRetry = api.getNominations.mock.calls.length;
-    await press(tree, '重新載入獎品提案');
-    expect(api.getNominations.mock.calls.length).toBeGreaterThan(beforeRetry);
-    expect(api.nominateReward).toHaveBeenCalledTimes(1); // Refresh never replays an ambiguous mutation.
-    await press(tree, '提名獎品');
-    expect(tree.root.findAll((n) => String(n.type) === 'TextInput' && n.props.accessibilityLabel === '獎品名稱')[0].props.value).toBe('');
   });
 });
 

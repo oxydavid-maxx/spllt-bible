@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { createDatabase } from '../../server/db';
 import { seedReadingDays } from '../../server/gamification';
+import { applyRewardSheet } from '../../server/rewardSheet';
 import { createApiHandler } from '../../server/routes';
 
 const databases: Array<{ close: () => void }> = [];
@@ -51,9 +52,8 @@ describe('gamification v1 API', () => {
     expect(complete.body).toMatchObject({ redeemableBalance: 1, earnedTotal: 1 });
     expect(database.db.prepare('SELECT amount FROM daily_point_entitlements WHERE member_id=? AND task_date=?').get('member-self', '2026-09-08')).toEqual({ amount: 1 });
 
-    const reward = await configuredApi({ method: 'POST', url: '/api/admin/rewards', headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID(), name: '飲料', costPoints: 1 }) });
-    const redemption = await configuredApi({ method: 'POST', url: '/api/admin/redemptions', headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID(), memberId: 'member-self', rewardId: reward.body.rewardId, expectedRewardRevision: 1 }) });
-    expect(redemption.status).toBe(201);
+    // The point is spent on paper and written into the prize sheet (維護者 2026-10-17).
+    applyRewardSheet(database.db, { youth: { rewards: [], redemptions: [{ row: 2, date: '2026-09-14', name: '小明', reward: '飲料', points: 1 }] } }, '2026-09-14T04:00:00.000Z');
     const spentUndo = await configuredApi({ method: 'PUT', url: '/api/me/completions/church-2026-09/2026-09-08', headers: headers('member-self'), body: JSON.stringify({ operation_id: 'opaque-legacy-undo', expected_revision: 1, status: 'NOT_COMPLETED' }) });
     expect(spentUndo.status).toBe(409);
     expect(spentUndo.body).toMatchObject({ error: { code: 'POINTS_ALREADY_SPENT' } });
@@ -141,33 +141,15 @@ describe('gamification v1 API', () => {
     expect(database.db.prepare('SELECT COUNT(*) AS count FROM friendships').get()).toEqual({ count: 0 });
   });
 
-  it('supports reward target, admin redemption idempotency, and one reversal', async () => {
+  it('keeps a reward target apart from the wallet', async () => {
     const { api, database, headers } = setup();
-    const reward = await api({ method: 'POST', url: '/api/admin/rewards', headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID(), name: '飲料', costPoints: 1 }) });
-    expect(reward.status).toBe(201);
-    const rewardId = String(reward.body.rewardId);
+    database.db.prepare("INSERT INTO rewards(reward_id, name, cost_points, active, revision, created_at, updated_at, updated_by) VALUES('drink', '飲料', 1, 1, 1, 0, 0, 'member-admin')").run();
     const complete = await api({ method: 'PUT', url: '/api/me/completions/church-2026-09/2026-09-08', headers: headers('member-self'), body: JSON.stringify({ operation_id: randomUUID(), expected_revision: 0, status: 'COMPLETED' }) });
     expect(complete.status).toBe(200);
     const walletBeforeTarget = database.db.prepare('SELECT COALESCE(SUM(delta), 0) AS total FROM wallet_entries WHERE member_id=?').get('member-self');
-    const target = await api({ method: 'PUT', url: '/api/me/reward-target', headers: headers('member-self'), body: JSON.stringify({ rewardId }) });
+    const target = await api({ method: 'PUT', url: '/api/me/reward-target', headers: headers('member-self'), body: JSON.stringify({ rewardId: 'drink' }) });
     expect(target.status).toBe(200);
     expect(database.db.prepare('SELECT COALESCE(SUM(delta), 0) AS total FROM wallet_entries WHERE member_id=?').get('member-self')).toEqual(walletBeforeTarget);
-    const operationId = randomUUID();
-    const redeemBody = { operationId, memberId: 'member-self', rewardId, expectedRewardRevision: 1 };
-    const redeem = await api({ method: 'POST', url: '/api/admin/redemptions', headers: headers('member-admin'), body: JSON.stringify(redeemBody) });
-    const replay = await api({ method: 'POST', url: '/api/admin/redemptions', headers: headers('member-admin'), body: JSON.stringify(redeemBody) });
-    expect(redeem.status).toBe(201);
-    expect(replay.status).toBe(200);
-    expect(database.db.prepare('SELECT COUNT(*) AS count FROM redemptions').get()).toEqual({ count: 1 });
-    const redemptionId = String(redeem.body.redemptionId);
-    const reversed = await api({ method: 'POST', url: `/api/admin/redemptions/${redemptionId}/reverse`, headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID(), reason: '現場更正' }) });
-    const replayAfterReverse = await api({ method: 'POST', url: '/api/admin/redemptions', headers: headers('member-admin'), body: JSON.stringify(redeemBody) });
-    const reversedAgain = await api({ method: 'POST', url: `/api/admin/redemptions/${redemptionId}/reverse`, headers: headers('member-admin'), body: JSON.stringify({ operationId: randomUUID(), reason: '重送' }) });
-    expect(reversed.status).toBe(200);
-    expect(replayAfterReverse.status).toBe(200);
-    expect(replayAfterReverse.body).toMatchObject({ redemptionId, status: 'REVERSED', redeemableBalance: 1 });
-    expect(reversedAgain.status).toBe(409);
-    expect(reversedAgain.body).toMatchObject({ error: { code: 'REDEMPTION_ALREADY_REVERSED' } });
   });
 
   it('exposes all scores only to an admin after server-side authorization and assigns competitive ranks', async () => {

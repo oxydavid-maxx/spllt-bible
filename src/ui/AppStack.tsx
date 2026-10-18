@@ -20,6 +20,7 @@ export function AppStack({ signedIn }: { signedIn: boolean }) {
       <Stack.Screen name="index" />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="account" />
+      <Stack.Screen name="back-office" />
     </Stack.Protected>
     <Stack.Protected guard={!signedIn}>
       <Stack.Screen name="sign-in" />

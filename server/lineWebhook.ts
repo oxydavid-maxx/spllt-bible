@@ -2,14 +2,15 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { LineImage } from './bulletins';
 import { parseDevotionalPost } from './devotional';
 
 /**
  * Receives the pastor's daily 靈修 from the church's LINE group the moment it is posted (between about 5:30 and
  * 7:30 every morning), instead of someone copying it by hand. LINE forwards every message in a group the bot is
  * in; this keeps only a group text that the 靈修 reader parses (server/devotional.ts) and writes it as that day's
- * YYYYMMDD.txt. Everything else is dropped: not stored, not logged. The bot never replies or posts, and nothing
- * here makes any network call.
+ * YYYYMMDD.txt. A photo in a group goes to the 週刊 collector (server/bulletins.ts), which keeps only a set of
+ * A4 pages. Everything else is dropped: not stored, not logged. The bot never replies or posts.
  *
  * LINE signs each delivery with the channel secret (X-Line-Signature = base64 HMAC-SHA256 of the raw body,
  * https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/); unsigned requests get 401.
@@ -27,6 +28,8 @@ export interface LineWebhookConfig {
   log?: (line: string) => void;
   /** A day's file was written or corrected (the server prepares its audio); not awaited. */
   onSaved?: (date: string) => void;
+  /** A photo posted in a group (the 週刊, server/bulletins.ts); not awaited, so LINE is answered at once. */
+  onImage?: (image: LineImage) => Promise<void>;
 }
 
 export interface LineDelivery {
@@ -53,8 +56,21 @@ function signedByLine(secret: string, rawBody: Buffer, signature: string | undef
 
 interface LineEvent {
   type?: unknown;
-  source?: { type?: unknown };
-  message?: { type?: unknown; text?: unknown };
+  timestamp?: unknown;
+  source?: { type?: unknown; userId?: unknown };
+  message?: { type?: unknown; text?: unknown; id?: unknown; contentProvider?: { type?: unknown } };
+}
+
+function groupImage(event: LineEvent): LineImage | null {
+  const message = event.message;
+  if (event.type !== 'message' || event.source?.type !== 'group' || message?.type !== 'image' || typeof message.id !== 'string') return null;
+  // Only a photo sent from LINE itself can be downloaded; one linked from elsewhere has no content to fetch.
+  if (message.contentProvider?.type !== 'line') return null;
+  return {
+    messageId: message.id,
+    timestamp: typeof event.timestamp === 'number' ? event.timestamp : Date.now(),
+    ...(typeof event.source.userId === 'string' ? { senderId: event.source.userId } : {}),
+  };
 }
 
 export function createLineWebhook(config: LineWebhookConfig) {
@@ -87,6 +103,8 @@ export function createLineWebhook(config: LineWebhookConfig) {
     let events: unknown;
     try { events = (JSON.parse(delivery.rawBody.toString('utf8')) as { events?: unknown }).events; } catch { return { status: 400, body: { error: 'INVALID_JSON' } }; }
     for (const event of Array.isArray(events) ? events as LineEvent[] : []) {
+      const image = config.onImage && event ? groupImage(event) : null;
+      if (image) { void config.onImage!(image).catch(() => log('LINE_BULLETIN_FAILED')); continue; }
       if (event?.type !== 'message' || event.source?.type !== 'group' || event.message?.type !== 'text' || typeof event.message.text !== 'string') continue;
       if (!LOOKS_LIKE_DEVOTIONAL.test(event.message.text)) continue;
       await save(event.message.text);

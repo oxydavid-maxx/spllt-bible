@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Path, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import type { GroupReading } from '../../services/devotionClient';
 import { monthCells } from './readingCalendarModel';
 import { monthName, monthSummary, myPrizeLine, prizeProgress, prizeRule, readersLevel } from './groupReadingModel';
@@ -18,17 +18,14 @@ export interface GroupReadingCardProps {
   view: GroupReading;
   onPreviousMonth?: () => void;
   onNextMonth?: () => void;
-  /** Opens the prize nominations when a round is open; absent, the last row is only words. */
-  onSuggestPrize?: () => void;
 }
 
 function Chevron({ direction }: { direction: 'left' | 'right' }) {
   return <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={theme.colors.primary} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><Path d={direction === 'left' ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'} /></Svg>;
 }
 
-function PrizeIcon({ icon }: { icon: 'beanbag' | 'sofa' | 'next' }) {
+function PrizeIcon({ icon }: { icon: 'beanbag' | 'sofa' }) {
   const color = icon === 'beanbag' ? theme.colors.accent : theme.colors.muted;
-  if (icon === 'next') return <View style={[styles.prizeIcon, styles.prizeIconNext]}><Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={theme.colors.borderStrong} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><Rect x={3} y={8} width={18} height={4} /><Path d="M12 8v13M5 12v9h14v-9" /><Path d="M12 8c-2-4-6-4-6-1s6 1 6 1zM12 8c2-4 6-4 6-1s-6 1-6 1z" /></Svg></View>;
   return <View style={[styles.prizeIcon, { backgroundColor: icon === 'beanbag' ? theme.colors.accentSoft : theme.colors.surfaceMuted }]}>
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       {icon === 'beanbag'
@@ -45,15 +42,17 @@ function Count({ label, readers }: { label: string; readers: number | null }) {
   </View>;
 }
 
-export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, onSuggestPrize }: GroupReadingCardProps) {
+export function GroupReadingCard({ view, onPreviousMonth, onNextMonth }: GroupReadingCardProps) {
   const readers = new Map(view.days.map((day) => [day.date, day.readers]));
   const busiest = view.busiest?.readers ?? 0;
   const summary = monthSummary(view);
   const firstOpen = view.prizes.findIndex((prize) => prize.achievedMonths < prize.months);
   const currentMonthName = monthName(view.today.slice(0, 7));
-  return <View style={styles.card} accessibilityLabel="青少一起讀經">
+  // 青少/主堂 (維護者 2026-10-17): 主堂 counts the whole church and has no group prizes.
+  const title = view.scope === 'main' ? '全教會一起讀經' : '青少一起讀經';
+  return <View style={styles.card} accessibilityLabel={title}>
     <View style={styles.titleRow}>
-      <Text accessibilityRole="header" style={styles.title}>青少一起讀經</Text>
+      <Text accessibilityRole="header" style={styles.title}>{title}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="上個月" accessibilityState={{ disabled: !onPreviousMonth }} disabled={!onPreviousMonth} onPress={onPreviousMonth} style={[styles.monthStep, !onPreviousMonth && styles.disabled]}><Chevron direction="left" /></Pressable>
       <Text style={styles.monthLabel}>{monthName(view.month)}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="下個月" accessibilityState={{ disabled: !onNextMonth }} disabled={!onNextMonth} onPress={onNextMonth} style={[styles.monthStep, !onNextMonth && styles.disabled]}><Chevron direction="right" /></Pressable>
@@ -85,7 +84,7 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, onSuggest
     </View>
     {summary ? <Text style={styles.summary}>{summary.lead}<Text style={styles.bold}>{summary.reads}</Text>{summary.middle}{summary.busiest ? <Text style={styles.bold}>{summary.busiest}</Text> : null}{summary.tail}</Text> : null}
 
-    <View style={styles.prizes}>
+    {view.prizes.length ? <View style={styles.prizes}>
       <View style={styles.prizeHeader}><Text accessibilityRole="header" style={styles.prizeTitle}>團體獎</Text><Text style={styles.prizeNote}>大家一起達成，教會買給大家</Text></View>
       {view.prizes.map((prize, index) => {
         const first = index === firstOpen;
@@ -100,11 +99,7 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, onSuggest
           </View>
         </View>;
       })}
-      <Pressable accessibilityRole={onSuggestPrize ? 'button' : 'text'} disabled={!onSuggestPrize} onPress={onSuggestPrize} style={styles.nextPrize}>
-        <PrizeIcon icon="next" />
-        <Text style={styles.nextPrizeText}>下一個獎品，由你決定</Text>
-      </Pressable>
-    </View>
+    </View> : null}
   </View>;
 }
 
@@ -145,7 +140,6 @@ const styles = StyleSheet.create({
   prizeNote: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   prize: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   prizeIcon: { width: 40, height: 40, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center' },
-  prizeIconNext: { borderWidth: theme.control.hairline, borderStyle: 'dashed', borderColor: theme.colors.borderStrong },
   prizeCopy: { flex: 1, minWidth: 0, gap: 5 },
   prizeNameRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: theme.spacing.sm },
   prizeName: { flexShrink: 1, color: theme.colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '800' },
@@ -157,6 +151,4 @@ const styles = StyleSheet.create({
   barFillQuiet: { backgroundColor: theme.colors.borderStrong },
   prizeLine: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   prizeMine: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
-  nextPrize: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  nextPrizeText: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
 });

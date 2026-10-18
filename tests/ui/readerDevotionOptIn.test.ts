@@ -19,20 +19,18 @@ async function mount(memberId: string, textSettings?: { fontSize: number; lineSp
 }
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:00:00Z')); native.speak.mockClear(); native.setDevotion.mockClear(); native.getDevotionDates.mockReset().mockResolvedValue([]); vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));  });
 afterEach(() => { act(() => view?.unmount()); vi.useRealTimers(); vi.unstubAllGlobals(); });
-it('expires an already visible untouched offer at the seventh Taipei midnight (#6)', async () => {
+// 2026-10-17 (維護者): reaching the last chapter's end asks for the day's post once, so 接著讀靈修 › only
+// shows when there is a 靈修 to read; no timer, no offer window.
+it('prepares the day’s post at the reading end and reports whether it exists', async () => {
   vi.useRealTimers();
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
-  vi.setSystemTime(new Date('2026-10-20T15:59:59Z'));
-  const key = 'qingmu.devotion.follow.v1.m-' + Array.from('clock-test', c => c.codePointAt(0)!.toString(16)).join('_');
-  native.values.set(key, JSON.stringify({ enabled: false, touched: false, firstOfferedOn: '2026-10-14' }));
-  await mount('clock-test');
-  expect(binding.devotion?.followOfferEligible).toBe(true);
-  expect(vi.getTimerCount()).toBe(1);
-  await act(async () => { vi.advanceTimersByTime(1001); });
-  expect(new Date().toISOString()).toBe('2026-10-20T16:00:00.001Z');
-  expect(binding.devotion?.followOfferEligible).toBe(false);
-  await act(async () => binding.devotion!.onFollow());
-  expect(binding.devotion?.followEnabled).toBe(false); expect(binding.devotion?.selected).toBe(false);
+  vi.setSystemTime(new Date('2026-10-14T04:00:00Z'));
+  await mount('prepare-test');
+  expect(vi.getTimerCount()).toBe(0);
+  expect(binding.devotion?.available).toBe(false);
+  await act(async () => binding.devotion!.prepare());
+  expect(binding.devotion?.available).toBe(true);
+  expect(binding.devotion?.selected).toBe(false); expect(native.speak).not.toHaveBeenCalled();
 });
 it('hands the 靈修 page the reader\'s 調整字體 settings and whether it is being read aloud (光佑 2026-10-14)', async () => {
   await mount('text-test', { fontSize: 20, lineSpacing: 2 });
@@ -55,18 +53,15 @@ it('ordinary leaf completion and manual tab selection never opt in or speak (#4/
   await act(async () => binding.devotion!.onSelect());
   expect(binding.devotion?.followEnabled).toBe(false); expect(native.speak).not.toHaveBeenCalled();
 });
-it('explicit offer enables and opens without playing; subsequent narration EOF follows (#6/#10)', async () => {
-  await mount('offer-test');
-  act(() => binding.devotion!.onFollowOfferShown!());
-  await act(async () => binding.devotion!.onFollow());
-  expect(binding.devotion?.selected).toBe(true); expect(binding.devotion?.followEnabled).toBe(true);
-  expect(binding.devotion?.followOfferEligible).toBe(false); expect(native.speak).not.toHaveBeenCalled();
-  act(() => binding.leave());
+it('the ⋯ menu switch turns auto-follow on and off; narration EOF follows only while it is on (#10)', async () => {
+  await mount('menu-test');
+  await act(async () => binding.devotion!.onFollowChange(true));
+  expect(binding.devotion?.followEnabled).toBe(true); expect(binding.devotion?.selected).toBe(false);
   await act(async () => binding.onLastChapterNarrated());
   expect(binding.devotion?.selected).toBe(true); expect(native.speak).toHaveBeenCalled();
   act(() => binding.devotion!.onFollowChange(false));
   act(() => binding.leave()); act(() => binding.onLastChapterNarrated());
-  expect(binding.devotion?.selected).toBe(false); expect(binding.devotion?.followOfferEligible).toBe(false);
+  expect(binding.devotion?.selected).toBe(false);
 });
 
 it('applies the common narration speed to device fallback and exposes a persisted voice choice', async () => {

@@ -92,7 +92,7 @@
 - 額外資料夾副本：`journalFolderMirror.ts`、`journalMirror.ts`、`journalFolderSync.ts`、`folderPath.ts`。
 - 匯出：`journalExport.ts`、`journalShare.ts`、`systemShare.ts`。
 - 後端僅留 `server/journal.ts` 的舊版讀取與 schema；`routes.ts` 拒絕 PUT，沒有日記儲存函式。
-- `server/claudeCli.ts` 只服務提名獎品的估價/潤飾，與日記無關。
+- `server/claudeCli.ts` 現在只給公告產生工具 (`tools/announce`) 用，與日記無關。
 
 ## 守住它的測試
 

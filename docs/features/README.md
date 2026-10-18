@@ -8,14 +8,14 @@
 
 | 檔案 | 範圍 |
 |---|---|
-| [announcements.md](announcements.md) | 公告分頁：下次聚會、服事、報名狀況、講道紀錄、常設資訊 |
+| [announcements.md](announcements.md) | 公告分頁：青少｜主堂、下次聚會、服事、報名狀況、講道紀錄、常設資訊、主堂週刊 |
 | [reader.md](reader.md) | 讀經頁：版面與沉浸模式、靈修分頁與接續靈修、譯本、字體、經節複製、預先載入、閱讀位置、載入失敗與重試 |
 | [narration.md](narration.md) | 朗讀：播放、速度、接續讀經、背景播放、朗讀跟著走 (靈修朗讀見 reader.md) |
 | [reading-plan.md](reading-plan.md) | 讀經計畫與每日完成：開啟日期、日期列、整份計畫清單、當日章節、完成打卡、靈修打勾、補登、撤銷、積分月曆 |
-| [points.md](points.md) | 積分與社群：團體 (青少一起讀經、團體獎)、個人 (月曆、積分圖、目標獎品)、好友、全體 (管理)、兌換、提名投票 |
+| [points.md](points.md) | 積分與社群：團體 (青少一起讀經、團體獎)、個人 (月曆、積分圖、目標獎品)、好友、全體 (管理)、兌換 |
 | [journal.md](journal.md) | 靈修日記：寫、存、匯出、存到自選資料夾 (2026-10-14 起分頁列不顯示) |
 | [reminders.md](reminders.md) | 讀經提醒與推播 |
-| [account.md](account.md) | Google/Apple 登入、帳戶頁、永久刪除帳號、登出、App 更新提示 |
+| [account.md](account.md) | Google/Apple 登入、帳戶頁、青少/主堂、永久刪除帳號、登出、App 更新提示 |
 
 ## 公告
 
@@ -25,6 +25,8 @@
 | 報名狀況 | 已有幾人報名、有哪些朋友報名 | 公告的下次聚會卡片 | Android、iOS | [announcements.md](announcements.md) |
 | 講道紀錄 | 一個主日一張卡，最新的一週標「上週」；每堂列名稱、講員和資料連結，同類兩份檔案編成 1、2；沒有內容的堂次收成一行 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 離線提示 | 抓不到最新公告時，小字註明目前顯示哪一週 | 公告分頁底部 | Android、iOS | [announcements.md](announcements.md) |
+| 青少｜主堂 | 公告最上面兩個分頁，預設打開自己那一邊 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
+| 主堂週刊 | 教會在 LINE 公布欄貼的週刊原圖，最新在上、留 8 週，點了全螢幕放大 | 公告「主堂」 | Android、iOS | [announcements.md](announcements.md) |
 
 ## 讀經
 
@@ -66,20 +68,18 @@
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| 青少一起讀經 | 每天讀經人數的月曆 (2 人以上才顯示)，今天、昨天各幾人 | 積分「自己」最上方「團體」 | Android、iOS | [points.md](points.md) |
-| 團體獎 | 一個月 15 天讀經的人數夠了就累積一個月：懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月；「下一個獎品，由你決定」接提名 | 積分「團體」 | Android、iOS | [points.md](points.md) |
+| 青少一起讀經 | 每天讀經人數的月曆 (2 人以上才顯示)，今天、昨天各幾人；主堂看「全教會一起讀經」 | 積分「自己」最上方「團體」 | Android、iOS | [points.md](points.md) |
+| 團體獎 | 一個月 15 天讀經的人數夠了就累積一個月：懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月；只有青少有 | 積分「團體」 | Android、iOS | [points.md](points.md) |
 | 完成今日靈修/讀經 | 月曆下兩顆鈕：左靈修葉子、右讀經書，未完成白底綠框，完成後填滿深綠白圖示 | 積分「個人」月曆下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 積分月曆 | 點任一天看經文與狀態，未來/過期也能看；期限內可以補打卡；讀了靈修的日子標金色「靈修」 | 積分「自己」的「個人」 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 範圍切換 | 自己、好友兩個分頁；管理者從帳戶頁進來才多一個「全體 (管理)」 | 積分頁頂部 | Android、iOS | [points.md](points.md) |
 | 自己的積分 | 總積分、梯隊、目標獎品進度、「總積分/每月」圖 (金色虛線是靈修) | 積分「自己」的「個人」 | Android、iOS | [points.md](points.md) |
-| 目標獎品 | 選一個想換的獎品，看還差幾分 | 積分「自己」 | Android、iOS | [points.md](points.md) |
+| 目標獎品 | 從自己那一邊 (青少或主堂) 的獎品選一個，看還差幾分 | 積分「自己」 | Android、iOS | [points.md](points.md) |
 | 好友 | 加好友後互相看積分（看不到對方的餘額和目標） | 積分「好友」 | Android、iOS | [points.md](points.md) |
 | 好友 QR | 出示或掃描 QR 馬上互加好友 | 積分頁選單 | Android、iOS | [points.md](points.md) |
 | 好友通知 | 有人加你好友時收到通知 | 系統通知 | Android、iOS | [points.md](points.md) |
-| 提名獎品投票 | 開放期間提獎品構想、最多投 3 票，管理者核准後變成獎品 | 積分頁提名提示條、選單 | Android、iOS | [points.md](points.md) |
-| AI 估價與說明建議 | 自動把提名換算成大約分數，說明不清楚時給改寫建議 | 提名板 | Android、iOS | [points.md](points.md) |
 | 全體排名 (管理) | 管理者從帳戶頁最下面進來，解鎖後看全體積分 | 帳戶頁「全體 (管理) ›」 | Android、iOS | [points.md](points.md) |
-| 現場兌換（管理） | 管理者當面幫學生兌換獎品、查看或撤銷紀錄 | 積分頁選單（管理） | Android、iOS | [points.md](points.md) |
+| 獎品與兌換 | 獎品清單和兌換紀錄在 Google 試算表；紙本兌換後同工寫一列，可兌換積分跟著扣 | 試算表；App 的積分「自己」和「我的領取紀錄」 | Android、iOS | [points.md](points.md) |
 
 ## 日記
 
@@ -103,9 +103,11 @@
 |---|---|---|---|---|
 | Google 登入 | 用 Google 帳號登入，第一次登入自動建立帳號 | 開 App 時的登入畫面 | Android、iOS (iOS 需私有 OAuth 設定，TestFlight 真機另驗) | [account.md](account.md) |
 | Apple 登入 | iPhone 原生授權，首次登入建立帳號；Android 不顯示 | 登入畫面 | iOS | [account.md](account.md) |
+| 後台規則與文件 | 管理者解鎖後看所有後台規則和文件連結 (試算表、讀經表等) | 帳戶頁「後台規則與文件」 | Android、iOS | [account.md](account.md) |
 | 刪除帳號 | 二次確認後刪除伺服器個資並登出，無需寄信 | 帳戶頁「刪除帳號與資料」 | Android、iOS | [account.md](account.md) |
 | 啟用碼 | 認不出 Google 帳號時，用一次性啟用碼綁定 | 登入畫面（需要時才出現） | Android、iOS | [account.md](account.md) |
 | 帳戶頁 | 看自己的名字和小組、設定提醒、登出、刪除帳號與資料、看 App 版本 | 右上角頭像 | Android、iOS | [account.md](account.md) |
+| 青少/主堂 | 新會員第一次登入選青少或主堂，之後可以在帳戶頁改 | 登入後第一個畫面、帳戶頁「我在哪裡聚會」 | Android、iOS | [account.md](account.md) |
 | App 更新提示 | 有新版時提示更新：Play 裝的在 App 裡更新，側載的開安裝頁 | 開 App 或回到前景時自動出現 | 只有 Android | [account.md](account.md) |
 
 ## 其他文件放哪

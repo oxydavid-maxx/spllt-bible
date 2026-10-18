@@ -13,6 +13,7 @@ vi.mock('../../src/services/authSession', () => ({
 }));
 vi.mock('../../src/services/reminderRuntime', () => ({ getReminderRuntimeOwner: () => ({ savePreferences: state.save }), useReminderRuntimeSnapshot: () => state.reminders }));
 vi.mock('../../src/ui/GoogleLoginCard', () => ({ GoogleLoginCard: () => null }));
+vi.mock('../../src/ui/congregation/CongregationSetting', () => ({ CongregationSetting: () => null }));
 import { AccountSurface } from '../../src/ui/accountSurfaceComponent';
 import { ReminderSettings } from '../../src/ui/ReminderSettings';
 

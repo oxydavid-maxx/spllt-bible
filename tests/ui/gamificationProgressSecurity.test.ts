@@ -7,10 +7,8 @@ const { primitive, api, auth, appListeners, focusCallbacks, focusCleanupRef, aut
   primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children),
   api: {
     getCapabilities: vi.fn(async () => ({ canViewAllScores: true, canManageRewards: false, canRedeemRewards: false })),
-    getProfile: vi.fn(), getPeople: vi.fn(async () => []), getMyRedemptions: vi.fn(), getAdminRedemptions: vi.fn(),
+    getProfile: vi.fn(), getPeople: vi.fn(async () => []), getMyRedemptions: vi.fn(),
     getRewards: vi.fn(async () => [{ rewardId: 'goal', name: '電影票', costPoints: 10, active: true, revision: 1 }]),
-    getNominations: vi.fn(async () => ({ round: { roundId: 'round-1', title: '提案', closesAt: 9999999999999 }, nominations: [] })),
-    getPendingOperations: vi.fn(async () => ({ ownerMemberId: 'self', redemptions: [], reversals: [] })),
   },
   auth: { status: 'signed-in' as 'signed-in' | 'signed-out', session: { memberId: 'self', sessionToken: 'token' } as { memberId: string; sessionToken: string } | null, profile: null, profileStatus: 'ready', epoch: 1 },
   appListeners: [] as Array<(state: string) => void>, focusCallbacks: [] as Array<() => (() => void) | void>, focusCleanupRef: { current: null as (() => void) | null },
@@ -56,9 +54,8 @@ vi.mock('../../src/services/authSession', () => ({
 }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ GamificationApiError: class extends Error { userMessage = 'error'; }, createGamificationApiClient: () => api }));
 vi.mock('../../src/ui/gamification/PeopleList', () => ({ PeopleList: (props: any) => React.createElement('PeopleList', props) }));
-// The real ScoreProfile renders its slots; the nomination banner lives in `lead` since the 0.5.18 layout.
-vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (props: any) => React.createElement('ScoreProfile', props, props.lead, props.nominations) }));
-vi.mock('../../src/ui/gamification/NominationBanner', () => ({ NominationBanner: (props: any) => React.createElement('NominationBanner', props) }));
+// The real ScoreProfile renders its slots, including `lead`.
+vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (props: any) => React.createElement('ScoreProfile', props, props.lead) }));
 vi.mock('../../src/ui/gamification/ActionSheet', () => ({ ActionSheet: (props: any) => props.visible ? React.createElement('ActionSheet', props, props.children) : null }));
 vi.mock('../../src/ui/gamification/FriendQrPanel', () => ({ FriendQrPanel: (props: any) => React.createElement('FriendQrPanel', props) }));
 vi.mock('../../src/ui/gamification/RewardControls', () => ({ RewardControls: (props: any) => React.createElement('RewardControls', props) }));
@@ -127,14 +124,15 @@ describe('progress protected response lifecycle', () => {
     expect(renderer.root.findAll((node) => String(node.type) === 'ScoreProfile')).toHaveLength(1);
   });
 
-  it('does not enter the admin scope when pending recovery finishes after background', async () => {
+  it('does not enter the admin scope when the device unlock finishes after background', async () => {
     api.getProfile.mockResolvedValue({ memberId: 'self', displayName: '自己', earnedTotal: 1, band: null, months: [], private: { redeemableBalance: 1, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } });
-    let resolvePending!: (value: any) => void;
-    api.getPendingOperations.mockImplementationOnce(() => new Promise((resolve) => { resolvePending = resolve; }));
+    let resolveUnlock!: (value: any) => void;
+    const { authenticateAsync } = await import('expo-local-authentication');
+    vi.mocked(authenticateAsync).mockImplementationOnce(() => new Promise((resolve) => { resolveUnlock = resolve; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
     await act(async () => { requestOpenAllScores(); await Promise.resolve(); });
-    await act(async () => { [...appListeners].forEach((listener) => listener('background')); resolvePending({ ownerMemberId: 'self', redemptions: [], reversals: [] }); });
+    await act(async () => { [...appListeners].forEach((listener) => listener('background')); resolveUnlock({ success: true }); });
     expect(api.getPeople).not.toHaveBeenCalledWith('all');
     expect(renderer.root.findAll((node) => node.props.accessibilityLabel === '全體 (管理)' && node.props.accessibilityState?.selected)).toHaveLength(0);
   });
@@ -142,22 +140,20 @@ describe('progress protected response lifecycle', () => {
   it('keeps the same-account profile and secondary blocks stable until refresh fails', async () => {
     const profile = { memberId: 'self', displayName: '自己', earnedTotal: 1, band: null, months: [], private: { redeemableBalance: 1, targetReward: { rewardId: 'goal', name: '電影票', costPoints: 10, active: true, revision: 1 } }, permissions: { canEditTarget: true, canRedeem: false } };
     let resolveRefresh!: (value: unknown) => void; let resolveForeground!: (value: unknown) => void; let rejectRefresh!: (reason: unknown) => void;
-    let resolveRewards!: (value: any) => void; let resolveNominations!: (value: any) => void; let resolveGroup!: (value: any) => void;
-    let rejectRewards!: (reason: unknown) => void; let rejectNominations!: (reason: unknown) => void; let rejectGroup!: (reason: unknown) => void;
+    let resolveRewards!: (value: any) => void; let resolveGroup!: (value: any) => void;
+    let rejectRewards!: (reason: unknown) => void; let rejectGroup!: (reason: unknown) => void;
     api.getProfile.mockReset().mockResolvedValueOnce(profile).mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; })).mockImplementationOnce(() => new Promise((resolve) => { resolveForeground = resolve; })).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRefresh = reject; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); await Promise.resolve(); await Promise.resolve(); });
-    const expectSecondary = (rewardName: string, roundTitle: string, groupReads: number) => {
+    const expectSecondary = (rewardName: string, groupReads: number) => {
       const score = renderer.root.findByType('ScoreProfile' as any);
       expect(score.props.rewards.map((reward: any) => reward.name)).toContain(rewardName);
       expect(renderer.root.findByType(GroupReadingCard).props.view.monthReads).toBe(groupReads);
-      expect(renderer.root.findByType('NominationBanner' as any).props.round.title).toBe(roundTitle);
     };
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'self', earnedTotal: 1 });
-    expectSecondary('電影票', '提案', 3);
-    const initialCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
+    expectSecondary('電影票', 3);
+    const initialCalls = { rewards: api.getRewards.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
     api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewards = resolve; }));
-    api.getNominations.mockImplementationOnce(() => new Promise((resolve) => { resolveNominations = resolve; }));
     devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((resolve) => { resolveGroup = resolve; }));
 
     await act(async () => {
@@ -168,71 +164,64 @@ describe('progress protected response lifecycle', () => {
     });
     expect(api.getProfile).toHaveBeenCalledTimes(2);
     expect(api.getRewards).toHaveBeenCalledTimes(initialCalls.rewards + 1);
-    expect(api.getNominations).toHaveBeenCalledTimes(initialCalls.nominations + 1);
     expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(initialCalls.group + 1);
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'self', earnedTotal: 1 });
-    expectSecondary('電影票', '提案', 3);
+    expectSecondary('電影票', 3);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '載入中…')).toHaveLength(0);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
 
     await act(async () => {
       resolveRewards([{ rewardId: 'new-goal', name: '新獎品', costPoints: 12, active: true, revision: 1 }]);
-      resolveNominations({ round: { roundId: 'round-2', title: '新提案', closesAt: 9999999999999 }, nominations: [] });
       resolveGroup(groupView(5));
       await Promise.resolve();
     });
-    expectSecondary('新獎品', '新提案', 5);
+    expectSecondary('新獎品', 5);
     await act(async () => { resolveRefresh({ ...profile, earnedTotal: 2, private: { redeemableBalance: 2, targetReward: profile.private.targetReward } }); });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(2);
-    expectSecondary('新獎品', '新提案', 5);
+    expectSecondary('新獎品', 5);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
 
-    const refreshedCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
+    const refreshedCalls = { rewards: api.getRewards.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
     api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewards = resolve; }));
-    api.getNominations.mockImplementationOnce(() => new Promise((resolve) => { resolveNominations = resolve; }));
     devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((resolve) => { resolveGroup = resolve; }));
     await act(async () => { appListeners.at(-1)?.('background'); await Promise.resolve(); });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(2);
-    expectSecondary('新獎品', '新提案', 5);
+    expectSecondary('新獎品', 5);
     expect(renderer.root.findByProps({ testID: 'progress-inactive-cover' })).toBeDefined();
     await act(async () => { appListeners.at(-1)?.('active'); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledTimes(3);
     expect(api.getRewards).toHaveBeenCalledTimes(refreshedCalls.rewards + 1);
-    expect(api.getNominations).toHaveBeenCalledTimes(refreshedCalls.nominations + 1);
     expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(refreshedCalls.group + 1);
-    expectSecondary('新獎品', '新提案', 5);
+    expectSecondary('新獎品', 5);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
     await act(async () => {
       resolveRewards([{ rewardId: 'foreground-goal', name: '前景獎品', costPoints: 15, active: true, revision: 1 }]);
-      resolveNominations({ round: { roundId: 'foreground-round', title: '前景提案', closesAt: 9999999999999 }, nominations: [] });
       resolveGroup(groupView(8));
       resolveForeground({ ...profile, earnedTotal: 3, private: { redeemableBalance: 3, targetReward: profile.private.targetReward } });
       await Promise.resolve();
     });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(3);
-    expectSecondary('前景獎品', '前景提案', 8);
+    expectSecondary('前景獎品', 8);
 
-    const foregroundCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
+    const foregroundCalls = { rewards: api.getRewards.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
     api.getRewards.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRewards = reject; }));
-    api.getNominations.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectNominations = reject; }));
     devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectGroup = reject; }));
     await act(async () => { focusCallbacks.at(-1)?.(); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledTimes(4);
     expect(api.getRewards).toHaveBeenCalledTimes(foregroundCalls.rewards + 1);
-    expect(api.getNominations).toHaveBeenCalledTimes(foregroundCalls.nominations + 1);
     expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(foregroundCalls.group + 1);
-    expectSecondary('前景獎品', '前景提案', 8);
+    expectSecondary('前景獎品', 8);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
-    await act(async () => { rejectRewards(new Error('offline')); rejectNominations(new Error('offline')); rejectGroup(new Error('offline')); rejectRefresh(new Error('offline')); await Promise.resolve(); });
+    await act(async () => { rejectRewards(new Error('offline')); rejectGroup(new Error('offline')); rejectRefresh(new Error('offline')); await Promise.resolve(); });
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(3);
-    expectSecondary('前景獎品', '前景提案', 8);
+    expectSecondary('前景獎品', 8);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(1);
   });
 
   it('clears member A on account change and never applies A response after member B signs in', async () => {
     auth.status = 'signed-in'; auth.session = { memberId: 'member-a', sessionToken: 'token-a' };
     let resolveRefreshA!: (value: unknown) => void;
-    let resolveRewardsA!: (value: any) => void; let resolveNominationsA!: (value: any) => void; let resolveGroupA!: (value: any) => void;
+    let resolveRewardsA!: (value: any) => void; let resolveGroupA!: (value: any) => void;
     const profileA = { memberId: 'member-a', displayName: 'A私人資料', earnedTotal: 1, band: null, months: [], private: { redeemableBalance: 1, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } };
     const profileB = { memberId: 'member-b', displayName: 'B私人資料', earnedTotal: 2, band: null, months: [], private: { redeemableBalance: 2, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } };
     api.getProfile.mockReset().mockResolvedValueOnce(profileA).mockImplementationOnce(() => new Promise((resolve) => { resolveRefreshA = resolve; })).mockResolvedValueOnce(profileB);
@@ -240,9 +229,8 @@ describe('progress protected response lifecycle', () => {
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); await Promise.resolve(); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledWith('member-a', 'me', expect.any(String));
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'member-a', earnedTotal: 1 });
-    const initialSecondaryCalls = { rewards: api.getRewards.mock.calls.length, nominations: api.getNominations.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
+    const initialSecondaryCalls = { rewards: api.getRewards.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
     api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewardsA = resolve; }));
-    api.getNominations.mockImplementationOnce(() => new Promise((resolve) => { resolveNominationsA = resolve; }));
     devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((resolve) => { resolveGroupA = resolve; }));
     await act(async () => {
       focusCleanupRef.current?.(); focusCleanupRef.current = null;
@@ -252,7 +240,6 @@ describe('progress protected response lifecycle', () => {
     });
     expect(api.getProfile).toHaveBeenCalledTimes(2);
     expect(api.getRewards).toHaveBeenCalledTimes(initialSecondaryCalls.rewards + 1);
-    expect(api.getNominations).toHaveBeenCalledTimes(initialSecondaryCalls.nominations + 1);
     expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(initialSecondaryCalls.group + 1);
 
     auth.status = 'signed-out'; auth.session = null;
@@ -263,7 +250,6 @@ describe('progress protected response lifecycle', () => {
     auth.status = 'signed-in'; auth.session = { memberId: 'member-b', sessionToken: 'token-b' };
     const rewardB = { rewardId: 'b-goal', name: 'B獎品', costPoints: 4, active: true, revision: 1 };
     api.getRewards.mockResolvedValueOnce([rewardB]);
-    api.getNominations.mockResolvedValueOnce({ round: { roundId: 'b-round', title: 'B提案', closesAt: 9999999999999 }, nominations: [] });
     devotionApi.getGroupReading.mockResolvedValueOnce(groupView(7));
     await act(async () => { authListeners.at(-1)?.({ current: auth.session }); });
     await act(async () => { renderer.update(React.createElement(ProgressScreen)); });
@@ -273,14 +259,12 @@ describe('progress protected response lifecycle', () => {
       const score = renderer.root.findByType('ScoreProfile' as any);
       expect(score.props.rewards.map((reward: any) => reward.name)).toContain('B獎品');
       expect(renderer.root.findByType(GroupReadingCard).props.view.monthReads).toBe(7);
-      expect(renderer.root.findByType('NominationBanner' as any).props.round.title).toBe('B提案');
     };
     expectBSecondary();
 
     await act(async () => { resolveRefreshA({ ...profileA, displayName: 'A舊請求私人資料', earnedTotal: 99, private: { redeemableBalance: 99, targetReward: null } }); });
     await act(async () => {
       resolveRewardsA([{ rewardId: 'a-late', name: 'A舊獎品', costPoints: 1, active: true, revision: 1 }]);
-      resolveNominationsA({ round: { roundId: 'a-late-round', title: 'A舊提案', closesAt: 9999999999999 }, nominations: [] });
       resolveGroupA(groupView(99));
       await Promise.resolve();
     });
