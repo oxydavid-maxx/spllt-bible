@@ -18,6 +18,7 @@ import { DevotionTodayButton } from '../../src/ui/gamification/DevotionTodayButt
 import { createDevotionClient, type GroupReading, type ScoreHistory } from '../../src/services/devotionClient';
 import { consumeOpenAllScores, subscribeOpenAllScores } from '../../src/services/allScoresRequest';
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
+import { useCongregation } from '../../src/ui/congregation/congregationStore';
 import { theme } from '../../src/ui/Theme';
 import { createApiClient } from '../../src/services/apiClient';
 import { useCompletionController } from '../../src/services/useCompletionController';
@@ -37,6 +38,7 @@ import { consumeOpenFriendsList, subscribeFriendAdded, subscribeOpenFriendsList,
 type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'redemptions' | null;
 
 export default function ProgressScreen() {
+  const congregation = useCongregation();
   const [planOpen, setPlanOpen] = useState(false);
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
@@ -562,6 +564,7 @@ export default function ProgressScreen() {
         />
       </>}
       rewards={shelfRewards ?? undefined}
+      handedOutBy={congregation.value === 'main' ? '同工' : '輔導'}
       chart={scoreHistory ? <ScoreHistoryCard history={scoreHistory} /> : scoreHistoryMissing ? undefined : null}
       onChooseTarget={(rewardId) => { void setTarget(rewardId); }}
       onChartChange={loadProfileChart}

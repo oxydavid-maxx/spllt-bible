@@ -20,7 +20,9 @@ export function GoalBar({ value, max }: { value: number; max: number }) {
   </View>;
 }
 
-export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards, canEditTarget, onChooseTarget, onOpenPicker, displayName, band }: {
+export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards, canEditTarget, onChooseTarget, onOpenPicker, displayName, band, handedOutBy = '輔導' }: {
+  /** Who hands the prize out on Sunday: 青少's 輔導, 主堂's 同工 (維護者 2026-10-17). */
+  handedOutBy?: '輔導' | '同工';
   target: Reward | null;
   redeemableBalance: number;
   earnedTotal: number;
@@ -50,7 +52,7 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
       <Text style={styles.goalCost}>{`${Math.min(redeemableBalance, target.costPoints)}/${target.costPoints} 分`}</Text>
     </View>
     <GoalBar value={redeemableBalance} max={target.costPoints} />
-    {reachable ? <Text style={styles.ready}>可以兌換了 · 主日找輔導領取</Text> : null}
+    {reachable ? <Text style={styles.ready}>{`可以兌換了 · 主日找${handedOutBy}領取`}</Text> : null}
     {redeemed > 0 ? <Text style={styles.muted}>{`可兌換 ${redeemableBalance} 分 · 已兌換 ${redeemed} 分`}</Text> : null}
     {canOpenPicker ? <Text style={styles.pickerHint}>更換目標 ›</Text> : null}
   </View> : <View style={styles.goalCopy}>

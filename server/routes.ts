@@ -28,6 +28,7 @@ import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDat
 import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
 import { applyRewardSheet, listRewards, readRewardSheetPush, sheetRedemptionsFor } from './rewardSheet';
 import { listBulletins, readBulletinPage } from './bulletins';
+import { readAdminLinks } from './adminLinks';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
 import {
   GAMIFICATION_POLICY_VERSION,
@@ -105,6 +106,8 @@ export interface ApiHandlerOptions {
   devotionalAudio?: DevotionalAudio;
   /** 主堂週刊 pages kept from the LINE group (server/bulletins.ts). */
   bulletinDir?: string;
+  /** Private list of back-office documents for administrators (server/adminLinks.ts). */
+  adminLinksFile?: string;
   /** Song titles for the 靈修 tab; tests pass a stub so nothing reaches YouTube. */
   songTitle?: SongTitleLookup;
   now?: () => Date;
@@ -749,6 +752,11 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (request.method === 'DELETE' && removeFriendMatch) {
         const result = removeFriend(options.db.db, auth.memberId, decodeURIComponent(removeFriendMatch[1]), { now });
         return isGamificationError(result) ? gamificationError(result) : gamificationJson(200, { removed: result });
+      }
+      // 後台規則與文件 (維護者 2026-10-17): administrators only; the app also asks for the device unlock first.
+      if (request.method === 'GET' && url.pathname === '/api/admin/documents') {
+        if (!resolvedAdminMemberIds().includes(auth.memberId)) return gamificationError({ status: 403, code: 'ADMIN_REQUIRED' });
+        return gamificationJson(200, { links: readAdminLinks(options.adminLinksFile) });
       }
       if (url.pathname === '/api/me/reminders' || url.pathname === '/api/me/reminders/device-token' || url.pathname === '/api/me/reminders/device-token/revoke') {
         if (!options.db.db.prepare('SELECT id FROM members WHERE id = ?').get(auth.memberId)) return json(404, { error: 'PROFILE_NOT_FOUND' });

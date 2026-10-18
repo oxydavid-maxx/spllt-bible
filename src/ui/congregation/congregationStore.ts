@@ -26,7 +26,8 @@ type Client = Pick<ReturnType<typeof createDevotionClient>, 'getCongregation' | 
 function load(key: string, client: Client): void {
   if (snapshot.key === key && (snapshot.status === 'loading' || snapshot.status === 'ready')) return;
   publish({ key, status: 'loading', value: snapshot.key === key ? snapshot.value : null });
-  void client.getCongregation()
+  // Any failure, even a client that cannot ask, reads as not known yet: no screen waits on this.
+  void Promise.resolve().then(() => client.getCongregation())
     .then((value) => { if (snapshot.key === key) publish({ key, status: 'ready', value }); })
     .catch(() => { if (snapshot.key === key) publish({ key, status: 'error', value: snapshot.value }); });
 }

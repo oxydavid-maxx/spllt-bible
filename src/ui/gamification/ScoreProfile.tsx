@@ -5,7 +5,8 @@ import { theme } from '../Theme';
 import { RewardGoalCard } from './RewardGoalCard';
 import { ScoreProfileChart } from './ScoreProfileChart';
 
-export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onChartChange, today, lead, community, showChartViewToggle, chart }: {
+export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onChartChange, today, lead, community, showChartViewToggle, chart, handedOutBy }: {
+  handedOutBy?: '輔導' | '同工';
   profile: ScoreProfileData;
   /** Active reward catalogue for the member's own shelf. */
   rewards?: Reward[];
@@ -35,7 +36,7 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
   const privateData = profile.private;
   return <ScrollView contentContainerStyle={styles.content}>
     {lead}
-    {privateData ? <RewardGoalCard target={privateData.targetReward} redeemableBalance={privateData.redeemableBalance} earnedTotal={profile.earnedTotal} rewards={rewards} canEditTarget={profile.permissions.canEditTarget} onChooseTarget={onChooseTarget} onOpenPicker={onChooseReward} displayName={profile.displayName} band={profile.band} /> : <View style={styles.header}>
+    {privateData ? <RewardGoalCard handedOutBy={handedOutBy} target={privateData.targetReward} redeemableBalance={privateData.redeemableBalance} earnedTotal={profile.earnedTotal} rewards={rewards} canEditTarget={profile.permissions.canEditTarget} onChooseTarget={onChooseTarget} onOpenPicker={onChooseReward} displayName={profile.displayName} band={profile.band} /> : <View style={styles.header}>
       <Text style={styles.name}>{profile.displayName}</Text>
       <Text style={styles.total}>{profile.earnedTotal}</Text>
       <Text style={styles.totalLabel}>總積分</Text>

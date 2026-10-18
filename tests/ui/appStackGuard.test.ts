@@ -29,14 +29,14 @@ function guards(signedIn: boolean) {
 describe('sign-in comes first', () => {
   it('keeps every app screen behind sign-in and only the sign-in screen outside it', () => {
     expect(guards(false)).toEqual([
-      { guard: false, screens: ['index', '(tabs)', 'account'] },
+      { guard: false, screens: ['index', '(tabs)', 'account', 'back-office'] },
       { guard: true, screens: ['sign-in'] },
     ]);
   });
 
   it('opens the app and closes the sign-in screen once signed in', () => {
     expect(guards(true)).toEqual([
-      { guard: true, screens: ['index', '(tabs)', 'account'] },
+      { guard: true, screens: ['index', '(tabs)', 'account', 'back-office'] },
       { guard: false, screens: ['sign-in'] },
     ]);
   });

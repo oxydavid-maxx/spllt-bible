@@ -152,6 +152,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     adminGoogleSubjects,
     ...(devotionalDir ? { devotionalDir } : {}),
     ...(process.env.QINGMU_BULLETIN_DIR?.trim() ? { bulletinDir: process.env.QINGMU_BULLETIN_DIR.trim() } : {}),
+    ...(process.env.QINGMU_ADMIN_LINKS_FILE?.trim() ? { adminLinksFile: process.env.QINGMU_ADMIN_LINKS_FILE.trim() } : {}),
     ...(devotionalAudio ? { devotionalAudio } : {}),
     ...(fixtureRoster
       ? {

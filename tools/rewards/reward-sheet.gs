@@ -3,7 +3,8 @@
  *
  * 一份試算表四個分頁：青少獎品、青少兌換、主堂獎品、主堂兌換。獎品分頁三欄：獎品、分數、上架；兌換分頁五欄：
  * 日期、名字、獎品、分數、照片連結。可兌換積分＝讀經積分減掉兌換分頁每一列的分數；刪掉那一列，分數就回來。
- * 「名單」分頁是名字下拉選單的來源，由 App 自動更新，所以藏起來。
+ * 「名單」分頁是名字下拉選單的來源，由 App 自動更新，所以藏起來。兌換分頁第 1 列是說明，第 2 列是欄名。
+ * 名字和獎品用下拉選單選；分數照填，不自動帶入，看到什麼就是什麼 (維護者 2026-10-17 核准的 mock)。
  *
  * 放在「團契報名表單」同一個 Apps Script 專案裡（新增一個檔案，貼上本檔），沿用那邊的 identityToken()：
  * 每次送出都附上 Google 簽發的身分權杖，後端確認是管理者的帳號、而且來自同一個專案，才會接受。不放任何金鑰。
@@ -21,7 +22,8 @@ const REWARD_SIDES = [
 ];
 const REWARD_ROSTER = '名單';
 const REWARD_TAB_HEADERS = ['獎品', '分數', '上架'];
-const REDEMPTION_TAB_HEADERS = ['日期', '名字', '獎品', '分數', '照片連結'];
+const REDEMPTION_TAB_HEADERS = ['日期', '名字', '獎品', '分數', '照片連結 (可不填)'];
+const REDEMPTION_NOTE = '可以換的分數 ＝ 讀經得分 − 這一頁裡這個人每一列的分數。填錯就直接改或刪那一列。';
 const REWARD_REJECTED_COLOR = '#fde7e7';
 const REWARD_REJECTION_NOTES = {
   rewards: { name: '請填獎品名稱。', points: '分數要是大於 0 的整數，這個獎品沒有放上 App。', duplicate: '這個獎品名稱重複了，App 只用第一個。' },
@@ -50,14 +52,14 @@ function setupRewardSheet() {
     const rewards = rewardTab(book, side.rewards, REWARD_TAB_HEADERS);
     rewards.getRange('B2:B').setDataValidation(SpreadsheetApp.newDataValidation().requireNumberGreaterThan(0).setAllowInvalid(false).setHelpText('分數要大於 0').build());
     rewards.getRange('C2:C').setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
-    const redemptions = rewardTab(book, side.redemptions, REDEMPTION_TAB_HEADERS);
-    redemptions.getRange('A2:A').setNumberFormat('yyyy-mm-dd')
+    const redemptions = rewardTab(book, side.redemptions, REDEMPTION_TAB_HEADERS, REDEMPTION_NOTE);
+    redemptions.getRange('A3:A').setNumberFormat('yyyy-mm-dd')
       .setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).setHelpText('日期，例如 2026-10-12').build());
-    redemptions.getRange('B2:B').setDataValidation(SpreadsheetApp.newDataValidation()
+    redemptions.getRange('B3:B').setDataValidation(SpreadsheetApp.newDataValidation()
       .requireValueInRange(roster.getRange(`${side.roster}2:${side.roster}`), true).setAllowInvalid(false).setHelpText('從清單選名字').build());
-    redemptions.getRange('C2:C').setDataValidation(SpreadsheetApp.newDataValidation()
+    redemptions.getRange('C3:C').setDataValidation(SpreadsheetApp.newDataValidation()
       .requireValueInRange(rewards.getRange('A2:A'), true).setAllowInvalid(true).build());
-    redemptions.getRange('D2:D').setDataValidation(SpreadsheetApp.newDataValidation().requireNumberGreaterThan(0).setAllowInvalid(false).setHelpText('分數要大於 0').build());
+    redemptions.getRange('D3:D').setDataValidation(SpreadsheetApp.newDataValidation().requireNumberGreaterThan(0).setAllowInvalid(false).setHelpText('分數要大於 0').build());
   }
   // A new spreadsheet comes with one empty tab; it has no job here.
   for (const sheet of book.getSheets()) {
@@ -83,28 +85,18 @@ function setupRewardSheet() {
   syncRewardSheet();
 }
 
-function rewardTab(book, name, headers) {
+/** A tab's headers, with an optional note line above them. */
+function rewardTab(book, name, headers, note) {
   const sheet = book.getSheetByName(name) || book.insertSheet(name);
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
-  sheet.setFrozenRows(1);
+  const headerRow = note ? 2 : 1;
+  if (note) sheet.getRange(1, 1, 1, headers.length).merge().setValue(note).setBackground('#fffbe6').setWrap(true);
+  sheet.getRange(headerRow, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  sheet.setFrozenRows(headerRow);
   return sheet;
 }
 
-/** 有人改了一格：兌換分頁選了獎品就先帶入日期和分數（看得到、可以改），再送出。 */
-function onRewardSheetEdit(e) {
-  const sheet = e.range.getSheet();
-  const side = REWARD_SIDES.find((item) => item.redemptions === sheet.getName());
-  if (side && e.range.getRow() > 1 && e.range.getNumRows() === 1) {
-    const row = e.range.getRow();
-    const cells = sheet.getRange(row, 1, 1, 4);
-    const [date, name, reward, points] = cells.getValues()[0];
-    if (!date && (name || reward)) sheet.getRange(row, 1).setValue(new Date());
-    if (reward && points === '' && e.range.getColumn() === 3) {
-      const prizes = e.source.getSheetByName(side.rewards).getDataRange().getValues().slice(1);
-      const prize = prizes.find((item) => String(item[0]).trim() === String(reward).trim());
-      if (prize && Number(prize[1]) > 0) sheet.getRange(row, 4).setValue(Number(prize[1]));
-    }
-  }
+/** 有人改了一格就送出。不自動帶入任何值：表上看到什麼就是什麼。 */
+function onRewardSheetEdit() {
   syncRewardSheet();
 }
 
@@ -131,11 +123,11 @@ function syncRewardSheet() {
   }
 }
 
-function rewardDataRows(sheet, width) {
+function rewardDataRows(sheet, width, firstRow) {
   const last = sheet.getLastRow();
-  if (last < 2) return [];
-  return sheet.getRange(2, 1, last - 1, width).getValues()
-    .map((cells, index) => ({ row: index + 2, cells }))
+  if (last < firstRow) return [];
+  return sheet.getRange(firstRow, 1, last - firstRow + 1, width).getValues()
+    .map((cells, index) => ({ row: index + firstRow, cells }))
     .filter((item) => item.cells.some((cell) => cell !== '' && cell !== false));
 }
 
@@ -143,11 +135,11 @@ const rewardCellText = (value) => String(value === null || value === undefined ?
 const rewardCellPoints = (value) => (typeof value === 'number' ? value : rewardCellText(value));
 
 function readRewardRows(sheet) {
-  return rewardDataRows(sheet, 3).map(({ row, cells }) => ({ row, name: rewardCellText(cells[0]), points: rewardCellPoints(cells[1]), listed: cells[2] === true }));
+  return rewardDataRows(sheet, 3, 2).map(({ row, cells }) => ({ row, name: rewardCellText(cells[0]), points: rewardCellPoints(cells[1]), listed: cells[2] === true }));
 }
 
 function readRedemptionRows(sheet) {
-  return rewardDataRows(sheet, 4).map(({ row, cells }) => ({
+  return rewardDataRows(sheet, 4, 3).map(({ row, cells }) => ({
     row,
     date: cells[0] instanceof Date ? Utilities.formatDate(cells[0], 'Asia/Taipei', 'yyyy-MM-dd') : rewardCellText(cells[0]),
     name: rewardCellText(cells[1]),

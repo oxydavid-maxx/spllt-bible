@@ -27,10 +27,10 @@ export function createAdminUnlockGuard(options: { authenticate: () => Promise<bo
 }
 
 /** Optional native adapter. It is loaded only when the protected surface is opened. */
-export function createNativeAdminAuthenticator(): () => Promise<boolean> {
+export function createNativeAdminAuthenticator(promptMessage = '解鎖完整排名'): () => Promise<boolean> {
   return async () => {
     try {
-      const result = await LocalAuthentication.authenticateAsync({ promptMessage: '解鎖完整排名', cancelLabel: '取消', disableDeviceFallback: false });
+      const result = await LocalAuthentication.authenticateAsync({ promptMessage, cancelLabel: '取消', disableDeviceFallback: false });
       return result.success === true;
     } catch { return false; }
   };

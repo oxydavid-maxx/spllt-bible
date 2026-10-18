@@ -98,6 +98,8 @@ def launch(label):
         'QINGMU_DEVOTIONAL_DIR': str(PILOT / 'devotionals'),
         # 主堂週刊 pages from the LINE group, newest 8 Sundays (server/bulletins.ts).
         'QINGMU_BULLETIN_DIR': str(PILOT / 'bulletins'),
+        # 後台規則與文件: the back-office links, private ([{"name", "url"}]); missing lists nothing.
+        'QINGMU_ADMIN_LINKS_FILE': str(PILOT / 'admin-links.json'),
         # Estimating what a suggested prize costs uses the Claude CLI already installed for
         # this user. No path, no worker, and nominations behave exactly as they did before
         # any of this was built — which is also what every test sees, since none of them set it.

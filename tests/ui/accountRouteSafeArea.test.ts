@@ -10,6 +10,7 @@ vi.mock('expo-router', () => ({ Stack: { Screen: 'StackScreen' } }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' }));
 vi.mock('../../src/ui/accountSurfaceComponent', () => ({ AccountSurface: 'AccountSurface' }));
 vi.mock('../../src/ui/AdminAllScoresEntry', () => ({ AdminAllScoresEntry: 'AdminAllScoresEntry' }));
+vi.mock('../../src/ui/admin/BackOffice', () => ({ BackOfficeEntry: 'BackOfficeEntry' }));
 import AccountScreen from '../../app/account';
 import { theme } from '../../src/ui/Theme';
 
