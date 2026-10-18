@@ -471,9 +471,15 @@ export function createApiHandler(options: ApiHandlerOptions) {
           else {
             // A Play pre-launch test device is created already turned off, so it never reads, votes or ranks
             // (server/testLabNetwork.ts). Only new identities: an existing member is never turned off here.
-            const testDevice = body.firebase_test_lab === true || isTestLabAddress(request.headers['cf-connecting-ip']);
+            const clientFlag = !Object.hasOwn(body, 'firebase_test_lab') ? 'absent'
+              : body.firebase_test_lab === true ? 'true' : body.firebase_test_lab === false ? 'false' : 'other';
+            // The domain must come from the verified token, never from request-body email fields.
+            const emailClaim = identity.email ? 'present' : 'missing';
+            const testLabEmailDomain = identity.email?.toLowerCase().endsWith('@cloudtestlabaccounts.com') === true;
+            const testLabAddress = isTestLabAddress(request.headers['cf-connecting-ip']);
+            const testDevice = clientFlag === 'true' || testLabEmailDomain || testLabAddress;
             options.db.db.prepare('INSERT INTO members(id, display_name, group_id, disabled_at) VALUES(?,?,?,?)').run(memberId, identity.displayName?.trim() || '竹科聖經會員', `unassigned:${memberId}`, testDevice ? Date.now() : null);
-            console.log(`AUTO_PROVISION_MEMBER testDevice=${testDevice} clientAddress=${request.headers['cf-connecting-ip'] ? 'present' : 'missing'}`);
+            console.log(`AUTO_PROVISION_MEMBER testDevice=${testDevice} clientFlag=${clientFlag} emailClaim=${emailClaim} testLabEmailDomain=${testLabEmailDomain} testLabAddress=${testLabAddress} clientAddress=${request.headers['cf-connecting-ip'] ? 'present' : 'missing'}`);
             options.db.db.prepare('INSERT INTO identity_bindings(provider, subject, member_id, created_at) VALUES(?,?,?,?)').run(identity.provider, identity.subject, memberId, Date.now());
           }
           options.db.db.exec('COMMIT');

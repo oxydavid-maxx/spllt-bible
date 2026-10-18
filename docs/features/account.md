@@ -39,7 +39,7 @@
 - 拿到 ID token 後呼叫 `POST /api/session/google`（帶 `persistentDevice: true`，即 `session_type: 'device'`）。目前正式環境的組態（`googleAudience` 已設定且沒有 `fixtureToken`）會把 `autoProvisionGoogleMembers` 設成 `true`（`server/http.ts`），所以**新的 Google 身份第一次登入就會自動建立會員**，不會走到下面的啟用碼畫面——這與 `SignInScreen.tsx` 上寫的「第一次登入會自動建立帳號」一致。
 - 伺服器仍可能回 `UNKNOWN_MEMBER`（例如自動建立帳號被關掉的組態）：這時畫面切到「這個Google身份尚未完成帳戶啟用，請輸入同工提供的一次性啟用碼。」，輸入框送到 `POST /api/onboarding/claim`（`server/membership.ts` 的 `claimMemberInvite`）。啟用碼綁定規則：碼不存在或雜湊比不到 → 拒絕；碼已用過 → 拒絕；已過期 → 拒絕；碼對應的會員資料跟現有紀錄衝突 → 拒絕；同一個 Google 身份重複送同一支已綁定的碼 → 視為成功（`alreadyBound: true`），不會重複建立會員或報錯。
 - 帳號被停用（`disabled_at` 有值）時，無論走哪條路徑都回 403 `ACCOUNT_DISABLED`；client 端目前把它與其他失敗一起顯示成「伺服器沒有確認身份，請稍後再試。」（沒有專屬文案）。
-- Google Play 測試機器人：每次上傳新版到 Play，正式發布前測試報告會在 Firebase Test Lab 的裝置上自己用 Google 登入。Android 在 Google 登入時讀取系統設定 `firebase.test.lab`，只有字串 `"true"` 才在 `POST /api/session/google` 帶 `firebase_test_lab: true`，其他可讀值帶 `false`。iOS 不讀也不帶這個欄位；Android 橋接缺少或讀取失敗時也不帶。新的 Google 身份第一次登入時，只要這個 JSON 欄位是布林 `true`，或連線來自 Google 公布的 Test Lab 位址 (Cloudflare 的 `cf-connecting-ip`，`server/testLabNetwork.ts`)，會員一建立就是停用的，回 403 `ACCOUNT_DISABLED`，不發 session，所以不能讀經、拿分或上排行。舊版 App 不帶訊號，照舊只看 IP。已經存在的會員不會被這個判斷停用。每建立一個新會員，後端 log 記一行 `AUTO_PROVISION_MEMBER testDevice=<true|false> clientAddress=<present|missing>`，不記名字、token 或位址。
+- Google Play 測試機器人：每次上傳新版到 Play，正式發布前測試報告會在 Firebase Test Lab 的裝置上自己用 Google 登入。Android 在 Google 登入時讀取系統設定 `firebase.test.lab`，只有字串 `"true"` 才在 `POST /api/session/google` 帶 `firebase_test_lab: true`，其他可讀值帶 `false`。iOS 不讀也不帶這個欄位；Android 橋接缺少或讀取失敗時也不帶。新的 Google 身份第一次登入時，只要這個 JSON 欄位是布林 `true`，或連線來自 Google 公布的 Test Lab 位址 (Cloudflare 的 `cf-connecting-ip`，`server/testLabNetwork.ts`)，會員一建立就是停用的，回 403 `ACCOUNT_DISABLED`，不發 session，所以不能讀經、拿分或上排行。另加驗過的 Google ID token email 以 `@cloudtestlabaccounts.com` 結尾 (不分大小寫) 的第三個訊號，三者任一成立即停用；email 不採信 request body，舊版 App 不帶旗標時仍可由網域或 IP 判斷。此網域來自社群回報，尚待下一次 Play 上傳的 log 確認。已經存在的會員不會被這個判斷停用。每建立一個新會員，後端 log 記一行 `AUTO_PROVISION_MEMBER testDevice=<true|false> clientFlag=<absent|true|false|other> emailClaim=<present|missing> testLabEmailDomain=<true|false> testLabAddress=<true|false> clientAddress=<present|missing>`，`testDevice` 是三個訊號任一命中的結果；`clientFlag` 分別表示欄位不存在、布林 true、布林 false、其他型別，`emailClaim` 表示驗過的 token 是否帶 email，`testLabEmailDomain` 與 `testLabAddress` 分別表示網域與 IP 清單是否命中，`clientAddress` 只表示位址是否存在；不記 email、名字、subject、token 或位址本身。
 
 ### Apple 登入 (`src/ui/AppleLoginCard.tsx`、`server/appleVerifier.ts`)
 
@@ -109,6 +109,8 @@
 
 ## 決定（為什麼這樣做）
 
+- 2026-10-19：Play 測試機的新 Google 身分加驗過的 token email 網域訊號，與既有 App 旗標、IP 清單任一命中即建員停用，且僅限首次建員；既有會員與 Apple 路徑不變。網域僅有社群回報，尚未在正式環境確認，因此 log 分別記錄每個訊號的狀態供下次上傳查核，不記個資或 email 本身。
+
 - 2026-10-18：原生選帳號畫面被切走或系統關閉後，登入 promise 可能一直沒有結果，因此提供前景/等待提示讓使用者能重試，不靠輪詢。主管審查後確定：回前景後 10秒、或原生等待 60秒只讓按鈕恢復，不宣告登入失敗或丟棄結果；iOS 回前景後 SDK 還可能交換 token，2-step 驗證也可能超過 60秒。未重按就接收同一次晚到結果，只有重按或元件卸載才結束舊的 auth attempt 並丟棄舊結果。這取代最初「前景 1秒/60秒到點即結束嘗試」的做法，避免誤傷正常慢速登入。
 - 2026-10-18 維護者決定登入頁三行改寫讀、聽、累積積分這三件青少和主堂都有的事，日記沒有入口所以不介紹，報名只有青少所以不寫。
 
@@ -151,7 +153,7 @@
 
 ## 守住它的測試
 
-- `tests/server/testLabSignal.test.ts`、`tests/server/googleAutoProvision.test.ts` — 系統訊號/IP 任一成立停用新會員、舊版相容、既有會員不變、停用會員無 session。
+- `tests/server/testLabEmail.test.ts`、`tests/server/testLabSignal.test.ts`、`tests/server/googleAutoProvision.test.ts` — 系統訊號/IP/驗過的 token email 網域任一成立停用新會員、舊版相容、既有會員不變、停用會員無 session。
 - `tests/services/googleSession.test.ts`、`tests/services/testLabSession.test.ts`、`tests/config/testLabConfig.test.ts` — Android 設定橋接與登入請求、iOS 不帶訊號、Expo 原生產生與重複執行。
 
 - `tests/ui/signInScreen.test.ts` — 第一個登入畫面文案與唯一的登入動作。

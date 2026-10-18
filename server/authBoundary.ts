@@ -24,6 +24,7 @@ export function authenticate(
 export interface GoogleIdentityForSession {
   subject: string;
   provider: 'google';
+  email?: string;
   displayName?: string;
 }
 
