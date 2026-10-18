@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { createDevotionClient, type DevotionalPost } from '../../services/devotionClient';
 import { createDevotionSpeech } from '../../services/devotionSpeech';
@@ -78,16 +79,23 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
     return () => { active = false; };
   }, [client, date]);
 
-  const load = useCallback(() => {
+  // `quiet` keeps 還沒有上傳 on screen while asking again, and a failed quiet ask leaves it there.
+  const load = useCallback((quiet = false) => {
     if (!client) return;
     const forDate = date;
-    setPost({ date: forDate, state: { kind: 'loading' } });
+    if (!quiet) setPost({ date: forDate, state: { kind: 'loading' } });
     void client.getDevotional(forDate)
       .then((value: DevotionalPost | null) => { if (scopeRef.current !== scope) return; setPost((current) => current?.date === forDate ? { date: forDate, state: value ? { kind: 'ready', post: value } : { kind: 'missing' } } : current); })
-      .catch(() => { if (scopeRef.current === scope) setPost((current) => current?.date === forDate ? { date: forDate, state: { kind: 'error', onRetry: load } } : current); });
+      .catch(() => { if (!quiet && scopeRef.current === scope) setPost((current) => current?.date === forDate ? { date: forDate, state: { kind: 'error', onRetry: () => load() } } : current); });
   }, [client, date, scope]);
   const current = post?.date === date ? post.state : null;
-  const ensureLoaded = useCallback(() => { if (!current || current.kind === 'error') load(); }, [current, load]);
+  // The pastor posts at no fixed hour (維護者 2026-10-19): 還沒有上傳 is asked again at the next look.
+  const ensureLoaded = useCallback(() => { if (!current || current.kind === 'error') load(); else if (current.kind === 'missing') load(true); }, [current, load]);
+  const currentRef = useRef(current); currentRef.current = current;
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => { if (next === 'active' && currentRef.current?.kind === 'missing') load(true); });
+    return () => subscription.remove();
+  }, [load]);
   // Asked to read before the post arrived: start once it has.
   useEffect(() => {
     if (!speakWhenReady.current || current?.kind !== 'ready') return;
