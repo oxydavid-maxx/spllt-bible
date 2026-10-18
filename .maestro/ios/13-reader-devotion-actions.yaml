@@ -39,8 +39,10 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "開啟積分操作"
     timeout: 15000
+# On a day with no reading (Sundays) the page selects the last reading day, so the leaf reads 我已讀了靈修
+# (2026-10-18: main and this branch both failed here on a Sunday).
 - scrollUntilVisible:
-    element: "完成今日靈修"
+    element: "完成今日靈修|我已讀了靈修"
     direction: DOWN
     timeout: 30000
 - takeScreenshot: 13-progress-actions
