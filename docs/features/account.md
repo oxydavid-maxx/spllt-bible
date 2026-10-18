@@ -108,6 +108,8 @@
 
 ## 決定（為什麼這樣做）
 
+- 2026-10-18 維護者決定登入頁三行改寫讀、聽、累積積分這三件青少和主堂都有的事，日記沒有入口所以不介紹，報名只有青少所以不寫。
+
 - iOS Google 登入使用私有 iOS OAuth client (bundle id `org.qingmu.youth`) 及對應的 callback scheme；送給後端的 ID token audience 仍是既有 web client。Android 保留原本的 Google/Firebase 設定。正式 TestFlight 安裝與真帳號登入另由帳號持有人驗收，不以模擬器打開 Google 頁面代替。
 
 **刻意不做：**
