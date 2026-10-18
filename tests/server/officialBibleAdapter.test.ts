@@ -9,7 +9,8 @@ import { BiblePassageSchema } from '../../node_modules/@youversion/platform-core
 
 const versionId = 46;
 const prefix = 'ChapterContent-module__test__';
-function chapterHtml(id=46, reference='1TI.1', extra='') {
+const defaultPrefix = prefix;
+function chapterHtml(id=46, reference='1TI.1', extra='', prefix=defaultPrefix) {
   const props = { versionData: { id, local_title: 'Synthetic fixture edition', local_abbreviation: 'FIX', language: { language_tag: 'zho_tw', text_direction:'ltr' }, publisher:{name:'Synthetic publisher'}, copyright_short:{text:'Synthetic copyright',html:'<p>Synthetic copyright</p>'} }, chapterInfo: { reference:{usfm:[reference],human:'Fixture book 1',version_id:id}, copyright:{text:'Synthetic copyright'}, next:{usfm:['1TI.2'],human:'Fixture book 2',version_id:id} } };
   const flight = `8:${JSON.stringify(['$', 'Component', null, {pageProps: props}])}\n`;
   return `<html><body><div data-testid="chapter-content"><div data-vid="${id}" class="version"><div class="${prefix}chapter" data-usfm="${reference}"><div class="${prefix}label">1</div><div class="${prefix}s"><span class="${prefix}heading">Synthetic heading</span></div><div class="${prefix}p"><span class="${prefix}verse" data-usfm="${reference}.1"><span class="${prefix}label">1</span><span class="${prefix}content">Synthetic &amp; exact text.</span><span class="${prefix}note ${prefix}x"><span class="${prefix}body">Synthetic reference.</span></span></span><span class="${prefix}verse" data-usfm="${reference}.2"><span class="${prefix}label">2</span><span class="${prefix}content">Second fixture.</span></span>${extra}</div></div></div><button>Unrelated reader controls</button></div><script>self.__next_f.push(${JSON.stringify([1,flight])})</script></body></html>`;
@@ -21,6 +22,17 @@ function fixture(options: Record<string,unknown> = {}) {
   return {fetcher,handle,get: async(path:string):Promise<any>=>handle({method:'GET',url:path,headers:{authorization:'DO_NOT_FORWARD',cookie:'DO_NOT_FORWARD','x-yvp-app-key':'public-app-key-fixture'}})};
 }
 describe('official Bible SSR adapter',()=>{
+  it('reads the 2026-10-19 bible.com class form (hash_name) exactly like the module__hash__name form',async()=>{
+    const legacy=await fixture().get('/v1/bibles/46/passages/1TI.1');
+    const current=fixture({fetcher:async(url:string)=>new Response(url.includes('/versions/')?indexHtml():chapterHtml(46,'1TI.1','','cat7xG_'))});
+    const result=await current.get('/v1/bibles/46/passages/1TI.1');
+    expect(result.status).toBe(200);
+    expect(result.body.content).toBe(legacy.body.content);
+    // Utility classes that merely contain an underscore are not mistaken for chapter markup.
+    const lookalike=fixture({fetcher:async(url:string)=>new Response(url.includes('/versions/')?indexHtml():chapterHtml(46,'1TI.1','','grid-cols-[1fr_')) });
+    expect((await lookalike.get('/v1/bibles/46/passages/1TI.1')).status).toBe(502);
+  });
+
   it('sets a thirty minute public cache lifetime only on successful Bible JSON responses',async()=>{
     const success=fixture();
     const ok=await success.get('/v1/bibles/46/passages/1TI.1');
