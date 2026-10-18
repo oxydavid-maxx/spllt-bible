@@ -156,4 +156,19 @@ describe('the calendar card', () => {
     expect(onPreviousMonth).toHaveBeenCalledOnce();
     expect(view.root.findByProps({ accessibilityLabel: '下個月' }).props.disabled).toBe(true);
   });
+
+  it('puts export on the left and the existing full-plan link on the right in one footer', () => {
+    const onExportReadingCard = vi.fn(), onOpenReadingPlan = vi.fn();
+    const view = render({ onExportReadingCard, onOpenReadingPlan });
+    const left = view.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '匯出讀經卡')[0];
+    const right = view.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '整份計畫')[0];
+    // Native primitives in this renderer have a function wrapper above the host node.
+    const footer = left.parent!.parent!;
+    expect(footer === right.parent!.parent).toBe(true);
+    expect(footer.children.indexOf(left.parent!)).toBeLessThan(footer.children.indexOf(right.parent!));
+    act(() => { left.props.onPress(); right.props.onPress(); });
+    expect(onExportReadingCard).toHaveBeenCalledOnce();
+    expect(onOpenReadingPlan).toHaveBeenCalledOnce();
+    expect(texts(view)).toContain('匯出讀經卡 ›');
+  });
 });

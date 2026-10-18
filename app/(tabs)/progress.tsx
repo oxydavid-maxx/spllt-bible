@@ -26,11 +26,15 @@ import type { CompletionAwardEvent, CompletionSyncEvent } from '../../src/servic
 import { applyCompletionSyncToProfile } from '../../src/ui/completionProfileSync';
 import { CompletionTodayButton } from '../../src/ui/CompletionTodayButton';
 import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
-import { getReadingPlanId, getReadingPlanSpan, getScheduledReading, setSelectedReadingDate } from '../../src/ui/readingSession';
+import { getReadingPlan, getReadingPlanId, getReadingPlanSpan, getScheduledReading, setSelectedReadingDate } from '../../src/ui/readingSession';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
 import type { CompletionRecord } from '../../src/domain/completion';
 import { ReadingCalendarCard } from '../../src/ui/gamification/ReadingCalendarCard';
+import { ReadingCardExportSheet } from '../../src/ui/gamification/ReadingCardExportSheet';
+import { buildReadingCardHtml, type ReadingCardScope } from '../../src/domain/readingCard';
+import { loadReadingCardSnapshot } from '../../src/services/readingCardSnapshot';
+import { shareReadingCard } from '../../src/ui/readingCardShare';
 import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
 import { consumeOpenFriendsList, subscribeFriendAdded, subscribeOpenFriendsList, type FriendAddedEvent } from '../../src/services/friendPush';
 
@@ -40,6 +44,12 @@ type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'redemptions' | null;
 export default function ProgressScreen() {
   const congregation = useCongregation();
   const [planOpen, setPlanOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const exportRequest = useRef<object | null>(null);
+  const closeExport = () => { exportRequest.current = null; setExportOpen(false); setExportBusy(false); };
+  useEffect(() => () => { exportRequest.current = null; }, []);
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
   const client = useMemo(() => session ? createGamificationApiClient({ baseUrl: runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [session?.memberId, session?.sessionToken]);
@@ -121,6 +131,25 @@ export default function ProgressScreen() {
     }).catch(() => undefined);
     return () => { active = false; };
   }, [completionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh]);
+  const loadedDevotionRanges = useRef<Array<{ from: string; to: string }>>([]);
+  useEffect(() => {
+    let active = true;
+    setSchedule({ days: new Map(), ranges: [] }); setConfirmedDays({});
+    setDevotionDates(new Set()); loadedDevotionRanges.current = [];
+    if (session) void import('../../src/services/readingProgressCache').then(async ({ readingProgressCache }) => {
+      const cached = await readingProgressCache.read(session.memberId);
+      if (!active || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== auth.epoch) return;
+      setSchedule(current => {
+        const days = new Map<string, CalendarDay>(Object.values(cached.days)
+          .filter(day => !current.ranges.some(range => day.taskDate >= range.from && day.taskDate <= range.to))
+          .map(day => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', canComplete: isWithinCompletionWindow(day.taskDate, today) }]));
+        for (const [date, day] of current.days) days.set(date, day);
+        return { days, ranges: [...(cached.ranges ?? []), ...current.ranges] };
+      });
+      setDevotionDates(current => new Set([...cached.devotionDates.filter(date => !loadedDevotionRanges.current.some(range => date >= range.from && date <= range.to)), ...current]));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [accountKey, auth.epoch]);
   // 靈修 days for the same range as the reading days. Kept apart from completions: they earn nothing.
   const [devotionDates, setDevotionDates] = useState<ReadonlySet<string>>(() => new Set());
   const [devotionPending, setDevotionPending] = useState<string | null>(null);
@@ -131,6 +160,7 @@ export default function ProgressScreen() {
     const range = readingDaysRange(calendarMonth, today);
     void devotionClient.getDevotionDates(range.from, range.to).then((dates) => {
       if (!active || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
+      loadedDevotionRanges.current.push(range);
       setDevotionDates((current) => new Set([...[...current].filter((date) => date < range.from || date > range.to), ...dates]));
     }).catch(() => undefined);
     return () => { active = false; };
@@ -141,6 +171,7 @@ export default function ProgressScreen() {
   const stopPrefetch = useCallback(() => { if (prefetchTimer.current !== null) clearTimeout(prefetchTimer.current); prefetchTimer.current = null; }, []);
   const clearProtectedState = useCallback((preserveScanner = false, preserveOwnProfile = false, preserveOwnView = false) => {
     setPlanOpen(false);
+    exportRequest.current = null; setExportOpen(false); setExportBusy(false); setExportError(null);
     requestGeneration.current += 1; viewGeneration.current += 1; profileRequest.current += 1;
     stopPrefetch(); client?.cancelReads?.();
     const currentProfile = profileRef.current;
@@ -496,6 +527,7 @@ export default function ProgressScreen() {
   const toggleDevotion = (date: string, completed: boolean) => {
     if (!devotionClient || devotionPending) return;
     const apply = (value: boolean) => setDevotionDates((current) => { const next = new Set(current); if (value) next.add(date); else next.delete(date); return next; });
+    loadedDevotionRanges.current.push({ from: date, to: date });
     apply(completed); setDevotionPending(date);
     void devotionClient.setDevotion(date, completed)
       .then(() => setHistoryRefresh((value) => value + 1))
@@ -504,6 +536,34 @@ export default function ProgressScreen() {
   };
   const groupFirstMonth = planSpan ? planSpan.first.slice(0, 7) : today.slice(0, 7);
 
+  const exportReadingCard = async (period: ReadingCardScope) => {
+    if (!session || exportRequest.current) return;
+    const request = {}; exportRequest.current = request;
+    const expectedEpoch = auth.epoch;
+    const owns = () => exportRequest.current === request && isCurrentAuthSession(session) && getAuthSnapshot().epoch === expectedEpoch;
+    setExportBusy(true); setExportError(null);
+    try {
+      const days = await loadReadingCardSnapshot(session.memberId, getReadingPlan());
+      if (!owns()) return;
+      const snapshot = days.flatMap(day => {
+        const inLoadedRange = schedule.ranges.some(range => day.date >= range.from && day.date <= range.to);
+        const current = calendarDay(day.date);
+        if (inLoadedRange && !current) return [];
+        const liveCompletion = day.date in confirmedDays || day.date === selectedDate && localRecordTouched(completion.record);
+        const liveDevotion = loadedDevotionRanges.current.some(range => day.date >= range.from && day.date <= range.to);
+        return [{ ...day, completed: current && liveCompletion ? current.completed : day.completed, devoted: liveDevotion ? devotionDates.has(day.date) : day.devoted }];
+      });
+      const memberName = auth.profile?.memberId === session.memberId ? auth.profile.displayName : profile?.memberId === session.memberId ? profile.displayName : null;
+      if (!memberName) throw new Error('目前沒有你的名字，請稍後重試。');
+      const html = buildReadingCardHtml({ today: taipeiDate(), memberName, scope: period, days: snapshot });
+      await shareReadingCard(html, owns);
+      if (owns()) setExportOpen(false);
+    } catch (reason) {
+      if (owns()) setExportError(reason instanceof Error ? reason.message : '產生讀經卡失敗，請重試。');
+    } finally {
+      if (owns()) { exportRequest.current = null; setExportBusy(false); }
+    }
+  };
   if (!session) return <View style={styles.screen}><Text style={styles.title}>積分</Text><Text style={styles.note}>請先登入以查看積分。</Text></View>;
   const ownProfile = profile?.memberId === session.memberId ? profile : null;
   const showingProfile = scope !== 'me' && selected && profile;
@@ -535,6 +595,7 @@ export default function ProgressScreen() {
           days={calendarDays}
           onSelect={(date) => withPick(() => setSelectedDate(date))}
           onOpenReadingPlan={() => setPlanOpen(true)}
+          onExportReadingCard={() => { setExportError(null); setExportOpen(true); }}
           onPreviousMonth={planSpan && calendarMonth > planSpan.first.slice(0, 7) ? () => setCalendarMonth(shiftMonth(calendarMonth, -1)) : undefined}
           onNextMonth={calendarMonth < lastMonth ? () => setCalendarMonth(shiftMonth(calendarMonth, 1)) : undefined}
           devotionDates={devotionDates}
@@ -571,6 +632,7 @@ export default function ProgressScreen() {
       onChooseReward={() => void loadRewards()}
     /> : null}
     <CompletionAwardFeedback event={completionAward} onFinished={(operationId) => setCompletionAward((current) => current?.operationId === operationId ? null : current)} />
+    <ReadingCardExportSheet visible={exportOpen} today={today} busy={exportBusy} error={exportError} onExport={period => { void exportReadingCard(period); }} onClose={closeExport} />
     <ReadingPlanSheet visible={planOpen} onClose={() => setPlanOpen(false)} onSelectDate={date => { setSelectedReadingDate(date); router.replace('/reader'); }} />
     <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: openQrSheet }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : [])]} />
     <ActionSheet visible={sheet === 'qr'} title="我的好友 QR" dismissOnOutsideTap onClose={closeQrSheet}>

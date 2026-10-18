@@ -72,6 +72,7 @@
 | 團體獎 | 一個月 15 天讀經的人數夠了就累積一個月：懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月；只有青少有 | 積分「團體」 | Android、iOS | [points.md](points.md) |
 | 完成今日靈修/讀經 | 月曆下兩顆鈕：左靈修葉子、右讀經書，未完成白底綠框，完成後填滿深綠白圖示 | 積分「個人」月曆下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 積分月曆 | 點任一天看經文與狀態，未來/過期也能看；期限內可以補打卡；讀了靈修的日子標金色「靈修」 | 積分「自己」的「個人」 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 匯出讀經卡 | 本月或本季匯出 A4 PDF，含讀經勾選、靈修標記與未完成天數，離線可分享/列印 | 積分「自己」的個人讀經月曆卡下排左邊「匯出讀經卡 ›」 | Android、iOS | [points.md](points.md) |
 | 範圍切換 | 自己、好友兩個分頁；管理者從帳戶頁進來才多一個「全體 (管理)」 | 積分頁頂部 | Android、iOS | [points.md](points.md) |
 | 自己的積分 | 總積分、梯隊、目標獎品進度、「總積分/每月」圖 (金色虛線是靈修) | 積分「自己」的「個人」 | Android、iOS | [points.md](points.md) |
 | 目標獎品 | 從自己那一邊 (青少或主堂) 的獎品選一個，看還差幾分 | 積分「自己」 | Android、iOS | [points.md](points.md) |

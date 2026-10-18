@@ -29,6 +29,7 @@ export interface ReadingCalendarCardProps {
   /** The selected day's completion button, with anything it needs to say about syncing. */
   action?: ReactNode;
   onOpenReadingPlan?: () => void;
+  onExportReadingCard?: () => void;
   /** Days the member also read the pastor's 靈修: a small gold 「靈修」 under the date. */
   devotionDates?: ReadonlySet<string>;
 }
@@ -38,7 +39,7 @@ function monthLabel(month: string): string {
   return `${year}年${Number(value)}月`;
 }
 
-export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, action, onOpenReadingPlan, devotionDates }: ReadingCalendarCardProps) {
+export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, action, onOpenReadingPlan, onExportReadingCard, devotionDates }: ReadingCalendarCardProps) {
   const selectedDay = days.get(selectedDate);
   const selectedState = dayState(selectedDate, today, selectedDay);
   const message = dayMessage(selectedDate, selectedState);
@@ -80,11 +81,13 @@ export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect
         <View style={styles.dayLine}>
           <Text style={styles.heading}>{dayHeading(selectedDate)}</Text>
           {passages ? <Text style={styles.passages}>{passages}</Text> : null}
-          {onOpenReadingPlan ? <Pressable accessibilityRole="button" accessibilityLabel="整份計畫" onPress={onOpenReadingPlan} style={styles.planLink}><Text style={styles.planLinkText}>整份計畫 ›</Text></Pressable> : null}
         </View>
       </> : null}
       {message ? <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text> : action}
-      {!selectedDay && onOpenReadingPlan ? <Pressable accessibilityRole="button" accessibilityLabel="整份計畫" onPress={onOpenReadingPlan} style={styles.planLink}><Text style={styles.planLinkText}>整份計畫 ›</Text></Pressable> : null}
+      {onExportReadingCard || onOpenReadingPlan ? <View style={styles.footer}>
+        {onExportReadingCard ? <Pressable accessibilityRole="button" accessibilityLabel="匯出讀經卡" onPress={onExportReadingCard} style={styles.exportLink}><Text style={styles.planLinkText}>匯出讀經卡 ›</Text></Pressable> : null}
+        {onOpenReadingPlan ? <Pressable accessibilityRole="button" accessibilityLabel="整份計畫" onPress={onOpenReadingPlan} style={styles.planLink}><Text style={styles.planLinkText}>整份計畫 ›</Text></Pressable> : null}
+      </View> : null}
     </View>
   </View>;
 }
@@ -120,6 +123,8 @@ const styles = StyleSheet.create({
   dayLine: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: theme.spacing.sm },
   heading: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
   passages: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
+  exportLink: { minHeight: theme.control.tap, justifyContent: 'center' },
   planLink: { marginLeft: 'auto', minHeight: theme.control.tap, justifyContent: 'center' },
   planLinkText: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
   message: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
