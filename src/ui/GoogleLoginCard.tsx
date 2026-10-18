@@ -11,6 +11,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 interface NativeLoginWait {
   recover: (showMessage: boolean) => void;
+  retryable: boolean;
   foregroundTimer?: ReturnType<typeof setTimeout>;
 }
 
@@ -37,9 +38,9 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
     let previousState = AppState.currentState;
     const subscription = AppState.addEventListener('change', nextState => {
       const pending = nativeWait.current;
-      if (previousState !== 'active' && nextState === 'active' && pending && pending.foregroundTimer === undefined) {
-        // Native success/cancellation can arrive just after the foreground event.
-        pending.foregroundTimer = setTimeout(() => pending.recover(true), 1000);
+      if (previousState !== 'active' && nextState === 'active' && pending && !pending.retryable && pending.foregroundTimer === undefined) {
+        // Foreground is not completion: the SDK can still be exchanging tokens.
+        pending.foregroundTimer = setTimeout(() => pending.recover(true), 10_000);
       }
       previousState = nextState;
     });
@@ -51,7 +52,9 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
     setState('signed-in');
   }, [onSignedIn]);
   const signIn = useCallback(async () => {
-    if (nativeWait.current) return;
+    if (nativeWait.current && !nativeWait.current.retryable) return;
+    // Only an explicit retry (or unmount) invalidates the previous native result.
+    nativeWait.current?.recover(false);
     const attempt = beginAuthSessionAttempt();
     configureAuthSessionTransport({ baseUrl });
     setState('exchanging');
@@ -61,24 +64,32 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
       // iOS needs its own native client; serverClientID stays the web client so the backend audience is unchanged.
       const iosClientId = Platform.OS === 'ios' ? iosClientIdFromUrlScheme(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME) : undefined;
       const authResult = await new Promise<NativeGoogleResult | null>(resolve => {
-        const clearWait = () => {
+        const clearTimers = () => {
           clearTimeout(timeout);
           if (pending.foregroundTimer !== undefined) clearTimeout(pending.foregroundTimer);
+        };
+        const clearWait = () => {
+          clearTimers();
           if (nativeWait.current === pending) nativeWait.current = null;
         };
         const pending: NativeLoginWait = {
+          retryable: false,
           recover: showMessage => {
             if (nativeWait.current !== pending) return;
-            clearWait();
-            finishAuthSessionAttempt(attempt);
             if (showMessage) {
+              if (pending.retryable) return;
+              clearTimers();
+              pending.retryable = true;
               setState('error');
               setErrorMessage('登入沒有完成，請再按一次。');
+            } else {
+              clearWait();
+              finishAuthSessionAttempt(attempt);
+              resolve(null);
             }
-            resolve(null);
           },
         };
-        // Bound only the native picker wait; a late native result cannot start an exchange.
+        // Offer retry without cancelling a slow native flow or multi-step verification.
         const timeout = setTimeout(() => pending.recover(true), 60_000);
         nativeWait.current = pending;
         void obtainGoogleIdToken(nativeGoogle, clientId, iosClientId).then(result => {
@@ -93,6 +104,8 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
         setErrorMessage(authResult.status === 'CANCELLED' ? '你取消了登入。' : authResult.reason === 'GOOGLE_PLAY_SERVICES_UNAVAILABLE' ? '這台裝置沒有可用的Google服務。' : '登入沒有完成，請稍後再試。');
         return;
       }
+      setState('exchanging');
+      setErrorMessage(null);
       const session = await establishGoogleSession(baseUrl, authResult.idToken);
       if (!session) {
         setState('error');

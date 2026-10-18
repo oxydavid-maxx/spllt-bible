@@ -87,8 +87,9 @@ describe.each(['android', 'ios'])('Google login native wait recovery on %s (real
   it.each(['welcome', 'card'] as const)('recovers a never-settling native promise after foreground: %s', async variant => {
     signIn.mockReturnValue(new Promise(() => {})); await render(variant); await press();
     expect(button().props.disabled).toBe(true); expect(text()).toContain('正在登入…');
-    await foreground(); await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    await foreground(); await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     expect(button().props.disabled).toBe(false); expect(text()).toContain(retryMessage);
+    expect(doubles.finish).not.toHaveBeenCalled();
     signIn.mockResolvedValue(success()); await press();
     expect(doubles.persist).toHaveBeenCalledTimes(1);
   });
@@ -96,7 +97,7 @@ describe.each(['android', 'ios'])('Google login native wait recovery on %s (real
     signIn.mockReturnValue(new Promise(() => {})); await render(); await press();
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(button().props.disabled).toBe(false); expect(text()).toContain(retryMessage);
-    expect(doubles.finish).toHaveBeenCalledWith({ epoch: 0, sequence: 1 });
+    expect(doubles.finish).not.toHaveBeenCalled();
   });
   it.each(['success', 'cancelled', 'rejected'] as const)('ignores the old native %s while a retry is pending and after it succeeds', async outcome => {
     const old = deferred<unknown>(), next = deferred<unknown>();
@@ -115,9 +116,11 @@ describe.each(['android', 'ios'])('Google login native wait recovery on %s (real
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(text()).not.toContain(retryMessage);
   });
-  it('allows a normal native success arriving just after foreground', async () => {
+  it('does not show an error for a result arriving within 10 seconds after foreground', async () => {
     const pending = deferred<unknown>(); signIn.mockReturnValue(pending.promise);
     const onSignedIn = await render(); await press(); await foreground();
+    await act(async () => { await vi.advanceTimersByTimeAsync(9999); });
+    expect(button().props.disabled).toBe(true); expect(text()).not.toContain(retryMessage);
     await act(async () => { pending.resolve(success()); });
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(onSignedIn).toHaveBeenCalledOnce(); expect(text()).not.toContain(retryMessage);
@@ -125,11 +128,46 @@ describe.each(['android', 'ios'])('Google login native wait recovery on %s (real
   it('ignores an old success that arrives after the retry has already signed in', async () => {
     const old = deferred<unknown>(); signIn.mockReturnValueOnce(old.promise).mockResolvedValueOnce(success('new'));
     const onSignedIn = await render('card'); await press(); await foreground();
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000); }); await press();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); }); await press();
     await act(async () => { old.resolve(success('old')); });
     expect(doubles.establishSession).toHaveBeenCalledExactlyOnceWith('new', { persistentDevice: true, firebaseTestLab: undefined });
     expect(doubles.persist).toHaveBeenCalledOnce(); expect(onSignedIn).toHaveBeenCalledOnce();
     expect(text()).toContain('已登入，可以保存你的讀經進度。');
+  });
+  describe.each(['foreground', 'timeout'])('late native results after %s without a second press', recovery => {
+    it.each([
+      { response: success('late'), message: null },
+      { response: { type: 'cancelled' }, message: '你取消了登入。' },
+      { response: { type: 'error' }, message: '登入沒有完成，請稍後再試。' },
+    ])('still handles $response.type normally', async ({ response, message }) => {
+      const pending = deferred<unknown>(); signIn.mockReturnValue(pending.promise);
+      const onSignedIn = await render('card'); await press();
+      if (recovery === 'foreground') await foreground();
+      await act(async () => { await vi.advanceTimersByTimeAsync(recovery === 'foreground' ? 10_000 : 60_000); });
+      expect(button().props.disabled).toBe(false); expect(text()).toContain(retryMessage);
+      expect(doubles.finish).not.toHaveBeenCalled();
+      await act(async () => { await vi.advanceTimersByTimeAsync(15_000); pending.resolve(response); });
+      if (message) {
+        expect(text()).toContain(message); expect(button().props.disabled).toBe(false);
+        expect(onSignedIn).not.toHaveBeenCalled(); expect(doubles.establishSession).not.toHaveBeenCalled();
+      } else {
+        expect(text()).toContain('已登入，可以保存你的讀經進度。'); expect(onSignedIn).toHaveBeenCalledOnce();
+        expect(doubles.establishSession).toHaveBeenCalledExactlyOnceWith('late', { persistentDevice: true, firebaseTestLab: undefined });
+      }
+      expect(text()).not.toContain(retryMessage);
+      expect(doubles.finish).toHaveBeenCalledWith({ epoch: 0, sequence: 1 });
+    });
+  });
+  it('disables retry and clears the timeout message while a late success exchanges its session', async () => {
+    const native = deferred<unknown>(), exchange = deferred<typeof session>();
+    signIn.mockReturnValue(native.promise); doubles.establishSession.mockReturnValue(exchange.promise);
+    const onSignedIn = await render(); await press();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(button().props.disabled).toBe(false);
+    await act(async () => { native.resolve(success('late')); });
+    expect(button().props.disabled).toBe(true); expect(text()).toContain('正在登入…');
+    expect(text()).not.toContain(retryMessage);
+    await act(async () => { exchange.resolve(session); }); expect(onSignedIn).toHaveBeenCalledOnce();
   });
   it.each([
     { response: success(), message: null },
