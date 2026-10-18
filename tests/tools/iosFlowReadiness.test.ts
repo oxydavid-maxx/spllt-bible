@@ -5,6 +5,16 @@ import { parseAllDocuments } from 'yaml';
 const flow = (name: string) => readFileSync(new URL(`../../.maestro/ios/${name}.yaml`, import.meta.url), 'utf8');
 
 describe('iOS flow readiness and semantic interaction targets', () => {
+  it('waits for reader navigation controls after background playback before deciding whether to reveal the tabs', () => {
+    const commands = parseAllDocuments(flow('21-audio-after-background'))[1].toJSON();
+    const reveal = commands.findIndex((command: any) => command.runFlow);
+    expect(commands[reveal - 1]?.extendedWaitUntil?.visible).toBe('(積分|展開閱讀工具)');
+    expect(commands[reveal].runFlow.when).toEqual({ notVisible: '積分' });
+    expect(commands[reveal].runFlow.commands[0].extendedWaitUntil.visible).toBe('展開閱讀工具');
+    expect(commands[0].extendedWaitUntil.visible).toBe('暫停.*語音');
+    expect(commands).toContainEqual({ assertVisible: '暫停.*語音' });
+  });
+
   it('waits for the initial reader redirect, then bounds navigation by the destination hierarchy', () => {
     const source = flow('00-smoke');
     const readerReady = source.indexOf('visible: "更多閱讀工具"');
