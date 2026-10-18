@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isTestLabAddress } from '../../server/testLabNetwork';
 
 // Google Play's pre-launch report signs in to the app with Google on Firebase Test Lab devices, and every
-// one of them reaches the internet from the address blocks Google publishes for Test Lab.
+// IP ranges are a fallback: observed Play crawlers can arrive from outside this published list.
 describe('Firebase Test Lab device addresses', () => {
   it('recognises physical-device, Arm and x86 virtual-device addresses, IPv4 and IPv6', () => {
     for (const address of ['108.177.6.20', '70.32.150.200', '172.217.120.70', '199.36.156.10', '34.68.194.66', '199.192.115.17', '2001:4860:1008::1', '2001:4860:103a:5::9', '::ffff:108.177.6.20']) {

@@ -150,11 +150,14 @@ export function createApiClient(options: ApiClientOptions) {
     finally { clearTimeout(timer); }
   };
   return {
-    async establishSession(idToken: string, sessionOptions: { persistentDevice?: boolean } = {}): Promise<SessionResult | SessionFailure | null> {
+    async establishSession(idToken: string, sessionOptions: { persistentDevice?: boolean; firebaseTestLab?: boolean } = {}): Promise<SessionResult | SessionFailure | null> {
       const response = await fetchImpl(`${options.baseUrl}/api/session/google`, {
         method: 'POST',
         headers: { authorization: `Bearer ${idToken}`, 'content-type': 'application/json' },
-        ...(sessionOptions.persistentDevice ? { body: JSON.stringify({ session_type: 'device' }) } : {}),
+        ...(sessionOptions.persistentDevice || typeof sessionOptions.firebaseTestLab === 'boolean' ? { body: JSON.stringify({
+          ...(sessionOptions.persistentDevice ? { session_type: 'device' } : {}),
+          ...(typeof sessionOptions.firebaseTestLab === 'boolean' ? { firebase_test_lab: sessionOptions.firebaseTestLab } : {}),
+        }) } : {}),
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { error?: string };

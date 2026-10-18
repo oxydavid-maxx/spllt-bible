@@ -459,6 +459,8 @@ export function createApiHandler(options: ApiHandlerOptions) {
       try { identity = await options.productionGoogleAuth.verify(token); } catch { return json(401, { error: 'AUTH_INVALID' }); }
       let memberId = (options.db.db.prepare('SELECT member_id FROM identity_bindings WHERE provider = ? AND subject = ?').get(identity.provider, identity.subject) as { member_id: string } | undefined)?.member_id ?? null;
       if (!memberId) memberId = await options.productionGoogleAuth.resolveMember(identity);
+      let body: Record<string, unknown>;
+      try { body = parseBody(request.body); } catch { return json(400, { error: 'INVALID_JSON' }); }
       if (!memberId && options.autoProvisionGoogleMembers) {
         memberId = randomUUID();
         try {
@@ -468,7 +470,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
           else {
             // A Play pre-launch test device is created already turned off, so it never reads, votes or ranks
             // (server/testLabNetwork.ts). Only new identities: an existing member is never turned off here.
-            const testDevice = isTestLabAddress(request.headers['cf-connecting-ip']);
+            const testDevice = body.firebase_test_lab === true || isTestLabAddress(request.headers['cf-connecting-ip']);
             options.db.db.prepare('INSERT INTO members(id, display_name, group_id, disabled_at) VALUES(?,?,?,?)').run(memberId, identity.displayName?.trim() || '竹科聖經會員', `unassigned:${memberId}`, testDevice ? Date.now() : null);
             console.log(`AUTO_PROVISION_MEMBER testDevice=${testDevice} clientAddress=${request.headers['cf-connecting-ip'] ? 'present' : 'missing'}`);
             options.db.db.prepare('INSERT INTO identity_bindings(provider, subject, member_id, created_at) VALUES(?,?,?,?)').run(identity.provider, identity.subject, memberId, Date.now());
@@ -481,8 +483,6 @@ export function createApiHandler(options: ApiHandlerOptions) {
       }
       if (!memberId) return json(403, { error: 'UNKNOWN_MEMBER' });
       if (!isMemberEnabled(options.db.db, memberId)) return json(403, { error: 'ACCOUNT_DISABLED' });
-      let body: Record<string, unknown>;
-      try { body = parseBody(request.body); } catch { return json(400, { error: 'INVALID_JSON' }); }
       if (body.session_type === 'device') return json(200, createDeviceSession(options.db.db, memberId));
       return json(200, {
         sessionToken: createSessionToken(memberId, options.sessionSecret),

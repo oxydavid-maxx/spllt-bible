@@ -38,7 +38,7 @@
 - 拿到 ID token 後呼叫 `POST /api/session/google`（帶 `persistentDevice: true`，即 `session_type: 'device'`）。目前正式環境的組態（`googleAudience` 已設定且沒有 `fixtureToken`）會把 `autoProvisionGoogleMembers` 設成 `true`（`server/http.ts`），所以**新的 Google 身份第一次登入就會自動建立會員**，不會走到下面的啟用碼畫面——這與 `SignInScreen.tsx` 上寫的「第一次登入會自動建立帳號」一致。
 - 伺服器仍可能回 `UNKNOWN_MEMBER`（例如自動建立帳號被關掉的組態）：這時畫面切到「這個Google身份尚未完成帳戶啟用，請輸入同工提供的一次性啟用碼。」，輸入框送到 `POST /api/onboarding/claim`（`server/membership.ts` 的 `claimMemberInvite`）。啟用碼綁定規則：碼不存在或雜湊比不到 → 拒絕；碼已用過 → 拒絕；已過期 → 拒絕；碼對應的會員資料跟現有紀錄衝突 → 拒絕；同一個 Google 身份重複送同一支已綁定的碼 → 視為成功（`alreadyBound: true`），不會重複建立會員或報錯。
 - 帳號被停用（`disabled_at` 有值）時，無論走哪條路徑都回 403 `ACCOUNT_DISABLED`；client 端目前把它與其他失敗一起顯示成「伺服器沒有確認身份，請稍後再試。」（沒有專屬文案）。
-- Google Play 測試機器人：每次上傳新版到 Play，正式發布前測試報告會在 Firebase Test Lab 的裝置上自己用 Google 登入。新的 Google 身份第一次登入時，如果連線來自 Google 公布的 Test Lab 位址（Cloudflare 的 `cf-connecting-ip`，`server/testLabNetwork.ts`），會員一建立就是停用的，所以不會出現在讀經人數、排行、投票和好友裡。已經存在的會員從這些位址登入也不會被停用。每建立一個新會員，後端 log 記一行 `AUTO_PROVISION_MEMBER testDevice=<true|false>`（不記名字和位址）。
+- Google Play 測試機器人：每次上傳新版到 Play，正式發布前測試報告會在 Firebase Test Lab 的裝置上自己用 Google 登入。Android 在 Google 登入時讀取系統設定 `firebase.test.lab`，只有字串 `"true"` 才在 `POST /api/session/google` 帶 `firebase_test_lab: true`，其他可讀值帶 `false`。iOS 不讀也不帶這個欄位；Android 橋接缺少或讀取失敗時也不帶。新的 Google 身份第一次登入時，只要這個 JSON 欄位是布林 `true`，或連線來自 Google 公布的 Test Lab 位址 (Cloudflare 的 `cf-connecting-ip`，`server/testLabNetwork.ts`)，會員一建立就是停用的，回 403 `ACCOUNT_DISABLED`，不發 session，所以不能讀經、拿分或上排行。舊版 App 不帶訊號，照舊只看 IP。已經存在的會員不會被這個判斷停用。每建立一個新會員，後端 log 記一行 `AUTO_PROVISION_MEMBER testDevice=<true|false> clientAddress=<present|missing>`，不記名字、token 或位址。
 
 ### Apple 登入 (`src/ui/AppleLoginCard.tsx`、`server/appleVerifier.ts`)
 
@@ -119,7 +119,7 @@
 - **不收集 Email、密碼，只存 Google 帳號給的識別碼**；也不收集位置、通訊錄、相片影片、廣告識別碼，沒有廣告或使用行為分析工具。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)）
 
 - **Google 登入第一次找不到對應帳號時會自動建立會員**，不用先請維護者手動開帳號；但「誰是管理者」不會因為誰先登入就自動取得——管理者身分是維護者在私有部署設定裡另外指定的，不會進公開原始碼。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §3.4）
-- **Play 測試機器人自動停用，不用人審新會員**（維護者 2026-10-15）：2026-10-13～14 兩次上傳 Play 後，十幾個測試機器人登入、讀經、投票，讀經人數和排行被灌，當時由維護者手動停用。「新會員要等管理者確認才算數」被否決：太慢，而且問題是上傳 Play 造成的，不該變成管理者的工作。改用 Play 說明頁指向的辦法，比對 Firebase Test Lab 公布的裝置 IP 位址（Google 大約一年更新一次清單；Test Lab 預定 2027-09-30 停止服務，換平台時要重查）。機器人登入後只看到登入失敗，正式發布前測試報告的範圍因此只到登入畫面，這是刻意的：機器人能進 App 就會投票、加好友，影響真的會員。
+- **Play 測試機器人自動停用，不用人審新會員** (維護者 2026-10-15，2026-10-18 補充)：上傳 Play 後，測試機器人會登入、讀經、投票，影響讀經人數和排行。「新會員要等管理者確認才算數」被否決：太慢，而且問題是上傳 Play 造成的，不該變成管理者的工作。10-15 原本只比對 Firebase Test Lab 公布的裝置 IP 位址；10-16 與 10-18 仍有機器人漏擋，當時後端已收到位址，但清單未命中。因此改加 [Firebase 官方文件的 Android 系統設定訊號](https://firebase.google.com/docs/test-lab/android/android-studio#modify_instrumented_test_behavior_for)：`Settings.System.getString(contentResolver, "firebase.test.lab")` 等於 `"true"`，或現有 IP 清單命中，任一成立就讓新會員在建立時停用；既有會員不受影響。系統設定訊號要等包含此改動的下一版 Android App 上架，且後端支援此欄位後才會生效；只更新後端無法讓舊版 App 帶訊號。機器人登入後只看到登入失敗，正式發布前測試報告的範圍因此只到登入畫面，這是刻意的：機器人能進 App 就會投票、加好友，影響真的會員。IP 清單仍保留；Test Lab 預定 2027-09-30 停止服務，換平台時要重查。
 - **Play 裝的 App 用 Play 的 App 內更新**（維護者 2026-10-13，取代原本「只用版本檔、不用原生模組」的做法，理由寫在 `updateCheck.ts` 開頭）：Play 自己的自動更新什麼時候跑不一定，維護者的手機放了好幾個小時都沒更新。畫面維持原本的全螢幕提示、公告卡片、讀經一行提示，只換「去哪裡問」和「按更新做什麼」。當初不用原生模組的理由是「這個專案不重新產生 android/」，現在 Expo 模組在 Gradle 建置時自動連結（`android/settings.gradle` 的 `useExpoModules()`），不用手改 android/。
 - **App 版本號放在帳戶頁最下面**（維護者 2026-10-13）：測試者要能說出 Google Play 裝的是哪一版，一般 App 也是點頭像進去的帳戶或設定頁看得到版本。括號放 versionCode，因為 Play 用它分辨版本。
 - **刪除帳號直接在 App 完成，不以停用或寄信代替**：2026-10-17 送審決定取代舊「連結＋寄信」流程；主管同意的 V2 不提供日記匯出，因為目前沒有日記入口。
@@ -148,6 +148,9 @@
 - 青少/主堂：`GET /api/me/congregation` 回 `{congregation}`，值是 `youth`、`main`，還沒選是 `null`；`PUT` 同一個路徑存 `{congregation}`，其他值回 400 `INVALID_CONGREGATION`。資料表 `member_affiliations` (`server/congregation.ts`)，刪除帳號時一起刪。
 
 ## 守住它的測試
+
+- `tests/server/testLabSignal.test.ts`、`tests/server/googleAutoProvision.test.ts` — 系統訊號/IP 任一成立停用新會員、舊版相容、既有會員不變、停用會員無 session。
+- `tests/services/googleSession.test.ts`、`tests/services/testLabSession.test.ts`、`tests/config/testLabConfig.test.ts` — Android 設定橋接與登入請求、iOS 不帶訊號、Expo 原生產生與重複執行。
 
 - `tests/ui/signInScreen.test.ts` — 第一個登入畫面文案與唯一的登入動作。
 - `tests/ui/googleLoginWelcome.test.ts` — 歡迎版登入按鈕的樣式與一般卡片版本一致。

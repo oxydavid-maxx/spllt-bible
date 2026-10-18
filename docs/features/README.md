@@ -101,7 +101,7 @@
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| Google 登入 | 用 Google 帳號登入，第一次登入自動建立帳號 | 開 App 時的登入畫面 | Android、iOS (iOS 需私有 OAuth 設定，TestFlight 真機另驗) | [account.md](account.md) |
+| Google 登入 | 用 Google 帳號登入，第一次登入自動建立帳號；測試機訊號或 IP 命中的新會員直接停用 | 開 App 時的登入畫面 | Android、iOS (iOS 需私有 OAuth 設定，TestFlight 真機另驗) | [account.md](account.md) |
 | Apple 登入 | iPhone 原生授權，首次登入建立帳號；Android 不顯示 | 登入畫面 | iOS | [account.md](account.md) |
 | 後台規則與文件 | 管理者解鎖後看所有後台規則和文件連結 (試算表、讀經表等) | 帳戶頁「後台規則與文件」 | Android、iOS | [account.md](account.md) |
 | 刪除帳號 | 二次確認後刪除伺服器個資並登出，無需寄信 | 帳戶頁「刪除帳號與資料」 | Android、iOS | [account.md](account.md) |
