@@ -1,69 +1,66 @@
 {
-  "week": "2026-10-11",
-  "generatedAt": "2026-10-13T10:42:29.810Z",
+  "week": "2026-10-18",
+  "generatedAt": "2026-10-18T01:01:14.061Z",
   "sermon": {
     "label": "第一堂",
-    "title": "十架：耶穌為什麼死？",
-    "speaker": "中亮",
-    "passage": null,
+    "title": "洪水，挪亞方舟",
+    "speaker": "德馨",
+    "passage": "創6-10",
     "audio": null,
     "slides": null,
-    "sermonSlides": null,
+    "sermonSlides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
     "transcript": null,
-    "youtube": null
+    "youtube": null,
+    "materials": [
+      {
+        "name": "20261018青崇分享：舵.pptx",
+        "role": "sermonSlides",
+        "url": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view"
+      }
+    ]
   },
   "sessions": [
     {
       "label": "第一堂",
-      "title": "十架：耶穌為什麼死？",
-      "speaker": "中亮",
+      "title": "洪水，挪亞方舟",
+      "speaker": "德馨",
+      "passage": "創6-10",
+      "audio": null,
+      "slides": null,
+      "sermonSlides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
+      "transcript": null,
+      "youtube": null,
+      "materials": [
+        {
+          "name": "20261018青崇分享：舵.pptx",
+          "role": "sermonSlides",
+          "url": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view"
+        }
+      ]
+    },
+    {
+      "label": "第二堂",
+      "title": "青少團契",
+      "speaker": null,
       "passage": null,
       "audio": null,
       "slides": null,
       "sermonSlides": null,
       "transcript": null,
       "youtube": null
-    },
-    {
-      "label": "第二堂",
-      "title": "一本書終結你的拖延症",
-      "speaker": null,
-      "passage": null,
-      "audio": "https://drive.google.com/file/d/1D27APCjNOvfNtlKo1CVJPzQ2qMIojNUK/view",
-      "slides": null,
-      "sermonSlides": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view",
-      "transcript": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view",
-      "youtube": null,
-      "materials": [
-        {
-          "name": "20261011 第二堂 逐字稿 青崇講座 小丁 - 克服拖延症.pdf",
-          "role": "transcript",
-          "url": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view"
-        },
-        {
-          "name": "20261011 第二堂 錄音 青崇講座 小丁 - 克服拖延症.mp4",
-          "role": "audio",
-          "url": "https://drive.google.com/file/d/1D27APCjNOvfNtlKo1CVJPzQ2qMIojNUK/view"
-        },
-        {
-          "name": "20261011_青崇讀書會_拖延症_可編輯投影片.pptx",
-          "role": "sermonSlides",
-          "url": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view"
-        }
-      ]
     }
   ],
   "next": {
-    "date": "10/18",
-    "topic": "洪水，挪亞方舟",
-    "owner": "德馨",
+    "date": "10/25",
+    "topic": "信心：怎麼得著信心？",
+    "owner": "中亮/大專",
     "signup": null,
     "sessions": [
       {
         "label": "第一堂",
-        "kind": "信息",
-        "title": "洪水，挪亞方舟",
-        "owner": "德馨"
+        "kind": "青年啟發",
+        "title": "信心：怎麼得著信心？",
+        "owner": "中亮/大專"
       },
       {
         "label": "第二堂",
@@ -75,11 +72,11 @@
     "roles": [
       {
         "label": "講員",
-        "value": "德馨"
+        "value": "中亮"
       },
       {
         "label": "敬拜團+詩歌",
-        "value": "青少團"
+        "value": "大專團"
       },
       {
         "label": "主領(報告)",
@@ -87,15 +84,15 @@
       },
       {
         "label": "招待",
-        "value": "玉堃/心予"
+        "value": "正慧/悅心"
       },
       {
         "label": "影音(投影/音控)",
-        "value": "柏睿＆采人"
+        "value": "欣儀＆柏羽"
       },
       {
         "label": "愛筵",
-        "value": "小丁訂餐"
+        "value": "淑君及大廚們"
       },
       {
         "label": "清潔",
@@ -105,6 +102,55 @@
   },
   "standing": null,
   "past": [
+    {
+      "week": "2026-10-11",
+      "title": "十架：耶穌為什麼死？",
+      "speaker": "中亮",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "十架：耶穌為什麼死？",
+          "speaker": "中亮",
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "一本書終結你的拖延症",
+          "speaker": null,
+          "passage": null,
+          "audio": "https://drive.google.com/file/d/1D27APCjNOvfNtlKo1CVJPzQ2qMIojNUK/view",
+          "slides": null,
+          "sermonSlides": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view",
+          "transcript": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view",
+          "youtube": null,
+          "materials": [
+            {
+              "name": "20261011 第二堂 逐字稿 青崇講座 小丁 - 克服拖延症.pdf",
+              "role": "transcript",
+              "url": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view"
+            },
+            {
+              "name": "20261011 第二堂 錄音 青崇講座 小丁 - 克服拖延症.mp4",
+              "role": "audio",
+              "url": "https://drive.google.com/file/d/1D27APCjNOvfNtlKo1CVJPzQ2qMIojNUK/view"
+            },
+            {
+              "name": "20261011_青崇讀書會_拖延症_可編輯投影片.pptx",
+              "role": "sermonSlides",
+              "url": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view"
+            }
+          ]
+        }
+      ],
+      "audio": null,
+      "slides": null,
+      "transcript": null
+    },
     {
       "week": "2026-10-04",
       "title": "你的兄弟在哪裡",
