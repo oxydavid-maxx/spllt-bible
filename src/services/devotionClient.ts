@@ -143,12 +143,20 @@ export function createDevotionClient(options: DevotionClientOptions): DevotionCl
       const { body } = await request(`/api/me/devotions?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
       const dates = object(body)?.dates;
       if (!Array.isArray(dates) || !dates.every((date) => text(date) && DATE.test(date))) throw invalid();
+      try {
+        const { readingProgressCache } = await import('./readingProgressCache');
+        await readingProgressCache.saveDevotions(options.memberId, from, to, dates as string[]);
+      } catch { /* Keep the successful response usable when local storage is unavailable. */ }
       return dates as string[];
     },
     async setDevotion(date, completed) {
       // A backend older than 靈修 answers 404: the mark was not kept, so the screen puts it back.
       const { status } = await request(`/api/me/devotions/${encodeURIComponent(date)}`, { method: completed ? 'PUT' : 'DELETE' });
       if (status === 404) throw new GamificationApiError('DEVOTIONS_UNAVAILABLE', false, 404);
+      try {
+        const { readingProgressCache } = await import('./readingProgressCache');
+        await readingProgressCache.setDevotion(options.memberId, date, completed);
+      } catch { /* The server already accepted the change; do not roll it back on a cache error. */ }
     },
     async getGroupReading(month) {
       const view = parseGroupReading((await request(`/api/points/group?month=${encodeURIComponent(month)}`)).body);

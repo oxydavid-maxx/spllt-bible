@@ -59,6 +59,9 @@ vi.mock('../../src/services/useCompletionController', () => ({
   },
 }));
 
+const cardExport = vi.hoisted(() => ({ load: vi.fn(async (_memberId: string, _plan: unknown) => [{ date: '2026-09-25', rows: ['多01章', '詩101'], completed: true, devoted: true }]), share: vi.fn(async (_html: string, _owns?: () => boolean) => undefined) }));
+vi.mock('../../src/services/readingCardSnapshot', () => ({ loadReadingCardSnapshot: cardExport.load }));
+vi.mock('../../src/ui/readingCardShare', () => ({ shareReadingCard: cardExport.share }));
 import ProgressScreen from '../../app/(tabs)/progress';
 
 const DONE = new Set(['2026-09-11', '2026-09-12', '2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18', '2026-09-19', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-26']);
@@ -88,7 +91,7 @@ const flat = (style: unknown): Record<string, unknown> => Object.assign({}, ...(
 const cell = (date: string) => renderer!.root.findAll((node) => (node.type as unknown) === 'Pressable' && String(node.props.accessibilityLabel ?? '').startsWith(`${date} `))[0];
 const texts = () => renderer!.root.findAll((node) => (node.type as unknown) === 'Text').map((node) => node.children.join(''));
 // The completion button, not a calendar cell (whose label starts with its date).
-const isCompletionButton = (node: TestRenderer.ReactTestInstance) => (node.type as unknown) === 'Pressable' && node.props?.accessibilityRole === 'button' && /讀經/.test(String(node.props.accessibilityLabel ?? '')) && !/^\d{4}-/.test(String(node.props.accessibilityLabel));
+const isCompletionButton = (node: TestRenderer.ReactTestInstance) => (node.type as unknown) === 'Pressable' && node.props?.accessibilityRole === 'button' && /讀經/.test(String(node.props.accessibilityLabel ?? '')) && node.props.accessibilityLabel !== '匯出讀經卡' && !/^\d{4}-/.test(String(node.props.accessibilityLabel));
 const buttons = () => renderer!.root.findAll(isCompletionButton);
 const lastOptions = () => completion.options[completion.options.length - 1];
 
@@ -227,5 +230,67 @@ describe('the 積分 page opens on its calendar', () => {
     expect(renderer!.root.findAll((node) => (node.type as { name?: string }).name === 'ReadingCalendarCard')).toHaveLength(0);
     expect(renderer!.root.findAll((node) => node.props.accessibilityLabel === '日曆').length).toBeGreaterThan(0);
     expect(buttons()).toHaveLength(0);
+  });
+
+  it('opens export from the own calendar and shares the selected period without another API read', async () => {
+    await mount();
+    const before = readingDays.mock.calls.length;
+    act(() => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '匯出讀經卡')[0].props.onPress());
+    expect(texts()).toContain('本月 (9 月)');
+    expect(texts()).toContain('本季 (7–9 月)');
+    await act(async () => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本月 (9 月)')[0].props.onPress());
+    expect(cardExport.load).toHaveBeenCalledWith('self', expect.any(Object));
+    expect(cardExport.share).toHaveBeenCalledWith(expect.stringContaining('paper one'), expect.any(Function));
+    expect(readingDays.mock.calls.length).toBe(before);
+    expect(texts()).not.toContain('本月 (9 月)');
+    act(() => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '匯出讀經卡')[0].props.onPress());
+    await act(async () => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本季 (7–9 月)')[0].props.onPress());
+    expect(cardExport.share).toHaveBeenLastCalledWith(expect.stringContaining('paper quarter'), expect.any(Function));
+  });
+
+  it('preserves a local completion snapshot for a different day instead of overwriting it with the older screen schedule', async () => {
+    await mount();
+    act(() => cell('2026-09-26').props.onPress());
+    act(() => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '匯出讀經卡')[0].props.onPress());
+    await act(async () => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本月 (9 月)')[0].props.onPress());
+    const html = cardExport.share.mock.calls.at(-1)![0];
+    const cellHtml = /data-date="2026-09-25"(.*?)<\/td>/.exec(html)![1];
+    expect(cellHtml).toContain('class="box">✔');
+  });
+
+  it('prevents duplicate exports and keeps failures retryable', async () => {
+    await mount();
+    act(() => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '匯出讀經卡')[0].props.onPress());
+    let reject!: (reason: Error) => void;
+    cardExport.load.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    const press = renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本月 (9 月)')[0].props.onPress;
+    await act(async () => { press(); press(); });
+    expect(cardExport.load).toHaveBeenCalledTimes(1);
+    expect(renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本季 (7–9 月)')[0].props.disabled).toBe(true);
+    await act(async () => { reject(new Error('產生失敗，請重試。')); });
+    expect(texts()).toContain('產生失敗，請重試。');
+    expect(renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本月 (9 月)')[0].props.disabled).toBe(false);
+    expect(cardExport.share).not.toHaveBeenCalled();
+    await act(async () => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本月 (9 月)')[0].props.onPress());
+    expect(cardExport.share).toHaveBeenCalledOnce();
+  });
+
+  it('does not share a pending snapshot after its sheet closes or the account changes', async () => {
+    await mount();
+    act(() => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '匯出讀經卡')[0].props.onPress());
+    let resolve!: (days: Array<{ date: string; rows: string[]; completed: boolean; devoted: boolean }>) => void;
+    cardExport.load.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    await act(async () => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本月 (9 月)')[0].props.onPress());
+    const sheet = renderer!.root.findAll(node => String(node.type) === 'ActionSheet' && node.props.title === '匯出讀經卡')[0];
+    act(() => sheet.props.onClose());
+    await act(async () => resolve([{ date: '2026-09-25', rows: ['門'], completed: true, devoted: false }]));
+    expect(cardExport.share).not.toHaveBeenCalled();
+    act(() => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '匯出讀經卡')[0].props.onPress());
+    cardExport.load.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    await act(async () => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本月 (9 月)')[0].props.onPress());
+    const oldEpoch = auth.epoch; auth.epoch += 1;
+    await act(async () => resolve([{ date: '2026-09-25', rows: ['門'], completed: true, devoted: false }]));
+    expect(cardExport.share).not.toHaveBeenCalled();
+    auth.epoch = oldEpoch;
   });
 });

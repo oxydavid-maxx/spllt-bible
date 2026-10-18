@@ -310,7 +310,13 @@ export function createApiClient(options: ApiClientOptions) {
         if (!item || typeof item.taskDate !== 'string' || typeof item.planId !== 'string' || !Array.isArray(item.references) || item.references.some((reference) => typeof reference !== 'string') || typeof item.sourceRevision !== 'number' || typeof item.sourceDigest !== 'string' || !isCompletionStatus(item.status) || typeof item.revision !== 'number' || typeof item.canComplete !== 'boolean') return [];
         return [{ taskDate: item.taskDate, planId: item.planId, references: item.references as string[], sourceRevision: item.sourceRevision, sourceDigest: item.sourceDigest, status: item.status, revision: item.revision, canComplete: item.canComplete }];
       });
-      return days.length === body.days.length ? { today: body.today, timezone: body.timezone, days } : null;
+      if (days.length !== body.days.length) return null;
+      // Keep the same validated schedule/completions available to the calendar and PDF offline.
+      try {
+        const { readingProgressCache } = await import('./readingProgressCache');
+        await readingProgressCache.saveDays(options.memberId, from, to, days);
+      } catch { /* A cache write must not turn a successful API response into a failed completion. */ }
+      return { today: body.today, timezone: body.timezone, days };
     },
     async getGroups(): Promise<GroupProfileSnapshot | null> {
       const response = await fetchImpl(`${options.baseUrl}/api/me/groups`, {
