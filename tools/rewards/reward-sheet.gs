@@ -24,6 +24,8 @@ const REWARD_ROSTER = '名單';
 const REWARD_TAB_HEADERS = ['獎品', '分數', '上架'];
 const REDEMPTION_TAB_HEADERS = ['日期', '名字', '獎品', '分數', '照片連結 (可不填)'];
 const REDEMPTION_NOTE = '可以換的分數 ＝ 讀經得分 − 這一頁裡這個人每一列的分數。填錯就直接改或刪那一列。';
+const READING_STATS_HEADERS = ['名字', '每月讀經天數', '總積分', '可以換的分數', '最後一次讀經'];
+const READING_STATS_NOTE = '這一頁由程式每 15 分鐘自動更新，在這裡改的內容會被蓋掉。';
 const REWARD_REJECTED_COLOR = '#fde7e7';
 const REWARD_REJECTION_NOTES = {
   rewards: { name: '請填獎品名稱。', points: '分數要是大於 0 的整數，這個獎品沒有放上 App。', duplicate: '這個獎品名稱重複了，App 只用第一個。' },
@@ -119,6 +121,7 @@ function syncRewardSheet() {
     const result = postRewardSheet(push);
     writeRewardRoster(book, result.labels);
     markRewardRejections(book, result.rejected);
+    writeRewardReadingStats(book, result.readingStats);
   } finally {
     lock.releaseLock();
   }
@@ -159,6 +162,28 @@ function postRewardSheet(push) {
   });
   if (response.getResponseCode() !== 200) throw new Error(`App 後端沒有收下：${response.getResponseCode()} ${response.getContentText().slice(0, 200)}`);
   return JSON.parse(response.getContentText());
+}
+
+/** 舊後端沒有統計就跳過；有資料時整頁重寫，避免會員停用或轉堂後殘留舊列。 */
+function writeRewardReadingStats(book, stats) {
+  if (!stats) return;
+  for (const side of REWARD_SIDES) {
+    const rows = stats[side.key];
+    if (!Array.isArray(rows)) continue;
+    const name = `${side.name}讀經統計`;
+    const sheet = book.getSheetByName(name) || book.insertSheet(name);
+    sheet.clearContents();
+    if (sheet.getMaxRows() < rows.length + 2) sheet.insertRowsAfter(sheet.getMaxRows(), rows.length + 2 - sheet.getMaxRows());
+    sheet.getRange(1, 1, 1, READING_STATS_HEADERS.length).breakApart();
+    rewardTab(book, name, READING_STATS_HEADERS, READING_STATS_NOTE);
+    if (!rows.length) continue;
+    // Keep labels, the compact monthly text and YYYYMMDD (weekday) as literal text.
+    sheet.getRange(3, 1, rows.length, 2).setNumberFormat('@');
+    sheet.getRange(3, 5, rows.length, 1).setNumberFormat('@');
+    sheet.getRange(3, 1, rows.length, READING_STATS_HEADERS.length).setValues(rows.map((row) => [
+      row.name, row.monthlyReadingDays, row.earnedTotal, row.redeemableBalance, row.lastReadingDate,
+    ]));
+  }
 }
 
 function writeRewardRoster(book, labels) {

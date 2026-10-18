@@ -5,6 +5,31 @@ import { parseAllDocuments } from 'yaml';
 const flow = (name: string) => readFileSync(new URL(`../../.maestro/ios/${name}.yaml`, import.meta.url), 'utf8');
 
 describe('iOS flow readiness and semantic interaction targets', () => {
+  it('bounds background-reader expansion by the visible points tab without weakening the narration journey', () => {
+    const commands = parseAllDocuments(flow('21-audio-after-background'))[1].toJSON();
+    const reveal = commands.find((command: unknown) =>
+      typeof command === 'object' && command !== null && Object.hasOwn(command, 'repeat'))?.repeat;
+    expect(reveal).toEqual({
+      times: 3,
+      while: { notVisible: '積分' },
+      commands: [
+        { extendedWaitUntil: { visible: '展開閱讀工具', timeout: 15000 } },
+        { tapOn: { text: '展開閱讀工具', retryTapIfNoChange: false } },
+      ],
+    });
+    expect(commands[0]).toEqual({ extendedWaitUntil: { visible: '暫停.*語音', timeout: 15000 } });
+    // The bounded reveal is not a retry of the test; every original navigation/audio assertion remains.
+    expect(commands.slice(-7)).toEqual([
+      { extendedWaitUntil: { visible: '積分', timeout: 10000 } },
+      { tapOn: { text: '積分', retryTapIfNoChange: true } },
+      { extendedWaitUntil: { visible: '開啟積分操作', timeout: 15000 } },
+      { tapOn: '讀經入口' },
+      { assertVisible: '暫停.*語音' },
+      { tapOn: '暫停.*語音' },
+      { extendedWaitUntil: { visible: '播放.*語音', timeout: 10000 } },
+    ]);
+  });
+
   it('waits for the initial reader redirect, then bounds navigation by the destination hierarchy', () => {
     const source = flow('00-smoke');
     const readerReady = source.indexOf('visible: "更多閱讀工具"');
