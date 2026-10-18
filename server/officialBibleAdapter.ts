@@ -21,7 +21,9 @@ const attr = (n:Node,name:string):string|undefined => element(n) ? n.attrs.find(
 const text = (n:Node):string => n.nodeName === '#text' ? (n as DefaultTreeAdapterMap['textNode']).value : children(n).map(text).join('');
 function findAll(n:Node,predicate:(n:Element)=>boolean):Element[] { const result:Element[]=[]; const walk=(current:Node)=>{if(element(current)&&predicate(current))result.push(current);children(current).forEach(walk);};walk(n);return result; }
 const escape = (value:string):string => value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const classes = (n:Node):string[] => (attr(n,'class')??'').split(/\s+/).map(c=>c.replace(/^ChapterContent-module__[A-Za-z0-9_-]+?__/,'')).filter(Boolean);
+// Bible.com's CSS-module class names: `ChapterContent-module__<hash>__<name>` until 2026-10-18, then
+// `<hash>_<name>` (e.g. cat7xG_verse), rolled out page by page. Both reduce to <name>.
+const classes = (n:Node):string[] => (attr(n,'class')??'').split(/\s+/).map(c=>c.replace(/^ChapterContent-module__[A-Za-z0-9_-]+?__/,'').replace(/^[A-Za-z0-9]{5,8}_(?=[a-z])/,'')).filter(Boolean);
 class AdapterError extends Error { constructor(readonly status:number,readonly code:string,readonly invalidatesStale=false){super(code);} }
 const fail = (code='OFFICIAL_SOURCE_INVALID'):never => {throw new AdapterError(502,code);};
 const required = (v:unknown):string => typeof v==='string'&&v.trim()&&!/^\$[a-f0-9]+$/i.test(v)?v:fail();
