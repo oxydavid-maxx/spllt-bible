@@ -1,13 +1,18 @@
-import { useCallback, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { theme } from './Theme';
 import { createApiClient, type SessionResult } from '../services/apiClient';
 import { establishGoogleSession } from '../services/googleSession';
-import { obtainGoogleIdToken, iosClientIdFromUrlScheme, type NativeGoogleModule } from '../services/googleNative';
+import { obtainGoogleIdToken, iosClientIdFromUrlScheme, type NativeGoogleModule, type NativeGoogleResult } from '../services/googleNative';
 import { beginAuthSessionAttempt, finishAuthSessionAttempt, configureAuthSessionTransport, persistEstablishedAuthSession, type AuthSessionAttempt } from '../services/authSession';
 
 WebBrowser.maybeCompleteAuthSession();
+
+interface NativeLoginWait {
+  recover: (showMessage: boolean) => void;
+  foregroundTimer?: ReturnType<typeof setTimeout>;
+}
 
 /** `welcome` is the sign-in screen's one large button; `card` is the framed card used everywhere else. */
 export function GoogleLoginCard({ baseUrl, onSignedIn, variant = 'card' }: { baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void; variant?: 'card' | 'welcome' }) {
@@ -27,12 +32,26 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState('');
+  const nativeWait = useRef<NativeLoginWait | null>(null);
+  useEffect(() => {
+    let previousState = AppState.currentState;
+    const subscription = AppState.addEventListener('change', nextState => {
+      const pending = nativeWait.current;
+      if (previousState !== 'active' && nextState === 'active' && pending && pending.foregroundTimer === undefined) {
+        // Native success/cancellation can arrive just after the foreground event.
+        pending.foregroundTimer = setTimeout(() => pending.recover(true), 1000);
+      }
+      previousState = nextState;
+    });
+    return () => { subscription.remove(); nativeWait.current?.recover(false); };
+  }, []);
   const completeSession = useCallback(async (session: SessionResult, attempt: AuthSessionAttempt) => {
     if (!await persistEstablishedAuthSession(session, attempt)) return;
     onSignedIn?.(session.sessionToken, session.memberId);
     setState('signed-in');
   }, [onSignedIn]);
   const signIn = useCallback(async () => {
+    if (nativeWait.current) return;
     const attempt = beginAuthSessionAttempt();
     configureAuthSessionTransport({ baseUrl });
     setState('exchanging');
@@ -41,7 +60,34 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
       const nativeGoogle = require('react-native-nitro-google-signin') as NativeGoogleModule;
       // iOS needs its own native client; serverClientID stays the web client so the backend audience is unchanged.
       const iosClientId = Platform.OS === 'ios' ? iosClientIdFromUrlScheme(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME) : undefined;
-      const authResult = await obtainGoogleIdToken(nativeGoogle, clientId, iosClientId);
+      const authResult = await new Promise<NativeGoogleResult | null>(resolve => {
+        const clearWait = () => {
+          clearTimeout(timeout);
+          if (pending.foregroundTimer !== undefined) clearTimeout(pending.foregroundTimer);
+          if (nativeWait.current === pending) nativeWait.current = null;
+        };
+        const pending: NativeLoginWait = {
+          recover: showMessage => {
+            if (nativeWait.current !== pending) return;
+            clearWait();
+            finishAuthSessionAttempt(attempt);
+            if (showMessage) {
+              setState('error');
+              setErrorMessage('登入沒有完成，請再按一次。');
+            }
+            resolve(null);
+          },
+        };
+        // Bound only the native picker wait; a late native result cannot start an exchange.
+        const timeout = setTimeout(() => pending.recover(true), 60_000);
+        nativeWait.current = pending;
+        void obtainGoogleIdToken(nativeGoogle, clientId, iosClientId).then(result => {
+          if (nativeWait.current !== pending) return;
+          clearWait();
+          resolve(result);
+        });
+      });
+      if (!authResult) return;
       if (authResult.status !== 'SUCCESS') {
         setState('error');
         setErrorMessage(authResult.status === 'CANCELLED' ? '你取消了登入。' : authResult.reason === 'GOOGLE_PLAY_SERVICES_UNAVAILABLE' ? '這台裝置沒有可用的Google服務。' : '登入沒有完成，請稍後再試。');

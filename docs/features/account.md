@@ -33,6 +33,7 @@
 
 ### Google 登入（`src/ui/GoogleLoginCard.tsx`、`src/services/googleNative.ts`、`src/services/apiClient.ts`、`server/routes.ts`）
 
+- Android 與 iOS 等待原生 Google 登入結果時，按鈕顯示「正在登入…」並暫時停用。App 從非前景回到前景後，留 1 秒接收正常登入結果；仍未收到結果就恢復按鈕，顯示「登入沒有完成，請再按一次。」。沒有切換前景時，等待滿 60 秒也會恢復。使用者可再按一次登入，失效的舊結果不會交換伺服器 session、改變畫面或覆蓋新的登入。原生結果已回來、正在向伺服器確認身份時不套用這個原生等待期限；正常成功、取消與失敗的流程和文字不變。
 - 沒有設定 `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`/`EXPO_PUBLIC_GOOGLE_CLIENT_ID` 時，畫面顯示「正式登入尚未連接」，不出現登入按鈕；設了測試旗標 `EXPO_PUBLIC_QINGMU_FIXTURE=true` 時則顯示「目前是測試身份」，兩者都不會呼叫 Google。
 - 正常路徑：呼叫 `react-native-nitro-google-signin`（`GoogleOneTapSignIn`）取得 Google ID token，中途沒有存好的憑證會自動改試「建立帳號」再改「明確登入」；使用者取消時顯示「你取消了登入。」，裝置沒有 Google Play 服務時顯示「這台裝置沒有可用的Google服務。」，其他失敗一律顯示「登入沒有完成，請稍後再試。」。
 - 拿到 ID token 後呼叫 `POST /api/session/google`（帶 `persistentDevice: true`，即 `session_type: 'device'`）。目前正式環境的組態（`googleAudience` 已設定且沒有 `fixtureToken`）會把 `autoProvisionGoogleMembers` 設成 `true`（`server/http.ts`），所以**新的 Google 身份第一次登入就會自動建立會員**，不會走到下面的啟用碼畫面——這與 `SignInScreen.tsx` 上寫的「第一次登入會自動建立帳號」一致。
@@ -108,6 +109,7 @@
 
 ## 決定（為什麼這樣做）
 
+- 2026-10-18：原生選帳號畫面被切走或系統關閉後，登入 promise 可能一直沒有結果；因此只在等待原生結果期間設一次性期限和前景恢復保護，不靠輪詢。前景恢復保留 1 秒讓同一次正常結果送回，60 秒是沒有前景事件時的等待上限。恢復或元件卸載時結束該次 auth attempt、清除 timer，舊結果只會被丟棄，避免使用者必須強制關閉 App 才能重試。
 - 2026-10-18 維護者決定登入頁三行改寫讀、聽、累積積分這三件青少和主堂都有的事，日記沒有入口所以不介紹，報名只有青少所以不寫。
 
 - iOS Google 登入使用私有 iOS OAuth client (bundle id `org.qingmu.youth`) 及對應的 callback scheme；送給後端的 ID token audience 仍是既有 web client。Android 保留原本的 Google/Firebase 設定。正式 TestFlight 安裝與真帳號登入另由帳號持有人驗收，不以模擬器打開 Google 頁面代替。
@@ -154,6 +156,7 @@
 
 - `tests/ui/signInScreen.test.ts` — 第一個登入畫面文案與唯一的登入動作。
 - `tests/ui/googleLoginWelcome.test.ts` — 歡迎版登入按鈕的樣式與一般卡片版本一致。
+- `tests/ui/googleLoginRecovery.test.ts` — Android/iOS 的假原生模組永不回應、回前景/逾時恢復、重試後舊結果隔離、正常成功/取消/失敗、伺服器交換不被原生期限中斷，以及卸載清理。
 - `tests/server/onboarding.test.ts` — 未知 Google 身份先被拒絕、再用有效期限內的啟用碼完成綁定、過期或用過的碼被拒絕。
 - `tests/server/googleAutoProvision.test.ts`、`tests/server/testLabNetwork.test.ts` — 從 Test Lab 位址第一次登入的新會員一建立就停用，一般網路的新會員照常；既有會員不會被停用；位址比對涵蓋 IPv4、IPv6 和格式錯誤。
 - `tests/services/authSession.test.ts`、`tests/services/authSessionHydration.test.ts`、`tests/services/authSessionRace.test.ts` — 登入狀態的邊界（session 綁定、還原流程、多個非同步動作同時發生時不互相踩）。

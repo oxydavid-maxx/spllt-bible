@@ -10,6 +10,7 @@ vi.mock('react-native', () => ({
   TextInput: primitive('TextInput'),
   View: primitive('View'),
   StyleSheet: { create: (value: unknown) => value },
+  AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
 }));
 vi.mock('expo-web-browser', () => ({ maybeCompleteAuthSession: vi.fn() }));
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: vi.fn() }));
