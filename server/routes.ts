@@ -27,6 +27,7 @@ import { createSongTitleLookup, isDevotionalDate, readDevotional, type SongTitle
 import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDates, setDevotion } from './devotionProgress';
 import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
 import { applyRewardSheet, listRewards, readRewardSheetPush, sheetRedemptionsFor } from './rewardSheet';
+import { rewardSheetReadingStats } from './rewardSheetStats';
 import { listBulletins, readBulletinPage } from './bulletins';
 import { readAdminLinks } from './adminLinks';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
@@ -533,7 +534,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
       try { push = readRewardSheetPush(parseBody(request.body)); } catch { return json(400, { error: 'INVALID_JSON' }); }
       if (!push) return json(400, { error: 'INVALID_REWARD_SHEET' });
       ensureCongregationSchema(options.db.db);
-      return json(200, { ok: true, ...applyRewardSheet(options.db.db, push, now().toISOString()) });
+      const syncedAt = now();
+      const result = applyRewardSheet(options.db.db, push, syncedAt.toISOString());
+      return json(200, { ok: true, ...result, readingStats: rewardSheetReadingStats(options.db.db, syncedAt) });
     }
     if (request.method === 'POST' && url.pathname === '/api/integrations/form-registrations' && (options.formRegistrationKey || options.formSyncIdentity)) {
       if (!await integrationAuthorized()) return json(401, { error: 'AUTH_INVALID' });

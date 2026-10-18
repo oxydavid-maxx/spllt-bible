@@ -321,7 +321,7 @@ export function readReadingDays(db: DatabaseSync, from: string, to: string, toda
   });
 }
 
-function totalEarned(db: DatabaseSync, memberId: string): number {
+export function totalEarned(db: DatabaseSync, memberId: string): number {
   const row = db.prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM daily_point_entitlements WHERE member_id = ? AND active = 1').get(memberId);
   return Math.max(0, readInt(row, 'total'));
 }
@@ -329,7 +329,7 @@ function totalEarned(db: DatabaseSync, memberId: string): number {
 // Redeemable points: the ledger (reading, and any redemption made in the app before 2026-10-17) minus the
 // redemption rows of the Google Sheet (server/rewardSheet.ts). A sheet that takes off more than there was shows 0:
 // every app reads a negative balance as a broken reply.
-function walletBalance(db: DatabaseSync, memberId: string): number {
+export function walletBalance(db: DatabaseSync, memberId: string): number {
   const row = db.prepare('SELECT COALESCE(SUM(delta), 0) AS total FROM wallet_entries WHERE member_id = ?').get(memberId);
   return Math.max(0, readInt(row, 'total') - sheetRedeemedPoints(db, memberId));
 }

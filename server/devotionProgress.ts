@@ -98,7 +98,7 @@ function qualifiedMembers(db: DatabaseSync, month: string): number {
   return Number(row.qualified);
 }
 
-function memberReadingDays(db: DatabaseSync, memberId: string, month: string): number {
+export function memberReadingDays(db: DatabaseSync, memberId: string, month: string): number {
   const row = db.prepare(`SELECT COUNT(DISTINCT task_date) AS days FROM completions
     WHERE member_id = ? AND status = 'COMPLETED' AND task_date >= ? AND task_date <= ?`).get(memberId, `${month}-01`, monthEnd(month)) as { days: number };
   return Number(row.days);
