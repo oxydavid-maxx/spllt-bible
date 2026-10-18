@@ -72,7 +72,8 @@ function setupRewardSheet() {
   const first = postRewardSheet({});
   writeRewardRoster(book, first.labels);
   const youthRewards = book.getSheetByName(REWARD_SIDES[0].rewards);
-  if (youthRewards.getLastRow() < 2 && first.legacyRewards.length) {
+  const hasYouthRewards = youthRewards.getRange('A2:A').getValues().some((row) => rewardCellText(row[0]) !== '');
+  if (!hasYouthRewards && first.legacyRewards.length) {
     youthRewards.getRange(2, 1, first.legacyRewards.length, 3).setValues(first.legacyRewards.map((reward) => [reward.name, reward.points, true]));
   }
 
