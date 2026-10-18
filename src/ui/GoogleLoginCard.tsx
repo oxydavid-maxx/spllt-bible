@@ -3,6 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import * as WebBrowser from 'expo-web-browser';
 import { theme } from './Theme';
 import { createApiClient, type SessionResult } from '../services/apiClient';
+import { establishGoogleSession } from '../services/googleSession';
 import { obtainGoogleIdToken, iosClientIdFromUrlScheme, type NativeGoogleModule } from '../services/googleNative';
 import { beginAuthSessionAttempt, finishAuthSessionAttempt, configureAuthSessionTransport, persistEstablishedAuthSession, type AuthSessionAttempt } from '../services/authSession';
 
@@ -46,8 +47,7 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
         setErrorMessage(authResult.status === 'CANCELLED' ? '你取消了登入。' : authResult.reason === 'GOOGLE_PLAY_SERVICES_UNAVAILABLE' ? '這台裝置沒有可用的Google服務。' : '登入沒有完成，請稍後再試。');
         return;
       }
-      const client = createApiClient({ baseUrl, token: '', memberId: '' });
-      const session = await client.establishSession(authResult.idToken, { persistentDevice: true });
+      const session = await establishGoogleSession(baseUrl, authResult.idToken);
       if (!session) {
         setState('error');
         setErrorMessage('登入已回來，但伺服器沒有確認身份。');

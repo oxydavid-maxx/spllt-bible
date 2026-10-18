@@ -16,6 +16,8 @@ module.exports = ({ config }) => {
     ...(hasIosServices ? { iosGoogleServicesFile: iosServices } : {}),
   };
   const nextConfig = { ...config };
+  // Android-only Settings.System bridge; iOS has no Firebase Test Lab system setting.
+  plugins.push('./plugins/withQingmuTestLab');
   // iOS builds carry the Android versionCode as their build number, so one bump in app.json releases both
   // platforms with the same number.
   // Native Sign in with Apple capability is iOS-only; the Android version/build remains unchanged.
