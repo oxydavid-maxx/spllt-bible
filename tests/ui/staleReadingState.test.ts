@@ -63,6 +63,7 @@ it('never overwrites a local pending completion with a remote read that finishes
   await act(async () => { resolve({ today: '2026-10-19', timezone: 'Asia/Taipei', days: [day('2026-10-19', 'NOT_COMPLETED', 8)] }); });
   expect(value.record).toMatchObject({ status: 'COMPLETED', syncStatus: 'PENDING_SAVE' });
   expect(state.repository.pendingCount()).toBe(1);
+  expect(value.getCompletionRecord?.('church-2026-09', '2026-10-19')).toMatchObject({ status: 'COMPLETED', syncStatus: 'PENDING_SAVE' });
 });
 it('retains the bundled schedule when the remote read fails (1)', async () => {
   state.read.mockRejectedValue(new Error('offline')); const before = getReadingSessionSnapshot().day;

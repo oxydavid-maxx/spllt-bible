@@ -52,6 +52,7 @@ vi.mock('../../src/services/useCompletionController', () => ({
     const status = done.has(options.taskDate) ? 'COMPLETED' : 'UNREPORTED';
     return {
       record: { memberId: 'self', planId: options.planId, taskDate: options.taskDate, status, revision: status === 'COMPLETED' ? 1 : 0, syncStatus: status === 'COMPLETED' ? 'PENDING_SAVE' : 'CONFIRMED' },
+      getCompletionRecord: (planId: string, taskDate: string) => done.has(taskDate) ? { memberId: 'self', planId, taskDate, status: 'COMPLETED', revision: 1, syncStatus: 'PENDING_SAVE' } : undefined,
       pending: false, syncError: false, retryable: false,
       complete: async () => { completion.complete(options.taskDate); setDone((current: Set<string>) => new Set([...current, options.taskDate])); },
       requestUndo: () => completion.requestUndo(options.taskDate),
@@ -336,4 +337,16 @@ it('revalidates progress administrator capability on visible foreground and igno
   await act(async () => { requestOpenAllScores(); });
   expect(texts()).toContain('此功能僅限管理者。');
   vi.useRealTimers(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-27T04:00:00Z'));
+});
+
+
+it('keeps a pending completion visible on another calendar day while refreshing the server month (2)', async () => {
+  await mount(); await act(async () => { cell('2026-09-25').props.onPress(); });
+  await act(async () => { buttons()[0].props.onPress(); });
+  expect(cell('2026-09-25').props.accessibilityLabel).toContain('已完成');
+  await act(async () => { cell('2026-09-24').props.onPress(); });
+  expect(cell('2026-09-25').props.accessibilityLabel).toContain('已完成');
+  await act(async () => { navigation.listeners.forEach(fn => fn('background')); });
+  await act(async () => { navigation.listeners.forEach(fn => fn('active')); });
+  expect(cell('2026-09-25').props.accessibilityLabel).toContain('已完成');
 });

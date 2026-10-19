@@ -6,8 +6,8 @@ vi.hoisted(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
 vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: () => void) => { native.foreground.add(fn); return () => native.foreground.delete(fn); } }));
 let tree: TestRenderer.ReactTestRenderer | null = null;
 afterEach(() => { act(() => tree?.unmount()); tree = null; vi.useRealTimers(); vi.unstubAllEnvs(); });
-async function setup() {
-  vi.resetModules(); vi.stubEnv('EXPO_PUBLIC_QINGMU_TEST_DATE', ''); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-19T15:59:00Z'));
+async function setup(now = '2026-10-19T15:59:00Z') {
+  vi.resetModules(); vi.stubEnv('EXPO_PUBLIC_QINGMU_TEST_DATE', ''); vi.useFakeTimers(); vi.setSystemTime(new Date(now));
   const session = await import('../../src/ui/readingSession');
   let visible = true, playing = false, finished = false;
   function Screen() { const snapshot = (session.useReadingSession as any)({ visible, playing, finished }); return React.createElement('Date', { date: snapshot.selectedDate }); }
@@ -34,4 +34,12 @@ it('keeps an ongoing narration across midnight and pause, then moves only after 
   await act(async () => native.foreground.forEach(fn => fn())); expect(h.date()).toBe('2026-10-19');
   await h.render(true, false, false); expect(h.date()).toBe('2026-10-19');
   await h.render(true, false, true); expect(h.date()).toBe('2026-10-20');
+});
+
+
+it('moves to the actual new Taipei day after the bundled plan ends, so new remote dates can be read (5)', async () => {
+  const h = await setup('2026-12-31T15:59:00Z'); expect(h.date()).toBe('2026-12-31');
+  vi.setSystemTime(new Date('2026-12-31T16:01:00Z'));
+  await act(async () => native.foreground.forEach(fn => fn()));
+  expect(h.date()).toBe('2027-01-01');
 });

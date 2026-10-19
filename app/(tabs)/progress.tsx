@@ -127,7 +127,7 @@ export default function ProgressScreen() {
       replaceReadingDaysRange(range.from, range.to, response.days);
       completion.reconcileRemoteDays?.(response.days);
       setConfirmedDays(current => Object.fromEntries(Object.entries(current).filter(([date]) => date < range.from || date > range.to)));
-      const fetched = new Map(response.days.map((day) => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', canComplete: day.canComplete }] as const));
+      const fetched = new Map(response.days.map((day) => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', revision: day.revision, canComplete: day.canComplete }] as const));
       setSchedule((current) => {
         const days = new Map([...current.days].filter(([date]) => date < range.from || date > range.to));
         for (const [date, day] of fetched) days.set(date, day);
@@ -148,7 +148,7 @@ export default function ProgressScreen() {
       setSchedule(current => {
         const days = new Map<string, CalendarDay>(Object.values(cached.days)
           .filter(day => !current.ranges.some(range => day.taskDate >= range.from && day.taskDate <= range.to))
-          .map(day => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', canComplete: isWithinCompletionWindow(day.taskDate, today) }]));
+          .map(day => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', revision: day.revision, canComplete: isWithinCompletionWindow(day.taskDate, today) }]));
         for (const [date, day] of current.days) days.set(date, day);
         return { days, ranges: [...(cached.ranges ?? []), ...current.ranges] };
       });
@@ -538,7 +538,9 @@ export default function ProgressScreen() {
   const calendarDay = (date: string): CalendarDay | undefined => {
     const base = scheduledDay(date);
     if (!base) return undefined;
-    if (date === selectedDate && completion.record.taskDate === date && localRecordTouched(completion.record)) return { ...base, completed: completion.record.status === 'COMPLETED' };
+    const local = completion.getCompletionRecord?.(base.planId, date)
+      ?? (date === selectedDate && completion.record.taskDate === date ? completion.record : undefined);
+    if (local && localRecordTouched(local) && (local.syncStatus !== 'CONFIRMED' || base.revision === undefined || local.revision >= base.revision)) return { ...base, completed: local.status === 'COMPLETED' };
     return date in confirmedDays ? { ...base, completed: confirmedDays[date] } : base;
   };
   // The displayed month, plus the selected day wherever it is: paging months keeps the button.

@@ -32,12 +32,15 @@ function readingToday(): string {
 }
 function refreshVisibleDate(playing: boolean, finished: boolean): void {
   if (!followsToday) return;
-  const today = getInitialReadingDate(activePlan, readingToday());
-  if (today === selectedDate) return;
+  const today = readingToday();
+  // Initial entry may clamp to the bundled plan, but an actual day rollover must
+  // reach today so the reader can discover a newly added server month.
+  if (today === selectionDay) return;
+  if (today === selectedDate) { selectionDay = today; return; }
   if (playing) { deferDateUntilAudioEnds = true; return; }
   if (deferDateUntilAudioEnds && !finished) return;
   deferDateUntilAudioEnds = false;
-  selectedDate = today;
+  selectedDate = today; selectionDay = today;
   publish();
 }
 let snapshotRevision = 0;

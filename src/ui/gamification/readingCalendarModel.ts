@@ -10,6 +10,8 @@ export interface CalendarDay {
   planId: string;
   references: string[];
   completed: boolean;
+  /** Server revision used to keep newer/pending local records over a late month response. */
+  revision?: number;
   /** The schedule's own answer for the 7-day window, as of the server's today. */
   canComplete: boolean;
 }

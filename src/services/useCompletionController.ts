@@ -36,6 +36,7 @@ export interface UseCompletionControllerValue {
   syncError: boolean;
   retryable: boolean;
   reconcileRemoteDays?: (days: ReadingDaySnapshot[]) => void;
+  getCompletionRecord?: (planId: string, taskDate: string) => CompletionRecord | undefined;
   complete: () => Promise<void>;
   requestUndo: () => void;
 }
@@ -280,6 +281,7 @@ export function useCompletionController(options: UseCompletionControllerOptions)
     syncError: record.memberId === identity.memberId && record.planId === identity.planId && record.taskDate === identity.taskDate && syncError,
     retryable,
     reconcileRemoteDays,
+    getCompletionRecord: (planId, taskDate) => memberId && isCurrent() ? getRepository()?.get({ memberId, planId, taskDate }) : undefined,
     complete: () => controller.complete(),
     requestUndo: () => controller.requestUndo(),
   };
