@@ -56,7 +56,7 @@
     ],
     "android": {
       "package": "org.qingmu.youth",
-      "versionCode": 59,
+      "versionCode": 60,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
