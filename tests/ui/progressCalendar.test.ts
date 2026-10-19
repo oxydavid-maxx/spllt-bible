@@ -381,6 +381,28 @@ describe('the day card at the top of 自己', () => {
     // The day the page opened on (9/25, today 9/27 having no reading) is at the top instead.
     expect(textsOf(card())).toEqual(expect.arrayContaining(['補登', '9/25 (五)', '多1、多2、詩101']));
   });
+
+  it('moves to the new today after Taipei midnight, before the schedule answers, unless a day was picked', async () => {
+    const foreground = async () => {
+      await act(async () => { navigation.listeners.forEach(fn => fn('background')); });
+      await act(async () => { navigation.listeners.forEach(fn => fn('active')); });
+    };
+    at('2026-09-25T15:59:00.000Z');
+    await mount();
+    expect(textsOf(card())).toContain('今天·9/25 (五)');
+    // The refetch after midnight never answers (offline): the card must not wait for it.
+    readingDays.mockImplementation(() => new Promise(() => undefined));
+    at('2026-09-25T16:01:00.000Z');
+    await foreground();
+    expect(textsOf(card())).toContain('今天·9/26 (六)');
+    expect(textsOf(card())).not.toContain('補登');
+    expect(lastOptions()).toMatchObject({ taskDate: '2026-09-26' });
+    // A day the member picked stays picked across midnight.
+    await act(async () => { cell('2026-09-24').props.onPress(); });
+    at('2026-09-26T16:01:00.000Z');
+    await foreground();
+    expect(textsOf(card())).toEqual(expect.arrayContaining(['補登', '9/24 (四)']));
+  });
 });
 
 it('updates the rendered calendar today and group today after Taipei midnight, with one read per foreground (5)', async () => {

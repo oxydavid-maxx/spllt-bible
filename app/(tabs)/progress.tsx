@@ -71,6 +71,17 @@ export default function ProgressScreen() {
   const pickedDate = useRef(false);
   // The own page's scroller: a day tapped in the calendar brings the top, where its buttons are, back into view.
   const pageScroll = useRef<ScrollView>(null);
+  // Past Taipei midnight a day the member did not pick moves to the new today at once, so the day card
+  // at the top never offers yesterday as 補登 while the schedule is still on its way (or unreachable).
+  const shownToday = useRef(today);
+  useEffect(() => {
+    const previous = shownToday.current;
+    if (previous === today) return;
+    shownToday.current = today;
+    if (pickedDate.current) return;
+    setSelectedDate(today);
+    setCalendarMonth((month) => month === previous.slice(0, 7) ? today.slice(0, 7) : month);
+  }, [today]);
   const [completionAward, setCompletionAward] = useState<CompletionAwardEvent | null>(null);
   const awardRefreshRef = useRef<(memberId: string) => void>(() => undefined);
   const [capabilities, setCapabilities] = useState<ViewerCapabilities | null>(null);
