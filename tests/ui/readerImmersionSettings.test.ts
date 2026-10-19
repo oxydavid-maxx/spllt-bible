@@ -54,7 +54,7 @@ vi.mock('../../src/services/useOutboxRecovery', () => ({ useOutboxRecovery: () =
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: vi.fn() }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn(() => ({ get: () => null, save: (command: Record<string, unknown>) => command })) }));
 vi.mock('../../src/ui/routes', () => ({ buildFixtureModels: () => ({ reader: { references: ['PSA.90', 'PSA.91'] } }) }));
-vi.mock('../../src/ui/readingSession', () => ({ useReadingSession: () => ({ selectedDate: '2026-09-12', planId: 'church-2026-09', day: { references: ['PSA.90', 'PSA.91'] }, period: 'week' }), setSelectedReadingDate: vi.fn(), setPendingJournalQuote: vi.fn() }));
+vi.mock('../../src/ui/readingSession', () => ({ useReadingDateRollover: () => undefined, useReadingSession: () => ({ selectedDate: '2026-09-12', planId: 'church-2026-09', day: { references: ['PSA.90', 'PSA.91'] }, period: 'week' }), setSelectedReadingDate: vi.fn(), setPendingJournalQuote: vi.fn() }));
 vi.mock('../../src/services/youVersionAdapter', () => ({ createYouVersionAdapter: () => ({ loadReaderUi: async () => ({ status: 'READER_UI_READY', module: {
   getReaderSettings: () => ({ ...readerSettings.value }),
   getDefaultReaderSettings: () => ({ fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 }),

@@ -42,8 +42,10 @@ it('hands the 靈修 page the reader\'s 調整字體 settings and whether it is 
   await act(async () => binding.devotion!.onPlayPause());
   expect(native.speak).toHaveBeenCalled();
   expect(page()).toMatchObject({ speaking: true, activeIndex: 0 });
+  expect(binding.narrationActive).toBe(true);
   act(() => binding.devotion!.onPlayPause());
   expect(page()).toMatchObject({ speaking: false, activeIndex: 0 });
+  expect(binding.narrationActive).toBe(true);
 });
 it('ordinary leaf completion and manual tab selection never opt in or speak (#4/#7/#10)', async () => {
   await mount('manual-test');

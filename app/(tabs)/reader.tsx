@@ -16,7 +16,7 @@ import { createNativeReaderPreferencesStore } from '../../src/services/nativeRea
 import { createReaderAutoplayPreferencesStore } from '../../src/services/readerAutoplayPreferences';
 import type { ReaderPreferencesPatch } from '../../src/services/readerPreferences';
 import { useReaderPreferences } from '../../src/ui/useReaderPreferences';
-import { setPendingJournalQuote, setSelectedReadingDate, useReadingSession } from '../../src/ui/readingSession';
+import { setPendingJournalQuote, setSelectedReadingDate, useReadingDateRollover, useReadingSession } from '../../src/ui/readingSession';
 import { useAuthSnapshot } from '../../src/services/authSession';
 import * as SecureStore from 'expo-secure-store';
 import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
@@ -40,7 +40,7 @@ export default function ReaderScreen() {
   // A chapter that failed to load while this tab was out of sight retries when it comes back.
   const retrySignal = useReaderRetrySignal(chrome.focused);
   const audio = useReaderAudioSnapshot();
-  const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession({ visible: chrome.focused, playing: audio.state === 'playing', finished: audio.finished || audio.state === 'inactive' || audio.state === 'retry' || audio.state === 'unavailable' });
+  const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession();
   const auth = useAuthSnapshot();
   const session = auth.session;
   const memberId = session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
@@ -214,6 +214,13 @@ export default function ReaderScreen() {
     textSettings: preferences.preferences.settings,
     narrationSpeed,
     focused: chrome.focused,
+  });
+  useReadingDateRollover({
+    visible: chrome.focused,
+    playing: audio.state === 'playing',
+    finished: audio.finished || audio.state === 'inactive' || audio.state === 'retry' || audio.state === 'unavailable',
+    devotionPlaying: Boolean(readerDevotion.devotion?.speaking),
+    devotionFinished: !readerDevotion.narrationActive,
   });
   const syncError = completion.syncError;
   useEffect(() => {

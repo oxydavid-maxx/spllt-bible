@@ -26,21 +26,24 @@ let knownPlanMonths = new Set(canonicalReadingPlan.dates.map(date => date.slice(
 let selectedDate = initialDate();
 let followsToday = true;
 let selectionDay = readingToday();
-let deferDateUntilAudioEnds = false;
+const deferredDateNarration = new Set<'chapter' | 'devotion'>();
 function readingToday(): string {
   const configured = process.env.EXPO_PUBLIC_QINGMU_TEST_DATE?.trim();
   return configured && validDateOnly(configured) ? configured : todayInTaipei();
 }
-function refreshVisibleDate(playing: boolean, finished: boolean): void {
+function refreshVisibleDate(playing: boolean, finished: boolean, devotionPlaying = false, devotionFinished = true): void {
   if (!followsToday) return;
   const today = readingToday();
   // Initial entry may clamp to the bundled plan, but an actual day rollover must
   // reach today so the reader can discover a newly added server month.
   if (today === selectionDay) return;
   if (today === selectedDate) { selectionDay = today; return; }
-  if (playing) { deferDateUntilAudioEnds = true; return; }
-  if (deferDateUntilAudioEnds && !finished) return;
-  deferDateUntilAudioEnds = false;
+  if (playing) deferredDateNarration.add('chapter');
+  if (devotionPlaying) deferredDateNarration.add('devotion');
+  if (playing || devotionPlaying) return;
+  if (deferredDateNarration.has('chapter') && !finished) return;
+  if (deferredDateNarration.has('devotion') && !devotionFinished) return;
+  deferredDateNarration.clear();
   selectedDate = today; selectionDay = today;
   publish();
 }
@@ -59,7 +62,7 @@ export function setSelectedReadingDate(date: string): void {
   if (!validDateOnly(date)) return;
   selectionDay = readingToday();
   followsToday = date === selectionDay;
-  deferDateUntilAudioEnds = false;
+  deferredDateNarration.clear();
   if (date === selectedDate) return;
   selectedDate = date;
   if (todayReaderTabPressTargetDate && todayReaderTabPressTargetDate !== date) {
@@ -71,13 +74,13 @@ export function setSelectedReadingDate(date: string): void {
 
 /** A cross-midnight return must not erase a historical choice or paused narration. */
 export function preserveReadingDateOnReturn(): boolean {
-  return deferDateUntilAudioEnds || (!followsToday && selectionDay !== readingToday());
+  return deferredDateNarration.size > 0 || (!followsToday && selectionDay !== readingToday());
 }
 
 /** An explicit tap on the visible Reader tab is an entry action even when today is already selected. */
 export function requestTodayReaderTabPress(date: string, memberId: string | null, authEpoch: number, resetToAssignedStart = false): void {
   if (!validDateOnly(date)) return;
-  followsToday = true; selectionDay = readingToday(); deferDateUntilAudioEnds = false;
+  followsToday = true; selectionDay = readingToday(); deferredDateNarration.clear();
   todayReaderTabPressSameDate = selectedDate === date;
   selectedDate = date;
   todayReaderTabPressRevision += 1;
@@ -216,20 +219,35 @@ function subscribe(listener: Listener): () => void {
   return () => listeners.delete(listener);
 }
 
-export function useReadingSession(visibility?: { visible: boolean; playing: boolean; finished?: boolean }) {
+export interface ReadingDateVisibility {
+  visible: boolean;
+  playing: boolean;
+  finished?: boolean;
+  devotionPlaying?: boolean;
+  devotionFinished?: boolean;
+}
+
+/** Called after both chapter and devotion narration bindings are known. */
+export function useReadingDateRollover(visibility?: ReadingDateVisibility) {
   const visible = visibility?.visible ?? false;
   const playing = visibility?.playing ?? false;
   const finished = visibility?.finished ?? false;
+  const devotionPlaying = visibility?.devotionPlaying ?? false;
+  const devotionFinished = visibility?.devotionFinished ?? true;
   useEffect(() => {
     if (!visible) return;
-    refreshVisibleDate(playing, finished);
+    refreshVisibleDate(playing, finished, devotionPlaying, devotionFinished);
     let alive = true; let stop: (() => void) | undefined;
     // Keep the calendar/session module usable by Node tools and pure model tests.
     void import('../services/appVisibility').then(({ subscribeAppActive }) => {
-      if (alive) stop = subscribeAppActive(() => refreshVisibleDate(playing, finished));
+      if (alive) stop = subscribeAppActive(() => refreshVisibleDate(playing, finished, devotionPlaying, devotionFinished));
     });
     return () => { alive = false; stop?.(); };
-  }, [visible, playing, finished]);
+  }, [visible, playing, finished, devotionPlaying, devotionFinished]);
+}
+
+export function useReadingSession(visibility?: ReadingDateVisibility) {
+  useReadingDateRollover(visibility);
   useSyncExternalStore(subscribe, () => snapshotRevision, () => snapshotRevision);
   return getReadingSessionSnapshot();
 }

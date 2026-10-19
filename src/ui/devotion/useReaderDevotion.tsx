@@ -28,6 +28,8 @@ const preferences = createDevotionPreferencesStore({
 export interface ReaderDevotionBinding {
   devotion: ReaderDevotion | undefined;
   completionEvent: DevotionCompletionEvent | null;
+  /** Includes a paused narration, so midnight cannot discard its remaining text. */
+  narrationActive: boolean;
   clearCompletionFeedback: (operationId: string) => void;
   /** For YouVersionReader: the last chapter's narration ended. */
   onLastChapterNarrated: () => void;
@@ -162,5 +164,5 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
     followEnabled: follow.enabled,
     onFollowChange: (enabled) => preferences.setEnabled(memberId, enabled),
   } : undefined;
-  return { devotion, onLastChapterNarrated, leave, completionEvent, clearCompletionFeedback: operationId => setCompletionEvent(current => current?.operationId === operationId ? null : current) };
+  return { devotion, onLastChapterNarrated, leave, completionEvent, narrationActive: spoken.date === date && (spoken.status === 'speaking' || spoken.status === 'paused'), clearCompletionFeedback: operationId => setCompletionEvent(current => current?.operationId === operationId ? null : current) };
 }
