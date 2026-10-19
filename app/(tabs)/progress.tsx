@@ -1,4 +1,4 @@
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, View, type ScrollView } from 'react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
@@ -33,6 +33,7 @@ import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
 import type { CompletionRecord } from '../../src/domain/completion';
 import { ReadingCalendarCard } from '../../src/ui/gamification/ReadingCalendarCard';
+import { SelectedDayCard } from '../../src/ui/gamification/SelectedDayCard';
 import { ReadingCardExportSheet } from '../../src/ui/gamification/ReadingCardExportSheet';
 import { buildReadingCardHtml, readingCardFileName, type ReadingCardScope } from '../../src/domain/readingCard';
 import { loadReadingCardSnapshot } from '../../src/services/readingCardSnapshot';
@@ -68,6 +69,19 @@ export default function ProgressScreen() {
   const [selectedDate, setSelectedDate] = useState(today);
   // Once the member picks a day (or acts on one) the page stops choosing for them until next focus.
   const pickedDate = useRef(false);
+  // The own page's scroller: a day tapped in the calendar brings the top, where its buttons are, back into view.
+  const pageScroll = useRef<ScrollView>(null);
+  // Past Taipei midnight a day the member did not pick moves to the new today at once, so the day card
+  // at the top never offers yesterday as 補登 while the schedule is still on its way (or unreachable).
+  const shownToday = useRef(today);
+  useEffect(() => {
+    const previous = shownToday.current;
+    if (previous === today) return;
+    shownToday.current = today;
+    if (pickedDate.current) return;
+    setSelectedDate(today);
+    setCalendarMonth((month) => month === previous.slice(0, 7) ? today.slice(0, 7) : month);
+  }, [today]);
   const [completionAward, setCompletionAward] = useState<CompletionAwardEvent | null>(null);
   const awardRefreshRef = useRef<(memberId: string) => void>(() => undefined);
   const [capabilities, setCapabilities] = useState<ViewerCapabilities | null>(null);
@@ -543,7 +557,7 @@ export default function ProgressScreen() {
     if (local && localRecordTouched(local) && (local.syncStatus !== 'CONFIRMED' || base.revision === undefined || local.revision >= base.revision)) return { ...base, completed: local.status === 'COMPLETED' };
     return date in confirmedDays ? { ...base, completed: confirmedDays[date] } : base;
   };
-  // The displayed month, plus the selected day wherever it is: paging months keeps the button.
+  // The displayed month, plus the selected day wherever it is: paging months keeps the day card's day.
   const calendarDays = new Map<string, CalendarDay>();
   for (const date of new Set([selectedDate, ...monthCells(calendarMonth).filter((cell): cell is string => cell !== null)])) {
     const day = calendarDay(date);
@@ -609,28 +623,15 @@ export default function ProgressScreen() {
     {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { requestGeneration.current += 1; stopPrefetch(); activeMember.current = null; setBusy(false); setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} /></> : null}
     {scope === 'me' && ownProfile ? <ScoreProfile
       profile={ownProfile}
+      scrollRef={pageScroll}
       showChartViewToggle={false}
       lead={<>
-        {groupReading ? <>
-          <SectionHeader title="團體" />
-          <GroupReadingCard
-            view={groupReading}
-            onPreviousMonth={groupMonth > groupFirstMonth ? () => setGroupMonth(shiftMonth(groupMonth, -1)) : undefined}
-            onNextMonth={groupMonth < today.slice(0, 7) ? () => setGroupMonth(shiftMonth(groupMonth, 1)) : undefined}
-          />
-          <SectionHeader title="個人" />
-        </> : null}
-        <ReadingCalendarCard
-          month={calendarMonth}
+        {/* Today's two buttons first (維護者 2026-10-19), then 團體, then 個人. */}
+        <SelectedDayCard
+          date={selectedDate}
           today={today}
-          selectedDate={selectedDate}
-          days={calendarDays}
-          onSelect={(date) => withPick(() => setSelectedDate(date))}
-          onOpenReadingPlan={() => setPlanOpen(true)}
-          onExportReadingCard={() => { setExportError(null); setExportOpen(true); }}
-          onPreviousMonth={planSpan && calendarMonth > planSpan.first.slice(0, 7) ? () => setCalendarMonth(shiftMonth(calendarMonth, -1)) : undefined}
-          onNextMonth={calendarMonth < lastMonth ? () => setCalendarMonth(shiftMonth(calendarMonth, 1)) : undefined}
-          devotionDates={devotionDates}
+          day={calendarDays.get(selectedDate)}
+          onBackToToday={() => withPick(() => { setSelectedDate(today); setCalendarMonth(today.slice(0, 7)); })}
           action={<View style={styles.completionAction}>
             <View style={styles.dayActions}>
             <DevotionTodayButton
@@ -654,6 +655,28 @@ export default function ProgressScreen() {
             </View>
             {completion.syncError ? <Text accessibilityRole="alert" style={styles.stale}>{completion.record.syncStatus === 'SAVE_FAILED' && !completion.retryable ? '完成記錄無法同步，本機完成狀態仍保留。' : '同步遇到問題，完成狀態已保留，連線後會重試。'}</Text> : null}
           </View>}
+        />
+        {groupReading ? <>
+          <SectionHeader title="團體" />
+          <GroupReadingCard
+            view={groupReading}
+            onPreviousMonth={groupMonth > groupFirstMonth ? () => setGroupMonth(shiftMonth(groupMonth, -1)) : undefined}
+            onNextMonth={groupMonth < today.slice(0, 7) ? () => setGroupMonth(shiftMonth(groupMonth, 1)) : undefined}
+          />
+          <SectionHeader title="個人" />
+        </> : null}
+        <ReadingCalendarCard
+          month={calendarMonth}
+          today={today}
+          selectedDate={selectedDate}
+          days={calendarDays}
+          // The picked day's buttons are in the card at the top: scroll back up to show them.
+          onSelect={(date) => withPick(() => { setSelectedDate(date); pageScroll.current?.scrollTo({ y: 0, animated: true }); })}
+          onOpenReadingPlan={() => setPlanOpen(true)}
+          onExportReadingCard={() => { setExportError(null); setExportOpen(true); }}
+          onPreviousMonth={planSpan && calendarMonth > planSpan.first.slice(0, 7) ? () => setCalendarMonth(shiftMonth(calendarMonth, -1)) : undefined}
+          onNextMonth={calendarMonth < lastMonth ? () => setCalendarMonth(shiftMonth(calendarMonth, 1)) : undefined}
+          devotionDates={devotionDates}
         />
       </>}
       rewards={shelfRewards ?? undefined}

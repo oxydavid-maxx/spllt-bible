@@ -1,16 +1,13 @@
-import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { formatReferenceListZhTw } from '../../domain/scriptureReference';
 import { theme } from '../Theme';
-import { dayHeading, dayMessage, dayState, monthCells, type CalendarDays, type DayState } from './readingCalendarModel';
+import { dayState, monthCells, type CalendarDays, type DayState } from './readingCalendarModel';
 
 /**
- * The first card on the member's own 積分 page: this month's readings, and under the grid the one
- * day that is selected. Green is done, a dark ring is today, a clay ring is the day you picked.
+ * The member's own reading calendar on 積分 (個人): this month's readings, and a tap picks a day.
+ * Green is done, a dark ring is today, a clay ring is the day you picked.
  *
- * The completion button is not drawn here. The screen owns the completion controller for the
- * selected day and hands its button in as `action`, shown only for a day that can be completed or
- * undone; every other day gets one line saying why not.
+ * The picked day's line and its two buttons are not here (維護者 2026-10-19): they are the day card at
+ * the top of the page (`SelectedDayCard`), so the buttons are the first thing on it.
  */
 
 const WEEKDAY_HEADERS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -26,8 +23,6 @@ export interface ReadingCalendarCardProps {
   /** Absent means the arrow is shown but cannot be used. */
   onPreviousMonth?: () => void;
   onNextMonth?: () => void;
-  /** The selected day's completion button, with anything it needs to say about syncing. */
-  action?: ReactNode;
   onOpenReadingPlan?: () => void;
   onExportReadingCard?: () => void;
   /** Days the member also read the pastor's 靈修: a small gold 「靈修」 under the date. */
@@ -39,11 +34,7 @@ function monthLabel(month: string): string {
   return `${year}年${Number(value)}月`;
 }
 
-export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, action, onOpenReadingPlan, onExportReadingCard, devotionDates }: ReadingCalendarCardProps) {
-  const selectedDay = days.get(selectedDate);
-  const selectedState = dayState(selectedDate, today, selectedDay);
-  const message = dayMessage(selectedDate, selectedState);
-  const passages = selectedDay ? formatReferenceListZhTw(selectedDay.references) : '';
+export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, onOpenReadingPlan, onExportReadingCard, devotionDates }: ReadingCalendarCardProps) {
   return <View style={styles.card}>
     <View style={styles.periodNav}>
       <Pressable accessibilityRole="button" accessibilityLabel="上個月" accessibilityState={{ disabled: !onPreviousMonth }} disabled={!onPreviousMonth} onPress={onPreviousMonth} style={styles.navButton}><Text style={styles.navText}>‹</Text></Pressable>
@@ -76,19 +67,10 @@ export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect
       <View style={styles.legendItem}><View style={styles.legendDone} /><Text style={styles.legendText}>讀完經文</Text></View>
       <Text style={styles.legendText}><Text style={styles.legendDevotion}>靈修</Text>＝那天也讀了靈修</Text>
     </View> : null}
-    <View style={styles.selected}>
-      {selectedDay ? <>
-        <View style={styles.dayLine}>
-          <Text style={styles.heading}>{dayHeading(selectedDate)}</Text>
-          {passages ? <Text style={styles.passages}>{passages}</Text> : null}
-        </View>
-      </> : null}
-      {message ? <Text accessibilityLiveRegion="polite" style={styles.message}>{message}</Text> : action}
-      {onExportReadingCard || onOpenReadingPlan ? <View style={styles.footer}>
-        {onExportReadingCard ? <Pressable accessibilityRole="button" accessibilityLabel="匯出讀經卡" onPress={onExportReadingCard} style={styles.exportLink}><Text style={styles.planLinkText}>匯出讀經卡 ›</Text></Pressable> : null}
-        {onOpenReadingPlan ? <Pressable accessibilityRole="button" accessibilityLabel="整份計畫" onPress={onOpenReadingPlan} style={styles.planLink}><Text style={styles.planLinkText}>整份計畫 ›</Text></Pressable> : null}
-      </View> : null}
-    </View>
+    {onExportReadingCard || onOpenReadingPlan ? <View style={styles.footer}>
+      {onExportReadingCard ? <Pressable accessibilityRole="button" accessibilityLabel="匯出讀經卡" onPress={onExportReadingCard} style={styles.exportLink}><Text style={styles.planLinkText}>匯出讀經卡 ›</Text></Pressable> : null}
+      {onOpenReadingPlan ? <Pressable accessibilityRole="button" accessibilityLabel="整份計畫" onPress={onOpenReadingPlan} style={styles.planLink}><Text style={styles.planLinkText}>整份計畫 ›</Text></Pressable> : null}
+    </View> : null}
   </View>;
 }
 
@@ -114,18 +96,13 @@ const styles = StyleSheet.create({
   cellDone: { backgroundColor: theme.colors.primary },
   cellFuture: { opacity: 0.45 },
   cellToday: { borderWidth: 2, borderColor: theme.colors.primaryDeep },
-  // Clay, the app's "needs you" colour: this is the day the button below acts on.
+  // Clay, the app's "needs you" colour: this is the day the card at the top of the page acts on.
   cellSelected: { borderWidth: 3, borderColor: theme.colors.accent, opacity: 1 },
   cellText: { color: theme.colors.ink, fontSize: theme.type.caption.size, fontWeight: '700' },
   cellTextDone: { color: theme.colors.white },
   cellTextSelected: { fontWeight: '900' },
-  selected: { borderTopColor: theme.colors.border, borderTopWidth: theme.control.hairline, marginTop: theme.spacing.xs, paddingTop: theme.spacing.sm, gap: theme.spacing.sm },
-  dayLine: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: theme.spacing.sm },
-  heading: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
-  passages: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
   exportLink: { minHeight: theme.control.tap, justifyContent: 'center' },
   planLink: { marginLeft: 'auto', minHeight: theme.control.tap, justifyContent: 'center' },
   planLinkText: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
-  message: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
 });
