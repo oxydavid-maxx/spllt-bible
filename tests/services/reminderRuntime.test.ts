@@ -339,17 +339,17 @@ describe('auth-owned reminder runtime', () => {
 
 
 it('reloads remote reminder settings and reconciles notifications once per foreground, never idle (6)', async () => {
-  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-14T00:00:00Z'));
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-14T00:00:00Z'));
   setAuthSession({ memberId: 'member:one', sessionToken: 'session-one' });
   let time = '08:00';
   const getReminderSnapshot = vi.fn(async () => ({ memberId: 'member:one', readingEnabled: true, meetingEnabled: false, readingTime: time, meetingAdvanceMinutes: 30, preferenceGeneration: 14, remoteDeliveryStatus: 'LOCAL_ONLY' as const, meetings: [] }));
   const owner = new ReminderRuntimeOwner({ scheduler: schedulerValue as any, secureStore: secureStore(), createApiClient: () => ({ getReminderSnapshot, getReadingDays: async () => ({ today: '2026-09-14', timezone: 'Asia/Taipei', days: [{ taskDate: '2026-09-15', planId: 'p', sourceRevision: 1 }] }), saveReminderPreferences: async () => null, registerReminderDeviceToken: async () => true, revokeReminderDeviceToken: async () => true }), loadNotificationSource: async () => { throw new Error('NOT_NEEDED'); }, generateInstallationId: () => 'install' });
   try {
-    owner.start(); await new Promise(resolve => setTimeout(resolve, 0));
+    owner.start(); await vi.advanceTimersByTimeAsync(0);
     expect(owner.getSnapshot().readingTime).toBe('08:00');
-    time = '19:30'; await new Promise(resolve => setTimeout(resolve, 20));
+    time = '19:30'; await vi.advanceTimersByTimeAsync(600_000);
     expect(getReminderSnapshot).toHaveBeenCalledTimes(1);
-    foreground.forEach(fn => fn()); await new Promise(resolve => setTimeout(resolve, 0));
+    foreground.forEach(fn => fn()); await vi.advanceTimersByTimeAsync(0);
     expect(getReminderSnapshot).toHaveBeenCalledTimes(2);
     expect(owner.getSnapshot()).toMatchObject({ ready: true, readingTime: '19:30' });
     expect(schedulerValue.scheduled).toEqual(expect.arrayContaining([expect.objectContaining({ triggerAt: '2026-09-15T11:30:00.000Z' })]));
