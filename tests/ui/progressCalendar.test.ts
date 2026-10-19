@@ -19,9 +19,9 @@ const { primitive, api, auth, readingDays, completion } = vi.hoisted(() => ({
   readingDays: vi.fn(),
   completion: { options: [] as Array<{ planId: string; taskDate: string; canComplete: boolean; onConfirmed?: (event: unknown) => void }>, complete: vi.fn(), requestUndo: vi.fn() },
 }));
-const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
+const navigation = vi.hoisted(() => ({ replace: vi.fn(), listeners: new Set<(state: string) => void>() }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => undefined, deleteItemAsync: async () => undefined }));
-vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: vi.fn(() => ({ remove: vi.fn() })) }, Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
+vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: vi.fn((_: string, fn: (state: string) => void) => { navigation.listeners.add(fn); return { remove: () => navigation.listeners.delete(fn) }; }) }, Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
 // 團體 and the history chart are served only by a newer backend: absent by default, as on the old one.
 const devotionApi = vi.hoisted(() => ({
@@ -52,6 +52,7 @@ vi.mock('../../src/services/useCompletionController', () => ({
     const status = done.has(options.taskDate) ? 'COMPLETED' : 'UNREPORTED';
     return {
       record: { memberId: 'self', planId: options.planId, taskDate: options.taskDate, status, revision: status === 'COMPLETED' ? 1 : 0, syncStatus: status === 'COMPLETED' ? 'PENDING_SAVE' : 'CONFIRMED' },
+      getCompletionRecord: (planId: string, taskDate: string) => done.has(taskDate) ? { memberId: 'self', planId, taskDate, status: 'COMPLETED', revision: 1, syncStatus: 'PENDING_SAVE' } : undefined,
       pending: false, syncError: false, retryable: false,
       complete: async () => { completion.complete(options.taskDate); setDone((current: Set<string>) => new Set([...current, options.taskDate])); },
       requestUndo: () => completion.requestUndo(options.taskDate),
@@ -293,4 +294,59 @@ describe('the 積分 page opens on its calendar', () => {
     expect(cardExport.share).not.toHaveBeenCalled();
     auth.epoch = oldEpoch;
   });
+});
+
+
+it('updates the rendered calendar today and group today after Taipei midnight, with one read per foreground (5)', async () => {
+  const { GroupReadingCard } = await import('../../src/ui/gamification/GroupReadingCard');
+  const { ReadingCalendarCard } = await import('../../src/ui/gamification/ReadingCalendarCard');
+  vi.setSystemTime(new Date('2026-09-27T15:59:00Z'));
+  const groupView = () => ({ month: '2026-09', today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()), todayReaders: 7, yesterdayReaders: 4, days: [], monthReads: 40, busiest: null, qualifyingDays: 15, prizes: [], myDaysThisMonth: 3 });
+  devotionApi.getGroupReading.mockImplementation(async () => groupView());
+  await mount(); const reads = devotionApi.getGroupReading.mock.calls.length; const days = readingDays.mock.calls.length;
+  vi.setSystemTime(new Date('2026-09-27T16:01:00Z'));
+  expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(reads);
+  await act(async () => { navigation.listeners.forEach(fn => fn('background')); });
+  await act(async () => { navigation.listeners.forEach(fn => fn('active')); });
+  expect(renderer!.root.findByType(ReadingCalendarCard).props.today).toBe('2026-09-28');
+  expect(renderer!.root.findByType(GroupReadingCard).props.view.today).toBe('2026-09-28');
+  expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(reads + 1);
+  expect(readingDays).toHaveBeenCalledTimes(days + 1);
+  await act(async () => { navigation.listeners.forEach(fn => fn('active')); });
+  expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(reads + 1);
+  expect(readingDays).toHaveBeenCalledTimes(days + 1);
+  devotionApi.getGroupReading.mockReset().mockRejectedValue(new Error('not served'));
+  vi.setSystemTime(new Date('2026-09-27T04:00:00Z'));
+});
+
+it('revalidates progress administrator capability on visible foreground and ignores idle time (8)', async () => {
+  const { requestOpenAllScores } = await import('../../src/services/allScoresRequest');
+  api.getCapabilities.mockResolvedValue({ canViewAllScores: false, canManageRewards: false, canRedeemRewards: false });
+  await mount(); const reads = api.getCapabilities.mock.calls.length;
+  vi.useFakeTimers(); await act(async () => { await vi.advanceTimersByTimeAsync(600_000); }); expect(api.getCapabilities).toHaveBeenCalledTimes(reads);
+  api.getCapabilities.mockResolvedValue({ canViewAllScores: true, canManageRewards: false, canRedeemRewards: false });
+  await act(async () => { navigation.listeners.forEach(fn => fn('background')); });
+  await act(async () => { navigation.listeners.forEach(fn => fn('active')); });
+  expect(api.getCapabilities).toHaveBeenCalledTimes(reads + 1);
+  await act(async () => { requestOpenAllScores(); });
+  expect(api.getPeople).toHaveBeenLastCalledWith('all');
+  expect(texts()).toContain('全體 (管理)');
+  api.getCapabilities.mockResolvedValue({ canViewAllScores: false, canManageRewards: false, canRedeemRewards: false });
+  await act(async () => { navigation.listeners.forEach(fn => fn('background')); });
+  await act(async () => { navigation.listeners.forEach(fn => fn('active')); });
+  await act(async () => { requestOpenAllScores(); });
+  expect(texts()).toContain('此功能僅限管理者。');
+  vi.useRealTimers(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-27T04:00:00Z'));
+});
+
+
+it('keeps a pending completion visible on another calendar day while refreshing the server month (2)', async () => {
+  await mount(); await act(async () => { cell('2026-09-25').props.onPress(); });
+  await act(async () => { buttons()[0].props.onPress(); });
+  expect(cell('2026-09-25').props.accessibilityLabel).toContain('已完成');
+  await act(async () => { cell('2026-09-24').props.onPress(); });
+  expect(cell('2026-09-25').props.accessibilityLabel).toContain('已完成');
+  await act(async () => { navigation.listeners.forEach(fn => fn('background')); });
+  await act(async () => { navigation.listeners.forEach(fn => fn('active')); });
+  expect(cell('2026-09-25').props.accessibilityLabel).toContain('已完成');
 });

@@ -3,9 +3,10 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.hoisted(() => { process.env.EXPO_PUBLIC_QINGMU_FIXTURE = 'false'; (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
+const visibility = vi.hoisted(() => ({ listeners: new Set<(state: string) => void>() }));
 const primitive = vi.hoisted(() => (name: string) => (props: any) => require('react').createElement(name, props, props.children));
 vi.mock('react-native', () => ({
-  AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'),
+  AppState: { currentState: 'active', addEventListener: (_: string, fn: (state: string) => void) => { visibility.listeners.add(fn); return { remove: () => visibility.listeners.delete(fn) }; } }, TextInput: primitive('TextInput'), View: primitive('View'), Text: primitive('Text'), Pressable: primitive('Pressable'),
   ActivityIndicator: primitive('ActivityIndicator'), StyleSheet: { create: (value: unknown) => value },
 }));
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('MaterialCommunityIcons') }));
@@ -80,4 +81,30 @@ describe('ChapterAudioControls stable slot', () => {
     expect(style.minHeight).toBeGreaterThanOrEqual(48);
     expect(play!.props.android_ripple?.color).toBeTruthy();
   });
+});
+
+
+it('rechecks an explicit no-audio result on foreground and tab return without idle or duplicate reads (4)', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-19T04:00:00Z'));
+  try {
+    await act(async () => { mount(); }); expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(86_400_000); }); expect(fetchImpl).toHaveBeenCalledTimes(1);
+    // The backend now has a recording, for this same chapter and authenticated owner.
+    fetchImpl.mockImplementation(async () => new Response(JSON.stringify(payload(true))));
+    await act(async () => { visibility.listeners.forEach(fn => fn('background')); visibility.listeners.forEach(fn => fn('active')); });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(view!.root.findAll(node => /^播放.*語音$/.test(node.props.accessibilityLabel ?? '')).length).toBeGreaterThan(0);
+    await act(async () => { visibility.listeners.forEach(fn => fn('active')); }); expect(fetchImpl).toHaveBeenCalledTimes(2);
+  } finally { vi.useRealTimers(); }
+});
+
+
+it('rechecks no-audio on return to the same reader tab and chapter (4)', async () => {
+  const props = { chapterUsfm: '1TI.1', versionId: 46, active: true, visible: true, fetchImpl: fetchImpl as typeof fetch, env: { EXPO_PUBLIC_QINGMU_AUDIO_AUTHORIZED: 'true' }, baseUrl: 'https://in-memory.test' };
+  await act(async () => { view = TestRenderer.create(React.createElement(ChapterAudioControls, props)); }); expect(fetchImpl).toHaveBeenCalledTimes(1);
+  await act(async () => view!.update(React.createElement(ChapterAudioControls, { ...props, visible: false })));
+  fetchImpl.mockImplementation(async () => new Response(JSON.stringify(payload(true))));
+  await act(async () => view!.update(React.createElement(ChapterAudioControls, props)));
+  expect(fetchImpl).toHaveBeenCalledTimes(2);
+  expect(view!.root.findAll(node => /^播放.*語音$/.test(node.props.accessibilityLabel ?? '')).length).toBeGreaterThan(0);
 });

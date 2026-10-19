@@ -10,9 +10,9 @@ const { primitive, nav, auth, gamification } = vi.hoisted(() => ({
   auth: { status: 'signed-in', session: { memberId: 'self', sessionToken: 'token' }, profile: null, profileStatus: 'ready', epoch: 1 },
   gamification: { getCapabilities: vi.fn(async () => ({ canViewAllScores: false, canManageRewards: false, canRedeemRewards: false })) },
 }));
-vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
+vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Pressable: primitive('Pressable'), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
-vi.mock('expo-router', () => ({ router: nav }));
+vi.mock('expo-router', () => ({ router: nav, useFocusEffect: (fn: () => void) => require('react').useEffect(fn, [fn]) }));
 vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => auth }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ createGamificationApiClient: () => gamification }));
 
