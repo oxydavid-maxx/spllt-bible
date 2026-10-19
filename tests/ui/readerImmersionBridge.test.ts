@@ -44,10 +44,14 @@ const passage = (chapterLabelClass: string) => `<div class="chapter ch1"><div cl
   + '<div class="s1"><span class="yv-h">問候</span></div>'
   + Array.from({ length: 40 }, (_, i) => `<div class="p">${verse(i + 1)}</div>`).join('') + '</div>';
 
-// Each step moves the real scroll container or taps, then waits for the async scroll event.
+// Each step taps, or moves the real scroll container and hands the bridge that scroll event itself at the step's
+// virtual time. Chromium also fires its own scroll event for a scrollTop change, but only when a real frame lands,
+// and under --virtual-time-budget that is whatever virtual moment the machine's load allows. That late copy moves
+// the bridge's gesture clock without a step of its own, so it is stopped on window, ahead of the bridge's listener.
 const SCRIPT = `
 var msgs = [], sdkClicks = 0;
 window.ReactNativeWebView = { postMessage: function (raw) { msgs.push(JSON.parse(raw)); } };
+window.addEventListener('scroll', function (event) { if (event.isTrusted) event.stopImmediatePropagation(); }, true);
 __BRIDGE__
 var main = document.querySelector('main'), renderer = document.querySelector('[data-slot="yv-bible-renderer"]');
 renderer.addEventListener('click', function () { sdkClicks++; });
@@ -62,6 +66,10 @@ function tapVerse() {
   return click.defaultPrevented;
 }
 // 'pause' stands for the reader stopping for a while (native may reveal meanwhile, e.g. Back).
+// On a busy machine the renderer can stall mid-pause (CI unit run 39339760491, 2026-10-20): real time passes, virtual
+// time does not, and the frame that lands then fires Chromium's late copy of the scrollTo(500) event. Every run stalls
+// 240 ms into the pause, so that copy arrives 360 ms after scrollTo(500) and 360 ms before 'after-pause'.
+function stallRenderer() { var x = 0; for (var k = 0; k < 3e7; k++) x += Math.sqrt(k); window.__stalled = x; }
 var steps = [
   function () { mark('start'); },
   function () { scrollTo(200); },
@@ -80,7 +88,7 @@ var i = 0;
 function next() {
   if (i < steps.length) {
     var step = steps[i++];
-    if (step === 'pause') { setTimeout(next, 600); return; }
+    if (step === 'pause') { setTimeout(function () { stallRenderer(); setTimeout(next, 360); }, 240); return; }
     step(); setTimeout(next, 60); return;
   }
   var label = document.querySelector('.chapter > :first-child'), vlbl = document.querySelector('.yv-vlbl'), heading = document.querySelector('.s1');
