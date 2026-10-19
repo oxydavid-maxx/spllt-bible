@@ -122,6 +122,7 @@
 - 後端資料表：`event_registrations`（誰報名哪天）、`event_registration_totals`（每天總人數）、`form_sync_audience`（釘住的推送者 Google audience），定義在 `server/eventRegistrations.ts` 的 `ensureEventRegistrationSchema`。
 - 發布：維護者電腦上的排程執行 `tools/announce/run.cmd` → 把 GitHub main 取到排程專用的 checkout，用那份程式產生公告、交給 `tools/announce/publisher.ts` 從另一個專用的 main checkout 推上 `announcements/`。開發用的工作目錄在哪個分支、有沒有改到一半，都不影響發布；拿不到 main 的程式或任一步失敗就不發布，上週的檔案留著（舊但不錯），原因寫在 `tools/announce/last-run.log`。
 - 週刊：`GET /api/bulletins` (最新主日在前，每頁的寬高)、`GET /api/bulletins/:主日/:頁` (圖檔，只給已登入成員)。檔案放私人部署的 `bulletins\<主日>\` (啟動程式帶 `QINGMU_BULLETIN_DIR`)，頻道 ID 放在 LINE 頻道密鑰同一個私人檔案。
+- 週刊圖檔在 Android：React Native 的 Android Image 只有在 `source` 是陣列時才送出 headers，所以 App 要圖時沒帶登入 token，頁面一片白 (2026-10-19 在 Pixel 發現)。讀清單時後端多回一個 cookie `qm_bulletin` (`server/bulletinAccess.ts`)，只開週刊圖檔、7 天，每次讀清單都換新，每次要圖都再確認帳號還是啟用的。Android 的 fetch 和圖片載入共用同一個 cookie 儲存，所以已經裝好的 App 不用更新就看得到。
 - 舊版 App 相容：發布檔案格式是「多欄位、忽略未知鍵」設計，新加欄位不會讓舊 App 壞掉；反過來新 App 讀到沒有 `sessions`/`roles`/`sermonSlides` 的舊檔案也有對應的退回顯示。
 
 ## 守住它的測試
