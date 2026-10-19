@@ -1,6 +1,6 @@
 # 公告
 
-> 狀態：0.5.22 程式碼｜平台：Android、iOS（差異見「平台差異」）｜2026-10-13 候選核對；2026-10-14 改版候選 (尚未發布)；2026-10-17 青少/主堂分頁、主堂週刊；2026-10-20 週刊只收公布欄群組
+> 狀態：0.5.22 程式碼｜平台：Android、iOS（差異見「平台差異」）｜2026-10-13 候選核對；2026-10-14 改版候選 (尚未發布)；2026-10-17 青少/主堂分頁、主堂週刊；2026-10-19 週刊圖片在 Android 也帶登入 token；2026-10-20 週刊只收公布欄群組
 
 ## 一句話
 
@@ -83,6 +83,7 @@
 
 - 公告最上面「青少」「主堂」兩個分頁，預設打開自己的那一邊，還沒選或讀不到歸屬時是青少。青少分頁就是原本的公告。
 - 主堂分頁只放週刊，不放公布欄的其他貼文。每週一段：「10/11 (日) 週刊」和「3 張・點圖片放大」，下面照貼出的順序排每一頁。點一頁開全螢幕：黑底，兩指放大 (最多 4 倍)、放大後一指移動，沒放大時左右滑換頁，右上角 × 回去；上方寫「10/11 週刊 2 / 3」，第一次放大或滑動前，下方提示「兩指放大縮小・左右滑換頁」。
+- 每一頁都帶成員的登入 token 去要 (`authorization: Bearer …`)。圖片來源一律寫成陣列 `[{ uri, headers }]` (`bulletinPageSource`, `src/services/bulletinClient.ts`), 清單 (`BulletinBoard`) 和全螢幕 (`BulletinViewer`) 用同一個。原因：React Native 0.85 的 Android `Image` 只有 `source` 是陣列時才把 headers 交給原生元件，單一物件 `{ uri, headers }` 的 headers 被丟掉，後端回 401, 頁面一片白 (0.5.34 在 Pixel 發現，2026-10-19)。iOS 兩種寫法都會帶。
 - 還沒有週刊時寫「還沒有週刊。公布欄貼出週刊後，會出現在這裡。」；讀不到時寫「暫時讀不到週刊。」和「重新讀取」按鈕。舊後端沒有這個 API，當作還沒有週刊。
 - 週刊從哪裡來：教會在 LINE「竹科靈糧堂訊息公布欄」群組貼週刊，機器人「光佑_bot」在群組裡。只看這個群組的照片：bot 也在青少牧區公告群、青崇輔導/小組長群組，那些群組的照片不下載。同一個人貼的 A4 直式頁 (高寬比 1.36–1.47、寬至少 600 像素)，每張跟上一張相隔 10 分鐘內，兩張以上就是一期週刊；同一個人 3 小時內補貼的 A4 頁併進同一期。日期是第一頁貼出當天或之後的那個主日 (台北時間)；同一個主日之後又貼一整期，就換成新的。其他照片只看大小就丟掉，不存、記錄裡也沒有任何可以認出照片或人的資訊。
 - 下載照片用頻道 ID 和頻道密鑰換來的 15 分鐘權杖 (`server/lineContent.ts`)，不存長期權杖；機器人只收不發話。
@@ -107,6 +108,9 @@
 - **以前的主日固定日期在上、按鈕在下，非今年的日期顯示年份**：按鈕數量和手機寬度不改變行的結構，避免少量按鈕擠到日期右側或誤認年份。（維護者 2026-09-30 決定）
 - **講道紀錄一個主日一張卡，最新的標「上週」**：取代「上次講道」加「以前的主日」兩段，每週長得一樣，往下滑就是更早的週。(維護者 2026-10-14；來源：[../superpowers/plans/2026-10-14-mock-1014-redesign.md](../superpowers/plans/2026-10-14-mock-1014-redesign.md))
 - **下次聚會用深色日期塊；資料連結是文字加小圖示，不用按鈕；同類兩份檔案編號「報告投影片 1、2」，不印檔名；沒有內容的堂次收成一行；服事名單只顯示短的角色名**：一眼看到日期，卡片不被按鈕和長檔名塞滿。(維護者 2026-10-14)
+- **週刊圖片來源寫成陣列，兩個平台同一種寫法，不加 `Platform.OS` 分支** (2026-10-19)：Android 只送陣列裡的 headers, iOS 兩種都送，陣列兩邊都對。守衛 `tests/ui/imageSourceHeaders.test.ts` 掃 `src/`, `app/`, 任何帶 `headers` 的 `{ uri, … }` 不在陣列裡就失敗；同一個測試也核對 React Native 原始碼 (`Image.android.js`, `ReactImageView.kt`) 還是這樣做，升級 React Native 時會知道。
+- **後端的週刊 cookie `qm_bulletin` 保留** (`server/bulletinAccess.ts`, 另一個 PR 加的)：0.5.35 以前已經裝好的 Android App 還是用單一物件，要圖時不帶 token; cookie 讓它們不用更新也看得到週刊。新版 App 每一頁照樣帶 token, iOS 流程 `44-bulletin` 也只認帶 token 的請求，不靠 cookie.
+- **iOS 流程不只看有沒有框**：Maestro 分不出圖有沒有真的載入 (空白的框和有圖的框一樣)，所以 `44-bulletin` 跑完，`scripts/ios/run-flows.sh` 讀 `scripts/ios/count-proxy.ts` 的請求紀錄 (`scripts/ios/check-bulletin-requests.ts`)：每一頁都要帶 bearer token 去要、而且回 200, 任何週刊請求回 401 就算失敗。count-proxy 只記有沒有帶 token, 不記 token 本身。假資料週刊是兩張小的 A4 測試圖 (`scripts/ios/fixtures/bulletins/`)，不放真的週刊。Android 的雲端驗證沒有跑流程，Android 的寫法靠上面的 unit 守衛擋。
 
 **待確認（沒有記錄，請維護者確認是否刻意）：**
 
@@ -114,7 +118,8 @@
 
 ## 平台差異
 
-- 沒有找到公告功能本身的 Android/iOS 差異；程式碼是同一份 React Native 元件與同一個 HTTPS GET。
+- 公告本身沒有 Android/iOS 分支；程式碼是同一份 React Native 元件與同一個 HTTPS GET。
+- 週刊圖片有一處 React Native 的平台行為差異：Android 的 `Image` 只從陣列 source 送出 headers, iOS 每一種 source 都送。App 一律用陣列，兩邊同一種寫法 (見「決定」)。
 - iOS 的 iOS-parity 計畫（`docs/superpowers/plans/2026-09-29-ios-parity.md` 第 9 項）本身把公告列為「預期不用改」的低風險項目，只用 Maestro 截圖確認畫面能開。
 
 ## 資料與後端
@@ -139,7 +144,10 @@
 - `tests/server/eventRegistrations.test.ts` — 表單推送的兩種身份驗證（固定金鑰/Google identity token 且釘住 audience）、姓名比對規則、只回傳好友名單與總數、整批重寫上游日期的規則。
 - `tests/server/bulletins.test.ts` — 一組 A4 頁才收、照順序存在主日底下、其他照片和單張照片不存也不留可辨識的記錄、沒有張數的組會在安靜一段時間後收、同一主日換新、只留 8 週、API 只給成員、權杖重複使用而且不出現在錯誤裡。
 - `tests/server/lineGroups.test.ts` — 別的群組的 A4 照片不下載、靈修格式的文字不存、公布欄群組照舊收、查不到群組名稱時不當成公布欄、`join` 記下群組名稱 (只存編號和名稱，重開後不再查)、只向 LINE 拿權杖、群組名稱和照片，沒有回話或推播。
-- `tests/ui/bulletinBoard.test.ts` — 分頁預設自己那一邊、兩邊都能點、週刊列表帶成員權杖、點了全螢幕並能關閉、沒有週刊和讀不到的畫面、兩指放大的範圍。
+- `tests/ui/bulletinBoard.test.ts` — 分頁預設自己那一邊、兩邊都能點、週刊列表帶成員權杖、清單和全螢幕的每一頁照 Android `Image` 的規則也送得出權杖、點了全螢幕並能關閉、沒有週刊和讀不到的畫面、兩指放大的範圍。
+- `tests/ui/imageSourceHeaders.test.ts` — App 裡帶 headers 的圖片來源都是陣列 (Android 才送得出 token)；並核對 React Native 0.85 的 `Image.android.js` 和 `ReactImageView.kt` 還是這樣做。
+- `tests/tools/iosBulletinFlow.test.ts` — 假資料週刊是兩張小的 A4 測試圖、假資料後端只給帶 token 的請求；請求紀錄檢查遇到 401, 沒帶 token, 缺頁、清單沒回 200 都會失敗；count-proxy 只記有沒有帶 token.
+- iOS 流程 `.maestro/ios/44-bulletin.yaml` — 公告 › 主堂看週刊、點開全螢幕、滑到第 2 頁再關掉；跑完檢查請求紀錄，每一頁都帶 token 而且回 200.
 
 ## 相關文件
 
