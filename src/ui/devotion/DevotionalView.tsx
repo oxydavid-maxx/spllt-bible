@@ -71,7 +71,7 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
   const sectionTops = useRef(new Map<number, number>());
   const paragraphTops = useRef(new Map<number, { section: number; y: number }>());
   const player = useRef<DomWebViewRef | null>(null);
-  // A delayed ready/playing message must not restart audio after handing off to YouTube.
+  // A delayed ready message must not auto-start audio after handing off to YouTube.
   const handedOff = useRef(false);
   const [song, setSong] = useState<SongState>('poster');
   const post = state.kind === 'ready' ? state.post : null;
@@ -173,7 +173,8 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
           onMessage={(event) => {
             const message = event.nativeEvent.data;
             if (message === 'ready') { if (AppState.currentState === 'active' && !handedOff.current) player.current?.injectJavaScript(PLAY); else { player.current?.injectJavaScript(PAUSE); setSong('paused'); } }
-            else if (message === 'playing') { if (AppState.currentState === 'active' && !handedOff.current) setSong('playing'); else { player.current?.injectJavaScript(PAUSE); setSong('paused'); } }
+            // Playing also reports an explicit tap on the existing player's controls after returning.
+            else if (message === 'playing') { if (AppState.currentState === 'active') setSong('playing'); else { player.current?.injectJavaScript(PAUSE); setSong('paused'); } }
             else if (message === 'paused') setSong('paused');
             else if (message === 'ended') setSong('ended');
             else if (message.startsWith('error')) setSong('error');
