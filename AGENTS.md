@@ -30,8 +30,8 @@
 - `android/`、`ios/` 由 `expo prebuild` 產生，不進 git（`.gitignore` 只忽略最外層的這兩個資料夾）。要改原生設定只能寫 plugin。
 - 每個 PR 自動跑下面三個雲端驗證，三個都要綠。
 - 版本號：發版只改 `app.json` 的 `version` 和 `android.versionCode`。iOS 的 `buildNumber` 由 `app.config.js` 從 versionCode 算出來，不要在 `app.json` 另外寫（`tests/config/iosConfig.test.ts` 會擋）。
-- 0.5.35 起用官方 `expo-updates`/EAS Update 更新 JS、文字、樣式與圖片；`runtimeVersion` 採 `appVersion`，每次商店發版都改 version，同 version 才可互收 OTA。新增/改變原生套件、權限、SDK、config plugin 或原生設定一定要重新上架。OTA 不改版號；建置/發布方法見 [docs/eas-update.md](docs/eas-update.md)。
-- Android 本機 Gradle 與 iOS EAS 正式建置預設 `production`；管理者手機用官方 request-header API 選 `preview`。不得關防變磚保護，也不得在讀經/朗讀時自動重載。CI 專用停用檢查旗標不得帶進正式 Gradle 建置；EAS profiles 會強制保留檢查。
+- 0.5.35 起用官方 `expo-updates`/EAS Update 更新 JS, 文字、樣式與圖片；`runtimeVersion` 採 `appVersion`, 每次商店發版都改 version, 同 version 才可互收 OTA. 新增/改變原生套件、權限、SDK, config plugin 或原生設定一定要重新上架。OTA 不改版號；建置/發布方法見 [docs/eas-update.md](docs/eas-update.md)。
+- Android 本機 Gradle 與 iOS EAS 正式建置預設 `production`; 管理者手機用官方 request-header API 選 `preview`. 不得關防變磚保護，也不得在讀經/朗讀時自動重載。CI 專用停用檢查旗標不得帶進正式 Gradle 建置；EAS profiles 會強制保留檢查。
 
 ## 雲端驗證（`.github/workflows/`）
 
@@ -105,7 +105,7 @@
 
 ## Pull request
 
-- OTA 也須先取得對應 runtime 的 preview 驗收，再用 `update:republish` 將同一份 JS/資源交給 production；原生改動走商店。保留 group ID、來源 commit 與回復點，不用重新打包代替已驗收的更新。發布授權與正式手機驗收屬維護者，操作文件不代表授權發布。
+- OTA 也須先取得對應 runtime 的 preview 驗收，再用 `update:republish` 將同一份 JS/資源交給 production; 原生改動走商店。保留 group ID, 來源 commit 與回復點，不用重新打包代替已驗收的更新。發布授權與正式手機驗收屬維護者，操作文件不代表授權發布。
 
 - 一個 PR 做一件說得清楚的事。說明從 `git diff origin/main...HEAD` 寫，每一句宣稱都要能在 CI 摘要裡找到證據。
 - 合併、發布、部署由維護者決定。

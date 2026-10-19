@@ -110,7 +110,7 @@
 | 帳戶頁 | 看自己的名字和小組、設定提醒、登出、刪除帳號與資料、看 App 版本 | 右上角頭像 | Android、iOS | [account.md](account.md) |
 | 青少/主堂 | 新會員第一次登入選青少或主堂，之後可以在帳戶頁改 | 登入後第一個畫面、帳戶頁「我在哪裡聚會」 | Android、iOS | [account.md](account.md) |
 | App 更新提示 | 有新版時提示更新：Play 裝的在 App 裡更新，側載的開安裝頁 | 開 App 或回到前景時自動出現 | 只有 Android | [account.md](account.md) |
-| JS/圖片背景更新 | 同一商店版本背景下載，下次冷啟動套用；管理者可先收 preview | 自動；帳戶頁最下面的管理區 | Android、iOS | [account.md](account.md) |
+| JS/圖片背景更新 | 同一商店版本背景下載，下次冷啟動套用；管理者可先收 preview | 自動；帳戶頁最下面的管理區 | Android, iOS | [account.md](account.md) |
 
 ## 其他文件放哪
 
