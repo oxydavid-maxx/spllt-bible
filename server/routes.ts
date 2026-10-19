@@ -719,7 +719,13 @@ export function createApiHandler(options: ApiHandlerOptions) {
         const date = decodeURIComponent(devotionalMatch[1]);
         if (!isDevotionalDate(date)) return gamificationError({ status: 400, code: 'INVALID_DATE' });
         const post = await readDevotional(options.devotionalDir, date, songTitle);
-        return post ? gamificationJson(200, post as unknown as Record<string, unknown>) : gamificationError({ status: 404, code: 'DEVOTIONAL_NOT_FOUND' });
+        if (post) return gamificationJson(200, post as unknown as Record<string, unknown>);
+        // The pastor posts at no fixed hour (維護者 2026-10-19). Apps up to 0.5.34 keep a 404 (還沒有上傳) for the rest
+        // of the day but ask again after an error, so today's not-yet-posted day (Monday–Saturday; no 靈修 on
+        // Sundays) answers a retryable error. Every other missing day stays a plain 404.
+        const today = taipeiDate(now());
+        if (date === today && new Date(`${today}T12:00:00Z`).getUTCDay() !== 0) return gamificationJson(503, { error: { code: 'DEVOTIONAL_NOT_YET_POSTED', retryable: true } });
+        return gamificationError({ status: 404, code: 'DEVOTIONAL_NOT_FOUND' });
       }
       // Prize nominations were removed on 2026-10-17 (維護者: vote offline). Apps up to 0.5.32 still ask for the board on
       // the 積分 page; an idle board keeps them quiet instead of showing an error.

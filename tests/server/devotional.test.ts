@@ -74,14 +74,14 @@ describe('GET /api/devotional/:date', () => {
   const dirs: string[] = [];
   const databases: Array<{ close: () => void }> = [];
   afterEach(() => { databases.splice(0).forEach((database) => database.close()); dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })); });
-  function setup() {
+  function setup(at = '2026-10-14T04:00:00Z') {
     const dir = mkdtempSync(join(tmpdir(), 'devotional-'));
     dirs.push(dir);
     writeFileSync(join(dir, '20261014.txt'), POST, 'utf8');
     writeFileSync(join(dir, '20261013.txt'), POST, 'utf8');
     const database = createDatabase({ members: [{ id: 'member-self', displayName: '自己', groupId: 'g' }] });
     databases.push(database);
-    const api = createApiHandler({ db: database, fixtureToken: 'test-token', devotionalDir: dir, songTitle: async () => '詩篇16篇 詩歌《耶和華是我產業》', now: () => new Date('2026-10-14T04:00:00Z') });
+    const api = createApiHandler({ db: database, fixtureToken: 'test-token', devotionalDir: dir, songTitle: async () => '詩篇16篇 詩歌《耶和華是我產業》', now: () => new Date(at) });
     return { api, headers: { authorization: 'Bearer test-token', 'x-qingmu-member-id': 'member-self' } };
   }
 
@@ -99,6 +99,20 @@ describe('GET /api/devotional/:date', () => {
     // 20261013.txt holds the 10/14 post: a misfiled day is not shown under the wrong date.
     expect((await api({ method: 'GET', url: '/api/devotional/2026-10-13', headers })).status).toBe(404);
     expect((await api({ method: 'GET', url: '/api/devotional/..%2F..%2Fsecret', headers })).status).toBe(400);
+  });
+
+  // 2026-10-19: apps up to 0.5.34 keep a 404 (還沒有上傳) for the rest of the day but ask again after an error.
+  // Until today's post arrives, today (Monday–Saturday, Taipei) answers a retryable error instead.
+  it('answers a retryable not-yet-posted error for today only, until the post arrives', async () => {
+    const thursday = setup('2026-10-14T23:30:00Z'); // 10/15 (四) 07:30 Taipei, no 20261015.txt yet
+    const pending = await thursday.api({ method: 'GET', url: '/api/devotional/2026-10-15', headers: thursday.headers });
+    expect(pending.status).toBe(503);
+    expect(pending.body).toMatchObject({ error: { code: 'DEVOTIONAL_NOT_YET_POSTED', retryable: true } });
+    expect((await thursday.api({ method: 'GET', url: '/api/devotional/2026-10-12', headers: thursday.headers })).status).toBe(404);
+    expect((await thursday.api({ method: 'GET', url: '/api/devotional/2026-10-16', headers: thursday.headers })).status).toBe(404);
+    expect((await thursday.api({ method: 'GET', url: '/api/devotional/2026-10-14', headers: thursday.headers })).status).toBe(200);
+    const sunday = setup('2026-10-18T01:00:00Z'); // 10/18 (日): no devotional is posted on Sundays
+    expect((await sunday.api({ method: 'GET', url: '/api/devotional/2026-10-18', headers: sunday.headers })).status).toBe(404);
   });
 });
 
