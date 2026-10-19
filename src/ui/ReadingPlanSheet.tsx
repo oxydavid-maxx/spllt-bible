@@ -9,7 +9,7 @@ import { taipeiDate } from '../domain/gamificationV1';
 import { formatReferenceListZhTw } from '../domain/scriptureReference';
 import { forgetReadingDays, readReadingDays } from '../services/readingDaysRead';
 import { useReaderRetrySignal } from './readerRetrySignal';
-import { getReadingPlan, replaceReadingDaysRange } from './readingSession';
+import { getReadingPlan, getReadingPlanMonths, useReadingSession, replaceReadingDaysRange } from './readingSession';
 import { formatReadingDateLabel, formatReadingDateWithWeekday } from './ReadingDateNavigator';
 import { SheetBackdrop } from './SheetBackdrop';
 import { createSheetDrag, SHEET_CLOSE_MS } from './sheet/sheetDrag';
@@ -30,6 +30,9 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
   const ownerKey = JSON.stringify([session?.memberId, session?.sessionToken, auth.epoch]);
+  useReadingSession();
+  const months = getReadingPlanMonths();
+  const monthsKey = months.join('|');
   const [sourcePlan] = useState(getReadingPlan);
   const [plan, setPlan] = useState(sourcePlan);
   const refreshSignal = useReaderRetrySignal(true);
@@ -96,14 +99,14 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
     const loadLocal = import('../storage/mobileDatabase').then(({ openQingmuRepository }) => {
       if (!owns()) return;
       const repository = openQingmuRepository();
-      for (const day of sourcePlan.days) {
-        const record = repository.get({ memberId: session.memberId, planId: day.planId ?? sourcePlan.planId, taskDate: day.date });
+      const localPlan = getReadingPlan();
+      for (const day of localPlan.days) {
+        const record = repository.get({ memberId: session.memberId, planId: day.planId ?? localPlan.planId, taskDate: day.date });
         if (record) local.set(day.date, record);
       }
       if (owns()) setCompletion({ owner: ownerKey, remote: new Map(), local, loading: true, offline: false });
     }).catch(() => undefined);
     // The existing API caps a range at 62 days, so load each month once on opening.
-    const months = [...new Set(sourcePlan.dates.map(date => date.slice(0, 7)))];
     const loadRemote = Promise.all(months.map(async month => {
       const end = new Date(`${month}-01T12:00:00Z`);
       end.setUTCMonth(end.getUTCMonth() + 1, 0);
@@ -122,7 +125,7 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
       setCompletion({ owner: ownerKey, remote, local, loading: false, offline: results.some(result => result === null) });
     });
     return () => { active = false; };
-  }, [sourcePlan, ownerKey, refreshSignal]);
+  }, [monthsKey, ownerKey, refreshSignal]);
 
   const visible = completion.owner === ownerKey ? completion : { remote: new Map<string, ReadingDaySnapshot>(), local: new Map<string, CompletionRecord>(), loading: Boolean(session), offline: false };
   const days = plan.days.map(day => {

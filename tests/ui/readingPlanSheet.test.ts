@@ -26,7 +26,7 @@ vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => bounda
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ getReadingDays: boundary.getReadingDays }) }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: () => ({ get: boundary.get }) }));
 
-import { resetReadingPlan } from '../../src/ui/readingSession';
+import { resetReadingPlan, replaceReadingDaysRange } from '../../src/ui/readingSession';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { canonicalReadingPlan } from '../../src/domain/calendar';
 import { theme } from '../../src/ui/Theme';
@@ -210,4 +210,14 @@ it('re-reads a reopened plan instead of inheriting the previous opening pending 
   expect(row('2026-09-29')).toBeUndefined();
   await act(async () => { resolve(await standard('2026-09-01', '2026-09-30')); });
   expect(row('2026-09-29')).toBeUndefined();
+});
+
+
+it.each(['09', '11', '12'])('re-reads a known month after every date in that month was removed (%s) (1)', async month => {
+  const to = month === '09' || month === '11' ? `2026-${month}-30` : `2026-${month}-31`;
+  replaceReadingDaysRange(`2026-${month}-01`, to, []);
+  await mount();
+  expect(boundary.getReadingDays).toHaveBeenCalledWith(`2026-${month}-01`, to);
+  const first = canonicalReadingPlan.days.find(day => day.date.startsWith(`2026-${month}`))!;
+  expect(row(first.date)).toBeDefined();
 });

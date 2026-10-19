@@ -22,6 +22,7 @@ function initialDate(): string {
 
 let activePlan: ReadingPlanSnapshot = canonicalReadingPlan;
 let planIdByDate = new Map(canonicalReadingPlan.days.map((day) => [day.date, canonicalReadingPlan.planId]));
+let knownPlanMonths = new Set(canonicalReadingPlan.dates.map(date => date.slice(0, 7)));
 let selectedDate = initialDate();
 let followsToday = true;
 let selectionDay = readingToday();
@@ -122,6 +123,7 @@ function validDateOnly(value: string): boolean {
 /** Replace the active schedule, used by focused tests and a plan switch. */
 export function setReadingPlan(plan: ReadingPlanSnapshot): void {
   activePlan = normalizePlan(plan);
+  knownPlanMonths = new Set(activePlan.dates.map(date => date.slice(0, 7)));
   planIdByDate = new Map(activePlan.days.map((day) => [day.date, day.planId ?? activePlan.planId]));
   if (!getReadingDay(activePlan, selectedDate)) {
     const fallbackDate = activePlan.days[0]?.date ?? selectedDate;
@@ -137,6 +139,13 @@ export function setReadingPlan(plan: ReadingPlanSnapshot): void {
 /** A successful server range replaces that range, including dates removed by the server.
  * Keep the selected date even when it becomes a rest day; never resurrect bundled passages. */
 export function replaceReadingDaysRange(from: string, to: string, days: ReadingDaySnapshot[]): void {
+  // A known month remains a query scope even when its authoritative answer is empty.
+  // Otherwise deleting its last day would prevent this app from ever seeing restored dates.
+  for (let month = from.slice(0, 7); month <= to.slice(0, 7);) {
+    knownPlanMonths.add(month);
+    const next = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
+    month = next.toISOString().slice(0, 7);
+  }
   const byDate = new Map(activePlan.days.filter(day => day.date < from || day.date > to).map(day => [day.date, day]));
   for (const day of days) {
     if (day.taskDate < from || day.taskDate > to) continue;
@@ -151,6 +160,7 @@ export function replaceReadingDaysRange(from: string, to: string, days: ReadingD
 export function mergeReadingPlan(plan: ReadingPlanSnapshot): void {
   const byDate = new Map(activePlan.days.map((day) => [day.date, day]));
   for (const day of plan.days) {
+    knownPlanMonths.add(day.date.slice(0, 7));
     byDate.set(day.date, day);
     planIdByDate.set(day.date, day.planId ?? plan.planId);
   }
@@ -161,6 +171,7 @@ export function mergeReadingPlan(plan: ReadingPlanSnapshot): void {
 
 export function resetReadingPlan(): void {
   activePlan = canonicalReadingPlan;
+  knownPlanMonths = new Set(canonicalReadingPlan.dates.map(date => date.slice(0, 7)));
   planIdByDate = new Map(canonicalReadingPlan.days.map((day) => [day.date, canonicalReadingPlan.planId]));
   publish();
 }
@@ -185,6 +196,9 @@ export function getReadingPlanId(taskDate: string): string | null {
 export function getReadingPlan(): ReadingPlanSnapshot {
   return activePlan;
 }
+
+/** Query scopes include months that the server has emptied, so a later entry can discover additions. */
+export function getReadingPlanMonths(): string[] { return [...knownPlanMonths].sort(); }
 
 /** First and last scheduled dates of the active plan: the months there is anything to show. */
 export function getReadingPlanSpan(): { first: string; last: string } | null {
