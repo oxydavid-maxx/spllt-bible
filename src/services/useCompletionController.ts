@@ -9,7 +9,7 @@ import { isWithinCompletionWindow, taipeiDate } from '../domain/gamificationV1';
 import { readingDaysRange } from '../ui/gamification/readingCalendarModel';
 import { replaceReadingDaysRange } from '../ui/readingSession';
 import { subscribeAppActive } from './appVisibility';
-import { readReadingDays } from './readingDaysRead';
+import { forgetReadingDays, readReadingDays } from './readingDaysRead';
 import { createApiClient, type ReadingDaySnapshot } from './apiClient';
 import { getAuthSnapshot, isCurrentAuthSession, useAuthSnapshot, type AuthSession } from './authSession';
 import { activateCompletionAwardSurface, createCompletionController, subscribeCompletionAwardSurface, type CompletionAwardEvent, type CompletionController, type CompletionControllerDependencies, type CompletionSyncEvent } from './completionController';
@@ -156,6 +156,11 @@ export function useCompletionController(options: UseCompletionControllerOptions)
     return repository?.subscribe(() => { if (isCurrent()) setRecord(repository.get(identity) ?? blankRecord(identity.memberId, identity.planId, identity.taskDate)); });
   }, [owner, isCurrent]);
   useFocusEffect(useCallback(() => { refreshRemoteRef.current(); }, [memberId, sessionToken, auth.epoch, options.taskDate, options.refreshRemote]));
+  // This lifetime follows navigation/auth, not taskDate. A midnight date change in the
+  // same foreground must still share that foreground's one month request.
+  useFocusEffect(useCallback(() => () => {
+    if (memberId && sessionToken) forgetReadingDays({ memberId, sessionToken });
+  }, [memberId, sessionToken, auth.epoch]));
   useEffect(() => subscribeAppActive(() => { if (focusedRef.current) refreshRemoteRef.current(); }), []);
 
   const dependenciesRef = useRef<CompletionControllerDependencies | null>(null);

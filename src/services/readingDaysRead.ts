@@ -14,3 +14,11 @@ export function readReadingDays(session: AuthSession, from: string, to: string, 
   void request.then(clear, clear);
   return request;
 }
+
+/** A departed entry cannot lend its still-pending answer to the next visit. */
+export function forgetReadingDays(session: AuthSession): void {
+  for (const key of reads.keys()) {
+    const [memberId, token] = JSON.parse(key) as string[];
+    if (memberId === session.memberId && token === session.sessionToken) reads.delete(key);
+  }
+}

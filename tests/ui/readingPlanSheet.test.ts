@@ -197,3 +197,17 @@ it('renders server-added dates and removes deleted dates in the actual plan shee
   expect(row('2026-09-27').props.accessibilityLabel).toContain('啟3');
   expect(boundary.getReadingDays).toHaveBeenCalledTimes(4);
 });
+
+
+it('re-reads a reopened plan instead of inheriting the previous opening pending answer (1)', async () => {
+  const standard = boundary.getReadingDays.getMockImplementation()!;
+  let resolve!: (v: unknown) => void;
+  boundary.getReadingDays.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+  await mount();
+  await act(async () => tree!.update(React.createElement(ReadingPlanSheet, { visible: false, onClose, onSelectDate })));
+  boundary.getReadingDays.mockImplementation(async (from, to) => { const response = await standard(from, to); return { ...response, days: response.days.filter((day: { taskDate: string }) => day.taskDate !== '2026-09-29') }; });
+  await act(async () => tree!.update(React.createElement(ReadingPlanSheet, { visible: true, onClose, onSelectDate })));
+  expect(row('2026-09-29')).toBeUndefined();
+  await act(async () => { resolve(await standard('2026-09-01', '2026-09-30')); });
+  expect(row('2026-09-29')).toBeUndefined();
+});

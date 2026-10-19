@@ -7,7 +7,7 @@ import { runtimeConfig } from '../config/runtime';
 import type { CompletionRecord } from '../domain/completion';
 import { taipeiDate } from '../domain/gamificationV1';
 import { formatReferenceListZhTw } from '../domain/scriptureReference';
-import { readReadingDays } from '../services/readingDaysRead';
+import { forgetReadingDays, readReadingDays } from '../services/readingDaysRead';
 import { useReaderRetrySignal } from './readerRetrySignal';
 import { getReadingPlan, replaceReadingDaysRange } from './readingSession';
 import { formatReadingDateLabel, formatReadingDateWithWeekday } from './ReadingDateNavigator';
@@ -33,6 +33,7 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
   const [sourcePlan] = useState(getReadingPlan);
   const [plan, setPlan] = useState(sourcePlan);
   const refreshSignal = useReaderRetrySignal(true);
+  useEffect(() => () => { if (session) forgetReadingDays(session); }, [ownerKey]);
   const [completion, setCompletion] = useState<{ owner: string; remote: Map<string, ReadingDaySnapshot>; local: Map<string, CompletionRecord>; loading: boolean; offline: boolean }>(
     () => ({ owner: ownerKey, remote: new Map(), local: new Map(), loading: Boolean(session), offline: false }),
   );

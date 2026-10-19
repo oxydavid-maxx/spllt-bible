@@ -33,7 +33,7 @@
 
 - 尚未登入 → 播放鍵顯示載入中的無障礙標籤「登入後即可使用朗讀」，不能按（`ChapterAudioControls.tsx` `slotLabel`）。
 - 已登入、朗讀來源正在確認 → 顯示轉圈，標籤「正在載入朗讀來源」。
-- 這一章確實沒有朗讀 (YouVersion 目錄回報「查無此經文的朗讀」，或朗讀為戲劇/合成語音而被排除) → 顯示喇叭斜線圖示，標籤「本章沒有朗讀」，不提供手動重試；回到同一章、切回讀經分頁或回到前景時，會再向後端確認一次，不中斷正在播放的音源。後端既有的來源快取期限維持不變 (`chapterAudioContract.ts` 的 `explicit_no_audio`/`isRetryable` 回傳 false).
+- 這一章確實沒有朗讀 (YouVersion 目錄回報「查無此經文的朗讀」，或朗讀為戲劇/合成語音而被排除) → 顯示喇叭斜線圖示，標籤「本章沒有朗讀」，不提供手動重試；回到同一章、切回讀經分頁或回到前景時，會再向後端確認一次，不中斷正在播放的音源。後端既有的來源快取期限維持不變 (`chapterAudioContract.ts` 的 `explicit_no_audio`/`isRetryable` 回傳 false)。
 - 查詢暫時失敗（網路、逾時、格式異常、來源已過期需要重新確認） → 顯示「重試」，按下會重新呼叫後端並重新準備播放（`temporarily_unavailable`/`isRetryable` 回傳 true；`retryPlayback()`）。
 - 播放中途發生原生播放錯誤（解碼、串流中斷） → 暫停，顯示「朗讀暫時無法播放，請重試。」，並把播放鍵轉成「重試」（`reportPlaybackError`）。
 - 播放鍵一律操作同一顆播放器，換章只是換音源，不會整顆重建，所以「播 A → 播 B → 回頭播 A」不會壞掉（`src/services/expoAudioPlayback.ts` 的 ownership 設計，見 `tests/services/chapterAudioOwnership.test.ts`）。

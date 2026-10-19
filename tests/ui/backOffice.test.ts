@@ -3,12 +3,12 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // 後台規則與文件 (維護者 2026-10-17, mock 9): administrators only, behind the device unlock.
-const state = vi.hoisted(() => ({ canViewAllScores: false, unlock: true, push: vi.fn(), openBrowser: vi.fn(), foreground: new Set<(revision?: number) => void>(), capabilities: vi.fn() }));
+const state = vi.hoisted(() => ({ focused: true, canViewAllScores: false, unlock: true, push: vi.fn(), openBrowser: vi.fn(), foreground: new Set<(revision?: number) => void>(), capabilities: vi.fn() }));
 vi.hoisted(() => { (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
 const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children));
 vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: (revision?: number) => void) => { state.foreground.add(fn); return () => state.foreground.delete(fn); } }));
 vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (s: unknown) => s }, Text: primitive('Text'), View: primitive('View') }));
-vi.mock('expo-router', () => ({ router: { push: state.push }, useFocusEffect: (fn: () => void) => require('react').useEffect(fn, [fn]) }));
+vi.mock('expo-router', () => ({ router: { push: state.push }, useFocusEffect: (fn: () => void) => require('react').useEffect(() => state.focused ? fn() : undefined, [fn, state.focused]) }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: state.openBrowser }));
 vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ status: 'signed-in', session: { memberId: 'admin', sessionToken: 'tok' } }) }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ createGamificationApiClient: () => ({ getCapabilities: state.capabilities }) }));
@@ -24,7 +24,7 @@ const byLabel = (label: string) => tree!.root.findAll((node) => node.props.acces
 
 beforeEach(() => {
   state.capabilities.mockReset().mockImplementation(async () => ({ canViewAllScores: state.canViewAllScores, canManageRewards: false, canRedeemRewards: false }));
-  state.canViewAllScores = false; state.unlock = true; state.push.mockReset(); state.openBrowser.mockReset();
+  state.focused = true; state.canViewAllScores = false; state.unlock = true; state.push.mockReset(); state.openBrowser.mockReset();
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ links: [{ name: '獎品與兌換試算表', url: 'https://docs.example/sheet' }] }), { status: 200 })));
 });
 afterEach(() => { act(() => tree?.unmount()); tree = null; vi.unstubAllGlobals(); });
@@ -105,4 +105,19 @@ it('does not let an earlier foreground capabilities response replace a newer one
   expect(state.capabilities).toHaveBeenCalledTimes(3); expect(texts()).toContain('全體 (管理) ›');
   await act(async () => { resolve({ canViewAllScores: false }); });
   expect(texts()).toContain('全體 (管理) ›');
+});
+
+
+it('rechecks account capability when re-entered while its earlier read is pending (8)', async () => {
+  const { AdminAllScoresEntry } = await import('../../src/ui/AdminAllScoresEntry');
+  const content = () => React.createElement(React.Fragment, null, React.createElement(BackOfficeEntry), React.createElement(AdminAllScoresEntry));
+  await act(async () => { tree = TestRenderer.create(content()); });
+  await act(async () => { state.focused = false; tree!.update(content()); });
+  let resolve!: (v: unknown) => void; state.capabilities.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+  await act(async () => { state.focused = true; tree!.update(content()); });
+  await act(async () => { state.focused = false; tree!.update(content()); });
+  state.canViewAllScores = true;
+  await act(async () => { state.focused = true; tree!.update(content()); });
+  expect(state.capabilities).toHaveBeenCalledTimes(3); expect(texts()).toContain('全體 (管理) ›');
+  await act(async () => { resolve({ canViewAllScores: false }); }); expect(texts()).toContain('全體 (管理) ›');
 });

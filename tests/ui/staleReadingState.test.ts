@@ -116,3 +116,23 @@ it('starts a fresh visible read after a second foreground, and ignores the older
   await act(async () => { resolve({ today: '2026-10-19', timezone: 'Asia/Taipei', days: [day()] }); });
   expect(value.record.status).toBe('COMPLETED'); expect(getReadingSessionSnapshot().day?.references).toEqual(['REV.8']);
 });
+
+
+it('starts a fresh read when the reader tab is revisited while its earlier read is pending (1/2)', async () => {
+  await mount(); let resolve!: (v: unknown) => void;
+  state.read.mockImplementationOnce(() => new Promise(r => { resolve = r; })); await focus();
+  remote = [day('2026-10-19', 'COMPLETED', 1, ['REV.7'])]; await focus();
+  expect(state.read).toHaveBeenCalledTimes(3); expect(value.record.status).toBe('COMPLETED');
+  await act(async () => { resolve({ today: '2026-10-19', timezone: 'Asia/Taipei', days: [day()] }); });
+  expect(getReadingSessionSnapshot().day?.references).toEqual(['REV.7']);
+});
+
+it('coalesces the old-date and new-date consumers into one reading-days query on midnight foreground (1/2/5)', async () => {
+  const { useReadingSession } = await import('../../src/ui/readingSession');
+  remote = [day(), day('2026-10-20')];
+  function MidnightScreen() { const reading = useReadingSession({ visible: true, playing: false }); value = useCompletionController({ planId: reading.planId, taskDate: reading.selectedDate, canComplete: true }); return null; }
+  await act(async () => { tree = TestRenderer.create(React.createElement(MidnightScreen)); });
+  const reads = state.read.mock.calls.length;
+  vi.setSystemTime(new Date('2026-10-19T16:01:00Z')); await foreground();
+  expect(getReadingSessionSnapshot().selectedDate).toBe('2026-10-20'); expect(state.read).toHaveBeenCalledTimes(reads + 1);
+});

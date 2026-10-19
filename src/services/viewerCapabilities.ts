@@ -18,6 +18,10 @@ export function readViewerCapabilities(key: string, load: () => Promise<ViewerCa
   return request;
 }
 
+export function forgetViewerCapabilities(ownerKey: string): void {
+  for (const key of reads.keys()) if ((JSON.parse(key) as unknown[])[0] === ownerKey) reads.delete(key);
+}
+
 export function useViewerCapabilities(): ViewerCapabilities | null {
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
@@ -34,7 +38,7 @@ export function useViewerCapabilities(): ViewerCapabilities | null {
       if (current.current === key && focused.current && requestGeneration.current === generation) setValue({ key, capabilities });
     }).catch(() => { if (current.current === key && requestGeneration.current === generation) setValue(null); });
   }, [key, client]);
-  useFocusEffect(useCallback(() => { focused.current = true; refresh(); return () => { focused.current = false; }; }, [refresh]));
+  useFocusEffect(useCallback(() => { focused.current = true; refresh(); return () => { focused.current = false; requestGeneration.current++; if (key) forgetViewerCapabilities(key); }; }, [refresh]));
   useEffect(() => subscribeAppActive(revision => { if (focused.current) refresh(revision); }), [refresh]);
   return value?.key === key ? value.capabilities : null;
 }
