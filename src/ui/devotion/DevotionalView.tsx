@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DomWebView, type DomWebViewRef } from '@expo/dom-webview';
 import Svg, { Path } from 'react-native-svg';
 import { splitDevotionReference } from '../../domain/devotionReading';
@@ -72,11 +72,13 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
   const sectionTops = useRef(new Map<number, number>());
   const paragraphTops = useRef(new Map<number, { section: number; y: number }>());
   const player = useRef<DomWebViewRef | null>(null);
+  // A delayed ready message must not auto-start audio after handing off to YouTube.
+  const handedOff = useRef(false);
   const [song, setSong] = useState<SongState>('poster');
   const post = state.kind === 'ready' ? state.post : null;
   const songKey = post ? `${post.date}:${post.song.youtubeId}` : '';
 
-  useEffect(() => { onEndChange?.(false); viewport.current = { height: 0, content: 0, y: 0 }; setSong('poster'); sectionTops.current.clear(); paragraphTops.current.clear(); }, [songKey]);
+  useEffect(() => { onEndChange?.(false); viewport.current = { height: 0, content: 0, y: 0 }; setSong('poster'); handedOff.current = false; sectionTops.current.clear(); paragraphTops.current.clear(); }, [songKey]);
   // The date row and chapter chips lie over the top of the page; read at scroll time, so a header
   // that collapses or comes back while reading does not move the page by itself.
   const headerTop = useRef(insets.top);
@@ -97,7 +99,8 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
     if (songRequest === handledRequest.current) return;
     handledRequest.current = songRequest;
     // With the screen off the song waits for a tap.
-    if (!post || AppState.currentState !== 'active') return;
+    if (!post || !post.song.youtubeId || AppState.currentState !== 'active') return;
+    handedOff.current = false;
     if (song === 'paused') player.current?.injectJavaScript(PLAY);
     else if (song !== 'playing' && song !== 'loading') setSong('loading');
   }, [songRequest, post, song]);
@@ -120,6 +123,16 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
 
   const devotional = state.post;
   const songTitle = devotional.song.title ?? '今天的詩歌';
+  const attribution = [devotional.song.title, devotional.song.channel].filter(Boolean).join(' · ');
+  const openYouTube = async () => {
+    if (song === 'playing' || song === 'loading') {
+      handedOff.current = true;
+      player.current?.injectJavaScript(PAUSE);
+      setSong('paused');
+    }
+    try { await Linking.openURL(`https://www.youtube.com/watch?v=${devotional.song.youtubeId}`); }
+    catch { Alert.alert('目前無法開啟 YouTube，請稍後再試'); }
+  };
   const caption = songCaption(song, songFollows);
   let unit = -1;
   const playerMounted = song !== 'poster' && song !== 'error';
@@ -147,6 +160,7 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
         return <Text key={paragraphIndex} onLayout={(event) => { paragraphTops.current.set(index, { section: sectionIndex, y: event.nativeEvent.layout.y }); }} style={[styles.paragraph, index === activeIndex && styles.paragraphLit, text.paragraph]}>{parts.reference ? <Text testID="devotion-reference" style={[styles.reference, { fontSize: fontSize * 0.65 }]}>{parts.reference}</Text> : null}{parts.body}</Text>;
       })}
     </View>)}
+    {devotional.song.youtubeId ? <>
     {playerMounted ? <View style={styles.songCard}>
       <View style={styles.songMedia}>
         <DomWebView
@@ -159,7 +173,8 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
           containerStyle={styles.fill}
           onMessage={(event) => {
             const message = event.nativeEvent.data;
-            if (message === 'ready') { if (AppState.currentState === 'active') player.current?.injectJavaScript(PLAY); else setSong('paused'); }
+            if (message === 'ready') { if (AppState.currentState === 'active' && !handedOff.current) player.current?.injectJavaScript(PLAY); else { player.current?.injectJavaScript(PAUSE); setSong('paused'); } }
+            // Playing also reports an explicit tap on the existing player's controls after returning.
             else if (message === 'playing') { if (AppState.currentState === 'active') setSong('playing'); else { player.current?.injectJavaScript(PAUSE); setSong('paused'); } }
             else if (message === 'paused') setSong('paused');
             else if (message === 'ended') setSong('ended');
@@ -172,13 +187,18 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
         <Text numberOfLines={1} style={styles.songTitle}>{songTitle}</Text>
         <Text style={styles.songNote}>{caption}</Text>
       </View>
-    </View> : <Pressable accessibilityRole="button" accessibilityLabel={`播放詩歌 ${songTitle}`} onPress={() => setSong('loading')} style={styles.poster}>
+    </View> : <Pressable accessibilityRole="button" accessibilityLabel={`播放詩歌 ${songTitle}`} onPress={() => { handedOff.current = false; setSong('loading'); }} style={styles.poster}>
       <View pointerEvents="none" style={styles.songPlay}><Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M8 5v14l11-7z" fill={theme.colors.white} /></Svg></View>
       <View pointerEvents="none" style={styles.posterCaption}>
         <Text numberOfLines={1} style={styles.songTitle}>{songTitle}</Text>
         <Text style={styles.songNote}>{caption}</Text>
       </View>
     </Pressable>}
+    <View style={styles.songSource}>
+      {attribution ? <Text testID="song-attribution" numberOfLines={2} ellipsizeMode="tail" style={styles.attribution}>{attribution}</Text> : null}
+      <Pressable accessibilityRole="link" accessibilityLabel={`在 YouTube 開啟 ${songTitle}`} onPress={openYouTube} style={styles.youtubeLink}><Text style={styles.youtubeLinkText}>在 YouTube 開啟 ›</Text></Pressable>
+    </View>
+    </> : null}
   </ScrollView>;
 }
 
@@ -208,5 +228,10 @@ const styles = StyleSheet.create({
   songPlay: { position: 'absolute', left: '50%', top: '42%', width: 54, height: 54, marginLeft: -27, marginTop: -27, borderRadius: 27, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
   songCaption: { paddingHorizontal: theme.spacing.md, paddingVertical: 10, gap: 2 },
   songTitle: { color: theme.colors.white, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
+  songSource: { gap: 2, marginTop: -6 },
+  attribution: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  // Same secondary action as ReadingCalendarCard's 整份計畫 ›.
+  youtubeLink: { marginLeft: 'auto', minHeight: theme.control.tap, justifyContent: 'center' },
+  youtubeLinkText: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
   songNote: { color: theme.colors.primarySoft, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
 });

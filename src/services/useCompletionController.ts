@@ -6,7 +6,11 @@ import * as SecureStore from 'expo-secure-store';
 import { fixtureProfile } from '../ui/fixtureProfile';
 import type { CompletionRecord } from '../domain/completion';
 import { isWithinCompletionWindow, taipeiDate } from '../domain/gamificationV1';
-import { createApiClient } from './apiClient';
+import { readingDaysRange } from '../ui/gamification/readingCalendarModel';
+import { replaceReadingDaysRange } from '../ui/readingSession';
+import { subscribeAppActive } from './appVisibility';
+import { forgetReadingDays, readReadingDays } from './readingDaysRead';
+import { createApiClient, type ReadingDaySnapshot } from './apiClient';
 import { getAuthSnapshot, isCurrentAuthSession, useAuthSnapshot, type AuthSession } from './authSession';
 import { activateCompletionAwardSurface, createCompletionController, subscribeCompletionAwardSurface, type CompletionAwardEvent, type CompletionController, type CompletionControllerDependencies, type CompletionSyncEvent } from './completionController';
 import { openQingmuRepository } from '../storage/mobileDatabase';
@@ -20,6 +24,8 @@ export interface UseCompletionControllerOptions {
   taskDate: string;
   /** Whether this scheduled day is eligible for a new completion. Undo and saved retries remain available. */
   canComplete: boolean;
+  /** Progress already reads a calendar range and feeds that response to the same repository. */
+  refreshRemote?: boolean;
   onAward?: (event: CompletionAwardEvent) => void;
   onConfirmed?: (event: CompletionSyncEvent) => void;
 }
@@ -29,6 +35,8 @@ export interface UseCompletionControllerValue {
   pending: boolean;
   syncError: boolean;
   retryable: boolean;
+  reconcileRemoteDays?: (days: ReadingDaySnapshot[]) => void;
+  getCompletionRecord?: (planId: string, taskDate: string) => CompletionRecord | undefined;
   complete: () => Promise<void>;
   requestUndo: () => void;
 }
@@ -121,6 +129,46 @@ export function useCompletionController(options: UseCompletionControllerOptions)
     setSyncError(false);
     // The identity includes auth epoch so a same-member sign-out/sign-in cannot reuse a prior callback.
   }, [memberId, sessionToken, auth.epoch, options.planId, options.taskDate]);
+
+  const reconcileRemoteDays = useCallback((days: ReadingDaySnapshot[]) => {
+    // A calendar range belongs to the login, not the selected date. Its response
+    // still updates the shared repository when the member picks another day.
+    if (!isSessionCurrent() || !memberId) return;
+    const repository = getRepository();
+    for (const day of days) repository?.mergeRemote({ memberId, planId: day.planId, taskDate: day.taskDate, status: day.status, revision: day.revision, syncStatus: 'CONFIRMED' });
+    // The new date's subscription reads its own record; an old callback must not
+    // replace that UI state with the date it originally captured.
+    if (isCurrent()) {
+      const current = repository?.get(identity);
+      if (current) setRecord(current);
+    }
+  }, [owner, isCurrent, isSessionCurrent]);
+  const remoteReadGeneration = useRef(0);
+  const refreshRemoteRef = useRef<() => void>(() => undefined);
+  refreshRemoteRef.current = () => {
+    const client = clientRef.current;
+    if (options.refreshRemote === false || !client || !memberId || !sessionToken || !isCurrent()) return;
+    if (AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
+    const generation = ++remoteReadGeneration.current;
+    // The existing backend accepts at most 62 days. Use the same month/window as the calendar.
+    const { from, to } = readingDaysRange(options.taskDate.slice(0, 7), taipeiDate());
+    void readReadingDays({ memberId, sessionToken }, from, to, () => client.getReadingDays(from, to)).then(response => {
+      if (!response || !isCurrent() || generation !== remoteReadGeneration.current) return;
+      replaceReadingDaysRange(from, to, response.days);
+      reconcileRemoteDays(response.days);
+    }).catch(() => { /* Retain the current plan and local state; the next visible event retries. */ });
+  };
+  useEffect(() => {
+    const repository = getRepository();
+    return repository?.subscribe(() => { if (isCurrent()) setRecord(repository.get(identity) ?? blankRecord(identity.memberId, identity.planId, identity.taskDate)); });
+  }, [owner, isCurrent]);
+  useFocusEffect(useCallback(() => { refreshRemoteRef.current(); }, [memberId, sessionToken, auth.epoch, options.taskDate, options.refreshRemote]));
+  // This lifetime follows navigation/auth, not taskDate. A midnight date change in the
+  // same foreground must still share that foreground's one month request.
+  useFocusEffect(useCallback(() => () => {
+    if (memberId && sessionToken) forgetReadingDays({ memberId, sessionToken });
+  }, [memberId, sessionToken, auth.epoch]));
+  useEffect(() => subscribeAppActive(() => { if (focusedRef.current) refreshRemoteRef.current(); }), []);
 
   const dependenciesRef = useRef<CompletionControllerDependencies | null>(null);
   dependenciesRef.current = {
@@ -238,6 +286,8 @@ export function useCompletionController(options: UseCompletionControllerOptions)
     pending: matchingRecord.syncStatus === 'PENDING_SAVE',
     syncError: record.memberId === identity.memberId && record.planId === identity.planId && record.taskDate === identity.taskDate && syncError,
     retryable,
+    reconcileRemoteDays,
+    getCompletionRecord: (planId, taskDate) => memberId && isCurrent() ? getRepository()?.get({ memberId, planId, taskDate }) : undefined,
     complete: () => controller.complete(),
     requestUndo: () => controller.requestUndo(),
   };

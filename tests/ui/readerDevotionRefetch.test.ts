@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // that only shows when the layout's chapter-end effect and the hook run together.
 const native = vi.hoisted(() => ({
   listeners: new Set<(state: string) => void>(),
+  focus: null as null | (() => void), blur: null as null | (() => void),
   values: new Map<string, string>(),
   speak: vi.fn(),
   getDevotional: vi.fn(async (_date: string): Promise<unknown> => null),
@@ -30,7 +31,14 @@ vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: () => Rea
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 vi.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
 vi.mock('expo-navigation-bar', () => ({ NavigationBar: Object.assign(() => null, { setHidden: () => undefined }) }));
-vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => void | (() => void)) => { React.useEffect(() => callback() || undefined, [callback]); } }));
+// The reader tab's focus, as expo-router reports it: focus() on (re)entering the tab, blur() on leaving it.
+vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => void | (() => void)) => {
+  React.useEffect(() => {
+    const focus = () => { native.blur = callback() || null; };
+    native.focus = focus; focus();
+    return () => { native.blur?.(); native.focus = null; native.blur = null; };
+  }, [callback]);
+} }));
 vi.mock('../../src/ui/ChapterAudioControls', () => ({
   ChapterAudioAutoplayNotice: () => null, ChapterAudioAutoplayToggle: () => null,
   ChapterAudioControls: React.forwardRef((_props: any, ref: any) => { React.useImperativeHandle(ref, () => ({ pause: async () => undefined })); return null; }),
@@ -50,7 +58,7 @@ let date = '2026-10-14';
 const controls = { ready: true, openChapterPicker: () => undefined, openVersionPicker: () => undefined, openSettings: () => undefined };
 function Reader() {
   chrome = useReaderChrome();
-  binding = useReaderDevotion({ session: { memberId: 'refetch-test', sessionToken: 'synthetic-token' }, baseUrl: 'https://fixture.test', date, showTools: chrome.showTools });
+  binding = useReaderDevotion({ session: { memberId: 'refetch-test', sessionToken: 'synthetic-token' }, baseUrl: 'https://fixture.test', date, showTools: chrome.showTools, focused: chrome.focused });
   // The day's last chapter (詩91 of 詩90–91), as app/(tabs)/reader.tsx wires it.
   return React.createElement(FullscreenReaderLayout, {
     reader: React.createElement('BibleReader'), controls, chrome, chapterUsfm: 'PSA.91', versionId: 139,
@@ -64,6 +72,8 @@ async function showDate(next: string) { date = next; await act(async () => { ren
 const state = () => (binding.devotion!.renderView({ top: 0, bottom: 0 }) as React.ReactElement<{ state: { kind: string; awaiting?: boolean } }>).props.state;
 const asked = () => native.getDevotional.mock.calls.length;
 async function foreground() { await act(async () => { native.listeners.forEach(fn => fn('background')); native.listeners.forEach(fn => fn('active')); }); }
+async function leaveReaderTab() { await act(async () => { native.blur?.(); native.blur = null; }); }
+async function returnToReaderTab() { await act(async () => { native.focus?.(); }); }
 async function reachLastChapterEnd() { await act(async () => { chrome.handleCanvasEdge({ atEnd: true }); }); }
 async function leaveLastChapterEnd() { await act(async () => { chrome.handleCanvasEdge({ atEnd: false }); }); }
 function pending() {
@@ -153,6 +163,22 @@ describe('asking again after 還沒有上傳', () => {
     native.getDevotional.mockRejectedValueOnce(new Error('offline'));
     await foreground();
     expect(asked()).toBe(2);
+    expect(state()).toEqual({ kind: 'missing', awaiting: true });
+  });
+
+  // Review 10, 14 (after #73): coming back is #73's useReaderRetrySignal, so the post follows the same rule as the
+  // leaf: asked only while the reader is on screen, once per return to its tab or to the foreground.
+  it('asks only while the reader is on screen: once per return to its tab or to the foreground', async () => {
+    await mount();
+    await act(async () => binding.devotion!.onSelect());
+    expect(asked()).toBe(1);
+    await leaveReaderTab();
+    await foreground();
+    expect(asked()).toBe(1);
+    await returnToReaderTab();
+    expect(asked()).toBe(2);
+    await foreground();
+    expect(asked()).toBe(3);
     expect(state()).toEqual({ kind: 'missing', awaiting: true });
   });
 

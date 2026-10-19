@@ -1418,3 +1418,13 @@ describe('account preference integration at the REAL Reader caller', () => {
     await act(async () => { renderer.unmount(); });
   });
 });
+
+
+it('keeps a manually chosen historical date when the visible Reader tab is re-entered after midnight (5)', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-09-12T15:59:00Z'));
+  const session = await import('../../src/ui/readingSession');
+  session.setSelectedReadingDate('2026-09-11');
+  vi.setSystemTime(new Date('2026-09-12T16:01:00Z'));
+  await pressTodayTabFrom('/progress');
+  expect(session.getReadingSessionSnapshot().selectedDate).toBe('2026-09-11');
+});

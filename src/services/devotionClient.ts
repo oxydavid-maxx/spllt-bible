@@ -13,7 +13,7 @@ export interface DevotionalPost {
   passages: string;
   title: string;
   sections: DevotionalSection[];
-  song: { youtubeId: string; title: string | null };
+  song: { youtubeId: string; title: string | null; channel?: string | null };
 }
 
 export interface GroupPrizeProgress {
@@ -82,7 +82,7 @@ export function parseDevotionalPost(value: unknown): DevotionalPost | null {
       ? { heading: entry.heading, paragraphs: entry.paragraphs as string[] } : null;
   });
   if (sections.length === 0 || sections.some((section) => !section) || !text(song.youtubeId) || !(song.title === null || text(song.title))) return null;
-  return { date: item.date, weekday: item.weekday, passages: item.passages, title: item.title, sections: sections as DevotionalSection[], song: { youtubeId: song.youtubeId, title: song.title as string | null } };
+  return { date: item.date, weekday: item.weekday, passages: item.passages, title: item.title, sections: sections as DevotionalSection[], song: { youtubeId: song.youtubeId, title: song.title as string | null, channel: typeof song.channel === 'string' ? song.channel : null } };
 }
 
 export function parseGroupReading(value: unknown): GroupReading | null {

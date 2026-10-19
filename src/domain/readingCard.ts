@@ -25,6 +25,15 @@ export function cardPeriod(today: string, scope: ReadingCardScope) {
   return { months, monthLabel: `本月 (${month} 月)`, quarterLabel: `本季 (${first}–${first + 2} 月)`, quarterTitle: `${year} ${QUARTERS[quarter]} (${first}–${first + 2} 月)` };
 }
 
+/** 讀經卡-<名字>-202610.pdf / 讀經卡-<名字>-2026第四季.pdf: a co-worker who receives several cards can tell whose and which period. */
+export function readingCardFileName(input: Pick<ReadingCardInput, 'today' | 'memberName' | 'scope'>): string {
+  const year = input.today.slice(0, 4), month = Number(input.today.slice(5, 7));
+  const period = input.scope === 'month' ? `${year}${String(month).padStart(2, '0')}` : `${year}${QUARTERS[Math.floor((month - 1) / 3)]}`;
+  // Characters Android and iOS file names cannot hold are dropped; an empty result leaves the name out.
+  const name = input.memberName.replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40).trim();
+  return `讀經卡-${name ? `${name}-` : ''}${period}.pdf`;
+}
+
 /** Complete calendar weeks, Monday–Saturday, with Sundays omitted even at the edges. */
 export function cardMonthWeeks(month: string): Array<Array<string | null>> {
   const first = new Date(`${month}-01T12:00:00Z`);

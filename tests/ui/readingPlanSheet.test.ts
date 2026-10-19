@@ -10,7 +10,7 @@ const boundary = vi.hoisted(() => ({
   scrollTo: vi.fn(),
   primitive: (name: string) => (props: any) => require('react').createElement(name, props, props.children),
 }));
-vi.mock('react-native', () => ({
+vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
   ...animated.modules(boundary.primitive),
   Modal: boundary.primitive('Modal'), Pressable: boundary.primitive('Pressable'),
   View: boundary.primitive('View'), Text: boundary.primitive('Text'),
@@ -26,6 +26,7 @@ vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => bounda
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ getReadingDays: boundary.getReadingDays }) }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: () => ({ get: boundary.get }) }));
 
+import { resetReadingPlan, replaceReadingDaysRange } from '../../src/ui/readingSession';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { canonicalReadingPlan } from '../../src/domain/calendar';
 import { theme } from '../../src/ui/Theme';
@@ -41,12 +42,12 @@ async function mount(visible = true) {
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 }
 beforeEach(() => {
-  animated.reset();
+  resetReadingPlan(); animated.reset();
   boundary.auth = { status: 'signed-in', session: { memberId: 'self', sessionToken: 'token' }, epoch: 1 };
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-09-30T04:00:00Z'));
   boundary.get.mockReturnValue(undefined);
-  boundary.getReadingDays.mockImplementation(async (from: string, to: string) => ({ days: canonicalReadingPlan.days.filter(day => day.date >= from && day.date <= to).map(day => ({ taskDate: day.date, references: day.references, status: day.date === '2026-09-29' ? 'COMPLETED' : 'UNREPORTED', revision: day.date === '2026-09-29' ? 1 : 0 })) }));
+  boundary.getReadingDays.mockImplementation(async (from: string, to: string) => ({ days: canonicalReadingPlan.days.filter(day => day.date >= from && day.date <= to).map(day => ({ taskDate: day.date, planId: canonicalReadingPlan.planId, sourceRevision: 1, sourceDigest: 'fixture', canComplete: true, references: day.references, status: day.date === '2026-09-29' ? 'COMPLETED' : 'UNREPORTED', revision: day.date === '2026-09-29' ? 1 : 0 })) }));
 });
 afterEach(() => { act(() => tree?.unmount()); tree = null; vi.useRealTimers(); });
 
@@ -178,10 +179,45 @@ describe('the full reading plan shared by both entry points', () => {
     boundary.getReadingDays.mockReturnValue(new Promise(resolve => { finish = resolve; }));
     await mount();
     boundary.auth = { status: 'signed-in', session: { memberId: 'other', sessionToken: 'new-token' }, epoch: 2 };
-    boundary.getReadingDays.mockResolvedValue({ days: [] });
+    boundary.getReadingDays.mockImplementation(async (from: string, to: string) => ({ days: canonicalReadingPlan.days.filter(day => day.date >= from && day.date <= to).map(day => ({ taskDate: day.date, planId: canonicalReadingPlan.planId, references: day.references, sourceRevision: 1, sourceDigest: 'fixture', canComplete: true, status: 'UNREPORTED', revision: 0 })) }));
     await act(async () => { tree!.update(React.createElement(ReadingPlanSheet, { visible: true, onClose, onSelectDate })); });
     await act(async () => { finish({ days: [{ taskDate: '2026-09-29', status: 'COMPLETED', revision: 1, references: ['PSA.105'] }] }); });
     expect(row('2026-09-29').props.accessibilityLabel).not.toContain('已完成');
     expect(texts()).toContain('9/1–12/31，共 105 天，已讀 0 天');
   });
+});
+
+
+it('renders server-added dates and removes deleted dates in the actual plan sheet (1)', async () => {
+  boundary.getReadingDays.mockImplementation(async (from: string, to: string) => ({ days: [
+    ...canonicalReadingPlan.days.filter(day => day.date !== '2026-09-29'),
+    { date: '2026-09-27', references: ['REV.3'] },
+  ].filter(day => day.date >= from && day.date <= to).map(day => ({ taskDate: day.date, planId: canonicalReadingPlan.planId, references: day.references, sourceRevision: 2, sourceDigest: 'fixture', canComplete: true, status: 'UNREPORTED', revision: 0 })) }));
+  await mount(); expect(row('2026-09-29')).toBeUndefined();
+  expect(row('2026-09-27').props.accessibilityLabel).toContain('啟3');
+  expect(boundary.getReadingDays).toHaveBeenCalledTimes(4);
+});
+
+
+it('re-reads a reopened plan instead of inheriting the previous opening pending answer (1)', async () => {
+  const standard = boundary.getReadingDays.getMockImplementation()!;
+  let resolve!: (v: unknown) => void;
+  boundary.getReadingDays.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+  await mount();
+  await act(async () => tree!.update(React.createElement(ReadingPlanSheet, { visible: false, onClose, onSelectDate })));
+  boundary.getReadingDays.mockImplementation(async (from, to) => { const response = await standard(from, to); return { ...response, days: response.days.filter((day: { taskDate: string }) => day.taskDate !== '2026-09-29') }; });
+  await act(async () => tree!.update(React.createElement(ReadingPlanSheet, { visible: true, onClose, onSelectDate })));
+  expect(row('2026-09-29')).toBeUndefined();
+  await act(async () => { resolve(await standard('2026-09-01', '2026-09-30')); });
+  expect(row('2026-09-29')).toBeUndefined();
+});
+
+
+it.each(['09', '11', '12'])('re-reads a known month after every date in that month was removed (%s) (1)', async month => {
+  const to = month === '09' || month === '11' ? `2026-${month}-30` : `2026-${month}-31`;
+  replaceReadingDaysRange(`2026-${month}-01`, to, []);
+  await mount();
+  expect(boundary.getReadingDays).toHaveBeenCalledWith(`2026-${month}-01`, to);
+  const first = canonicalReadingPlan.days.find(day => day.date.startsWith(`2026-${month}`))!;
+  expect(row(first.date)).toBeDefined();
 });

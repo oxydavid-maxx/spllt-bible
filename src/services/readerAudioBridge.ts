@@ -5,6 +5,8 @@ export type ReaderAudioState = 'inactive' | 'loading' | 'playing' | 'paused' | '
 export interface ReaderAudioSnapshot {
   chapterUsfm: string;
   state: ReaderAudioState;
+  /** Native EOF/range end, as distinct from a user pause. */
+  finished?: boolean;
 }
 
 type Listener = () => void;
@@ -19,7 +21,7 @@ export function updateReaderAudioOwner(ownerId: object, next: ReaderAudioSnapsho
   if (owner !== null && owner !== ownerId) return;
   owner = ownerId;
   toggle = onToggle;
-  if (snapshot.chapterUsfm === next.chapterUsfm && snapshot.state === next.state) return;
+  if (snapshot.chapterUsfm === next.chapterUsfm && snapshot.state === next.state && snapshot.finished === next.finished) return;
   snapshot = next;
   listeners.forEach(listener => listener());
 }

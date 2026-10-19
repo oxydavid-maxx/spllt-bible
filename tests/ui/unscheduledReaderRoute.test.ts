@@ -56,7 +56,7 @@ vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback
 vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost: () => null }));
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ saveCompletion: boundary.completions, getProgress: async () => undefined }) }));
 vi.mock('../../src/storage/mobileDatabase', () => ({
-  openQingmuRepository: () => ({ get: (identity: { memberId: string; planId: string; taskDate: string }) => {
+  openQingmuRepository: () => ({ subscribe: () => () => undefined, mergeRemote: () => undefined, get: (identity: { memberId: string; planId: string; taskDate: string }) => {
     const record = boundary.completionRecord;
     return record && record.memberId === identity.memberId && record.planId === identity.planId && record.taskDate === identity.taskDate ? record : undefined;
   }, hasPendingCompletion: () => boundary.completionRecord?.syncStatus === 'SAVE_FAILED', flush: boundary.flush, saveCompletion: boundary.completions }),

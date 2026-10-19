@@ -14,6 +14,9 @@ vi.mock('expo-router', () => {
   return { Stack };
 });
 
+vi.mock('react-native', () => ({ View: 'View', Image: 'Image' }));
+vi.mock('../../src/ui/brandIcon', () => ({ BRAND_ICON: 1 }));
+
 import { act, create } from 'react-test-renderer';
 import { AppStack, canUseApp } from '../../src/ui/AppStack';
 
@@ -41,9 +44,19 @@ describe('sign-in comes first', () => {
     ]);
   });
 
+  it('renders only the neutral boot image while hydrating, without mounting any routes', () => {
+    let tree!: ReturnType<typeof create>;
+    act(() => { tree = create(React.createElement(AppStack, { signedIn: false, hydrating: true } as any)); });
+    expect(tree.root.findAll(node => String(node.type) === 'Stack')).toHaveLength(0);
+    expect(tree.root.findAll(node => String(node.type) === 'Screen')).toHaveLength(0);
+    expect(tree.root.findAll(node => String(node.type) === 'Image')).toHaveLength(1);
+    expect(JSON.stringify(tree.toJSON())).not.toContain('SignInScreen');
+    expect(JSON.stringify(tree.toJSON())).not.toContain('正在');
+  });
+
   it('lets a returning member straight in while their saved session is restored, and sends signed-out or expired sessions to sign in', () => {
     expect(canUseApp('signed-in')).toBe(true);
-    expect(canUseApp('hydrating')).toBe(true);
+    expect(canUseApp('hydrating')).toBe(false);
     expect(canUseApp('signed-out')).toBe(false);
     expect(canUseApp('expired')).toBe(false);
   });

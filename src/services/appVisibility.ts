@@ -19,8 +19,23 @@ export function subscribeAppHidden(listener: (hidden: boolean) => void): () => v
   return () => subscription.remove();
 }
 
+let observedState: string | null | undefined;
+let activeRevision = 0;
+/** One identity for a real foreground transition, shared by every visible consumer. */
+export function getAppActiveRevision(): number { return activeRevision; }
+
 /** Calls back each time the app becomes active (foreground). Returns the unsubscribe. */
-export function subscribeAppActive(listener: () => void): () => void {
-  const subscription = AppState.addEventListener('change', (state) => { if (state === 'active') listener(); });
+export function subscribeAppActive(listener: (revision: number) => void): () => void {
+  let previous = AppState.currentState;
+  if (observedState === undefined) observedState = previous;
+  const subscription = AppState.addEventListener('change', (state) => {
+    if (state !== observedState) {
+      if (state === 'active') activeRevision++;
+      observedState = state;
+    }
+    const becameActive = state === 'active' && previous !== 'active';
+    previous = state;
+    if (becameActive) listener(activeRevision);
+  });
   return () => subscription.remove();
 }

@@ -31,6 +31,7 @@ import { getAuthSnapshot, useAuthSnapshot, type AuthSession } from '../services/
 import { validateCapability } from '../domain/chapterAudioContract';
 import { createChapterBoundPlayback, type ChapterBoundPlayback } from '../services/expoAudioPlayback';
 import { createAudioSession } from '../services/audioSession';
+import { useReaderRetrySignal } from './readerRetrySignal';
 import { clearReaderAudioOwner, updateReaderAudioOwner, type ReaderAudioState } from '../services/readerAudioBridge';
 import { CHAPTER_AUDIO_LOCK_SCREEN_OPTIONS, chapterAudioArtwork, chapterAudioCardMetadata } from '../services/chapterAudioBackground';
 import { isAppHidden, subscribeAppHidden } from '../services/appVisibility';
@@ -173,6 +174,8 @@ export interface ChapterAudioControlsProps {
   readerAction?: boolean;
   /** Publish this instance as the one shared Reader/Diary audio owner. */
   sharedOwner?: boolean;
+  /** Visibility is separate from audio ownership: narration continues on another tab. */
+  visible?: boolean;
   detailsVisible?: boolean;
   onDetailsClose?: () => void;
   onPlaybackStarted?: (chapterUsfm: string) => void;
@@ -192,11 +195,13 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
   bottomCell = false,
   readerAction = false,
   sharedOwner = false,
+  visible = active,
   onPlaybackStarted,
   onPlaybackPaused,
   onPlaybackEnded,
   onPlaybackError,
 }, ref) {
+  const visibleRevision = useReaderRetrySignal(visible);
   const autoplay = useChapterAudioAutoplay();
   const autoplayRef = useRef(autoplay);
   autoplayRef.current = autoplay;
@@ -283,6 +288,12 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
       coord.cancel();
     };
   }, [key, sessionKey, active, audioAuthorized, chapterUsfm, versionId, retryNonce]);
+
+  useEffect(() => {
+    // Only a negative answer needs visible-event revalidation. Never disturb a live stream.
+    if (answer?.key === key && answer.sessionKey === sessionKey && answer.outcome.kind === 'unavailable'
+      && answer.outcome.status === 'explicit_no_audio') setRetryNonce(value => value + 1);
+  }, [visibleRevision]);
 
   const current = active && answer && answer.key === key && answer.sessionKey === sessionKey ? answer.outcome : null;
   const capability = current && current.kind === 'playable' ? current.capability : null;
@@ -684,7 +695,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
         : canRetry ? 'retry'
           : noAudio ? 'unavailable'
             : progress.playing ? 'playing' : 'paused';
-    updateReaderAudioOwner(bridgeOwnerId.current, { chapterUsfm, state }, () => bridgeToggleRef.current());
+    updateReaderAudioOwner(bridgeOwnerId.current, { chapterUsfm, state, ...(finishedBinding.current && finishedBinding.current === playbackRef.current ? { finished: true } : {}) }, () => bridgeToggleRef.current());
   }, [sharedOwner, active, chapterUsfm, loading, canRetry, noAudio, progress.playing]);
   useEffect(() => () => {
     if (sharedOwner) clearReaderAudioOwner(bridgeOwnerId.current);

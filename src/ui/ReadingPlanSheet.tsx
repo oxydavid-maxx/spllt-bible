@@ -7,7 +7,9 @@ import { runtimeConfig } from '../config/runtime';
 import type { CompletionRecord } from '../domain/completion';
 import { taipeiDate } from '../domain/gamificationV1';
 import { formatReferenceListZhTw } from '../domain/scriptureReference';
-import { getReadingPlan } from './readingSession';
+import { forgetReadingDays, readReadingDays } from '../services/readingDaysRead';
+import { useReaderRetrySignal } from './readerRetrySignal';
+import { getReadingPlan, getReadingPlanMonths, useReadingSession, replaceReadingDaysRange } from './readingSession';
 import { formatReadingDateLabel, formatReadingDateWithWeekday } from './ReadingDateNavigator';
 import { SheetBackdrop } from './SheetBackdrop';
 import { createSheetDrag, SHEET_CLOSE_MS } from './sheet/sheetDrag';
@@ -28,7 +30,13 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
   const ownerKey = JSON.stringify([session?.memberId, session?.sessionToken, auth.epoch]);
-  const [plan] = useState(getReadingPlan);
+  useReadingSession();
+  const months = getReadingPlanMonths();
+  const monthsKey = months.join('|');
+  const [sourcePlan] = useState(getReadingPlan);
+  const [plan, setPlan] = useState(sourcePlan);
+  const refreshSignal = useReaderRetrySignal(true);
+  useEffect(() => () => { if (session) forgetReadingDays(session); }, [ownerKey]);
   const [completion, setCompletion] = useState<{ owner: string; remote: Map<string, ReadingDaySnapshot>; local: Map<string, CompletionRecord>; loading: boolean; offline: boolean }>(
     () => ({ owner: ownerKey, remote: new Map(), local: new Map(), loading: Boolean(session), offline: false }),
   );
@@ -91,27 +99,33 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
     const loadLocal = import('../storage/mobileDatabase').then(({ openQingmuRepository }) => {
       if (!owns()) return;
       const repository = openQingmuRepository();
-      for (const day of plan.days) {
-        const record = repository.get({ memberId: session.memberId, planId: day.planId ?? plan.planId, taskDate: day.date });
+      const localPlan = getReadingPlan();
+      for (const day of localPlan.days) {
+        const record = repository.get({ memberId: session.memberId, planId: day.planId ?? localPlan.planId, taskDate: day.date });
         if (record) local.set(day.date, record);
       }
       if (owns()) setCompletion({ owner: ownerKey, remote: new Map(), local, loading: true, offline: false });
     }).catch(() => undefined);
     // The existing API caps a range at 62 days, so load each month once on opening.
-    const months = [...new Set(plan.dates.map(date => date.slice(0, 7)))];
     const loadRemote = Promise.all(months.map(async month => {
       const end = new Date(`${month}-01T12:00:00Z`);
       end.setUTCMonth(end.getUTCMonth() + 1, 0);
-      try { return await client.getReadingDays(`${month}-01`, end.toISOString().slice(0, 10)); }
+      try {
+        const from = `${month}-01`, to = end.toISOString().slice(0, 10);
+        const result = await readReadingDays(session, from, to, () => client.getReadingDays(from, to));
+        if (result && owns()) replaceReadingDaysRange(from, to, result.days);
+        return result;
+      }
       catch { return null; }
     }));
     void Promise.all([loadLocal, loadRemote]).then(([, results]) => {
       if (!owns()) return;
+      setPlan(getReadingPlan());
       const remote = new Map(results.flatMap(result => result?.days.map(day => [day.taskDate, day] as const) ?? []));
       setCompletion({ owner: ownerKey, remote, local, loading: false, offline: results.some(result => result === null) });
     });
     return () => { active = false; };
-  }, [plan, ownerKey]);
+  }, [monthsKey, ownerKey, refreshSignal]);
 
   const visible = completion.owner === ownerKey ? completion : { remote: new Map<string, ReadingDaySnapshot>(), local: new Map<string, CompletionRecord>(), loading: Boolean(session), offline: false };
   const days = plan.days.map(day => {

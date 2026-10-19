@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { createDevotionClient, type DevotionalPost } from '../../services/devotionClient';
 import { createDevotionSpeech } from '../../services/devotionSpeech';
@@ -10,6 +9,7 @@ import { isWithinCompletionWindow, taipeiDate } from '../../domain/gamificationV
 import type { DevotionCompletionEvent } from '../CompletionAwardFeedback';
 import type { ReaderDevotion } from '../FullscreenReaderLayout';
 import { DevotionalView, type DevotionalState } from './DevotionalView';
+import { useReaderRetrySignal } from '../readerRetrySignal';
 import { devotionBanner } from './devotionFabModel';
 
 /**
@@ -36,6 +36,8 @@ function awaitsPost(day: string): boolean {
 export interface ReaderDevotionBinding {
   devotion: ReaderDevotion | undefined;
   completionEvent: DevotionCompletionEvent | null;
+  /** Includes a paused narration, so midnight cannot discard its remaining text. */
+  narrationActive: boolean;
   clearCompletionFeedback: (operationId: string) => void;
   /** For YouVersionReader: the last chapter's narration ended. */
   onLastChapterNarrated: () => void;
@@ -43,12 +45,14 @@ export interface ReaderDevotionBinding {
   leave: () => void;
 }
 
-export function useReaderDevotion({ session, baseUrl, date, showTools, textSettings, narrationSpeed = 1 }: {
+export function useReaderDevotion({ session, baseUrl, date, showTools, textSettings, narrationSpeed = 1, focused = true }: {
   session: { memberId: string; sessionToken: string } | null; baseUrl: string; date: string; showTools: () => void;
   /** The member's 調整字體 settings for scripture (null: the SDK defaults); the 靈修 words follow them. */
   textSettings?: { fontSize: number; lineSpacing: number } | null;
   narrationSpeed?: number;
+  focused?: boolean;
 }): ReaderDevotionBinding {
+  const refreshSignal = useReaderRetrySignal(focused);
   const memberId = session?.memberId ?? null;
   const client = useMemo(() => session ? createDevotionClient({ baseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [baseUrl, session?.memberId, session?.sessionToken]);
   const connection = useRef(session ? { baseUrl, token: session.sessionToken, memberId: session.memberId } : null);
@@ -83,11 +87,12 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   useEffect(() => () => speech.stop(), [speech]);
   useEffect(() => {
     if (!client) { setMarked(null); return; }
+    if (!focused) return;
     let active = true;
     const revision = markRevision.current;
     void client.getDevotionDates(date, date).then((dates) => { if (active && revision === markRevision.current) setMarked({ date, done: dates.includes(date) }); }).catch(() => undefined);
     return () => { active = false; };
-  }, [client, date]);
+  }, [client, date, refreshSignal]);
 
   // `quiet` keeps 還沒有上傳 on screen while asking again, and a failed quiet ask leaves it there.
   // One question at a time (2026-10-19 review): a look while one is on its way waits for that answer, so an older
@@ -114,10 +119,14 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   // The pastor posts at no fixed hour (維護者 2026-10-19): 還沒有上傳 is asked again at the next look. The state is
   // read when asked, so an answer never makes a new `prepare` (2026-10-19 review: that asked again at once).
   const ensureLoaded = useCallback(() => { const shown = currentRef.current; if (!shown || shown.kind === 'error') load(); else if (shown.kind === 'missing') load(true); }, [load]);
+  // Coming back to the reader is another look: its tab regains focus, or the app returns while it shows (#73's
+  // signal, the same rule as the leaf). Once per return, never while the reader is out of sight.
+  const seenRefresh = useRef(refreshSignal);
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (next) => { if (next === 'active' && currentRef.current?.kind === 'missing') load(true); });
-    return () => subscription.remove();
-  }, [load]);
+    if (seenRefresh.current === refreshSignal) return;
+    seenRefresh.current = refreshSignal;
+    if (currentRef.current?.kind === 'missing') load(true);
+  }, [refreshSignal, load]);
   // Asked to read before the post arrived: start once it has.
   useEffect(() => {
     if (!speakWhenReady.current || current?.kind !== 'ready') return;
@@ -188,5 +197,5 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
     followEnabled: follow.enabled,
     onFollowChange: (enabled) => preferences.setEnabled(memberId, enabled),
   } : undefined;
-  return { devotion, onLastChapterNarrated, leave, completionEvent, clearCompletionFeedback: operationId => setCompletionEvent(current => current?.operationId === operationId ? null : current) };
+  return { devotion, onLastChapterNarrated, leave, completionEvent, narrationActive: spoken.date === date && (spoken.status === 'speaking' || spoken.status === 'paused'), clearCompletionFeedback: operationId => setCompletionEvent(current => current?.operationId === operationId ? null : current) };
 }
