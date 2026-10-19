@@ -14,7 +14,7 @@ describe('EAS Update native startup configuration', () => {
       enabled: true,
       url: 'https://u.expo.dev/2aa0b072-2f45-4e8c-a2bf-9d6f4c1e0887',
       requestHeaders: { 'expo-channel-name': 'production' },
-      checkAutomatically: 'NEVER',
+      checkAutomatically: 'ON_ERROR_RECOVERY',
       fallbackToCacheTimeout: 0,
       disableAntiBrickingMeasures: false,
       useEmbeddedUpdate: true,

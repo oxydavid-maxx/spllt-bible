@@ -14,7 +14,7 @@
 
 本機 Gradle 在 `expo prebuild` 時從 `app.config.js` 寫入 `updates.requestHeaders['expo-channel-name'] = production`；不是只在 `eas.json` 設定。EAS 的兩個 build profile 同時明列 channel。更新網址從既有 EAS projectId 衍生。
 
-每個 JS 冷啟動只在畫面掛載後檢查一次，背景下載，下次完整關閉並重新開啟才套用。不輪詢、不監聽回前景、不呼叫 `reloadAsync()`；讀經和朗讀不中斷。離線、檢查/下載失敗不顯示錯誤頁，保留嵌入/快取版本。原生 `checkAutomatically: NEVER` 避免重複檢查，`fallbackToCacheTimeout: 0`、`useEmbeddedUpdate: true`、`disableAntiBrickingMeasures: false` 保留快速啟動與復原。
+每個 JS 冷啟動只在畫面掛載後檢查一次，背景下載，下次完整關閉並重新開啟才套用。不輪詢、不監聽回前景、不呼叫 `reloadAsync()`；讀經和朗讀不中斷。離線、檢查/下載失敗不顯示錯誤頁，保留嵌入/快取版本。原生 `checkAutomatically: ON_ERROR_RECOVERY` 在正常啟動不重複檢查，但保留故障復原檢查；`fallbackToCacheTimeout: 0`、`useEmbeddedUpdate: true`、`disableAntiBrickingMeasures: false` 保留快速啟動與復原。完全隔離的 CI 才用 `NEVER`，避免故障時呼叫正式更新服務。
 
 ## 管理者手機
 

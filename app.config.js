@@ -24,11 +24,11 @@ module.exports = ({ config }) => {
   nextConfig.runtimeVersion = { policy: 'appVersion' };
   nextConfig.updates = {
     ...config.updates,
-    url: `https://u.expo.dev/${config.extra.eas.projectId}`,
+    url: `https://u.expo.dev/${config.extra?.eas?.projectId ?? require('./app.json').expo.extra.eas.projectId}`,
     requestHeaders: { 'expo-channel-name': process.env.EAS_BUILD_PROFILE === 'preview' ? 'preview' : 'production' },
     enabled: true,
     // One JS check after rendering, never on the launch critical path or on a polling timer.
-    checkAutomatically: 'NEVER',
+    checkAutomatically: isolatedOtaCi ? 'NEVER' : 'ON_ERROR_RECOVERY',
     fallbackToCacheTimeout: 0,
     useEmbeddedUpdate: true,
     disableAntiBrickingMeasures: false,

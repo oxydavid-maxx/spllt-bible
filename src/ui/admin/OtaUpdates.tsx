@@ -20,6 +20,9 @@ export async function checkOtaUpdateInBackground(): Promise<void> {
 }
 
 let startupCheckStarted = false;
+// Updates.channel is fixed at startup. Retain a successful selection across account-route remounts;
+// the native override owns persistence across process restarts.
+let channelSelection: { startedOn: string | null; preview: boolean } | null = null;
 export function OtaUpdateCheck() {
   useEffect(() => {
     if (startupCheckStarted) return;
@@ -35,7 +38,7 @@ export function AdminOtaUpdatesEntry() {
   const session = auth.status === 'signed-in' ? auth.session : null;
   const sessionKey = session ? `${session.memberId}:${session.sessionToken}` : null;
   const [allowedFor, setAllowedFor] = useState<string | null>(null);
-  const [preview, setPreview] = useState(() => Updates.channel === 'preview');
+  const [preview, setPreview] = useState(() => channelSelection?.startedOn === Updates.channel ? channelSelection.preview : Updates.channel === 'preview');
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => {
     setAllowedFor(null);
@@ -50,6 +53,7 @@ export function AdminOtaUpdatesEntry() {
   const changeChannel = (enabled: boolean) => {
     try {
       Updates.setUpdateRequestHeadersOverride(enabled ? { 'expo-channel-name': 'preview' } : null);
+      channelSelection = { startedOn: Updates.channel, preview: enabled };
       setPreview(enabled);
       setMessage('下次開啟時會在背景下載，再下一次開啟時套用。');
     } catch {
@@ -59,7 +63,7 @@ export function AdminOtaUpdatesEntry() {
   return <View style={styles.card}>
     <View style={styles.row}>
       <Text style={styles.title}>先收到測試版更新</Text>
-      <Switch accessibilityLabel="先收到測試版更新" accessibilityHint="只給管理者：先拿到還沒發給大家的修正，驗收用。" value={preview} onValueChange={changeChannel} trackColor={{ true: theme.colors.primary }} />
+      <Switch testID="ota-preview-switch" accessibilityLabel="先收到測試版更新" accessibilityHint="只給管理者：先拿到還沒發給大家的修正，驗收用。" value={preview} onValueChange={changeChannel} trackColor={{ true: theme.colors.primary }} />
     </View>
     <Text style={styles.note}>只給管理者：先拿到還沒發給大家的修正，驗收用。</Text>
     {message ? <Text accessibilityLiveRegion="polite" style={styles.note}>{message}</Text> : null}

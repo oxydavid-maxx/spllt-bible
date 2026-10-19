@@ -65,6 +65,9 @@ describe('administrator OTA channel switch', () => {
     act(() => toggle().props.onValueChange(true));
     expect(state.override).toHaveBeenCalledWith({ 'expo-channel-name': 'preview' });
     expect(toggle().props.value).toBe(true);
+    // Updates.channel is a startup snapshot. Leaving/re-entering the account must retain the new choice.
+    act(() => tree!.unmount()); await render();
+    expect(toggle().props.value).toBe(true);
     act(() => toggle().props.onValueChange(false));
     expect(state.override).toHaveBeenLastCalledWith(null);
     expect(state.reload).not.toHaveBeenCalled(); expect(state.check).not.toHaveBeenCalled();
