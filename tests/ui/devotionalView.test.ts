@@ -201,3 +201,24 @@ describe('song attribution and the original YouTube video', () => {
     act(() => tree.unmount());
   });
 });
+
+
+it.each(['loading', 'playing'])('keeps native manual playback available after a YouTube handoff from %s', async status => {
+  app.state = 'active'; injected.length = 0; opened.length = 0;
+  let tree!: TestRenderer.ReactTestRenderer;
+  act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props())); });
+  try {
+    act(() => tree.root.find(n => String(n.type) === 'Pressable' && n.props.accessibilityLabel === '播放詩歌 測試詩歌').props.onPress());
+    const message = (data: string) => act(() => tree.root.find(n => String(n.type) === 'DomWebView').props.onMessage({ nativeEvent: { data } }));
+    if (status === 'playing') message('playing');
+    await act(async () => tree.root.find(n => String(n.type) === 'Pressable' && n.props.accessibilityLabel === '在 YouTube 開啟 測試詩歌').props.onPress());
+    message('ready'); // Late initialization must not auto-start after handoff.
+    expect(injected.join('')).not.toContain('qmPlay');
+    message('paused');
+    injected.length = 0;
+    // The existing embedded player's own play control reports playing when the member resumes.
+    message('playing');
+    expect(injected).toEqual([]);
+    expect(tree.root.findAll(n => String(n.type) === 'Text').map(textOf)).toContain('播放中 · 螢幕關掉就停');
+  } finally { act(() => tree.unmount()); }
+});
