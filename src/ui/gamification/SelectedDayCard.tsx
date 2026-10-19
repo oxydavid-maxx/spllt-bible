@@ -53,6 +53,7 @@ const styles = StyleSheet.create({
   heading: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
   passages: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   message: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
-  backLink: { alignSelf: 'flex-end', minHeight: theme.control.tap, justifyContent: 'center' },
+  // A full 48dp tap target that tucks into the card's gap and bottom padding, so the link adds one short line.
+  backLink: { alignSelf: 'flex-end', minHeight: theme.control.tap, justifyContent: 'center', marginTop: -theme.spacing.sm, marginBottom: -theme.spacing.sm },
   backText: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
 });
