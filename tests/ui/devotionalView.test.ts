@@ -2,13 +2,15 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-const { primitive, app, injected, scrolls } = vi.hoisted(() => ({
+const { primitive, app, injected, scrolls, opened } = vi.hoisted(() => ({
   primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children),
   app: { state: 'active', listeners: [] as Array<(state: string) => void> },
   injected: [] as string[],
+  opened: [] as string[],
   scrolls: [] as Array<{ y: number }>,
 }));
 vi.mock('react-native', () => ({
+  Linking: { openURL: async (url: string) => { opened.push(url); injected.push('openURL'); } },
   ActivityIndicator: primitive('ActivityIndicator'), Pressable: primitive('Pressable'), Text: primitive('Text'), View: primitive('View'),
   ScrollView: require('react').forwardRef((props: any, ref: any) => { require('react').useImperativeHandle(ref, () => ({ scrollTo: (to: { y: number }) => scrolls.push(to) })); return require('react').createElement('ScrollView', props, props.children); }),
   StyleSheet: { create: (value: unknown) => value },
@@ -146,4 +148,77 @@ it('renders leading citations as smaller grey text without changing a single dis
   expect(refs.map(textOf)).toEqual(['彼得前書 5:2 ', '5:7 ', '5:8-9 ', '詩篇 118:15 ']);
   refs.forEach(n => { expect(flat(n.props.style).fontSize).toBeLessThan(20); expect(flat(n.props.style).color).toBe('#636161'); });
   act(() => tree.unmount());
+});
+
+
+describe('song attribution and the original YouTube video', () => {
+  it.each([
+    ['測試詩歌', '測試《官方頻道 》', '測試詩歌 · 測試《官方頻道 》'],
+    ['測試詩歌', null, '測試詩歌'],
+    [null, null, null],
+  ])('shows attribution for title=%s channel=%s before playback', (title, channel, expected) => {
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props({ state: { kind: 'ready', post: { ...post, song: { ...post.song, title, channel } } } }))); });
+    const attribution = tree.root.findAll(n => String(n.type) === 'Text' && n.props.testID === 'song-attribution');
+    expect(attribution.map(textOf)).toEqual(expected ? [expected] : []);
+    if (expected) {
+      expect(attribution[0].props.numberOfLines).toBe(2);
+      expect(attribution[0].props.ellipsizeMode).toBe('tail');
+      expect(flat(attribution[0].props.style)).toMatchObject({ color: '#4C5F57', fontSize: 13, lineHeight: 18 });
+    }
+    const link = tree.root.find(n => String(n.type) === 'Pressable' && n.props.accessibilityLabel === `在 YouTube 開啟 ${title ?? '今天的詩歌'}`);
+    expect(textOf(link)).toBe('在 YouTube 開啟 ›');
+    expect(flat(link.props.style)).toMatchObject({ marginLeft: 'auto', minHeight: 48 });
+    expect(flat(textNamed(tree, '在 YouTube 開啟 ›').props.style)).toMatchObject({ color: '#1A5544', fontSize: 13, fontWeight: '800' });
+    expect(tree.root.findAll(n => String(n.type) === 'DomWebView')).toHaveLength(0);
+    act(() => tree.unmount());
+  });
+
+  it('shows no song card, attribution or YouTube link without a song', () => {
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props({ state: { kind: 'ready', post: { ...post, song: { youtubeId: '', title: null } } } }))); });
+    expect(tree.root.findAll(n => String(n.type) === 'Pressable')).toHaveLength(0);
+    act(() => tree.unmount());
+  });
+
+  it.each(['poster', 'loading', 'playing'])('opens the exact original URL from %s, pausing first when active', async (status) => {
+    app.state = 'active'; injected.length = 0; opened.length = 0;
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props())); });
+    if (status !== 'poster') {
+      act(() => tree.root.find(n => String(n.type) === 'Pressable' && n.props.accessibilityLabel === '播放詩歌 測試詩歌').props.onPress());
+      if (status === 'playing') act(() => tree.root.find(n => String(n.type) === 'DomWebView').props.onMessage({ nativeEvent: { data: 'playing' } }));
+    }
+    injected.length = 0;
+    await act(async () => tree.root.find(n => String(n.type) === 'Pressable' && n.props.accessibilityLabel === '在 YouTube 開啟 測試詩歌').props.onPress());
+    expect(opened).toEqual(['https://www.youtube.com/watch?v=abcdefghijk']);
+    expect(injected).toEqual(status === 'poster' ? ['openURL'] : ['window.qmPause&&window.qmPause();true;', 'openURL']);
+    if (status !== 'poster') {
+      expect(tree.root.findAll(n => String(n.type) === 'Text').map(textOf)).toContain('已暫停 · 螢幕亮著才播');
+      act(() => tree.root.find(n => String(n.type) === 'DomWebView').props.onMessage({ nativeEvent: { data: 'ready' } }));
+      expect(injected.join('')).not.toContain('qmPlay');
+    }
+    act(() => tree.unmount());
+  });
+});
+
+
+it.each(['loading', 'playing'])('keeps native manual playback available after a YouTube handoff from %s', async status => {
+  app.state = 'active'; injected.length = 0; opened.length = 0;
+  let tree!: TestRenderer.ReactTestRenderer;
+  act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props())); });
+  try {
+    act(() => tree.root.find(n => String(n.type) === 'Pressable' && n.props.accessibilityLabel === '播放詩歌 測試詩歌').props.onPress());
+    const message = (data: string) => act(() => tree.root.find(n => String(n.type) === 'DomWebView').props.onMessage({ nativeEvent: { data } }));
+    if (status === 'playing') message('playing');
+    await act(async () => tree.root.find(n => String(n.type) === 'Pressable' && n.props.accessibilityLabel === '在 YouTube 開啟 測試詩歌').props.onPress());
+    message('ready'); // Late initialization must not auto-start after handoff.
+    expect(injected.join('')).not.toContain('qmPlay');
+    message('paused');
+    injected.length = 0;
+    // The existing embedded player's own play control reports playing when the member resumes.
+    message('playing');
+    expect(injected).toEqual([]);
+    expect(tree.root.findAll(n => String(n.type) === 'Text').map(textOf)).toContain('播放中 · 螢幕關掉就停');
+  } finally { act(() => tree.unmount()); }
 });
