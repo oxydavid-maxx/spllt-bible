@@ -25,6 +25,9 @@ function fixture(native = false) {
   // The fixture's "APK" is a placeholder; the real size/ABI/content check has its own tests
   // (tests/config/releaseRegressions.test.ts), so here it only records that the build asked for it.
   put(root, 'scripts/check-apk-budget.ts', "import { writeFileSync } from 'node:fs';\nwriteFileSync(new URL('../apk-check-ran.txt', import.meta.url), process.argv.slice(2).join(' '));\n");
+  // Same for the generated expo-updates config check (tests/tools/androidUpdatesConfig.test.ts); an
+  // `updates-check-fail` file makes it refuse, as a stale android/ would.
+  put(root, 'scripts/android/check-updates-config.ts', "import { existsSync, writeFileSync } from 'node:fs';\nconst root = new URL('../../', import.meta.url);\nwriteFileSync(new URL('updates-check-ran.txt', root), process.argv.slice(2).join(' '));\nprocess.exit(existsSync(new URL('updates-check-fail', root)) ? 1 : 0);\n");
   const env = { ...process.env };
   // Let Windows PowerShell load its own built-ins, not the parent PowerShell 7 module directory.
   delete env.PSModulePath;
@@ -141,6 +144,16 @@ describe.skipIf(process.platform !== 'win32')('official Android release entry en
     }
     expect(JSON.parse(readFileSync(join(f.root, 'android/environment.json'), 'utf8'))).toEqual({ dotenv: '1', forbiddenPresent: false, unknownPresent: false, privateKeyPreserved: true });
     expect(result.text).not.toContain(privateTestKey);
+  }, 30_000);
+
+  it('checks the generated expo-updates config before Gradle on a release, and a failed check stops the build', () => {
+    const ok = fixture(true); const passed = run(ok);
+    expect(passed.status, passed.body?.message ?? passed.text.slice(-600)).toBe(0);
+    expect(readFileSync(join(ok.root, 'updates-check-ran.txt'), 'utf8')).toContain('--project');
+    const stale = fixture(true); put(stale.root, 'updates-check-fail', 'stale runtime');
+    const refused = run(stale);
+    expect(refused.status).toBe(17); expect(refused.body.message).toContain('check-updates-config');
+    expect(existsSync(join(stale.root, 'android/arguments.txt')), 'Gradle must not run on a stale native project').toBe(false);
   }, 30_000);
 
   it('keeps non-ASCII build scripts runnable by Windows PowerShell 5.1', () => {

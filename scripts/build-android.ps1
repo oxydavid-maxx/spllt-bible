@@ -192,8 +192,14 @@ if ($Variant -eq 'release') {
   $gradleName = [regex]::Match($gradleText, 'versionName\s+"([^"]+)"').Groups[1].Value
   $gradleCode = [regex]::Match($gradleText, 'versionCode\s+(\d+)').Groups[1].Value
   if ($gradleName -ne $appConfig.expo.version -or [int]$gradleCode -ne [int]$appConfig.expo.android.versionCode) {
-    throw "Version drift: app.json says $($appConfig.expo.version)/$($appConfig.expo.android.versionCode), android/app/build.gradle says $gradleName/$gradleCode. Update the native project or re-run prebuild."
+    throw "Version drift: app.json says $($appConfig.expo.version)/$($appConfig.expo.android.versionCode), android/app/build.gradle says $gradleName/$gradleCode. Re-run npx expo prebuild --platform android --clean; do not edit android/ by hand (the expo-updates runtime is generated there too)."
   }
+  # The expo-updates runtime version, update URL, channel header and launch policy are prebuild output as
+  # well (AndroidManifest.xml, strings.xml). A stale project builds an APK whose runtime never matches the
+  # OTAs published for this version, or one with no update URL at all. The private release script runs
+  # the same check.
+  & npx tsx (Join-Path $root 'scripts/android/check-updates-config.ts') --project $root
+  if ($LASTEXITCODE -ne 0) { throw "Native expo-updates config does not match app.json (scripts/android/check-updates-config.ts exited $LASTEXITCODE). Re-run npx expo prebuild --platform android --clean." }
 
   $argumentsReleaseSigning = '-PqingmuRelease=true'
 }

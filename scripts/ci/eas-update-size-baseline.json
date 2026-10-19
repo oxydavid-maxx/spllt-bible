@@ -1,6 +1,6 @@
 {
-  "reason": "One-time measured expo-updates 56.0.28 native dependency adoption; keep the existing APK 1.002 and iOS 1.05 ratios.",
-  "packageLockGitBlobSha256": "a6d8df2e7113dcb4201f3165cb9c7a699b4fe79153b046ac48a51b62538c894d",
+  "reason": "One-time measured expo-updates 56.0.28 native increment (after minus before, same main commit); added to main's size only while main's baseline commit does not depend on expo-updates. The APK 1.002 and iOS 1.05 ratios are unchanged.",
+  "dependency": { "name": "expo-updates", "version": "56.0.28" },
   "measurements": {
     "apkBytes": {
       "beforeBytes": 62709053,

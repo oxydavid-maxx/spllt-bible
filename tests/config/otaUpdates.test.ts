@@ -63,6 +63,16 @@ describe('EAS Update native startup configuration', () => {
     expect(resolve({ config: expo }).updates.requestHeaders).toEqual({ 'expo-channel-name': 'preview' });
   });
 
+  // One preview group holds two separately running updates. Pushing both after a check on one phone would send
+  // the platform nobody opened to everyone, so promotion names the accepted platform.
+  it('documents production promotion per accepted platform, never both at once', () => {
+    const doc = readFileSync('docs/eas-update.md', 'utf8');
+    const publish = doc.slice(doc.indexOf('## 發送流程'), doc.indexOf('## 回復'));
+    const promotions = publish.split('\n').filter((line) => /update:republish .*--destination-channel production/.test(line));
+    expect(promotions.map((line) => line.match(/--platform (\S+)/)?.[1]).sort()).toEqual(['android', 'ios']);
+    expect(publish).toMatch(/Android.*iPhone|iPhone.*Android/);
+  });
+
   it('wires a single non-blocking startup owner and never uses URL overrides or forced reloads', () => {
     const root = readFileSync('app/_layout.tsx', 'utf8');
     expect(root.match(/<OtaUpdateCheck\s*\/>/g)).toHaveLength(1);

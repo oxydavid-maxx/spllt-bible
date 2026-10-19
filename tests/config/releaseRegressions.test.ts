@@ -160,6 +160,16 @@ describe('the sideloaded APK stays small', () => {
     expect(script).toMatch(/if \(-not \$PSBoundParameters\.ContainsKey\('LegacyPackaging'\)\) \{ \$LegacyPackaging = \[switch\]\$true \}/);
     expect(script).toMatch(/scripts\/check-apk-budget\.ts/);
   });
+
+  // android/ is untracked and written at prebuild time; Gradle never reads app.json. A stale runtime or a
+  // project that predates expo-updates would ship without OTA, so the release path reads the real files first.
+  it('checks the generated expo-updates config on every release before Gradle runs', () => {
+    const script = readFileSync('scripts/build-android.ps1', 'utf8');
+    const check = script.search(/& npx tsx \(Join-Path \$root 'scripts\/android\/check-updates-config\.ts'\) --project \$root/);
+    // Inside the release-only block (after the signing/version checks), and before Gradle.
+    expect(check).toBeGreaterThan(script.indexOf('$releaseSigningProperties = $env:QINGMU_RELEASE_SIGNING_PROPERTIES'));
+    expect(check).toBeLessThan(script.indexOf('& $gradlew @arguments'));
+  });
 });
 
 describe('the install page downloads the APK itself', () => {

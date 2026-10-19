@@ -8,7 +8,7 @@
 
 ## 從哪裡進
 
-- JS/圖片 OTA: 0.5.35 起隨商店建置啟用 EAS Update; 畫面掛載後背景檢查一次，下載後下一次冷啟動生效，失敗/離線不擋使用。管理者在帳戶頁管理區可切「先收到測試版更新」，說明「只給管理者：先拿到還沒發給大家的修正，驗收用。」一般成員看不到。切換只改這支手機的頻道，下次開啟下載，再下一次開啟套用；關閉回到 production. 詳見 [操作與回復](../eas-update.md)。
+- JS/圖片 OTA: 0.5.35 起隨商店建置啟用 EAS Update; 畫面掛載後背景檢查一次，下載後下一次冷啟動生效，失敗/離線不擋使用。管理者在帳戶頁管理區可切「先收到測試版更新」，說明「只給管理者：先拿到還沒發給大家的修正，驗收用。」一般成員看不到。切換只改這支手機的頻道，下次開啟下載，再下一次開啟套用；關閉回到 production. 登出、換別的成員登入，或伺服器說已不是管理者時，App 自動把這支手機切回 production. 詳見 [操作與回復](../eas-update.md)。
 - 更新請求中的隨機安裝識別碼與必要更新資訊，見 [隱私權政策](../play/privacy-policy.md) 的 Expo EAS Update 說明。
 
 - 還沒登入、或登入過期時：`app/sign-in.tsx`（`src/ui/SignInScreen.tsx`）。整個 App 在路由層就被鎖住——`src/ui/AppStack.tsx` 用 `Stack.Protected` 把 `(tabs)`、`account` 都鎖在「已登入」條件下，只要不是已登入（或正在還原登入狀態），只有 `sign-in` 這條路可以進。
@@ -112,7 +112,7 @@
 
 ## 決定（為什麼這樣做）
 
-- **OTA 不重載正在使用的 App, 也不關防變磚保護** (維護者 2026-10-19)：0.5.35 起用 Expo 官方 EAS Update 傳送同 runtime 的 JS/資源修正；原生套件、權限、SDK 等改動仍上架。runtime 採 appVersion, 每次商店發版更新 version. 管理者沿用 canViewAllScores, 可在原正式 App 選 preview, 使用官方 request-header override, 保留預設 production. 開關只改本機；相容與操作流程見 [eas-update.md](../eas-update.md)。
+- **OTA 不重載正在使用的 App, 也不關防變磚保護** (維護者 2026-10-19)：0.5.35 起用 Expo 官方 EAS Update 傳送同 runtime 的 JS/資源修正；原生套件、權限、SDK 等改動仍上架。runtime 採 appVersion, 每次商店發版更新 version. 管理者沿用 canViewAllScores, 可在原正式 App 選 preview, 使用官方 request-header override, 保留預設 production. 開關只改本機；相容與操作流程見 [eas-update.md](../eas-update.md)。選擇存在手機上、比登入的人活得久，開關卻只有管理者看得到，所以 preview 只跟著管理者 (主管審查 2026-10-19)：沒有人登入、換成別的成員，或伺服器回答不是管理者，就自動切回 production; preview 手機確認是管理者之前不檢查更新，一般 production 手機開 App 不多發請求。
 
 - 2026-10-19：Play 測試機的新 Google 身分加驗過的 token email 網域訊號，與既有 App 旗標、IP 清單任一命中即建員停用，且僅限首次建員；既有會員與 Apple 路徑不變。網域僅有社群回報，尚未在正式環境確認，因此 log 分別記錄每個訊號的狀態供下次上傳查核，不記個資或 email 本身。
 

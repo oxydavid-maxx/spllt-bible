@@ -2,7 +2,7 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ allowed: false, memberId: 'member', token: 'token', enabled: true, checksEnabled: true, nativePolicy: 'ON_ERROR_RECOVERY', channel: 'production', check: vi.fn(), fetch: vi.fn(), override: vi.fn(), reload: vi.fn() }));
+const state = vi.hoisted(() => ({ allowed: false, status: 'signed-in', memberId: 'member', token: 'token', enabled: true, checksEnabled: true, nativePolicy: 'ON_ERROR_RECOVERY', channel: 'production', check: vi.fn(), fetch: vi.fn(), override: vi.fn(), reload: vi.fn(), capabilities: vi.fn() }));
 vi.hoisted(() => { (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Switch: 'Switch', StyleSheet: { create: (s: unknown) => s } }));
 vi.mock('expo-constants', () => ({ default: { get expoConfig() { return { extra: { otaCheckEnabled: state.checksEnabled } }; } } }));
@@ -12,8 +12,8 @@ vi.mock('expo-updates', () => ({
   checkForUpdateAsync: state.check, fetchUpdateAsync: state.fetch,
   setUpdateRequestHeadersOverride: state.override, reloadAsync: state.reload,
 }));
-vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ status: 'signed-in', session: { memberId: state.memberId, sessionToken: state.token } }) }));
-vi.mock('../../src/services/gamificationApiClient', () => ({ createGamificationApiClient: () => ({ getCapabilities: async () => ({ canViewAllScores: state.allowed }) }) }));
+vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => state.status === 'signed-in' ? { status: 'signed-in', session: { memberId: state.memberId, sessionToken: state.token } } : { status: state.status, session: null } }));
+vi.mock('../../src/services/gamificationApiClient', () => ({ createGamificationApiClient: () => ({ getCapabilities: state.capabilities }) }));
 let ota: typeof import('../../src/ui/admin/OtaUpdates');
 const checkOtaUpdateInBackground = () => ota.checkOtaUpdateInBackground();
 
@@ -22,9 +22,10 @@ const render = async () => { await act(async () => { tree = TestRenderer.create(
 const toggle = () => tree!.root.findByType('Switch' as never);
 beforeEach(async () => {
   vi.resetModules();
-  state.allowed = false; state.memberId = 'member'; state.token = 'token'; state.channel = 'production'; state.enabled = true; state.checksEnabled = true; state.nativePolicy = 'ON_ERROR_RECOVERY';
+  state.allowed = false; state.status = 'signed-in'; state.memberId = 'member'; state.token = 'token'; state.channel = 'production'; state.enabled = true; state.checksEnabled = true; state.nativePolicy = 'ON_ERROR_RECOVERY';
   state.check.mockReset().mockResolvedValue({ isAvailable: true }); state.fetch.mockReset().mockResolvedValue({ isNew: true });
   state.override.mockReset(); state.reload.mockReset();
+  state.capabilities.mockReset().mockImplementation(async () => ({ canViewAllScores: state.allowed }));
   ota = await import('../../src/ui/admin/OtaUpdates');
 });
 afterEach(() => { act(() => tree?.unmount()); tree = null; });
@@ -98,5 +99,88 @@ describe('administrator OTA channel switch', () => {
     act(() => toggle().props.onValueChange(false));
     expect(state.override).toHaveBeenCalledWith({ 'expo-channel-name': 'production' });
     expect(toggle().props.value).toBe(false);
+  });
+});
+
+// The override is saved on the phone and outlives the session that set it. Only the administrator who
+// set it can see the switch, so anyone else holding the phone is returned to production automatically.
+describe('preview channel never outlives administrator access', () => {
+  const both = () => React.createElement(React.Fragment, null, React.createElement(ota.OtaUpdateCheck), React.createElement(ota.AdminOtaUpdatesEntry));
+  const renderRoot = async (element = React.createElement(ota.OtaUpdateCheck)) => { await act(async () => { tree = TestRenderer.create(element); }); };
+  const rerender = async (element: React.ReactElement) => { await act(async () => { tree!.update(element); }); };
+  const production = { 'expo-channel-name': 'production' };
+  const overrideBeforeCheck = () => expect(state.override.mock.invocationCallOrder[0]).toBeLessThan(state.check.mock.invocationCallOrder[0]);
+
+  it('returns a preview phone to production when nobody is signed in, before checking for updates', async () => {
+    state.channel = 'preview'; state.status = 'signed-out';
+    await renderRoot();
+    expect(state.override).toHaveBeenCalledWith(production);
+    expect(state.check).toHaveBeenCalledOnce(); overrideBeforeCheck();
+    expect(state.capabilities).not.toHaveBeenCalled();
+  });
+  it('returns a preview phone to production when the signed-in member is not an administrator', async () => {
+    state.channel = 'preview'; state.allowed = false;
+    await renderRoot();
+    expect(state.capabilities).toHaveBeenCalledOnce();
+    expect(state.override).toHaveBeenCalledWith(production);
+    expect(state.check).toHaveBeenCalledOnce(); overrideBeforeCheck();
+  });
+  it('keeps preview for a confirmed administrator, and only then checks the preview channel', async () => {
+    state.channel = 'preview'; state.allowed = true;
+    await renderRoot();
+    expect(state.override).not.toHaveBeenCalled();
+    expect(state.check).toHaveBeenCalledOnce();
+  });
+  it('waits while sign-in is restoring or expired, and never checks preview for an unconfirmed member', async () => {
+    state.channel = 'preview';
+    for (const status of ['hydrating', 'expired']) {
+      state.status = status;
+      await renderRoot();
+      expect(state.override).not.toHaveBeenCalled(); expect(state.check).not.toHaveBeenCalled(); expect(state.capabilities).not.toHaveBeenCalled();
+      act(() => tree!.unmount());
+    }
+    state.status = 'hydrating'; await renderRoot();
+    state.status = 'signed-in'; state.allowed = true; await rerender(React.createElement(ota.OtaUpdateCheck));
+    expect(state.check).toHaveBeenCalledOnce(); expect(state.override).not.toHaveBeenCalled();
+  });
+  it('keeps the selection but skips this launch\'s preview check when the role cannot be confirmed', async () => {
+    state.channel = 'preview'; state.capabilities.mockRejectedValue(new Error('offline'));
+    await renderRoot();
+    expect(state.override).not.toHaveBeenCalled(); expect(state.check).not.toHaveBeenCalled();
+  });
+  it('adds no request on production phones: no capability lookup, the same single startup check', async () => {
+    for (const status of ['signed-in', 'signed-out', 'hydrating']) {
+      state.status = status; await renderRoot(); act(() => tree!.unmount());
+    }
+    expect(state.capabilities).not.toHaveBeenCalled(); expect(state.override).not.toHaveBeenCalled();
+    expect(state.check).toHaveBeenCalledOnce();
+  });
+  it('an administrator who turned preview on and then signs out leaves the phone on production', async () => {
+    state.allowed = true; await renderRoot(both());
+    act(() => toggle().props.onValueChange(true));
+    expect(state.override).toHaveBeenLastCalledWith({ 'expo-channel-name': 'preview' });
+    state.status = 'signed-out'; await rerender(both());
+    expect(state.override).toHaveBeenLastCalledWith(production);
+  });
+  it('a different member signing in on the phone is checked again and returned to production', async () => {
+    state.allowed = true; await renderRoot(both());
+    act(() => toggle().props.onValueChange(true));
+    state.memberId = 'family-member'; state.token = 'other-token'; state.allowed = false; await rerender(both());
+    expect(state.override).toHaveBeenLastCalledWith(production);
+    expect(tree!.toJSON()).toBeNull();
+  });
+  it('the account page returns preview to production when the server says the role was removed', async () => {
+    state.channel = 'preview'; state.allowed = false;
+    await render();
+    expect(tree!.toJSON()).toBeNull();
+    expect(state.override).toHaveBeenCalledWith(production);
+  });
+  it('a refreshed session whose administrator role was removed is returned to production', async () => {
+    state.allowed = true; await renderRoot(both());
+    act(() => toggle().props.onValueChange(true));
+    expect(toggle().props.value).toBe(true);
+    // Same member, role removed on the server and noticed by the next lookup in this process.
+    state.allowed = false; state.token = 'refreshed-token'; await rerender(both());
+    expect(state.override).toHaveBeenLastCalledWith(production);
   });
 });

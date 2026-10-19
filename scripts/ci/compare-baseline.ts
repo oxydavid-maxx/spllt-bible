@@ -1,15 +1,16 @@
 // scripts/ci/compare-baseline.ts
-// usage: tsx scripts/ci/compare-baseline.ts <current-json> <baseline-json|missing> <field> <maxRatio> <label> [same-flows]
+// usage: tsx scripts/ci/compare-baseline.ts <current-json> <baseline-json|missing> <field> <maxRatio> <label> [same-flows|-] [size-allowance-json] [baseline-package-json]
 // A PR may not grow a size or memory figure past maxRatio × main's last successful run.
 // same-flows: compare only when both runs ran the same flows. Memory depends on what the app showed before it was
 // measured (the reader with or without Bible text), so a baseline from a different set of flows is not comparable.
+// size-allowance-json + baseline-package-json: package.json at the commit that produced main's baseline
+// (written by the workflow from the baseline run's headSha). See size-baseline.ts.
 import { existsSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { selectSizeBaseline } from './size-baseline';
 
 type Summary = Record<string, unknown> & { flows?: Record<string, string> };
-const [currentPath, baselinePath, field, maxRatio, label, mode, sizeResetPath] = process.argv.slice(2);
+const [currentPath, baselinePath, field, maxRatio, label, mode, sizeAllowancePath, basePackageJsonPath] = process.argv.slice(2);
+const readJson = (path: string | undefined): unknown => { try { return path ? JSON.parse(readFileSync(path, 'utf8')) : null; } catch { return null; } };
 const current = JSON.parse(readFileSync(currentPath, 'utf8')) as Summary;
 if (!baselinePath || !existsSync(baselinePath)) { console.log(`| ${label} | 略過 | main 還沒有基準 |`); process.exit(0); }
 const baseline = JSON.parse(readFileSync(baselinePath, 'utf8')) as Summary;
@@ -30,12 +31,11 @@ if (mode === 'same-flows') {
   }
 }
 const mainBytes = Number(baseline[field]);
-// Bind the explicit measured floor to raw committed lockfile bytes (portable across CRLF/LF checkouts).
-const lockDigest = sizeResetPath ? createHash('sha256').update(execFileSync('git', ['cat-file', 'blob', 'HEAD:package-lock.json'])).digest('hex') : '';
-const measuredReset = sizeResetPath ? JSON.parse(readFileSync(sizeResetPath, 'utf8')) : null;
-const effectiveBaseline = selectSizeBaseline(field, mainBytes, measuredReset, lockDigest);
-const ratio = Number(current[field]) / effectiveBaseline;
+const decision = sizeAllowancePath
+  ? selectSizeBaseline(field, mainBytes, readJson(sizeAllowancePath), { currentLock: readJson('package-lock.json'), basePackageJson: readJson(basePackageJsonPath) })
+  : { bytes: mainBytes, allowanceBytes: 0, note: '' };
+const ratio = Number(current[field]) / decision.bytes;
 const ok = Number.isFinite(ratio) && ratio <= Number(maxRatio);
 const unit = field === 'footprintMB' ? 'MB' : 'bytes';
-console.log(`| ${label} | ${ok ? 'PASS' : 'FAIL'} | ${current[field]} vs main ${baseline[field]} (增加 ${Number(current[field]) - mainBytes}${unit}; 基準 ${effectiveBaseline}; ×${ratio.toFixed(3)}, 上限 ×${maxRatio}) |`);
+console.log(`| ${label} | ${ok ? 'PASS' : 'FAIL'} | ${current[field]} vs main ${baseline[field]} (增加 ${Number(current[field]) - mainBytes}${unit}; 基準 ${decision.bytes}; ×${ratio.toFixed(3)}, 上限 ×${maxRatio}${decision.note ? `; ${decision.note}` : ''}) |`);
 process.exit(ok ? 0 : 1);
