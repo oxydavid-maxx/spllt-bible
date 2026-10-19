@@ -152,6 +152,37 @@ describe('reading the 週刊 from the app', () => {
       expect((await createApiHandler({ db, fixtureToken: 'fixture' })({ method: 'GET', url: '/api/bulletins', headers: as })).body).toEqual({ weeks: [] });
     } finally { db.close(); }
   });
+
+  // 2026-10-19: React Native's Android Image sends no headers for a single-object source, so the page request
+  // arrives without the bearer token (blank pages on the Pixel). Listing hands out a cookie that opens the pages only;
+  // Android keeps it in the cookie store that fetch and image loading share (FrescoModule, NetworkingModule).
+  it('opens the pages to a member’s list cookie, and to nothing else', async () => {
+    const closers: Array<() => void> = [];
+    const collector = createBulletinCollector({ dir, fetchContent: async () => jpeg(760, 1075, 7), log: () => undefined, schedule: (run) => { closers.push(run); } });
+    for (const index of [1, 2]) await collector.receive({ messageId: `p${index}`, timestamp: SATURDAY + index, senderId: 'Uoffice' });
+    closers.splice(0).forEach((close) => close());
+    const db = createDatabase({ members: [{ id: 'm', displayName: '王姊妹', groupId: 'g' }] });
+    try {
+      let at = Date.parse('2026-10-19T14:00:00Z');
+      const api = createApiHandler({ db, fixtureToken: 'fixture', bulletinDir: dir, now: () => new Date(at) });
+      const list = await api({ method: 'GET', url: '/api/bulletins', headers: { authorization: 'Bearer fixture', 'x-qingmu-member-id': 'm' } });
+      const setCookie = list.headers?.['set-cookie'] ?? '';
+      expect(setCookie).toMatch(/^qm_bulletin=[^;\s]+; Path=\/api\/bulletins\/; Max-Age=604800; HttpOnly; Secure$/);
+      const cookie = setCookie.split(';')[0];
+      const page = await api({ method: 'GET', url: '/api/bulletins/2026-10-11/2', headers: { cookie: `other=1; ${cookie}` } });
+      expect(page.status).toBe(200);
+      expect([...page.binaryBody!]).toEqual([...jpeg(760, 1075, 7)]);
+      const tampered = cookie.replace(/.$/, (last) => (last === 'A' ? 'B' : 'A'));
+      expect((await api({ method: 'GET', url: '/api/bulletins/2026-10-11/2', headers: { cookie: tampered } })).status).toBe(401);
+      expect((await api({ method: 'GET', url: '/api/bulletins', headers: { cookie } })).status).toBe(401);
+      expect((await api({ method: 'GET', url: '/api/me/profile', headers: { cookie } })).status).toBe(401);
+      db.db.prepare('UPDATE members SET disabled_at = ? WHERE id = ?').run(at, 'm');
+      expect((await api({ method: 'GET', url: '/api/bulletins/2026-10-11/2', headers: { cookie } })).status).toBe(401);
+      db.db.prepare('UPDATE members SET disabled_at = NULL WHERE id = ?').run('m');
+      at += 604_800_000 + 1;
+      expect((await api({ method: 'GET', url: '/api/bulletins/2026-10-11/2', headers: { cookie } })).status).toBe(401);
+    } finally { db.close(); }
+  });
 });
 
 describe('downloading a photo from LINE', () => {

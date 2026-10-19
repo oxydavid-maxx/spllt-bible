@@ -29,6 +29,7 @@ import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongreg
 import { applyRewardSheet, listRewards, readRewardSheetPush, sheetRedemptionsFor } from './rewardSheet';
 import { rewardSheetReadingStats } from './rewardSheetStats';
 import { listBulletins, readBulletinPage } from './bulletins';
+import { issueBulletinCookie, readBulletinCookie } from './bulletinAccess';
 import { readAdminLinks } from './adminLinks';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
 import {
@@ -328,6 +329,14 @@ export function createApiHandler(options: ApiHandlerOptions) {
     // only when the caller has explicitly inserted it into reading_days.
   }
   const now = options.now ?? (() => new Date());
+  // Signs the 週刊 page cookie (server/bulletinAccess.ts); without a session secret it lasts as long as the process.
+  const bulletinCookieKey = options.sessionSecret ?? randomBytes(32);
+  const bulletinPagePath = /^\/api\/bulletins\/(\d{4}-\d{2}-\d{2})\/(\d{1,2})$/;
+  const bulletinPageResponse = (date: string, index: number): ApiResponse => {
+    const bytes = readBulletinPage(options.bulletinDir, date, index);
+    return bytes ? { status: 200, body: {}, binaryBody: bytes, headers: { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=604800' } }
+      : gamificationError({ status: 404, code: 'BULLETIN_NOT_FOUND' });
+  };
   // member|date → when that member last got today's retryable not-yet-posted answer (see GET /api/devotional/:date).
   const notYetPostedAnswered = new Map<string, number>();
   const resolveChapterAudio = createChapterAudioResolver();
@@ -553,6 +562,12 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (!push) return json(400, { error: 'INVALID_REGISTRATIONS' });
       return json(200, { ok: true, events: replaceEventRegistrations(options.db.db, push, now()) });
     }
+    // A 週刊 page asked for without a bearer token (Android's Image drops it): the list cookie opens the pages only.
+    const cookiePage = request.method === 'GET' && !request.headers.authorization ? url.pathname.match(bulletinPagePath) : null;
+    if (cookiePage) {
+      const memberId = readBulletinCookie(request.headers.cookie, bulletinCookieKey, now().getTime());
+      if (memberId && memberExists(options.db.db, memberId) && isMemberEnabled(options.db.db, memberId)) return bulletinPageResponse(cookiePage[1], Number(cookiePage[2]));
+    }
     const auth = options.productionGoogleAuth && options.sessionSecret
       ? await authenticateSessionOrGoogle(request.headers, options.productionGoogleAuth, options.sessionSecret, sessions)
       : authenticate(request.headers, options.fixtureToken ?? '', (id) => memberExists(options.db.db, id), options.fixtureDefaultMemberId);
@@ -708,14 +723,11 @@ export function createApiHandler(options: ApiHandlerOptions) {
       }
       // 公告「主堂」 (維護者 2026-10-17): the 週刊 pages, newest Sunday first; members only.
       if (request.method === 'GET' && url.pathname === '/api/bulletins') {
-        return gamificationJson(200, { weeks: listBulletins(options.bulletinDir) });
+        const listed = gamificationJson(200, { weeks: listBulletins(options.bulletinDir) });
+        return { ...listed, headers: { ...listed.headers, 'set-cookie': issueBulletinCookie(auth.memberId, bulletinCookieKey, now().getTime()) } };
       }
-      const bulletinPage = url.pathname.match(/^\/api\/bulletins\/(\d{4}-\d{2}-\d{2})\/(\d{1,2})$/);
-      if (request.method === 'GET' && bulletinPage) {
-        const bytes = readBulletinPage(options.bulletinDir, bulletinPage[1], Number(bulletinPage[2]));
-        return bytes ? { status: 200, body: {}, binaryBody: bytes, headers: { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=604800' } }
-          : gamificationError({ status: 404, code: 'BULLETIN_NOT_FOUND' });
-      }
+      const bulletinPage = url.pathname.match(bulletinPagePath);
+      if (request.method === 'GET' && bulletinPage) return bulletinPageResponse(bulletinPage[1], Number(bulletinPage[2]));
       const devotionalMatch = url.pathname.match(/^\/api\/devotional\/([^/]+)$/);
       if (request.method === 'GET' && devotionalMatch) {
         const date = decodeURIComponent(devotionalMatch[1]);
