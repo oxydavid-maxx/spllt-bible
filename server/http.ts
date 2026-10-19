@@ -23,6 +23,7 @@ import { devotionalPlayerResponse } from './devotional';
 import { createLineWebhook, LINE_WEBHOOK_BODY_LIMIT, LINE_WEBHOOK_PATH, readLineChannelSecret } from './lineWebhook';
 import { createBulletinCollector, type LineImage } from './bulletins';
 import { createLineContentFetcher, readLineChannelIdFile } from './lineContent';
+import { installNat64Fallback } from './nat64Fallback';
 import { deriveFormRegistrationKey } from './eventRegistrations';
 
 async function readBody(request: IncomingMessage): Promise<string> {
@@ -274,6 +275,8 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
 
 const isDirectServerEntry = process.argv.some((argument) => /(?:^|[\\/])server[\\/]http\.ts$/.test(argument));
 if (isDirectServerEntry) {
+  // IPv4-only upstreams (LINE, Azure Speech) keep working while the home line has IPv6 only (server/nat64Fallback.ts).
+  if (process.env.QINGMU_NAT64_FALLBACK?.trim() !== '0') installNat64Fallback();
   const { server, stop } = createHttpServer();
   const port = Number(process.env.QINGMU_SERVER_PORT ?? 8787);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('QINGMU_SERVER_PORT_INVALID');
