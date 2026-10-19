@@ -5,6 +5,18 @@ import { parseAllDocuments } from 'yaml';
 const flow = (name: string) => readFileSync(new URL(`../../.maestro/ios/${name}.yaml`, import.meta.url), 'utf8');
 
 describe('iOS flow readiness and semantic interaction targets', () => {
+  it('reaches the observed points header before opening the account on every OTA cold start', () => {
+    // Run 39182315294 captured reader tabs but no account control; flow 45's public path works.
+    const commands = parseAllDocuments(flow('43-ota-channel'))[1].toJSON();
+    const launches = commands.map((value: unknown, index: number) => value === 'launchApp' || (typeof value === 'object' && value !== null && Object.hasOwn(value, 'launchApp')) ? index : -1).filter((index: number) => index >= 0);
+    expect(launches).toHaveLength(3);
+    for (const start of launches) {
+      const account = commands.findIndex((value: { tapOn?: unknown }, index: number) => index > start && value.tapOn === '開啟帳戶');
+      expect(account).toBeGreaterThan(start);
+      const segment = commands.slice(start, account);
+      expect(segment.some((value: { extendedWaitUntil?: { visible?: string } }) => value.extendedWaitUntil?.visible === '開啟積分操作')).toBe(true);
+    }
+  });
   it('bounds background-reader expansion by the visible points tab without weakening the narration journey', () => {
     const commands = parseAllDocuments(flow('21-audio-after-background'))[1].toJSON();
     const reveal = commands.find((command: unknown) =>

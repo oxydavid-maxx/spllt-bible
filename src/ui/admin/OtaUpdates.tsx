@@ -53,7 +53,7 @@ export function AdminOtaUpdatesEntry() {
 
   const changeChannel = (enabled: boolean) => {
     try {
-      Updates.setUpdateRequestHeadersOverride(enabled ? { 'expo-channel-name': 'preview' } : null);
+      Updates.setUpdateRequestHeadersOverride({ 'expo-channel-name': enabled ? 'preview' : 'production' });
       channelSelection = { startedOn: Updates.channel, preview: enabled };
       setPreview(enabled);
       setMessage('下次開啟時會在背景下載，再下一次開啟時套用。');

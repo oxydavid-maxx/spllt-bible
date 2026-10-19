@@ -18,9 +18,9 @@
 
 ## 管理者手機
 
-在帳戶頁底部管理區切換「先收到測試版更新」。說明：「只給管理者：先拿到還沒發給大家的修正，驗收用。」沿用既有伺服器 `canViewAllScores` 身分判斷，一般成員看不到。
+從「積分」右上角頭像進帳戶頁，往下捲到管理區，切換「先收到測試版更新」。說明：「只給管理者：先拿到還沒發給大家的修正，驗收用。」沿用既有伺服器 `canViewAllScores` 身分判斷，一般成員看不到。
 
-開啟呼叫官方 `Updates.setUpdateRequestHeadersOverride({ 'expo-channel-name': 'preview' })`；關閉傳 `null` 回到建置頻道。選擇存在這支手機的原生儲存，不改伺服器頻道對應。切換不立即下載/重載：下次開啟背景下載，再下一次開啟套用；畫面會提示這件事。`Updates.channel` 在下次冷啟動後讀回選擇。preview 與 production 必須保持本機資料格式相容，避免切回後讀不到先前資料。
+開啟呼叫官方 `Updates.setUpdateRequestHeadersOverride({ 'expo-channel-name': 'preview' })`；關閉同樣明確傳 `production`。選擇存在這支手機的原生儲存，不改伺服器頻道對應。切換不立即下載/重載：下次開啟背景下載，再下一次開啟套用；畫面會提示這件事。`Updates.channel` 在下次冷啟動後讀回選擇。關閉不使用 `null` 回到建置預設，因為 EAS preview 建置的預設也是 preview，會與關閉狀態矛盾。preview 與 production 必須保持本機資料格式相容，避免切回後讀不到先前資料。
 
 只使用 request-header API；不使用需要關閉防變磚保護的 `setUpdateURLAndRequestHeadersOverride()`。
 
@@ -28,12 +28,27 @@
 
 以下命令由維護者在核准發送時執行。員工實作/CI 不發布更新，也不改頻道對應。CLI 固定使用既有 EAS Build 的 24.13.0；SDK 56 發送時必須帶 `--environment`，兩個頻道都使用同一個 production 環境，避免 API/功能旗標漂移。執行前確認沒有 `CI=true` 搭配 `QINGMU_CI_DISABLE_OTA_CHECKS=1`，也沒有 fixture/test date 等測試旗標。
 
-1. 確認商店已安裝包含 expo-updates 的版本，原生相容、version/runtime 相同。記錄 source commit、runtime、兩平台、更新前的 production update group ID；第一個 OTA 沒有前一組時記錄嵌入版本。維護者先確認 preview/production 已各連到預定分支。
+0. 首次啟用由維護者核對兩頻道，必須指向不同分支。以下是操作文件，員工本工單未執行任何線上頻道查詢/建立/改指向：
+
+   ```sh
+   npx eas-cli@24.13.0 channel:view preview --json
+   npx eas-cli@24.13.0 channel:view production --json
+   ```
+
+   若頻道不存在，維護者才建立。此 CLI 會連到同名分支，分支不存在時一併建立；已存在的頻道保留現有對應，不重設：
+
+   ```sh
+   npx eas-cli@24.13.0 channel:create preview --json
+   npx eas-cli@24.13.0 channel:create production --json
+   ```
+
+   建立後再讀回兩個頻道，核對 branch ID 不同，再繼續發送。
+
+1. 確認商店已安裝包含 expo-updates 的版本，原生相容、version/runtime 相同。記錄 source commit、runtime、兩平台、更新前的 production update group ID；第一個 OTA 沒有前一組時記錄嵌入版本。
 2. 在固定且乾淨的來源匯出/檢查；本機測試允許這兩條，不會上傳：
 
    ```sh
-   npx expo export --platform android --output-dir dist-android
-   npx expo export --platform ios --output-dir dist-ios
+   npx expo export --platform ios --platform android --dump-assetmap --output-dir dist-native
    ```
 
 3. 發送 preview，保存輸出的 update group ID、runtime 與每平台的 update ID：
@@ -86,4 +101,4 @@ EAS production/preview 與本機簽章正式建置即使繼承 CI 旗標仍保�
 - [Override 設定與防變磚限制](https://docs.expo.dev/eas-update/override/)
 - [EAS CLI update/republish/rollback](https://docs.expo.dev/eas/cli/)
 
-命令參數已用 `npx eas-cli@24.13.0 <command> --help` 核對；未實際發布。實測發送/同組推廣由維護者在 0.5.35 上架後完成。
+命令參數已用 `npx eas-cli@24.13.0 <command> --help` 核對。該版 CLI 的 publish.js 將 `update --platform all` 映射成上面的兩個 native `--platform` 參數，不匯出 Web；本機等價 export 已成功。頻道初始化行為也已核對 CLI 原始碼；未實際建立頻道或發布。實測發送/同組推廣由維護者在 0.5.35 上架後完成。

@@ -10,6 +10,15 @@
       "beforeCommit": "7e8ece8b713aa91bfbf510c5895630cdf4fe4a9d",
       "afterCommit": "1746776596163c3e8a8b5b6f15b1f23df8d1eb27",
       "afterBranchHead": "b685955a4561834e2d551ccb3abe5d754d46db11"
+    },
+    "appBytes": {
+      "beforeBytes": 142200579,
+      "afterBytes": 146029090,
+      "beforeRunId": "39180557599",
+      "afterRunId": "39182315294",
+      "beforeCommit": "7e8ece8b713aa91bfbf510c5895630cdf4fe4a9d",
+      "afterCommit": "1746776596163c3e8a8b5b6f15b1f23df8d1eb27",
+      "afterBranchHead": "b685955a4561834e2d551ccb3abe5d754d46db11"
     }
   }
 }

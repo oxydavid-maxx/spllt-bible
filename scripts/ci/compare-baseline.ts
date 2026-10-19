@@ -37,5 +37,5 @@ const effectiveBaseline = selectSizeBaseline(field, mainBytes, measuredReset, lo
 const ratio = Number(current[field]) / effectiveBaseline;
 const ok = Number.isFinite(ratio) && ratio <= Number(maxRatio);
 const unit = field === 'footprintMB' ? 'MB' : 'bytes';
-console.log(`| ${label} | ${ok ? 'PASS' : 'FAIL'} | ${current[field]} vs main ${baseline[field]} (增加 ${Number(current[field]) - mainBytes} ${unit}; 基準 ${effectiveBaseline}; ×${ratio.toFixed(3)}, 上限 ×${maxRatio}) |`);
+console.log(`| ${label} | ${ok ? 'PASS' : 'FAIL'} | ${current[field]} vs main ${baseline[field]} (增加 ${Number(current[field]) - mainBytes}${unit}; 基準 ${effectiveBaseline}; ×${ratio.toFixed(3)}, 上限 ×${maxRatio}) |`);
 process.exit(ok ? 0 : 1);

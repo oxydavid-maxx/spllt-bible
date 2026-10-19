@@ -14,15 +14,18 @@ vi.mock('expo-updates', () => ({
 }));
 vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ status: 'signed-in', session: { memberId: state.memberId, sessionToken: state.token } }) }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ createGamificationApiClient: () => ({ getCapabilities: async () => ({ canViewAllScores: state.allowed }) }) }));
-import { AdminOtaUpdatesEntry, OtaUpdateCheck, checkOtaUpdateInBackground } from '../../src/ui/admin/OtaUpdates';
+let ota: typeof import('../../src/ui/admin/OtaUpdates');
+const checkOtaUpdateInBackground = () => ota.checkOtaUpdateInBackground();
 
 let tree: TestRenderer.ReactTestRenderer | null = null;
-const render = async () => { await act(async () => { tree = TestRenderer.create(React.createElement(AdminOtaUpdatesEntry)); }); };
+const render = async () => { await act(async () => { tree = TestRenderer.create(React.createElement(ota.AdminOtaUpdatesEntry)); }); };
 const toggle = () => tree!.root.findByType('Switch' as never);
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
   state.allowed = false; state.memberId = 'member'; state.token = 'token'; state.channel = 'production'; state.enabled = true; state.checksEnabled = true; state.nativePolicy = 'ON_ERROR_RECOVERY';
   state.check.mockReset().mockResolvedValue({ isAvailable: true }); state.fetch.mockReset().mockResolvedValue({ isNew: true });
   state.override.mockReset(); state.reload.mockReset();
+  ota = await import('../../src/ui/admin/OtaUpdates');
 });
 afterEach(() => { act(() => tree?.unmount()); tree = null; });
 
@@ -41,7 +44,7 @@ describe('background OTA checks', () => {
   });
   it('renders immediately even when the server never answers', async () => {
     state.check.mockReturnValue(new Promise(() => {}));
-    await act(async () => { tree = TestRenderer.create(React.createElement(OtaUpdateCheck)); });
+    await act(async () => { tree = TestRenderer.create(React.createElement(ota.OtaUpdateCheck)); });
     expect(tree!.toJSON()).toBeNull(); expect(state.check).toHaveBeenCalledOnce();
   });
   it('does not download when no update exists and does not call the network in isolated CI', async () => {
@@ -67,7 +70,7 @@ describe('administrator OTA channel switch', () => {
     await render(); expect(tree!.toJSON()).toBeNull();
     state.allowed = true; act(() => tree!.unmount()); await render(); expect(toggle()).toBeDefined();
     state.allowed = false; state.memberId = 'other';
-    act(() => { tree!.update(React.createElement(AdminOtaUpdatesEntry)); });
+    act(() => { tree!.update(React.createElement(ota.AdminOtaUpdatesEntry)); });
     expect(tree!.toJSON()).toBeNull();
   });
   it('uses only the official header method and never reloads on a switch', async () => {
@@ -80,7 +83,7 @@ describe('administrator OTA channel switch', () => {
     act(() => tree!.unmount()); await render();
     expect(toggle().props.value).toBe(true);
     act(() => toggle().props.onValueChange(false));
-    expect(state.override).toHaveBeenLastCalledWith(null);
+    expect(state.override).toHaveBeenLastCalledWith({ 'expo-channel-name': 'production' });
     expect(state.reload).not.toHaveBeenCalled(); expect(state.check).not.toHaveBeenCalled();
   });
   it('reflects the persisted native channel at startup and keeps the switch value when the native call fails', async () => {
@@ -89,5 +92,11 @@ describe('administrator OTA channel switch', () => {
     state.override.mockImplementation(() => { throw new Error('native failure'); });
     expect(() => act(() => toggle().props.onValueChange(false))).not.toThrow();
     expect(toggle().props.value).toBe(true);
+  });
+  it('turns a preview build back to production rather than clearing back to its preview default', async () => {
+    state.allowed = true; state.channel = 'preview'; await render();
+    act(() => toggle().props.onValueChange(false));
+    expect(state.override).toHaveBeenCalledWith({ 'expo-channel-name': 'production' });
+    expect(toggle().props.value).toBe(false);
   });
 });
