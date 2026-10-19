@@ -240,12 +240,12 @@ describe('the 積分 page opens on its calendar', () => {
     expect(texts()).toContain('本季 (7–9 月)');
     await act(async () => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本月 (9 月)')[0].props.onPress());
     expect(cardExport.load).toHaveBeenCalledWith('self', expect.any(Object));
-    expect(cardExport.share).toHaveBeenCalledWith(expect.stringContaining('paper one'), expect.any(Function));
+    expect(cardExport.share).toHaveBeenCalledWith(expect.stringContaining('paper one'), expect.stringMatching(/^讀經卡-.+-202609\.pdf$/), expect.any(Function));
     expect(readingDays.mock.calls.length).toBe(before);
     expect(texts()).not.toContain('本月 (9 月)');
     act(() => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '匯出讀經卡')[0].props.onPress());
     await act(async () => renderer!.root.findAll(node => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '本季 (7–9 月)')[0].props.onPress());
-    expect(cardExport.share).toHaveBeenLastCalledWith(expect.stringContaining('paper quarter'), expect.any(Function));
+    expect(cardExport.share).toHaveBeenLastCalledWith(expect.stringContaining('paper quarter'), expect.stringMatching(/^讀經卡-.+-2026第三季\.pdf$/), expect.any(Function));
   });
 
   it('preserves a local completion snapshot for a different day instead of overwriting it with the older screen schedule', async () => {

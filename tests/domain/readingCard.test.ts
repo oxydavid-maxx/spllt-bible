@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { parseHTML } from 'linkedom';
-import { cardMonthWeeks, cardPeriod, cardStatistics, formatCardPassage, buildReadingCardHtml, giftMessage, type ReadingCardDay } from '../../src/domain/readingCard';
+import { cardMonthWeeks, cardPeriod, cardStatistics, formatCardPassage, buildReadingCardHtml, giftMessage, readingCardFileName, type ReadingCardDay } from '../../src/domain/readingCard';
 
 const day = (date: string, rows = ['雅01章', '徒02章1-24節', '詩109'], completed = false, devoted = false): ReadingCardDay => ({ date, rows, completed, devoted });
+
+describe('reading card file name', () => {
+  it('names the PDF by member and period so a co-worker can tell several cards apart', () => {
+    expect(readingCardFileName({ today: '2026-10-19', memberName: '王小明', scope: 'month' })).toBe('讀經卡-王小明-202610.pdf');
+    expect(readingCardFileName({ today: '2026-10-19', memberName: '王小明', scope: 'quarter' })).toBe('讀經卡-王小明-2026第四季.pdf');
+    expect(readingCardFileName({ today: '2027-02-01', memberName: 'Amy Chen', scope: 'quarter' })).toBe('讀經卡-Amy Chen-2027第一季.pdf');
+  });
+  it('drops characters a file name cannot hold and leaves the name out when nothing is left', () => {
+    expect(readingCardFileName({ today: '2026-03-05', memberName: ' a/b:c*?"<>|\\  d\n', scope: 'month' })).toBe('讀經卡-abc d-202603.pdf');
+    expect(readingCardFileName({ today: '2026-03-05', memberName: '/:*', scope: 'month' })).toBe('讀經卡-202603.pdf');
+    expect(readingCardFileName({ today: '2026-03-05', memberName: '很'.repeat(60), scope: 'month' })).toBe(`讀經卡-${'很'.repeat(40)}-202603.pdf`);
+  });
+});
 
 describe('church reading card', () => {
   it.each([
