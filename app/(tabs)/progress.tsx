@@ -32,7 +32,7 @@ import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificat
 import type { CompletionRecord } from '../../src/domain/completion';
 import { ReadingCalendarCard } from '../../src/ui/gamification/ReadingCalendarCard';
 import { ReadingCardExportSheet } from '../../src/ui/gamification/ReadingCardExportSheet';
-import { buildReadingCardHtml, type ReadingCardScope } from '../../src/domain/readingCard';
+import { buildReadingCardHtml, readingCardFileName, type ReadingCardScope } from '../../src/domain/readingCard';
 import { loadReadingCardSnapshot } from '../../src/services/readingCardSnapshot';
 import { shareReadingCard } from '../../src/ui/readingCardShare';
 import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
@@ -102,6 +102,7 @@ export default function ProgressScreen() {
   const activeScope = useRef<ScoreScope>('me');
   const activeMember = useRef<string | null>(session?.memberId ?? null);
   const prefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const profileRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshOnForeground = useRef<(preserveScanner?: boolean) => void>(() => undefined);
   const scannerActivityRequest = useRef<object | null>(null);
   const resumeScannerAfterActivity = useRef(false);
@@ -168,7 +169,11 @@ export default function ProgressScreen() {
   const isLive = useCallback((generation: number, expectedScope: ScoreScope, expectedMember?: string | null, requiresUnlock = false) => Boolean(focusedRef.current && appActive.current && requestGeneration.current === generation && activeScope.current === expectedScope && (expectedMember === undefined || expectedMember === activeMember.current) && session && isCurrentAuthSession(session) && (!requiresUnlock || guard.current.state === 'unlocked')), [session]);
   // Account-wide secondary content is independent of the selected chart range/member.
   const isViewLive = useCallback((generation: number) => Boolean(focusedRef.current && appActive.current && viewGeneration.current === generation && session && isCurrentAuthSession(session)), [session]);
-  const stopPrefetch = useCallback(() => { if (prefetchTimer.current !== null) clearTimeout(prefetchTimer.current); prefetchTimer.current = null; }, []);
+  // Also drops a scheduled profile retry: every caller is replacing the view that retry belonged to.
+  const stopPrefetch = useCallback(() => {
+    if (prefetchTimer.current !== null) clearTimeout(prefetchTimer.current); prefetchTimer.current = null;
+    if (profileRetryTimer.current !== null) clearTimeout(profileRetryTimer.current); profileRetryTimer.current = null;
+  }, []);
   const clearProtectedState = useCallback((preserveScanner = false, preserveOwnProfile = false, preserveOwnView = false) => {
     setPlanOpen(false);
     exportRequest.current = null; setExportOpen(false); setExportBusy(false); setExportError(null);
@@ -227,7 +232,7 @@ export default function ProgressScreen() {
       } catch { if (!owns()) return; }
     }
   }, [client, isLive]);
-  const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope, chartQuery?: ScoreChartQuery) => {
+  const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope, chartQuery?: ScoreChartQuery, attempt = 0): Promise<void> => {
     if (!client || !session || !isLive(requestGeneration.current, nextScope, memberId, nextScope === 'all')) return;
     const generation = requestGeneration.current;
     const requestId = ++profileRequest.current;
@@ -236,6 +241,7 @@ export default function ProgressScreen() {
     const keepVisibleProfile = nextScope === 'me' && memberId === session.memberId && currentProfile?.memberId === memberId && Boolean(currentProfile.private);
     stopPrefetch(); setBusy(!keepVisibleProfile); setError(null);
     let remoteSettled = false;
+    let retrying = false;
     let remembered: ScoreProfileData | null = null;
     // Storage and network start together. A late cache must never replace a fresh response.
     const cached = !chartQuery && nextScope === 'me' && memberId === session.memberId
@@ -259,9 +265,24 @@ export default function ProgressScreen() {
       await cached;
       if (!owns()) return;
       if (remembered) { if (!keepVisibleProfile) setProfile(remembered); setProfileStale(true); }
-      else { if (keepVisibleProfile) setProfileStale(true); setError(messageFor(reason)); }
+      // A read that timed out or never got an answer is asked again while this view is still on screen
+      // (00-smoke, 39182073666: a fresh install's first answer took 11.7 s against the 8 s deadline, and
+      // the page kept its error until the member left the tab). Each try keeps the full 8 s deadline.
+      // Until the last try settles, a page with nothing to show stays on 載入中… (saved points stay up
+      // instead), no error is shown, and the secondary reads keep waiting.
+      const retryDelay = PROFILE_RETRY_DELAYS_MS[attempt];
+      if (retryDelay !== undefined && isRetryableRead(reason)) {
+        retrying = true;
+        if (remembered || keepVisibleProfile) setBusy(false);
+        profileRetryTimer.current = setTimeout(() => {
+          profileRetryTimer.current = null;
+          if (owns()) void loadProfile(memberId, nextScope, chartQuery, attempt + 1);
+        }, retryDelay);
+        return;
+      }
+      if (!remembered) { if (keepVisibleProfile) setProfileStale(true); setError(messageFor(reason)); }
     } finally {
-      if (owns()) { setBusy(false); setPrimaryReady(true); }
+      if (owns() && !retrying) { setBusy(false); setPrimaryReady(true); }
     }
   }, [client, session, isLive, profileCache, prefetchCharts, stopPrefetch]);
   const loadPeople = useCallback(async (nextScope: Exclude<ScoreScope, 'me'>) => {
@@ -559,8 +580,8 @@ export default function ProgressScreen() {
       });
       const memberName = auth.profile?.memberId === session.memberId ? auth.profile.displayName : profile?.memberId === session.memberId ? profile.displayName : null;
       if (!memberName) throw new Error('目前沒有你的名字，請稍後重試。');
-      const html = buildReadingCardHtml({ today: taipeiDate(), memberName, scope: period, days: snapshot });
-      await shareReadingCard(html, owns);
+      const card = { today: taipeiDate(), memberName, scope: period };
+      await shareReadingCard(buildReadingCardHtml({ ...card, days: snapshot }), readingCardFileName(card), owns);
       if (owns()) setExportOpen(false);
     } catch (reason) {
       if (owns()) setExportError(reason instanceof Error ? reason.message : '產生讀經卡失敗，請重試。');
@@ -657,6 +678,12 @@ export default function ProgressScreen() {
 function monthNow(): string { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).formatToParts(new Date()); const year = parts.find((part) => part.type === 'year')?.value ?? '1970'; const month = parts.find((part) => part.type === 'month')?.value ?? '01'; return `${year}-${month}`; }
 function monthlyPlanId(date: string): string { return `church-${date.slice(0, 7)}`; }
 function messageFor(reason: unknown): string { return reason instanceof GamificationApiError ? reason.userMessage : '目前無法載入積分，請稍後再試。'; }
+// Waits before the second and third profile tries. Bounded, so a backend that is really off still ends
+// on the error (after about 31 s of 載入中… when every try times out) instead of retrying forever.
+const PROFILE_RETRY_DELAYS_MS = [2000, 5000];
+// Timeouts, unreachable networks and 5xx can answer differently next time; a refusal or a malformed
+// answer will not. A cancelled read belongs to a view that is already gone.
+function isRetryableRead(reason: unknown): boolean { return reason instanceof GamificationApiError && reason.retryable && reason.code !== 'REQUEST_CANCELLED'; }
 function SectionHeader({ title }: { title: string }) {
   return <View style={styles.section}><Text accessibilityRole="header" style={styles.sectionTitle}>{title}</Text><View style={styles.sectionRule} /></View>;
 }

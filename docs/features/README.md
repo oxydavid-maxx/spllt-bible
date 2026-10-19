@@ -15,7 +15,7 @@
 | [points.md](points.md) | 積分與社群：團體 (青少一起讀經、團體獎)、個人 (月曆、積分圖、目標獎品)、好友、全體 (管理)、兌換 |
 | [journal.md](journal.md) | 靈修日記：寫、存、匯出、存到自選資料夾 (2026-10-14 起分頁列不顯示) |
 | [reminders.md](reminders.md) | 讀經提醒與推播 |
-| [account.md](account.md) | Google/Apple 登入、帳戶頁、青少/主堂、永久刪除帳號、登出、App 更新提示 |
+| [account.md](account.md) | Google/Apple 登入 (含開機分流與登入中斷提示)、帳戶頁、青少/主堂、永久刪除帳號、登出、App 更新提示 |
 
 ## 公告
 

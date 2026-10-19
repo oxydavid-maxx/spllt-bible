@@ -74,15 +74,15 @@ describe('GET /api/devotional/:date', () => {
   const dirs: string[] = [];
   const databases: Array<{ close: () => void }> = [];
   afterEach(() => { databases.splice(0).forEach((database) => database.close()); dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })); });
-  function setup(at = '2026-10-14T04:00:00Z') {
+  function setup(at: string | (() => Date) = '2026-10-14T04:00:00Z') {
     const dir = mkdtempSync(join(tmpdir(), 'devotional-'));
     dirs.push(dir);
     writeFileSync(join(dir, '20261014.txt'), POST, 'utf8');
     writeFileSync(join(dir, '20261013.txt'), POST, 'utf8');
-    const database = createDatabase({ members: [{ id: 'member-self', displayName: '自己', groupId: 'g' }] });
+    const database = createDatabase({ members: [{ id: 'member-self', displayName: '自己', groupId: 'g' }, { id: 'member-two', displayName: '朋友', groupId: 'g' }] });
     databases.push(database);
-    const api = createApiHandler({ db: database, fixtureToken: 'test-token', devotionalDir: dir, songTitle: async () => ({ title: '詩篇16篇 詩歌《耶和華是我產業》', channel: '測試頻道' }), now: () => new Date(at) });
-    return { api, headers: { authorization: 'Bearer test-token', 'x-qingmu-member-id': 'member-self' } };
+    const api = createApiHandler({ db: database, fixtureToken: 'test-token', devotionalDir: dir, songTitle: async () => ({ title: '詩篇16篇 詩歌《耶和華是我產業》', channel: '測試頻道' }), now: typeof at === 'function' ? at : () => new Date(at) });
+    return { api, dir, headers: { authorization: 'Bearer test-token', 'x-qingmu-member-id': 'member-self' } };
   }
 
   it('serves the day to a signed-in member', async () => {
@@ -122,6 +122,25 @@ describe('GET /api/devotional/:date', () => {
     expect((await thursday.api({ method: 'GET', url: '/api/devotional/2026-10-14', headers: thursday.headers })).status).toBe(200);
     const sunday = setup('2026-10-18T01:00:00Z'); // 10/18 (日): no devotional is posted on Sundays
     expect((await sunday.api({ method: 'GET', url: '/api/devotional/2026-10-18', headers: sunday.headers })).status).toBe(404);
+  });
+
+  // 2026-10-19 review: at the last chapter's end, apps up to 0.5.34 ask again on every error, one request per round
+  // trip without end. A re-ask within 10 seconds gets the plain 404 (還沒有上傳), which those apps keep and stop on.
+  it('answers a re-ask within 10 seconds with a plain 404, per member, until the post arrives', async () => {
+    let at = Date.parse('2026-10-14T23:30:00Z'); // 10/15 (四) 07:30 Taipei, no 20261015.txt yet
+    const { api, dir, headers } = setup(() => new Date(at));
+    const ask = async (member = 'member-self') => (await api({ method: 'GET', url: '/api/devotional/2026-10-15', headers: { ...headers, 'x-qingmu-member-id': member } })).status;
+    expect(await ask()).toBe(503);
+    at += 300;
+    expect(await ask()).toBe(404);
+    at += 300;
+    expect(await ask()).toBe(404);
+    expect(await ask('member-two')).toBe(503);
+    at += 10_000;
+    expect(await ask()).toBe(503);
+    writeFileSync(join(dir, '20261015.txt'), POST.replace('2026.10.14 (三)', '2026.10.15 (四)'), 'utf8');
+    at += 100;
+    expect(await ask()).toBe(200);
   });
 });
 

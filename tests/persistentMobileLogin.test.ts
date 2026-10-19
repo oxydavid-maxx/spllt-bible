@@ -110,7 +110,7 @@ describe('actual App auth/storage/client to isolated server handler', () => {
   it('the real GoogleLoginCard requests and persists a device session with one native Google invocation', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = 'test-web-client';
     let nativeCalls = 0;
-    const native = { GoogleOneTapSignIn: { configure() {}, checkPlayServices: async () => {}, signIn: async () => { nativeCalls++; return { data: { idToken: 'test-google-A' } }; }, createAccount: async () => { throw new Error('unexpected picker'); }, presentExplicitSignIn: async () => { throw new Error('unexpected picker'); } }, isSuccessResponse: (value: any) => Boolean(value?.data?.idToken), isNoSavedCredentialFoundResponse: () => false, isCancelledResponse: () => false };
+    const native = { GoogleOneTapSignIn: { configure() {}, checkPlayServices: async () => {}, signIn: async () => { throw new Error('unexpected One Tap'); }, createAccount: async () => { throw new Error('unexpected account creation'); }, presentExplicitSignIn: async () => { nativeCalls++; return { data: { idToken: 'test-google-A' } }; } }, isSuccessResponse: (value: any) => Boolean(value?.data?.idToken), isNoSavedCredentialFoundResponse: () => false, isCancelledResponse: () => false };
     const originalLoad = (Module as any)._load;
     vi.spyOn(Module as any, '_load').mockImplementation(function(this: unknown, ...args: unknown[]) { return args[0] === 'react-native-nitro-google-signin' ? native : originalLoad.apply(this, args); });
     const { GoogleLoginCard } = await import('../src/ui/GoogleLoginCard');
