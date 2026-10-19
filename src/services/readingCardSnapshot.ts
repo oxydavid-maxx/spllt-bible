@@ -28,9 +28,9 @@ export function readingCardDays(plan: ReadingPlan, cached: CachedReadingProgress
     const useLocal = local && (!remote || local.syncStatus !== 'CONFIRMED' || local.revision > remote.revision);
     // Normally the source rows are exact. A downloaded correction uses its actual references;
     // grouping adjacent chapters preserves a single row for ranges such as 詩107–108.
-    const rows = !remote || JSON.stringify(remote.references) === JSON.stringify(day.references)
-      ? day.sourceRows
-      : correctedRows(remote.references);
+    // A day that came from the backend has no source rows; its passages give the rows instead.
+    const exact = !remote || JSON.stringify(remote.references) === JSON.stringify(day.references);
+    const rows = exact && day.sourceRows.length > 0 ? day.sourceRows : correctedRows(remote?.references ?? day.references);
     return { date: day.date, rows, completed: (useLocal ? local.status : remote?.status ?? local?.status) === 'COMPLETED', devoted: cached.devotionDates.includes(day.date) };
   });
 }

@@ -149,10 +149,15 @@ export function replaceReadingDaysRange(from: string, to: string, days: ReadingD
     const next = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
     month = next.toISOString().slice(0, 7);
   }
+  const previous = new Map(activePlan.days.map(day => [day.date, day]));
   const byDate = new Map(activePlan.days.filter(day => day.date < from || day.date > to).map(day => [day.date, day]));
   for (const day of days) {
     if (day.taskDate < from || day.taskDate > to) continue;
-    byDate.set(day.taskDate, { date: day.taskDate, planId: day.planId, sourceRows: [], references: [...day.references], revision: day.sourceRevision });
+    // The church's own wording (讀經卡 rows) stays for a day whose passages did not change (2026-10-19: every
+    // replaced day had lost it, and 匯出讀經卡 found no scheduled reading).
+    const before = previous.get(day.taskDate);
+    const sourceRows = before && JSON.stringify(before.references) === JSON.stringify(day.references) ? [...before.sourceRows] : [];
+    byDate.set(day.taskDate, { date: day.taskDate, planId: day.planId, sourceRows, references: [...day.references], revision: day.sourceRevision });
   }
   activePlan = normalizePlan({ ...activePlan, days: [...byDate.values()] });
   planIdByDate = new Map(activePlan.days.map(day => [day.date, day.planId ?? activePlan.planId]));
