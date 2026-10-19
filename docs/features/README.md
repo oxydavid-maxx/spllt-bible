@@ -15,7 +15,7 @@
 | [points.md](points.md) | 積分與社群：團體 (青少一起讀經、團體獎)、個人 (月曆、積分圖、目標獎品)、好友、全體 (管理)、兌換 |
 | [journal.md](journal.md) | 靈修日記：寫、存、匯出、存到自選資料夾 (2026-10-14 起分頁列不顯示) |
 | [reminders.md](reminders.md) | 讀經提醒與推播 |
-| [account.md](account.md) | Google/Apple 登入、帳戶頁、青少/主堂、永久刪除帳號、登出、App 更新提示 |
+| [account.md](account.md) | Google/Apple 登入 (含開機分流與登入中斷提示)、帳戶頁、青少/主堂、永久刪除帳號、登出、App 更新提示 |
 
 ## 公告
 
@@ -32,7 +32,7 @@
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| 開啟日期 | 打開 App 自動落在今天；計畫還沒開始或已結束時落在最近的一天 | 分頁列「讀經」 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 開啟日期 | 打開 App 自動落在今天；跨午夜回來會跟上今天，保留手選歷史日與朗讀；計畫還沒開始或已結束時落在最近的一天 | 分頁列「讀經」 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 日期列 ‹ › | 換到前一個或下一個排定讀經日，沒有就變灰 | 讀經頁頂部 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 當日章節 | 一排標籤對應當天每段經文，點哪段讀哪段 | 讀經頁日期列下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 自由閱讀 | 換到計畫以外的書卷和章 | 讀經頁「選擇其他章節」 | Android、iOS | [reader.md](reader.md) |
@@ -49,7 +49,7 @@
 | 接續靈修 | 預設關，選單或有期限的最後章底提示可開啟；經文念完接著念靈修，再播詩歌 | 更多閱讀工具、最後一章底 | Android、iOS | [reader.md](reader.md) |
 | 靈修打勾 | 按葉子圈完成靈修，浮出不含分數的完成小字；滑到底展開大按鈕，月曆標「靈修」，不加積分或團體統計 | 讀經/靈修頁葉子圈、積分「自己」最上面的當天卡 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 補登和撤銷 | 今天和前 6 天可以補打卡；撤銷要先確認並收回積分 | 讀經頁、積分月曆 | Android、iOS | [reading-plan.md](reading-plan.md) |
-| 離線打卡與跨手機 | 沒網路先記住、連上後送出；另一支手機完成的日子也顯示已完成 | 讀經頁、積分頁 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 離線打卡與跨手機 | 沒網路先記住、連上後送出；回到前景/讀經頁時讀回另一支手機的完成與撤銷 | 讀經頁、積分頁 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 整份讀經計畫清單 | 分月顯示 9/1–12/31，今天標底色、讀完打勾，點一天就去讀；上緣可下拉關閉 | 讀經頁點日期、積分月曆的「整份計畫」 | Android、iOS | [reading-plan.md](reading-plan.md) |
 
 ## 朗讀
@@ -104,10 +104,10 @@
 |---|---|---|---|---|
 | Google 登入 | 用 Google 帳號登入，第一次登入自動建立帳號；測試機旗標、IP 或驗過的 token email 網域命中的新會員直接停用 | 開 App 時的登入畫面 | Android、iOS (iOS 需私有 OAuth 設定，TestFlight 真機另驗) | [account.md](account.md) |
 | Apple 登入 | iPhone 原生授權，首次登入建立帳號；Android 不顯示 | 登入畫面 | iOS | [account.md](account.md) |
-| 後台規則與文件 | 管理者解鎖後看所有後台規則和文件連結 (試算表、讀經表等) | 帳戶頁「後台規則與文件」 | Android、iOS | [account.md](account.md) |
+| 後台規則與文件 | 管理者解鎖後看所有後台規則和文件連結，失敗可重試 (試算表、讀經表等) | 帳戶頁「後台規則與文件」 | Android、iOS | [account.md](account.md) |
 | 刪除帳號 | 二次確認後刪除伺服器個資並登出，無需寄信 | 帳戶頁「刪除帳號與資料」 | Android、iOS | [account.md](account.md) |
 | 啟用碼 | 認不出 Google 帳號時，用一次性啟用碼綁定 | 登入畫面（需要時才出現） | Android、iOS | [account.md](account.md) |
-| 帳戶頁 | 看自己的名字和小組、設定提醒、登出、刪除帳號與資料、看 App 版本 | 右上角頭像 | Android、iOS | [account.md](account.md) |
+| 帳戶頁 | 回前景更新名字、歸屬和提醒；進頁重驗管理資格；看自己的名字和小組、設定提醒、登出、刪除帳號與資料、看 App 版本 | 右上角頭像 | Android、iOS | [account.md](account.md) |
 | 青少/主堂 | 新會員第一次登入選青少或主堂，之後可以在帳戶頁改 | 登入後第一個畫面、帳戶頁「我在哪裡聚會」 | Android、iOS | [account.md](account.md) |
 | App 更新提示 | 有新版時提示更新：Play 裝的在 App 裡更新，側載的開安裝頁 | 開 App 或回到前景時自動出現 | 只有 Android | [account.md](account.md) |
 

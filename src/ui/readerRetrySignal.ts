@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { subscribeAppActive } from '../services/appVisibility';
 
 /**
  * A counter the reader bumps whenever it comes back into view: its tab regains focus, or the app
@@ -18,10 +18,7 @@ export function useReaderRetrySignal(focused: boolean): number {
 
   useEffect(() => {
     if (!focused) return undefined;
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') setSignal((value) => value + 1);
-    });
-    return () => subscription.remove();
+    return subscribeAppActive(() => setSignal(value => value + 1));
   }, [focused]);
 
   return signal;

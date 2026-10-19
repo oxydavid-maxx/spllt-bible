@@ -81,7 +81,7 @@ describe('progress protected response lifecycle', () => {
     api.getProfile.mockImplementationOnce(() => new Promise((resolve) => { resolveProfile = resolve; }));
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
-    await act(async () => { appListeners[0]?.('background'); });
+    await act(async () => { [...appListeners].forEach(listener => listener('background')); });
     await act(async () => { resolveProfile({ memberId: 'self', displayName: '私人', earnedTotal: 99, band: 1, months: [{ month: '2026-09', earnedPoints: 99 }], private: { redeemableBalance: 99, targetReward: null }, permissions: { canEditTarget: true, canRedeem: false } }); });
     expect(renderer.root.findAll((node) => String(node.type) === 'ScoreProfile')).toHaveLength(0);
   });

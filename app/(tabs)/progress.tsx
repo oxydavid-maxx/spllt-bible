@@ -21,19 +21,21 @@ import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { useCongregation } from '../../src/ui/congregation/congregationStore';
 import { theme } from '../../src/ui/Theme';
 import { createApiClient } from '../../src/services/apiClient';
+import { readReadingDays } from '../../src/services/readingDaysRead';
+import { readViewerCapabilities } from '../../src/services/viewerCapabilities';
 import { useCompletionController } from '../../src/services/useCompletionController';
 import type { CompletionAwardEvent, CompletionSyncEvent } from '../../src/services/completionController';
 import { applyCompletionSyncToProfile } from '../../src/ui/completionProfileSync';
 import { CompletionTodayButton } from '../../src/ui/CompletionTodayButton';
 import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
-import { getReadingPlan, getReadingPlanId, getReadingPlanSpan, getScheduledReading, setSelectedReadingDate } from '../../src/ui/readingSession';
+import { getReadingPlan, replaceReadingDaysRange, getReadingPlanId, getReadingPlanSpan, getScheduledReading, setSelectedReadingDate } from '../../src/ui/readingSession';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
 import type { CompletionRecord } from '../../src/domain/completion';
 import { ReadingCalendarCard } from '../../src/ui/gamification/ReadingCalendarCard';
 import { SelectedDayCard } from '../../src/ui/gamification/SelectedDayCard';
 import { ReadingCardExportSheet } from '../../src/ui/gamification/ReadingCardExportSheet';
-import { buildReadingCardHtml, type ReadingCardScope } from '../../src/domain/readingCard';
+import { buildReadingCardHtml, readingCardFileName, type ReadingCardScope } from '../../src/domain/readingCard';
 import { loadReadingCardSnapshot } from '../../src/services/readingCardSnapshot';
 import { shareReadingCard } from '../../src/ui/readingCardShare';
 import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
@@ -105,6 +107,7 @@ export default function ProgressScreen() {
   const activeScope = useRef<ScoreScope>('me');
   const activeMember = useRef<string | null>(session?.memberId ?? null);
   const prefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const profileRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshOnForeground = useRef<(preserveScanner?: boolean) => void>(() => undefined);
   const scannerActivityRequest = useRef<object | null>(null);
   const resumeScannerAfterActivity = useRef(false);
@@ -120,11 +123,14 @@ export default function ProgressScreen() {
   useEffect(() => {
     let active = true;
     const expectedAuthEpoch = auth.epoch;
-    if (!completionClient || !session) return () => { active = false; };
+    if (!completionClient || !session || !focused || !appForeground) return () => { active = false; };
     const range = readingDaysRange(calendarMonth, today);
-    void completionClient.getReadingDays(range.from, range.to).then((response) => {
+    void readReadingDays(session, range.from, range.to, () => completionClient.getReadingDays(range.from, range.to)).then((response) => {
       if (!active || !response || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
-      const fetched = new Map(response.days.map((day) => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', canComplete: day.canComplete }] as const));
+      replaceReadingDaysRange(range.from, range.to, response.days);
+      completion.reconcileRemoteDays?.(response.days);
+      setConfirmedDays(current => Object.fromEntries(Object.entries(current).filter(([date]) => date < range.from || date > range.to)));
+      const fetched = new Map(response.days.map((day) => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', revision: day.revision, canComplete: day.canComplete }] as const));
       setSchedule((current) => {
         const days = new Map([...current.days].filter(([date]) => date < range.from || date > range.to));
         for (const [date, day] of fetched) days.set(date, day);
@@ -133,7 +139,7 @@ export default function ProgressScreen() {
       if (!pickedDate.current && calendarMonth === today.slice(0, 7)) setSelectedDate(defaultSelectedDate(today, fetched));
     }).catch(() => undefined);
     return () => { active = false; };
-  }, [completionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh]);
+  }, [completionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh, focused, appForeground]);
   const loadedDevotionRanges = useRef<Array<{ from: string; to: string }>>([]);
   useEffect(() => {
     let active = true;
@@ -145,7 +151,7 @@ export default function ProgressScreen() {
       setSchedule(current => {
         const days = new Map<string, CalendarDay>(Object.values(cached.days)
           .filter(day => !current.ranges.some(range => day.taskDate >= range.from && day.taskDate <= range.to))
-          .map(day => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', canComplete: isWithinCompletionWindow(day.taskDate, today) }]));
+          .map(day => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', revision: day.revision, canComplete: isWithinCompletionWindow(day.taskDate, today) }]));
         for (const [date, day] of current.days) days.set(date, day);
         return { days, ranges: [...(cached.ranges ?? []), ...current.ranges] };
       });
@@ -159,7 +165,7 @@ export default function ProgressScreen() {
   useEffect(() => {
     let active = true;
     const expectedAuthEpoch = auth.epoch;
-    if (!devotionClient || !session) return () => { active = false; };
+    if (!devotionClient || !session || !focused || !appForeground) return () => { active = false; };
     const range = readingDaysRange(calendarMonth, today);
     void devotionClient.getDevotionDates(range.from, range.to).then((dates) => {
       if (!active || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
@@ -167,11 +173,15 @@ export default function ProgressScreen() {
       setDevotionDates((current) => new Set([...[...current].filter((date) => date < range.from || date > range.to), ...dates]));
     }).catch(() => undefined);
     return () => { active = false; };
-  }, [devotionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh]);
+  }, [devotionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh, focused, appForeground]);
   const isLive = useCallback((generation: number, expectedScope: ScoreScope, expectedMember?: string | null, requiresUnlock = false) => Boolean(focusedRef.current && appActive.current && requestGeneration.current === generation && activeScope.current === expectedScope && (expectedMember === undefined || expectedMember === activeMember.current) && session && isCurrentAuthSession(session) && (!requiresUnlock || guard.current.state === 'unlocked')), [session]);
   // Account-wide secondary content is independent of the selected chart range/member.
   const isViewLive = useCallback((generation: number) => Boolean(focusedRef.current && appActive.current && viewGeneration.current === generation && session && isCurrentAuthSession(session)), [session]);
-  const stopPrefetch = useCallback(() => { if (prefetchTimer.current !== null) clearTimeout(prefetchTimer.current); prefetchTimer.current = null; }, []);
+  // Also drops a scheduled profile retry: every caller is replacing the view that retry belonged to.
+  const stopPrefetch = useCallback(() => {
+    if (prefetchTimer.current !== null) clearTimeout(prefetchTimer.current); prefetchTimer.current = null;
+    if (profileRetryTimer.current !== null) clearTimeout(profileRetryTimer.current); profileRetryTimer.current = null;
+  }, []);
   const clearProtectedState = useCallback((preserveScanner = false, preserveOwnProfile = false, preserveOwnView = false) => {
     setPlanOpen(false);
     exportRequest.current = null; setExportOpen(false); setExportBusy(false); setExportError(null);
@@ -201,7 +211,7 @@ export default function ProgressScreen() {
         const preserveScanner = wasActive && focusedRef.current && activeSheet.current === 'scan' && scannerActivityRequest.current !== null;
         resumeScannerAfterActivity.current = preserveScanner;
         clearProtectedState(preserveScanner, true, true);
-      } else if (focusedRef.current) {
+      } else if (!wasActive && focusedRef.current) {
         const preserveScanner = resumeScannerAfterActivity.current && activeSheet.current === 'scan';
         resumeScannerAfterActivity.current = false;
         refreshOnForeground.current(preserveScanner);
@@ -230,7 +240,7 @@ export default function ProgressScreen() {
       } catch { if (!owns()) return; }
     }
   }, [client, isLive]);
-  const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope, chartQuery?: ScoreChartQuery) => {
+  const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope, chartQuery?: ScoreChartQuery, attempt = 0): Promise<void> => {
     if (!client || !session || !isLive(requestGeneration.current, nextScope, memberId, nextScope === 'all')) return;
     const generation = requestGeneration.current;
     const requestId = ++profileRequest.current;
@@ -239,6 +249,7 @@ export default function ProgressScreen() {
     const keepVisibleProfile = nextScope === 'me' && memberId === session.memberId && currentProfile?.memberId === memberId && Boolean(currentProfile.private);
     stopPrefetch(); setBusy(!keepVisibleProfile); setError(null);
     let remoteSettled = false;
+    let retrying = false;
     let remembered: ScoreProfileData | null = null;
     // Storage and network start together. A late cache must never replace a fresh response.
     const cached = !chartQuery && nextScope === 'me' && memberId === session.memberId
@@ -262,9 +273,24 @@ export default function ProgressScreen() {
       await cached;
       if (!owns()) return;
       if (remembered) { if (!keepVisibleProfile) setProfile(remembered); setProfileStale(true); }
-      else { if (keepVisibleProfile) setProfileStale(true); setError(messageFor(reason)); }
+      // A read that timed out or never got an answer is asked again while this view is still on screen
+      // (00-smoke, 39182073666: a fresh install's first answer took 11.7 s against the 8 s deadline, and
+      // the page kept its error until the member left the tab). Each try keeps the full 8 s deadline.
+      // Until the last try settles, a page with nothing to show stays on 載入中… (saved points stay up
+      // instead), no error is shown, and the secondary reads keep waiting.
+      const retryDelay = PROFILE_RETRY_DELAYS_MS[attempt];
+      if (retryDelay !== undefined && isRetryableRead(reason)) {
+        retrying = true;
+        if (remembered || keepVisibleProfile) setBusy(false);
+        profileRetryTimer.current = setTimeout(() => {
+          profileRetryTimer.current = null;
+          if (owns()) void loadProfile(memberId, nextScope, chartQuery, attempt + 1);
+        }, retryDelay);
+        return;
+      }
+      if (!remembered) { if (keepVisibleProfile) setProfileStale(true); setError(messageFor(reason)); }
     } finally {
-      if (owns()) { setBusy(false); setPrimaryReady(true); }
+      if (owns() && !retrying) { setBusy(false); setPrimaryReady(true); }
     }
   }, [client, session, isLive, profileCache, prefetchCharts, stopPrefetch]);
   const loadPeople = useCallback(async (nextScope: Exclude<ScoreScope, 'me'>) => {
@@ -312,11 +338,11 @@ export default function ProgressScreen() {
   }, [clearProtectedState, refreshOwnProfile]));
   // Everything secondary waits for the one critical own-profile request to settle.
   useEffect(() => {
-    if (!client || !session || !focused || !primaryReady || capabilities) return;
+    if (!client || !session || !focused || !primaryReady) return;
     let active = true; const generation = viewGeneration.current;
-    void client.getCapabilities().then((value) => { if (active && isViewLive(generation)) setCapabilities(value); }).catch((reason) => { if (active && isViewLive(generation)) setError(messageFor(reason)); });
+    void readViewerCapabilities(JSON.stringify([session.memberId, session.sessionToken, auth.epoch]), () => client.getCapabilities(), secondaryRefresh).then((value) => { if (active && isViewLive(generation)) setCapabilities(value); }).catch((reason) => { if (active && isViewLive(generation)) setError(messageFor(reason)); });
     return () => { active = false; };
-  }, [client, session, focused, primaryReady, capabilities, isViewLive]);
+  }, [client, session, focused, primaryReady, secondaryRefresh, isViewLive]);
 
   const chooseScope = async (nextScope: ScoreScope) => {
     if (!client || !session || !focusedRef.current || !appActive.current || (nextScope === scope && !(nextScope !== 'me' && selected))) return;
@@ -508,14 +534,16 @@ export default function ProgressScreen() {
     refreshCompletionProfile(event);
   }, [refreshCompletionProfile, session?.memberId]);
   // The same shared controller the reading tab uses, pointed at whichever day the calendar selected.
-  const completion = useCompletionController({ planId: selectedPlanId, taskDate: selectedDate, canComplete: selectedCanComplete, onAward: onCompletionAward, onConfirmed: onCompletionConfirmed });
+  const completion = useCompletionController({ planId: selectedPlanId, taskDate: selectedDate, canComplete: selectedCanComplete, refreshRemote: false, onAward: onCompletionAward, onConfirmed: onCompletionConfirmed });
   // The selected day's own record is the freshest word on it (it flips the moment the button is
   // pressed); other days take a confirmed sync event over the schedule.
   const localRecordTouched = (record: CompletionRecord) => record.revision > 0 || record.syncStatus !== 'CONFIRMED' || record.status !== 'UNREPORTED';
   const calendarDay = (date: string): CalendarDay | undefined => {
     const base = scheduledDay(date);
     if (!base) return undefined;
-    if (date === selectedDate && completion.record.taskDate === date && localRecordTouched(completion.record)) return { ...base, completed: completion.record.status === 'COMPLETED' };
+    const local = completion.getCompletionRecord?.(base.planId, date)
+      ?? (date === selectedDate && completion.record.taskDate === date ? completion.record : undefined);
+    if (local && localRecordTouched(local) && (local.syncStatus !== 'CONFIRMED' || base.revision === undefined || local.revision >= base.revision)) return { ...base, completed: local.status === 'COMPLETED' };
     return date in confirmedDays ? { ...base, completed: confirmedDays[date] } : base;
   };
   // The displayed month, plus the selected day wherever it is: paging months keeps the day card's day.
@@ -562,8 +590,8 @@ export default function ProgressScreen() {
       });
       const memberName = auth.profile?.memberId === session.memberId ? auth.profile.displayName : profile?.memberId === session.memberId ? profile.displayName : null;
       if (!memberName) throw new Error('目前沒有你的名字，請稍後重試。');
-      const html = buildReadingCardHtml({ today: taipeiDate(), memberName, scope: period, days: snapshot });
-      await shareReadingCard(html, owns);
+      const card = { today: taipeiDate(), memberName, scope: period };
+      await shareReadingCard(buildReadingCardHtml({ ...card, days: snapshot }), readingCardFileName(card), owns);
       if (owns()) setExportOpen(false);
     } catch (reason) {
       if (owns()) setExportError(reason instanceof Error ? reason.message : '產生讀經卡失敗，請重試。');
@@ -669,6 +697,12 @@ export default function ProgressScreen() {
 function monthNow(): string { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).formatToParts(new Date()); const year = parts.find((part) => part.type === 'year')?.value ?? '1970'; const month = parts.find((part) => part.type === 'month')?.value ?? '01'; return `${year}-${month}`; }
 function monthlyPlanId(date: string): string { return `church-${date.slice(0, 7)}`; }
 function messageFor(reason: unknown): string { return reason instanceof GamificationApiError ? reason.userMessage : '目前無法載入積分，請稍後再試。'; }
+// Waits before the second and third profile tries. Bounded, so a backend that is really off still ends
+// on the error (after about 31 s of 載入中… when every try times out) instead of retrying forever.
+const PROFILE_RETRY_DELAYS_MS = [2000, 5000];
+// Timeouts, unreachable networks and 5xx can answer differently next time; a refusal or a malformed
+// answer will not. A cancelled read belongs to a view that is already gone.
+function isRetryableRead(reason: unknown): boolean { return reason instanceof GamificationApiError && reason.retryable && reason.code !== 'REQUEST_CANCELLED'; }
 function SectionHeader({ title }: { title: string }) {
   return <View style={styles.section}><Text accessibilityRole="header" style={styles.sectionTitle}>{title}</Text><View style={styles.sectionRule} /></View>;
 }

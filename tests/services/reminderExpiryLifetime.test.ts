@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('react-native', () => ({}));
+vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} }));
 import { clearAuthSession, getAuthSnapshot, hydrateAuthSnapshot, markAuthExpired, setAuthSession } from '../../src/services/authSession';
 import { ReminderRuntimeOwner } from '../../src/services/reminderRuntime';

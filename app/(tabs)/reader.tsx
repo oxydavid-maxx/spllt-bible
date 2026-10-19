@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, Linking, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { buildFixtureModels } from '../../src/ui/routes';
 import { YouVersionReader } from '../../src/ui/YouVersionReader';
 import { FullscreenReaderLayout, readerCanvasInsets, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
 import { createJournalFolderMirror } from '../../src/services/journalFolderMirror';
@@ -9,6 +8,7 @@ import { createReaderSpeedStore, DEFAULT_READER_SPEED, isReaderSpeed, type Reade
 import { formatReadingDateLabel } from '../../src/ui/ReadingDateNavigator';
 import { openQingmuReaderPositionStore } from '../../src/storage/mobileDatabase';
 import type { ReaderPosition } from '../../src/storage/readerPosition';
+import { useReaderAudioSnapshot } from '../../src/services/readerAudioBridge';
 import { fixtureProfile } from '../../src/ui/fixtureProfile';
 import { getYouVersionContentMetadata, getYouVersionVersionOptions } from '../../src/config/youVersionContent';
 import { buildYouVersionChapterUrl } from '../../src/ui/youVersionReaderConfig';
@@ -16,7 +16,7 @@ import { createNativeReaderPreferencesStore } from '../../src/services/nativeRea
 import { createReaderAutoplayPreferencesStore } from '../../src/services/readerAutoplayPreferences';
 import type { ReaderPreferencesPatch } from '../../src/services/readerPreferences';
 import { useReaderPreferences } from '../../src/ui/useReaderPreferences';
-import { setPendingJournalQuote, setSelectedReadingDate, useReadingSession } from '../../src/ui/readingSession';
+import { setPendingJournalQuote, setSelectedReadingDate, useReadingDateRollover, useReadingSession } from '../../src/ui/readingSession';
 import { useAuthSnapshot } from '../../src/services/authSession';
 import * as SecureStore from 'expo-secure-store';
 import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
@@ -39,12 +39,12 @@ export default function ReaderScreen() {
   useEffect(() => { if (!chrome.focused) setPlanOpen(false); }, [chrome.focused]);
   // A chapter that failed to load while this tab was out of sight retries when it comes back.
   const retrySignal = useReaderRetrySignal(chrome.focused);
+  const audio = useReaderAudioSnapshot();
   const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession();
   const auth = useAuthSnapshot();
   const session = auth.session;
   const memberId = session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
-  const model = buildFixtureModels(selectedDate);
-  const references = day?.references ?? model.reader.references;
+  const references = day?.references ?? [];
   const referencesKey = references.join('|');
   const [preferencesStore] = useState(createNativeReaderPreferencesStore);
   const preferences = useReaderPreferences(memberId, preferencesStore);
@@ -213,6 +213,14 @@ export default function ReaderScreen() {
     showTools: chrome.showTools,
     textSettings: preferences.preferences.settings,
     narrationSpeed,
+    focused: chrome.focused,
+  });
+  useReadingDateRollover({
+    visible: chrome.focused,
+    playing: audio.state === 'playing',
+    finished: audio.finished || audio.state === 'inactive' || audio.state === 'retry' || audio.state === 'unavailable',
+    devotionPlaying: Boolean(readerDevotion.devotion?.speaking),
+    devotionFinished: !readerDevotion.narrationActive,
   });
   const syncError = completion.syncError;
   useEffect(() => {

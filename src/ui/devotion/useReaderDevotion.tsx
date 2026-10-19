@@ -9,6 +9,7 @@ import { isWithinCompletionWindow, taipeiDate } from '../../domain/gamificationV
 import type { DevotionCompletionEvent } from '../CompletionAwardFeedback';
 import type { ReaderDevotion } from '../FullscreenReaderLayout';
 import { DevotionalView, type DevotionalState } from './DevotionalView';
+import { useReaderRetrySignal } from '../readerRetrySignal';
 import { devotionBanner } from './devotionFabModel';
 
 /**
@@ -27,6 +28,8 @@ const preferences = createDevotionPreferencesStore({
 export interface ReaderDevotionBinding {
   devotion: ReaderDevotion | undefined;
   completionEvent: DevotionCompletionEvent | null;
+  /** Includes a paused narration, so midnight cannot discard its remaining text. */
+  narrationActive: boolean;
   clearCompletionFeedback: (operationId: string) => void;
   /** For YouVersionReader: the last chapter's narration ended. */
   onLastChapterNarrated: () => void;
@@ -34,12 +37,14 @@ export interface ReaderDevotionBinding {
   leave: () => void;
 }
 
-export function useReaderDevotion({ session, baseUrl, date, showTools, textSettings, narrationSpeed = 1 }: {
+export function useReaderDevotion({ session, baseUrl, date, showTools, textSettings, narrationSpeed = 1, focused = true }: {
   session: { memberId: string; sessionToken: string } | null; baseUrl: string; date: string; showTools: () => void;
   /** The member's 調整字體 settings for scripture (null: the SDK defaults); the 靈修 words follow them. */
   textSettings?: { fontSize: number; lineSpacing: number } | null;
   narrationSpeed?: number;
+  focused?: boolean;
 }): ReaderDevotionBinding {
+  const refreshSignal = useReaderRetrySignal(focused);
   const memberId = session?.memberId ?? null;
   const client = useMemo(() => session ? createDevotionClient({ baseUrl, token: session.sessionToken, memberId: session.memberId }) : null, [baseUrl, session?.memberId, session?.sessionToken]);
   const connection = useRef(session ? { baseUrl, token: session.sessionToken, memberId: session.memberId } : null);
@@ -72,11 +77,12 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   useEffect(() => () => speech.stop(), [speech]);
   useEffect(() => {
     if (!client) { setMarked(null); return; }
+    if (!focused) return;
     let active = true;
     const revision = markRevision.current;
     void client.getDevotionDates(date, date).then((dates) => { if (active && revision === markRevision.current) setMarked({ date, done: dates.includes(date) }); }).catch(() => undefined);
     return () => { active = false; };
-  }, [client, date]);
+  }, [client, date, refreshSignal]);
 
   const load = useCallback(() => {
     if (!client) return;
@@ -158,5 +164,5 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
     followEnabled: follow.enabled,
     onFollowChange: (enabled) => preferences.setEnabled(memberId, enabled),
   } : undefined;
-  return { devotion, onLastChapterNarrated, leave, completionEvent, clearCompletionFeedback: operationId => setCompletionEvent(current => current?.operationId === operationId ? null : current) };
+  return { devotion, onLastChapterNarrated, leave, completionEvent, narrationActive: spoken.date === date && (spoken.status === 'speaking' || spoken.status === 'paused'), clearCompletionFeedback: operationId => setCompletionEvent(current => current?.operationId === operationId ? null : current) };
 }

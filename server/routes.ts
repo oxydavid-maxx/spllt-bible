@@ -328,6 +328,8 @@ export function createApiHandler(options: ApiHandlerOptions) {
     // only when the caller has explicitly inserted it into reading_days.
   }
   const now = options.now ?? (() => new Date());
+  // member|date → when that member last got today's retryable not-yet-posted answer (see GET /api/devotional/:date).
+  const notYetPostedAnswered = new Map<string, number>();
   const resolveChapterAudio = createChapterAudioResolver();
   if (options.prewarmChapterAudio) {
     const versions = options.prewarmVersionIds ?? [46, 40, 111, 406, 114];
@@ -723,8 +725,18 @@ export function createApiHandler(options: ApiHandlerOptions) {
         // The pastor posts at no fixed hour (維護者 2026-10-19). Apps up to 0.5.34 keep a 404 (還沒有上傳) for the rest
         // of the day but ask again after an error, so today's not-yet-posted day (Monday–Saturday; no 靈修 on
         // Sundays) answers a retryable error. Every other missing day stays a plain 404.
+        // Those apps also re-ask on every error while the reader rests at the last chapter's end, one request per
+        // round trip without end (code review 2026-10-19). A re-ask within 10 seconds of that member's last 503 gets
+        // the plain 404, which they keep, so the loop ends after one extra request.
         const today = taipeiDate(now());
-        if (date === today && new Date(`${today}T12:00:00Z`).getUTCDay() !== 0) return gamificationJson(503, { error: { code: 'DEVOTIONAL_NOT_YET_POSTED', retryable: true } });
+        if (date === today && new Date(`${today}T12:00:00Z`).getUTCDay() !== 0) {
+          const key = `${auth.memberId}|${date}`, at = now().getTime(), last = notYetPostedAnswered.get(key);
+          if (last === undefined || at - last >= 10_000) {
+            for (const stale of notYetPostedAnswered.keys()) if (!stale.endsWith(`|${today}`)) notYetPostedAnswered.delete(stale);
+            notYetPostedAnswered.set(key, at);
+            return gamificationJson(503, { error: { code: 'DEVOTIONAL_NOT_YET_POSTED', retryable: true } });
+          }
+        }
         return gamificationError({ status: 404, code: 'DEVOTIONAL_NOT_FOUND' });
       }
       // Prize nominations were removed on 2026-10-17 (維護者: vote offline). Apps up to 0.5.32 still ask for the board on

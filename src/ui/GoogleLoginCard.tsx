@@ -4,7 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { theme } from './Theme';
 import { createApiClient, type SessionResult } from '../services/apiClient';
 import { establishGoogleSession } from '../services/googleSession';
-import { obtainGoogleIdToken, iosClientIdFromUrlScheme, type NativeGoogleModule, type NativeGoogleResult } from '../services/googleNative';
+import { beginGoogleLogin, finishGoogleLogin, obtainGoogleIdToken, iosClientIdFromUrlScheme, type NativeGoogleModule, type NativeGoogleResult } from '../services/googleNative';
 import { beginAuthSessionAttempt, finishAuthSessionAttempt, configureAuthSessionTransport, persistEstablishedAuthSession, type AuthSessionAttempt } from '../services/authSession';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -16,7 +16,7 @@ interface NativeLoginWait {
 }
 
 /** `welcome` is the sign-in screen's one large button; `card` is the framed card used everywhere else. */
-export function GoogleLoginCard({ baseUrl, onSignedIn, variant = 'card' }: { baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void; variant?: 'card' | 'welcome' }) {
+export function GoogleLoginCard({ baseUrl, onSignedIn, variant = 'card', onSignInStart }: { onSignInStart?: () => void; baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void; variant?: 'card' | 'welcome' }) {
   const clientId = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID)?.trim();
   const fixture = process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true';
   if (fixture) {
@@ -25,16 +25,19 @@ export function GoogleLoginCard({ baseUrl, onSignedIn, variant = 'card' }: { bas
   if (!clientId) {
     return <View style={styles.card}><Text style={styles.title}>正式登入尚未連接</Text><Text style={styles.body}>正式Google登入完成後，才會切換到真實身份。</Text></View>;
   }
-  return <ConfiguredGoogleLogin clientId={clientId} baseUrl={baseUrl} onSignedIn={onSignedIn} variant={variant} />;
+  return <ConfiguredGoogleLogin clientId={clientId} baseUrl={baseUrl} onSignedIn={onSignedIn} variant={variant} onSignInStart={onSignInStart} />;
 }
 
-function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { clientId: string; baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void; variant: 'card' | 'welcome' }) {
+function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant, onSignInStart }: { onSignInStart?: () => void; clientId: string; baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void; variant: 'card' | 'welcome' }) {
   const [state, setState] = useState<'idle' | 'exchanging' | 'needs-invite' | 'claiming-invite' | 'signed-in' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState('');
   const nativeWait = useRef<NativeLoginWait | null>(null);
+  const starting = useRef<AuthSessionAttempt | null>(null);
+  const mounted = useRef(true);
   useEffect(() => {
+    mounted.current = true;
     let previousState = AppState.currentState;
     const subscription = AppState.addEventListener('change', nextState => {
       const pending = nativeWait.current;
@@ -44,7 +47,7 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
       }
       previousState = nextState;
     });
-    return () => { subscription.remove(); nativeWait.current?.recover(false); };
+    return () => { mounted.current = false; subscription.remove(); nativeWait.current?.recover(false); };
   }, []);
   const completeSession = useCallback(async (session: SessionResult, attempt: AuthSessionAttempt) => {
     if (!await persistEstablishedAuthSession(session, attempt)) return;
@@ -52,14 +55,20 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
     setState('signed-in');
   }, [onSignedIn]);
   const signIn = useCallback(async () => {
-    if (nativeWait.current && !nativeWait.current.retryable) return;
+    if (starting.current || (nativeWait.current && !nativeWait.current.retryable)) return;
     // Only an explicit retry (or unmount) invalidates the previous native result.
     nativeWait.current?.recover(false);
     const attempt = beginAuthSessionAttempt();
+    starting.current = attempt;
     configureAuthSessionTransport({ baseUrl });
     setState('exchanging');
     setErrorMessage(null);
+    onSignInStart?.();
+    let marker: string | undefined;
     try {
+      marker = await beginGoogleLogin();
+      if (!mounted.current) return;
+      starting.current = null;
       const nativeGoogle = require('react-native-nitro-google-signin') as NativeGoogleModule;
       // iOS needs its own native client; serverClientID stays the web client so the backend audience is unchanged.
       const iosClientId = Platform.OS === 'ios' ? iosClientIdFromUrlScheme(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME) : undefined;
@@ -127,8 +136,12 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant }: { cli
     } catch {
       setState('error');
       setErrorMessage('目前裝置尚未完成Google登入設定。');
-    } finally { finishAuthSessionAttempt(attempt); }
-  }, [baseUrl, clientId, completeSession]);
+    } finally {
+      if (starting.current === attempt) starting.current = null;
+      finishAuthSessionAttempt(attempt);
+      if (marker) await finishGoogleLogin(marker).catch(() => undefined);
+    }
+  }, [baseUrl, clientId, completeSession, onSignInStart]);
   const claimInvite = useCallback(async () => {
     if (!googleIdToken || !inviteCode.trim()) return;
     const attempt = beginAuthSessionAttempt();

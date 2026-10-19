@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+vi.mock('expo-secure-store', () => ({ getItemAsync: vi.fn(async () => null), setItemAsync: vi.fn(), deleteItemAsync: vi.fn() }));
 import { obtainGoogleIdToken, iosClientIdFromUrlScheme, type NativeGoogleModule } from '../../src/services/googleNative';
 
 function moduleFor(responses: unknown[], checkPlayServices = vi.fn(async () => undefined)): NativeGoogleModule {
@@ -30,11 +31,12 @@ describe('native Google authentication boundary', () => {
     expect(native.GoogleOneTapSignIn.createAccount).not.toHaveBeenCalled();
   });
 
-  it('falls through saved-account, account-create, and explicit sign-in states', async () => {
-    const native = moduleFor([{ kind: 'NO_SAVED' }, { kind: 'NO_SAVED' }, { data: { idToken: 'fixture-id-token' } }]);
-    await expect(obtainGoogleIdToken(native, 'web-client-id.apps.googleusercontent.com')).resolves.toMatchObject({ status: 'SUCCESS' });
-    expect(native.GoogleOneTapSignIn.createAccount).toHaveBeenCalledOnce();
+  it.each([{ data: { idToken: 'fixture-id-token' } }, { kind: 'NO_SAVED' }, { kind: 'CANCELLED' }])('uses only one explicit button flow for %j', async response => {
+    const native = moduleFor([response]);
+    await obtainGoogleIdToken(native, 'web-client-id.apps.googleusercontent.com');
     expect(native.GoogleOneTapSignIn.presentExplicitSignIn).toHaveBeenCalledOnce();
+    expect(native.GoogleOneTapSignIn.signIn).not.toHaveBeenCalled();
+    expect(native.GoogleOneTapSignIn.createAccount).not.toHaveBeenCalled();
   });
 
   it('reports missing Play Services as a device dependency instead of pretending Google passed', async () => {
