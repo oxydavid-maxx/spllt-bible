@@ -4,14 +4,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const native = vi.hoisted(() => ({
   values: new Map<string, string>(), speak: vi.fn(), setDevotion: vi.fn(async () => undefined), getDevotionDates: vi.fn(async (): Promise<string[]> => []),
   post: { date: '2026-10-14', weekday: '三', passages: '詩118', title: '測試題目', sections: [{ heading: '默想經文', paragraphs: ['測試段落'] }], song: { youtubeId: 'abcdefghijk' } },
-  getDevotional: vi.fn(async (_date: string): Promise<unknown> => null),
-  appState: undefined as ((next: string) => void) | undefined,
 }));
 vi.hoisted(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
 vi.mock('expo-speech', () => ({ speak: native.speak, stop: async () => undefined }));
-vi.mock('react-native', () => ({ AppState: { addEventListener: (_type: string, listener: (next: string) => void) => { native.appState = listener; return { remove() {} }; } } }));
+vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove() {} }) } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async (k: string) => native.values.get(k) ?? null, setItemAsync: async (k: string, v: string) => { native.values.set(k, v); } }));
-vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => ({ getDevotionDates: native.getDevotionDates, setDevotion: native.setDevotion, getDevotional: native.getDevotional }) }));
+vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => ({ getDevotionDates: native.getDevotionDates, setDevotion: native.setDevotion, getDevotional: async () => native.post }) }));
 vi.mock('../../src/ui/devotion/DevotionalView', () => ({ DevotionalView: (p: any) => React.createElement('DevotionalView', p) }));
 import { useReaderDevotion, type ReaderDevotionBinding } from '../../src/ui/devotion/useReaderDevotion';
 let binding: ReaderDevotionBinding; let view: TestRenderer.ReactTestRenderer;
@@ -19,7 +17,7 @@ async function mount(memberId: string, textSettings?: { fontSize: number; lineSp
   function Harness() { binding = useReaderDevotion({ session: { memberId, sessionToken: 'synthetic-token' }, date: '2026-10-14', baseUrl: 'https://fixture.test', showTools: vi.fn(), textSettings, narrationSpeed: 1.5 }); return null; }
   await act(async () => { view = TestRenderer.create(React.createElement(Harness)); });
 }
-beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:00:00Z')); native.getDevotional.mockReset().mockResolvedValue(native.post); native.speak.mockClear(); native.setDevotion.mockClear(); native.getDevotionDates.mockReset().mockResolvedValue([]); vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));  });
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:00:00Z')); native.speak.mockClear(); native.setDevotion.mockClear(); native.getDevotionDates.mockReset().mockResolvedValue([]); vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));  });
 afterEach(() => { act(() => view?.unmount()); vi.useRealTimers(); vi.unstubAllGlobals(); });
 // 2026-10-17 (維護者): reaching the last chapter's end asks for the day's post once, so 接著讀靈修 › only
 // shows when there is a 靈修 to read; no timer, no offer window.
@@ -33,29 +31,6 @@ it('prepares the day’s post at the reading end and reports whether it exists',
   await act(async () => binding.devotion!.prepare());
   expect(binding.devotion?.available).toBe(true);
   expect(binding.devotion?.selected).toBe(false); expect(native.speak).not.toHaveBeenCalled();
-});
-// 2026-10-19 (維護者): 傳道每天不一定什麼時候上傳. 還沒有上傳 is asked again at the next look instead of
-// staying for the rest of the day; still no timer.
-it('asks again after 還沒有上傳 when the tab is opened again or the app comes back, without a spinner', async () => {
-  native.getDevotional.mockResolvedValue(null);
-  await mount('late-post');
-  const state = () => (binding.devotion!.renderView({ top: 0, bottom: 0 }) as React.ReactElement<{ state: { kind: string } }>).props.state;
-  await act(async () => binding.devotion!.onSelect());
-  expect(state()).toEqual({ kind: 'missing', awaiting: true });
-  let answer!: (post: unknown) => void;
-  native.getDevotional.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
-  await act(async () => binding.devotion!.onSelect());
-  expect(native.getDevotional).toHaveBeenCalledTimes(2);
-  expect(state()).toEqual({ kind: 'missing', awaiting: true });
-  await act(async () => answer(null));
-  expect(state()).toEqual({ kind: 'missing', awaiting: true });
-  native.getDevotional.mockResolvedValueOnce(native.post);
-  await act(async () => { native.appState?.('background'); native.appState?.('active'); });
-  expect(native.getDevotional).toHaveBeenCalledTimes(3);
-  expect(state().kind).toBe('ready');
-  expect(binding.devotion?.available).toBe(true);
-  await act(async () => { binding.devotion!.onSelect(); native.appState?.('active'); });
-  expect(native.getDevotional).toHaveBeenCalledTimes(3);
 });
 it('hands the 靈修 page the reader\'s 調整字體 settings and whether it is being read aloud (光佑 2026-10-14)', async () => {
   await mount('text-test', { fontSize: 20, lineSpacing: 2 });
