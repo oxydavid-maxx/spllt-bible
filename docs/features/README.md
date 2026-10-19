@@ -47,7 +47,7 @@
 | 完成打卡 | 讀完按圓圈打卡；讀到最後一段時圓圈展開成按鈕 | 讀經頁右下角 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 靈修分頁 | 章節籤最後一個「靈修」：傳道當天的靈修文、段首小灰字出處和詩歌 | 讀經頁章節籤 | Android、iOS | [reader.md](reader.md) |
 | 接續靈修 | 預設關，選單或有期限的最後章底提示可開啟；經文念完接著念靈修，再播詩歌 | 更多閱讀工具、最後一章底 | Android、iOS | [reader.md](reader.md) |
-| 靈修打勾 | 按葉子圈完成靈修，浮出不含分數的完成小字；滑到底展開大按鈕，月曆標「靈修」，不加積分或團體統計 | 讀經/靈修頁葉子圈、積分月曆下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 靈修打勾 | 按葉子圈完成靈修，浮出不含分數的完成小字；滑到底展開大按鈕，月曆標「靈修」，不加積分或團體統計 | 讀經/靈修頁葉子圈、積分「自己」最上面的當天卡 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 補登和撤銷 | 今天和前 6 天可以補打卡；撤銷要先確認並收回積分 | 讀經頁、積分月曆 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 離線打卡與跨手機 | 沒網路先記住、連上後送出；另一支手機完成的日子也顯示已完成 | 讀經頁、積分頁 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 整份讀經計畫清單 | 分月顯示 9/1–12/31，今天標底色、讀完打勾，點一天就去讀；上緣可下拉關閉 | 讀經頁點日期、積分月曆的「整份計畫」 | Android、iOS | [reading-plan.md](reading-plan.md) |
@@ -70,7 +70,7 @@
 |---|---|---|---|---|
 | 青少一起讀經 | 每天讀經人數的月曆 (2 人以上才顯示)，今天、昨天各幾人；主堂看「全教會一起讀經」 | 積分「自己」最上方「團體」 | Android、iOS | [points.md](points.md) |
 | 團體獎 | 一個月 15 天讀經的人數夠了就累積一個月：懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月；只有青少有 | 積分「團體」 | Android、iOS | [points.md](points.md) |
-| 完成今日靈修/讀經 | 月曆下兩顆鈕：左靈修葉子、右讀經書，未完成白底綠框，完成後填滿深綠白圖示 | 積分「個人」月曆下方 | Android、iOS | [reading-plan.md](reading-plan.md) |
+| 完成今日靈修/讀經 | 當天卡兩顆鈕，跟著月曆選的那天：左靈修葉子、右讀經書，未完成白底綠框，完成後填滿深綠白圖示 | 積分「自己」最上面的當天卡 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 積分月曆 | 點任一天看經文與狀態，未來/過期也能看；期限內可以補打卡；讀了靈修的日子標金色「靈修」 | 積分「自己」的「個人」 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 匯出讀經卡 | 本月或本季匯出 A4 PDF，含讀經勾選、靈修標記與未完成天數，離線可分享/列印 | 積分「自己」的個人讀經月曆卡下排左邊「匯出讀經卡 ›」 | Android、iOS | [points.md](points.md) |
 | 範圍切換 | 自己、好友兩個分頁；管理者從帳戶頁進來才多一個「全體 (管理)」 | 積分頁頂部 | Android、iOS | [points.md](points.md) |
