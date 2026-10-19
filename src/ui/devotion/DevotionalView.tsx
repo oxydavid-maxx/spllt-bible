@@ -23,7 +23,8 @@ const DEFAULT_LINE_SPACING = 1.7;
 
 export type DevotionalState =
   | { kind: 'loading' }
-  | { kind: 'missing' }
+  /** `awaiting`: today or later, so the post may still come (靈修請待發佈); otherwise that day simply has none. */
+  | { kind: 'missing'; awaiting?: boolean }
   | { kind: 'error'; onRetry: () => void }
   | { kind: 'ready'; post: DevotionalPost };
 
@@ -112,7 +113,7 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
   if (state.kind !== 'ready') {
     return <View style={[styles.center, { paddingTop: insets.top + theme.spacing.xl, paddingBottom: insets.bottom }]}>
       {state.kind === 'loading' ? <><ActivityIndicator color={theme.colors.primary} /><Text style={styles.note}>正在載入今天的靈修…</Text></>
-        : state.kind === 'missing' ? <Text style={styles.note}>這一天的靈修還沒有上傳</Text>
+        : state.kind === 'missing' ? (state.awaiting ? <Text style={styles.awaiting}>靈修請待發佈</Text> : <Text style={styles.note}>這一天的靈修還沒有上傳</Text>)
           : <><Text accessibilityRole="alert" style={styles.note}>靈修暫時無法載入</Text><Pressable accessibilityRole="button" accessibilityLabel="重試載入靈修" onPress={state.onRetry} style={styles.retry}><Text style={styles.retryText}>重試</Text></Pressable></>}
     </View>;
   }
@@ -186,6 +187,8 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: theme.spacing.lg, gap: 14 },
   center: { flex: 1, alignItems: 'center', gap: theme.spacing.md, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.lg },
   note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, textAlign: 'center' },
+  // 維護者 2026-10-19: the wait-for-today message reads a little larger than an ordinary note.
+  awaiting: { color: theme.colors.muted, fontSize: 18, lineHeight: 26, textAlign: 'center' },
   retry: { minHeight: theme.control.tap, paddingHorizontal: theme.spacing.xl, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
   retryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
   titleBlock: { gap: 2 },

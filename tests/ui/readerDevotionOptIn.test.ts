@@ -41,14 +41,14 @@ it('asks again after 還沒有上傳 when the tab is opened again or the app com
   await mount('late-post');
   const state = () => (binding.devotion!.renderView({ top: 0, bottom: 0 }) as React.ReactElement<{ state: { kind: string } }>).props.state;
   await act(async () => binding.devotion!.onSelect());
-  expect(state()).toEqual({ kind: 'missing' });
+  expect(state()).toEqual({ kind: 'missing', awaiting: true });
   let answer!: (post: unknown) => void;
   native.getDevotional.mockImplementationOnce(() => new Promise(resolve => { answer = resolve; }));
   await act(async () => binding.devotion!.onSelect());
   expect(native.getDevotional).toHaveBeenCalledTimes(2);
-  expect(state()).toEqual({ kind: 'missing' });
+  expect(state()).toEqual({ kind: 'missing', awaiting: true });
   await act(async () => answer(null));
-  expect(state()).toEqual({ kind: 'missing' });
+  expect(state()).toEqual({ kind: 'missing', awaiting: true });
   native.getDevotional.mockResolvedValueOnce(native.post);
   await act(async () => { native.appState?.('background'); native.appState?.('active'); });
   expect(native.getDevotional).toHaveBeenCalledTimes(3);

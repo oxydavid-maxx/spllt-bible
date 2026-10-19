@@ -85,7 +85,7 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
     const forDate = date;
     if (!quiet) setPost({ date: forDate, state: { kind: 'loading' } });
     void client.getDevotional(forDate)
-      .then((value: DevotionalPost | null) => { if (scopeRef.current !== scope) return; setPost((current) => current?.date === forDate ? { date: forDate, state: value ? { kind: 'ready', post: value } : { kind: 'missing' } } : current); })
+      .then((value: DevotionalPost | null) => { if (scopeRef.current !== scope) return; setPost((current) => current?.date === forDate ? { date: forDate, state: value ? { kind: 'ready', post: value } : { kind: 'missing', awaiting: forDate >= taipeiDate() } } : current); })
       .catch(() => { if (!quiet && scopeRef.current === scope) setPost((current) => current?.date === forDate ? { date: forDate, state: { kind: 'error', onRetry: () => load() } } : current); });
   }, [client, date, scope]);
   const current = post?.date === date ? post.state : null;
