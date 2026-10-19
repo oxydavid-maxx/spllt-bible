@@ -137,6 +137,17 @@ describe('the 靈修 tab', () => {
     expect(tree.root.findAll((node) => (node.type as unknown) === 'Text').map(textOf)).toEqual(['這一天的靈修還沒有上傳']);
     act(() => tree.unmount());
   });
+
+  // 維護者 2026-10-19: today's post still to come reads 靈修請待發佈, a little larger than the old note.
+  it('asks to wait for today\'s post in larger text', () => {
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props({ state: { kind: 'missing', awaiting: true } }))); });
+    const texts = tree.root.findAll((node) => (node.type as unknown) === 'Text');
+    expect(texts.map(textOf)).toEqual(['靈修請待發佈']);
+    const style = Object.assign({}, ...[texts[0].props.style].flat());
+    expect(style.fontSize).toBeGreaterThanOrEqual(18);
+    act(() => tree.unmount());
+  });
 });
 
 it('renders leading citations as smaller grey text without changing a single displayed character', () => {

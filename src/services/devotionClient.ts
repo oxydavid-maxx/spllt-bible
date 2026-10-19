@@ -133,7 +133,11 @@ export function createDevotionClient(options: DevotionClientOptions): DevotionCl
   }
   return {
     async getDevotional(date) {
-      const { status, body } = await request(`/api/devotional/${encodeURIComponent(date)}`);
+      let reply: { status: number; body: unknown };
+      // Today's post still to come answers a retryable 503 (for apps up to 0.5.34); here it is simply not posted yet.
+      try { reply = await request(`/api/devotional/${encodeURIComponent(date)}`); }
+      catch (error) { if (error instanceof GamificationApiError && error.code === 'DEVOTIONAL_NOT_YET_POSTED') return null; throw error; }
+      const { status, body } = reply;
       if (status === 404) return null;
       const post = parseDevotionalPost(body);
       if (!post) throw invalid();

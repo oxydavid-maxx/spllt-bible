@@ -25,6 +25,14 @@ const preferences = createDevotionPreferencesStore({
   setItem: (key, value) => SecureStore.setItemAsync(key, value),
 });
 
+/**
+ * An empty day that may still get its 靈修 (靈修請待發佈): today or later, Monday to Saturday. No 靈修 is posted on
+ * Sundays (server/routes.ts answers a plain 404 for them), so a Sunday reads 這一天的靈修還沒有上傳 (2026-10-19 review).
+ */
+function awaitsPost(day: string): boolean {
+  return day >= taipeiDate() && new Date(`${day}T12:00:00Z`).getUTCDay() !== 0;
+}
+
 export interface ReaderDevotionBinding {
   devotion: ReaderDevotion | undefined;
   completionEvent: DevotionCompletionEvent | null;
@@ -63,6 +71,8 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   const scopeRef = useRef(scope); scopeRef.current = scope;
   const [songRequest, setSongRequest] = useState(0);
   const speakWhenReady = useRef(false);
+  // The one 靈修 question on its way, if any. A new day or member drops it, so its answer is ignored.
+  const asking = useRef<{ scope: string } | null>(null);
   const follow = useSyncExternalStore(preferences.subscribe, () => preferences.getSnapshot(memberId), () => preferences.getSnapshot(memberId));
   const followRef = useRef(follow.enabled);
   followRef.current = follow.enabled;
@@ -73,7 +83,7 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   useEffect(() => { speech.setRate(narrationSpeed); }, [speech, narrationSpeed]);
   useEffect(() => { speech.setVoice(voice); }, [speech, voice]);
   // A new day, or another member: back to the chapter, nothing read aloud from the old one.
-  useEffect(() => { setSelected(false); setAtEnd(false); speakWhenReady.current = false; speech.stop(); setPost(null); setMarked(null); markRevision.current++; markPendingRef.current = false; setMarkPending(false); setCompletionEvent(null); }, [date, memberId, session?.sessionToken, baseUrl, speech]);
+  useEffect(() => { setSelected(false); setAtEnd(false); speakWhenReady.current = false; asking.current = null; speech.stop(); setPost(null); setMarked(null); markRevision.current++; markPendingRef.current = false; setMarkPending(false); setCompletionEvent(null); }, [date, memberId, session?.sessionToken, baseUrl, speech]);
   useEffect(() => () => speech.stop(), [speech]);
   useEffect(() => {
     if (!client) { setMarked(null); return; }
@@ -84,16 +94,39 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
     return () => { active = false; };
   }, [client, date, refreshSignal]);
 
-  const load = useCallback(() => {
-    if (!client) return;
+  // `quiet` keeps 還沒有上傳 on screen while asking again, and a failed quiet ask leaves it there.
+  // One question at a time (2026-10-19 review): a look while one is on its way waits for that answer, so an older
+  // answer never lands after a newer one.
+  const load = useCallback((quiet = false) => {
+    if (!client || asking.current?.scope === scope) return;
     const forDate = date;
-    setPost({ date: forDate, state: { kind: 'loading' } });
+    const ask = { scope };
+    asking.current = ask;
+    if (!quiet) setPost({ date: forDate, state: { kind: 'loading' } });
+    const settle = (state: DevotionalState | null) => {
+      if (asking.current !== ask || scopeRef.current !== scope) return;
+      asking.current = null;
+      // ▶ waits only for this answer: when it brings no post, nothing is read aloud later on its behalf.
+      if (state?.kind !== 'ready') speakWhenReady.current = false;
+      if (state) setPost((current) => current?.date === forDate ? { date: forDate, state } : current);
+    };
     void client.getDevotional(forDate)
-      .then((value: DevotionalPost | null) => { if (scopeRef.current !== scope) return; setPost((current) => current?.date === forDate ? { date: forDate, state: value ? { kind: 'ready', post: value } : { kind: 'missing' } } : current); })
-      .catch(() => { if (scopeRef.current === scope) setPost((current) => current?.date === forDate ? { date: forDate, state: { kind: 'error', onRetry: load } } : current); });
+      .then((value: DevotionalPost | null) => settle(value ? { kind: 'ready', post: value } : { kind: 'missing', awaiting: awaitsPost(forDate) }))
+      .catch(() => settle(quiet ? null : { kind: 'error', onRetry: () => load() }));
   }, [client, date, scope]);
   const current = post?.date === date ? post.state : null;
-  const ensureLoaded = useCallback(() => { if (!current || current.kind === 'error') load(); }, [current, load]);
+  const currentRef = useRef(current); currentRef.current = current;
+  // The pastor posts at no fixed hour (維護者 2026-10-19): 還沒有上傳 is asked again at the next look. The state is
+  // read when asked, so an answer never makes a new `prepare` (2026-10-19 review: that asked again at once).
+  const ensureLoaded = useCallback(() => { const shown = currentRef.current; if (!shown || shown.kind === 'error') load(); else if (shown.kind === 'missing') load(true); }, [load]);
+  // Coming back to the reader is another look: its tab regains focus, or the app returns while it shows (#73's
+  // signal, the same rule as the leaf). Once per return, never while the reader is out of sight.
+  const seenRefresh = useRef(refreshSignal);
+  useEffect(() => {
+    if (seenRefresh.current === refreshSignal) return;
+    seenRefresh.current = refreshSignal;
+    if (currentRef.current?.kind === 'missing') load(true);
+  }, [refreshSignal, load]);
   // Asked to read before the post arrived: start once it has.
   useEffect(() => {
     if (!speakWhenReady.current || current?.kind !== 'ready') return;

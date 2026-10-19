@@ -264,8 +264,12 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   // 2026-10-17 (維護者): the last chapter's end points to the day's 靈修 every day, like 繼續讀 between chapters.
   // Not when it is done or not posted, nor while a narrated chapter with auto-follow will carry over by itself.
   const atLastChapterEnd = atEnd && assignedIndex >= 0 && nextIndex < 0;
-  const prepareDevotion = devotion?.prepare;
-  useEffect(() => { if (atLastChapterEnd) prepareDevotion?.(); }, [atLastChapterEnd, prepareDevotion]);
+  // Asked once per arrival there (2026-10-19 review): `prepare` is read on arrival, so a rebuilt binding (every
+  // answer makes one) never asks again while the member stays at the end.
+  const prepareDevotion = useRef(devotion?.prepare);
+  prepareDevotion.current = devotion?.prepare;
+  const devotionShown = Boolean(devotion);
+  useEffect(() => { if (atLastChapterEnd) prepareDevotion.current?.(); }, [atLastChapterEnd, devotionShown]);
   const devotionNext = Boolean(atLastChapterEnd && devotion?.available && !devotion.completed && !(chrome.readAlong.narrating && devotion.followEnabled));
   // The last chapter read to its end: the same ○ grows into the day's completion call (one button, one record).
   // Not while 回到朗讀處 holds the bottom-left: on a 360 dp phone the grown ○ would run into it.

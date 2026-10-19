@@ -844,6 +844,18 @@ describe('the 靈修 tab and the gold corner button', () => {
     act(() => chrome.handleCanvasEdge({ atEnd: false }));
     expect(text()).not.toContain('接著讀靈修');
   });
+  // 2026-10-19 review: the layout asked again whenever `prepare` changed identity, and every answer built a new
+  // one, so a member parked at the last chapter's end sent one request per round trip. One arrival, one ask.
+  it('asks for the day’s 靈修 once per arrival at the last chapter’s end, however often the binding is rebuilt', async () => {
+    const asked = vi.fn();
+    devotion = makeDevotion({ prepare: () => asked() }); await mount();
+    act(() => chrome.handleCanvasEdge({ atEnd: true }));
+    for (const available of [false, false, true]) { devotion = makeDevotion({ prepare: () => asked(), available }); act(() => renderer!.update(React.createElement(Harness))); }
+    expect(asked).toHaveBeenCalledOnce();
+    act(() => chrome.handleCanvasEdge({ atEnd: false }));
+    act(() => chrome.handleCanvasEdge({ atEnd: true }));
+    expect(asked).toHaveBeenCalledTimes(2);
+  });
   it.each([
     ['the 靈修 is already completed', { completed: true }],
     ['the 靈修 has not been posted', { available: false }],
