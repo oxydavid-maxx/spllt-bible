@@ -17,7 +17,8 @@ const state = vi.hoisted(() => ({
   configureAudio: vi.fn(async () => undefined),
 }));
 vi.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: (props: { children?: unknown }) => require('react').createElement('GestureRoot', props, props.children) }));
-vi.mock('react-native', () => ({ TextInput: 'TextInput', View: 'View', Text: 'Text', StyleSheet: { create: (x: unknown) => x }, AppState: { addEventListener: (_event: string, listener: (value: string) => void) => { state.appStateListener = listener; return { remove: state.removeAppState }; } } }));
+vi.mock('../../src/ui/brandIcon', () => ({ BRAND_ICON: 1 }));
+vi.mock('react-native', () => ({ Image: 'Image', TextInput: 'TextInput', View: 'View', Text: 'Text', StyleSheet: { create: (x: unknown) => x }, AppState: { addEventListener: (_event: string, listener: (value: string) => void) => { state.appStateListener = listener; return { remove: state.removeAppState }; } } }));
 vi.mock('expo-router', () => ({
   Stack: () => React.createElement('Stack', { readingDate: useReadingSession().selectedDate }),
   router: { push: state.push },
@@ -91,6 +92,14 @@ describe('formal Root notification wiring', () => {
     expect(renderer!.root.find(node => String(node.type) === 'Stack').props.readingDate).toBe('2026-09-14');
     expect(state.clear).toHaveBeenCalledOnce();
     expect(await state.handler.handleNotification(reading.notification)).toMatchObject({ shouldShowBanner: true });
+  });
+
+  it('clears a recent Google marker on a locally signed-in startup', async () => {
+    state.auth = { status: 'signed-in', session: { memberId: 'member:a', sessionToken: 'session-a' }, epoch: 1 };
+    const markerKey = 'qingmu.googleLogin.pending.v1';
+    state.storeValues.set(markerKey, JSON.stringify({ id: 'terminated-attempt', startedAt: Date.now() }));
+    await mount();
+    expect(state.storeValues.has(markerKey)).toBe(false);
   });
 
   it('configures background chapter audio once when the app starts, before any chapter can play', async () => {

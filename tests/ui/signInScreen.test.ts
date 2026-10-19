@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
 
-const { primitive, cardProps, appleProps } = vi.hoisted(() => ({
+const { primitive, cardProps, appleProps, storage } = vi.hoisted(() => ({
   primitive: (name: string) => (props: Record<string, unknown>) => require('react').createElement(name, props, props.children as never),
+  storage: new Map<string, string>(),
   cardProps: [] as Array<Record<string, unknown>>,
   appleProps: [] as Array<Record<string, unknown>>,
 }));
@@ -23,6 +24,8 @@ vi.mock('../../src/ui/AppleLoginCard', () => ({
   AppleLoginCard: (props: Record<string, unknown>) => { appleProps.push(props); return React.createElement('AppleLoginCard'); },
 }));
 
+vi.mock('expo-secure-store', () => ({ getItemAsync: async (key: string) => storage.get(key) ?? null, setItemAsync: async (key: string, value: string) => { storage.set(key, value); }, deleteItemAsync: async (key: string) => { storage.delete(key); } }));
+
 import { act, create } from 'react-test-renderer';
 import { SignInScreen } from '../../src/ui/SignInScreen';
 
@@ -39,5 +42,50 @@ describe('the first screen a new member sees', () => {
     // AppleLoginCard renders nothing outside iOS itself; the screen always places it after Google.
     expect(tree.root.findAll((node) => String(node.type) === 'AppleLoginCard')).toHaveLength(1);
     expect(appleProps.at(-1)).toMatchObject({ baseUrl: 'https://api.example.test' });
+  });
+});
+
+const markerKey = 'qingmu.googleLogin.pending.v1';
+beforeEach(() => { storage.clear(); vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime('2026-10-19T00:00:00Z'); });
+afterEach(() => { vi.useRealTimers(); });
+describe('interrupted login after a cold start', () => {
+  it.each([
+    { age: 0, show: true }, { age: 599_999, show: true },
+    { age: 600_000, show: false }, { age: 600_001, show: false },
+    { age: -1, show: false },
+  ])('consumes a marker aged $age ms; show=$show', async ({ age, show }) => {
+    storage.set(markerKey, JSON.stringify({ id: 'terminated-attempt', startedAt: Date.now() - age }));
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(React.createElement(SignInScreen, { baseUrl: 'https://synthetic.invalid' })); });
+    expect(JSON.stringify(tree.toJSON()).includes('剛才的登入沒有完成，請再按一次。')).toBe(show);
+    expect(storage.has(markerKey)).toBe(false);
+    act(() => tree.unmount());
+  });
+  it('clears malformed progress without showing a notice', async () => {
+    storage.set(markerKey, 'broken-json');
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(React.createElement(SignInScreen, { baseUrl: 'https://synthetic.invalid' })); });
+    expect(JSON.stringify(tree.toJSON())).not.toContain('剛才的登入沒有完成，請再按一次。');
+    expect(storage.has(markerKey)).toBe(false);
+    act(() => tree.unmount());
+  });
+  it('dismisses the startup notice when the next Google attempt starts', async () => {
+    storage.set(markerKey, JSON.stringify({ id: 'terminated-attempt', startedAt: Date.now() - 1000 }));
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(React.createElement(SignInScreen, { baseUrl: 'https://synthetic.invalid' })); });
+    expect(JSON.stringify(tree.toJSON())).toContain('剛才的登入沒有完成，請再按一次。');
+    act(() => { (cardProps.at(-1)!.onSignInStart as () => void)(); });
+    expect(JSON.stringify(tree.toJSON())).not.toContain('剛才的登入沒有完成，請再按一次。');
+    act(() => tree.unmount());
+  });
+  it('does not repeat the notice on the next mount', async () => {
+    storage.set(markerKey, JSON.stringify({ id: 'terminated-attempt', startedAt: Date.now() - 1000 }));
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(React.createElement(SignInScreen, { baseUrl: 'https://synthetic.invalid' })); });
+    expect(JSON.stringify(tree.toJSON())).toContain('剛才的登入沒有完成，請再按一次。');
+    act(() => tree.unmount());
+    await act(async () => { tree = create(React.createElement(SignInScreen, { baseUrl: 'https://synthetic.invalid' })); });
+    expect(JSON.stringify(tree.toJSON())).not.toContain('剛才的登入沒有完成，請再按一次。');
+    act(() => tree.unmount());
   });
 });
