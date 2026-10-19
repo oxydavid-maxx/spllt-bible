@@ -102,3 +102,17 @@ it('uses the unchanged public reading-days/completion routes for cross-phone upd
     }
   } finally { server.db.close(); state.auth.session = previous; }
 });
+
+
+it('starts a fresh visible read after a second foreground, and ignores the older in-flight answer (1/2)', async () => {
+  await mount();
+  let resolve!: (v: unknown) => void;
+  state.read.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+  await foreground();
+  remote = [day('2026-10-19', 'COMPLETED', 1, ['REV.8'])];
+  await foreground();
+  expect(state.read).toHaveBeenCalledTimes(3);
+  expect(value.record.status).toBe('COMPLETED');
+  await act(async () => { resolve({ today: '2026-10-19', timezone: 'Asia/Taipei', days: [day()] }); });
+  expect(value.record.status).toBe('COMPLETED'); expect(getReadingSessionSnapshot().day?.references).toEqual(['REV.8']);
+});

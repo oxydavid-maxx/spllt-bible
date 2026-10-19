@@ -337,7 +337,7 @@ export default function ProgressScreen() {
   useEffect(() => {
     if (!client || !session || !focused || !primaryReady) return;
     let active = true; const generation = viewGeneration.current;
-    void readViewerCapabilities(JSON.stringify([session.memberId, session.sessionToken, auth.epoch]), () => client.getCapabilities()).then((value) => { if (active && isViewLive(generation)) setCapabilities(value); }).catch((reason) => { if (active && isViewLive(generation)) setError(messageFor(reason)); });
+    void readViewerCapabilities(JSON.stringify([session.memberId, session.sessionToken, auth.epoch]), () => client.getCapabilities(), secondaryRefresh).then((value) => { if (active && isViewLive(generation)) setCapabilities(value); }).catch((reason) => { if (active && isViewLive(generation)) setError(messageFor(reason)); });
     return () => { active = false; };
   }, [client, session, focused, primaryReady, secondaryRefresh, isViewLive]);
 

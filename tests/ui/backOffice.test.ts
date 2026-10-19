@@ -3,10 +3,10 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // 後台規則與文件 (維護者 2026-10-17, mock 9): administrators only, behind the device unlock.
-const state = vi.hoisted(() => ({ canViewAllScores: false, unlock: true, push: vi.fn(), openBrowser: vi.fn(), foreground: new Set<() => void>(), capabilities: vi.fn() }));
+const state = vi.hoisted(() => ({ canViewAllScores: false, unlock: true, push: vi.fn(), openBrowser: vi.fn(), foreground: new Set<(revision?: number) => void>(), capabilities: vi.fn() }));
 vi.hoisted(() => { (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
 const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children));
-vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: () => void) => { state.foreground.add(fn); return () => state.foreground.delete(fn); } }));
+vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: (revision?: number) => void) => { state.foreground.add(fn); return () => state.foreground.delete(fn); } }));
 vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), ScrollView: primitive('ScrollView'), StyleSheet: { create: (s: unknown) => s }, Text: primitive('Text'), View: primitive('View') }));
 vi.mock('expo-router', () => ({ router: { push: state.push }, useFocusEffect: (fn: () => void) => require('react').useEffect(fn, [fn]) }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: state.openBrowser }));
@@ -92,4 +92,17 @@ it.each([500, 200])('offers retry after documents fail or return empty (%i), wit
   await act(async () => { state.foreground.forEach(fn => fn()); });
   expect(fetch).toHaveBeenCalledTimes(2);
   vi.useRealTimers();
+});
+
+
+it('does not let an earlier foreground capabilities response replace a newer one (8)', async () => {
+  const { AdminAllScoresEntry } = await import('../../src/ui/AdminAllScoresEntry');
+  await act(async () => { tree = TestRenderer.create(React.createElement(React.Fragment, null, React.createElement(BackOfficeEntry), React.createElement(AdminAllScoresEntry))); });
+  let resolve!: (v: unknown) => void; state.capabilities.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+  await act(async () => { state.foreground.forEach(fn => fn(1)); });
+  state.canViewAllScores = true;
+  await act(async () => { state.foreground.forEach(fn => fn(2)); });
+  expect(state.capabilities).toHaveBeenCalledTimes(3); expect(texts()).toContain('全體 (管理) ›');
+  await act(async () => { resolve({ canViewAllScores: false }); });
+  expect(texts()).toContain('全體 (管理) ›');
 });

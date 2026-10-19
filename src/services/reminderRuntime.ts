@@ -67,6 +67,7 @@ export class ReminderRuntimeOwner {
   private started = false;
   private unregisterAuth: (() => void) | null = null;
   private unregisterForeground: (() => void) | null = null;
+  private foregroundRevision = 0;
   private foregroundWork: Promise<void> | null = null;
   private tokenSubscription: { remove: () => void } | null = null;
   private ownerGeneration = 0;
@@ -114,7 +115,7 @@ export class ReminderRuntimeOwner {
   start(): void {
     if (this.started) return;
     this.started = true;
-    this.unregisterForeground = subscribeAppActive(() => { void this.refreshOnForeground(); });
+    this.unregisterForeground = subscribeAppActive(revision => { void this.refreshOnForeground(revision); });
     this.unregisterAuth = registerAuthLifecycleListener((change) => {
       if (change.invalidated) {
         const invalidated = change.invalidated;
@@ -262,12 +263,13 @@ export class ReminderRuntimeOwner {
     }
   }
 
-  private refreshOnForeground(): Promise<void> {
-    if (this.foregroundWork) return this.foregroundWork;
+  private refreshOnForeground(visibleRevision = 0): Promise<void> {
+    if (this.foregroundWork && visibleRevision === this.foregroundRevision) return this.foregroundWork;
     const session = this.session; const generation = this.generation;
     if (!session || !this.isCurrent(session, generation)) return Promise.resolve();
     const work = this.preferenceWork.then(async () => {
-      if (this.activationReady) { await this.activationReady; return; }
+      if (this.activationReady) await this.activationReady;
+      if (!this.isCurrent(session, generation)) return;
       const client = this.options.createApiClient(session);
       const next = await this.bounded(client.getReminderSnapshot());
       if (!this.isCurrent(session, generation) || !next || next.memberId !== session.memberId) return;
@@ -280,6 +282,7 @@ export class ReminderRuntimeOwner {
       await Promise.all([this.options.secureStore.setItemAsync('qingmu.reminder.readingEnabled', String(next.readingEnabled)), this.options.secureStore.setItemAsync('qingmu.reminder.readingTime', next.readingTime)]);
       await this.reconcile(session, generation, { ...state, ...this.pendingPreferences }, client);
     }).catch(() => { if (this.isCurrent(session, generation)) this.setState({ ...this.state, error: 'load' }); });
+    this.foregroundRevision = visibleRevision;
     this.foregroundWork = work;
     this.preferenceWork = work;
     void work.finally(() => { if (this.foregroundWork === work) this.foregroundWork = null; });

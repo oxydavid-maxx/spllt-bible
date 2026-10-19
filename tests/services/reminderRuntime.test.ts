@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 
 vi.mock('react-native', () => ({}));
-const foreground = vi.hoisted(() => new Set<() => void>());
-vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: () => void) => { foreground.add(fn); return () => foreground.delete(fn); } }));
+const foreground = vi.hoisted(() => new Set<(revision?: number) => void>());
+vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: (revision?: number) => void) => { foreground.add(fn); return () => foreground.delete(fn); } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: vi.fn(async () => null), setItemAsync: vi.fn(async () => undefined), deleteItemAsync: vi.fn(async () => undefined) }));
 
 import { clearAuthSession, setAuthSession } from '../../src/services/authSession';
@@ -354,4 +354,20 @@ it('reloads remote reminder settings and reconciles notifications once per foreg
     expect(owner.getSnapshot()).toMatchObject({ ready: true, readingTime: '19:30' });
     expect(schedulerValue.scheduled).toEqual(expect.arrayContaining([expect.objectContaining({ triggerAt: '2026-09-15T11:30:00.000Z' })]));
   } finally { owner.dispose(); clearAuthSession(); vi.useRealTimers(); }
+});
+
+
+it('serializes a newer foreground reminder read after a slow earlier one (6)', async () => {
+  setAuthSession({ memberId: 'member:one', sessionToken: 'session-one' });
+  const snapshot = (readingTime: string) => ({ memberId: 'member:one', readingEnabled: false, meetingEnabled: false, readingTime, meetingAdvanceMinutes: 30, remoteDeliveryStatus: 'LOCAL_ONLY' as const, meetings: [] });
+  let resolve!: (v: unknown) => void;
+  const getReminderSnapshot = vi.fn().mockResolvedValueOnce(snapshot('08:00')).mockImplementationOnce(() => new Promise(r => { resolve = r; })).mockResolvedValue(snapshot('19:30'));
+  const owner = new ReminderRuntimeOwner({ scheduler: schedulerValue as any, secureStore: secureStore(), createApiClient: () => ({ getReminderSnapshot, saveReminderPreferences: async () => null, registerReminderDeviceToken: async () => true, revokeReminderDeviceToken: async () => true }), loadNotificationSource: async () => { throw new Error('NOT_NEEDED'); }, generateInstallationId: () => 'install' });
+  try {
+    owner.start(); await new Promise(r => setTimeout(r, 0));
+    foreground.forEach(fn => fn(1)); await new Promise(r => setTimeout(r, 0));
+    foreground.forEach(fn => fn(1)); foreground.forEach(fn => fn(2));
+    resolve(snapshot('09:00')); await new Promise(r => setTimeout(r, 0));
+    expect(getReminderSnapshot).toHaveBeenCalledTimes(3); expect(owner.getSnapshot().readingTime).toBe('19:30');
+  } finally { owner.dispose(); clearAuthSession(); }
 });

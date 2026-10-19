@@ -7,7 +7,8 @@ import { createGamificationApiClient, type ViewerCapabilities } from './gamifica
 
 // Account has two administrator rows. A single visible event shares the actual request.
 const reads = new Map<string, Promise<ViewerCapabilities>>();
-export function readViewerCapabilities(key: string, load: () => Promise<ViewerCapabilities>): Promise<ViewerCapabilities> {
+export function readViewerCapabilities(key: string, load: () => Promise<ViewerCapabilities>, visibleRevision = 0): Promise<ViewerCapabilities> {
+  key = JSON.stringify([key, visibleRevision]);
   const existing = reads.get(key);
   if (existing) return existing;
   const request = Promise.resolve().then(load);
@@ -25,13 +26,15 @@ export function useViewerCapabilities(): ViewerCapabilities | null {
   const [value, setValue] = useState<{ key: string; capabilities: ViewerCapabilities } | null>(null);
   const current = useRef(key); current.current = key;
   const focused = useRef(false);
-  const refresh = useCallback(() => {
+  const requestGeneration = useRef(0);
+  const refresh = useCallback((visibleRevision = 0) => {
     if (!key || !client) return;
-    void readViewerCapabilities(key, () => client.getCapabilities()).then(capabilities => {
-      if (current.current === key && focused.current) setValue({ key, capabilities });
-    }).catch(() => { if (current.current === key) setValue(null); });
+    const generation = ++requestGeneration.current;
+    void readViewerCapabilities(key, () => client.getCapabilities(), visibleRevision).then(capabilities => {
+      if (current.current === key && focused.current && requestGeneration.current === generation) setValue({ key, capabilities });
+    }).catch(() => { if (current.current === key && requestGeneration.current === generation) setValue(null); });
   }, [key, client]);
   useFocusEffect(useCallback(() => { focused.current = true; refresh(); return () => { focused.current = false; }; }, [refresh]));
-  useEffect(() => subscribeAppActive(() => { if (focused.current) refresh(); }), [refresh]);
+  useEffect(() => subscribeAppActive(revision => { if (focused.current) refresh(revision); }), [refresh]);
   return value?.key === key ? value.capabilities : null;
 }

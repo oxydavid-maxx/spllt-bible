@@ -136,14 +136,17 @@ export function useCompletionController(options: UseCompletionControllerOptions)
     const current = repository?.get(identity);
     if (current) setRecord(current);
   }, [owner, isCurrent]);
+  const remoteReadGeneration = useRef(0);
   const refreshRemoteRef = useRef<() => void>(() => undefined);
   refreshRemoteRef.current = () => {
     const client = clientRef.current;
     if (options.refreshRemote === false || !client || !memberId || !sessionToken || !isCurrent()) return;
+    if (AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
+    const generation = ++remoteReadGeneration.current;
     // The existing backend accepts at most 62 days. Use the same month/window as the calendar.
     const { from, to } = readingDaysRange(options.taskDate.slice(0, 7), taipeiDate());
     void readReadingDays({ memberId, sessionToken }, from, to, () => client.getReadingDays(from, to)).then(response => {
-      if (!response || !isCurrent()) return;
+      if (!response || !isCurrent() || generation !== remoteReadGeneration.current) return;
       replaceReadingDaysRange(from, to, response.days);
       reconcileRemoteDays(response.days);
     }).catch(() => { /* Retain the current plan and local state; the next visible event retries. */ });

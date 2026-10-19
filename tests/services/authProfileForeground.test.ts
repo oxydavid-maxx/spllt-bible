@@ -1,7 +1,7 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, expect, it, vi } from 'vitest';
-const native = vi.hoisted(() => ({ values: new Map<string, string>(), foreground: new Set<() => void>() }));
+const native = vi.hoisted(() => ({ values: new Map<string, string>(), foreground: new Set<(revision?: number) => void>() }));
 vi.hoisted(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
 const primitive = vi.hoisted(() => (name: string) => (props: any) => require('react').createElement(name, props, props.children));
 vi.mock('react-native', () => ({ Image: primitive('Image'), Pressable: primitive('Pressable'), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (s: unknown) => s }, Linking: {} }));
@@ -11,7 +11,7 @@ vi.mock('../../src/ui/ReminderSettings', () => ({ ReminderSettings: () => null }
 vi.mock('../../src/ui/congregation/CongregationSetting', () => ({ CongregationSetting: () => null }));
 vi.mock('../../src/services/reminderRuntime', () => ({ getReminderRuntimeOwner: () => null, useReminderRuntimeSnapshot: () => ({ ready: false }) }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async (key: string) => native.values.get(key) ?? null, setItemAsync: async (key: string, value: string) => { native.values.set(key, value); }, deleteItemAsync: async (key: string) => { native.values.delete(key); } }));
-vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: () => void) => { native.foreground.add(fn); return () => native.foreground.delete(fn); } }));
+vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: (revision?: number) => void) => { native.foreground.add(fn); return () => native.foreground.delete(fn); } }));
 import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
 import { AccountSurface } from '../../src/ui/accountSurfaceComponent';
 import { AuthProvider, clearAuthSession, getAuthSnapshot, persistAuthSession, setAuthSession, useAuthSnapshot } from '../../src/services/authSession';
@@ -47,4 +47,16 @@ it('cannot restore an old member after a foreground profile response arrives lat
   await act(async () => { resolve(person('不該出現')); });
   expect(getAuthSnapshot().session?.memberId).toBe('m2');
   expect(getAuthSnapshot().profile?.displayName).not.toBe('不該出現');
+});
+
+
+it('keeps the newer foreground profile when an older profile read finishes late (9)', async () => {
+  await persistAuthSession({ memberId: 'm1', sessionToken: 'synthetic' }, 3600);
+  let resolve!: (v: ReturnType<typeof person>) => void;
+  const load = vi.fn().mockResolvedValueOnce(person('初始')).mockImplementationOnce(() => new Promise(r => { resolve = r; })).mockResolvedValue(person('最新'));
+  await act(async () => { tree = TestRenderer.create(React.createElement(AuthProvider, { loadProfile: load, children: null })); });
+  await act(async () => { native.foreground.forEach(fn => fn(1)); });
+  await act(async () => { native.foreground.forEach(fn => fn(2)); });
+  expect(load).toHaveBeenCalledTimes(3); expect(getAuthSnapshot().profile?.displayName).toBe('最新');
+  await act(async () => { resolve(person('過時')); }); expect(getAuthSnapshot().profile?.displayName).toBe('最新');
 });

@@ -93,8 +93,8 @@ App 每天顯示當天該讀的經文段落，讀完按一下就完成打卡並�
 ### 跨手機同一天
 來源：`src/services/completionController.ts`、`app/(tabs)/progress.tsx:504-524`
 
-- 換手機或另一支手機登入同一帳號完成打卡時，只要這支手機的積分頁在前景、有對到帳號與那一天，就會收到伺服器確認事件並立刻把那一天畫成已完成（`subscribeCompletionAwardSurface`/`onCompletionConfirmed`）。
-- 這個事件只在同一裝置的畫面「當時在前景且對得上同一登入」才會送達；不在前景時，事件會保留最多 5 秒等下一次畫面出現再補送（`COMPLETION_EVENT_BRIDGE_TTL_MS = 5000`，`completionController.ts:21`），過了 5 秒就不再補送，改由下次開啟該日期時的一般讀取取得最新狀態。
+- 另一支手機完成或撤銷同一天後，這支手機在回到前景、切回讀經/積分頁時重讀後端答案。完成紀錄依 revision 對帳，本機待同步意圖保留。
+- 同一裝置完成/撤銷後的確認事件只在畫面「當時在前景且對得上同一登入」才會送達；不在前景時，事件會保留最多 5 秒等下一次畫面出現再補送（`COMPLETION_EVENT_BRIDGE_TTL_MS = 5000`，`completionController.ts:21`），過了 5 秒就不再補送，改由下次開啟該日期時的一般讀取取得最新狀態。
 
 ### 積分頁的讀經月曆
 來源：`src/ui/gamification/ReadingCalendarCard.tsx`、`src/ui/gamification/readingCalendarModel.ts`
