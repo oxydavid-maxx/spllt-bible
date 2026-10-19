@@ -20,6 +20,7 @@ describe('EAS Update native startup configuration', () => {
       useEmbeddedUpdate: true,
     });
     expect(result.runtimeVersion).toEqual({ policy: 'appVersion' });
+    expect(result.extra.otaCheckEnabled).toBeUndefined();
     expect(result.version).toBe(expo.version);
     expect(result.android.versionCode).toBe(expo.android.versionCode);
     const eas = JSON.parse(readFileSync('eas.json', 'utf8'));
@@ -31,7 +32,7 @@ describe('EAS Update native startup configuration', () => {
     vi.stubEnv('CI', 'true');
     vi.stubEnv('QINGMU_CI_DISABLE_OTA_CHECKS', '1');
     expect(resolve({ config: expo }).updates).toMatchObject({ enabled: true, checkAutomatically: 'NEVER' });
-    expect(resolve({ config: expo }).extra.otaCheckEnabled).toBe(false);
+    expect(resolve({ config: expo }).extra.otaCheckEnabled).toBeUndefined();
   });
 
   it.each(['production', 'preview'])('never disables an EAS %s build even with the CI switch inherited', (profile) => {
@@ -39,25 +40,25 @@ describe('EAS Update native startup configuration', () => {
     vi.stubEnv('QINGMU_CI_DISABLE_OTA_CHECKS', '1');
     vi.stubEnv('EAS_BUILD_PROFILE', profile);
     expect(resolve({ config: expo }).updates.enabled).toBe(true);
-    expect(resolve({ config: expo }).extra.otaCheckEnabled).toBe(true);
+    expect(resolve({ config: expo }).updates.checkAutomatically).toBe('ON_ERROR_RECOVERY');
   });
 
   it('ignores the CI switch in a normal local release', () => {
     vi.stubEnv('CI', 'false');
     vi.stubEnv('QINGMU_CI_DISABLE_OTA_CHECKS', '1');
     expect(resolve({ config: expo }).updates.enabled).toBe(true);
-    expect(resolve({ config: expo }).extra.otaCheckEnabled).toBe(true);
+    expect(resolve({ config: expo }).updates.checkAutomatically).toBe('ON_ERROR_RECOVERY');
   });
 
   it('forces checks on for the signed local Gradle release even if both CI flags leak into it', () => {
     vi.stubEnv('CI', 'true'); vi.stubEnv('QINGMU_CI_DISABLE_OTA_CHECKS', '1');
     vi.stubEnv('QINGMU_RELEASE_SIGNING_PROPERTIES', 'synthetic-signing-file-not-opened');
-    expect(resolve({ config: expo }).extra.otaCheckEnabled).toBe(true);
+    expect(resolve({ config: expo }).updates.checkAutomatically).toBe('ON_ERROR_RECOVERY');
   });
 
   it('keeps EAS checks enabled without a profile and embeds the preview header in preview builds', () => {
     vi.stubEnv('CI', 'true'); vi.stubEnv('QINGMU_CI_DISABLE_OTA_CHECKS', '1'); vi.stubEnv('EAS_BUILD', 'true');
-    expect(resolve({ config: expo }).extra.otaCheckEnabled).toBe(true);
+    expect(resolve({ config: expo }).updates.checkAutomatically).toBe('ON_ERROR_RECOVERY');
     vi.stubEnv('EAS_BUILD_PROFILE', 'preview');
     expect(resolve({ config: expo }).updates.requestHeaders).toEqual({ 'expo-channel-name': 'preview' });
   });

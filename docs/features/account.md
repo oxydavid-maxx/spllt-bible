@@ -9,6 +9,7 @@
 ## 從哪裡進
 
 - JS/圖片 OTA：0.5.35 起隨商店建置啟用 EAS Update；畫面掛載後背景檢查一次，下載後下一次冷啟動生效，失敗/離線不擋使用。管理者在帳戶頁管理區可切「先收到測試版更新」，說明「只給管理者：先拿到還沒發給大家的修正，驗收用。」一般成員看不到。切換只改這支手機的頻道，下次開啟下載，再下一次開啟套用；關閉回到建置頻道。詳見 [操作與回復](../eas-update.md)。
+- 更新請求中的隨機安裝識別碼與必要更新資訊，見 [隱私權政策](../play/privacy-policy.md) 的 Expo EAS Update 說明。
 
 - 還沒登入、或登入過期時：`app/sign-in.tsx`（`src/ui/SignInScreen.tsx`）。整個 App 在路由層就被鎖住——`src/ui/AppStack.tsx` 用 `Stack.Protected` 把 `(tabs)`、`account` 都鎖在「已登入」條件下，只要不是已登入（或正在還原登入狀態），只有 `sign-in` 這條路可以進。
 - 已登入時：多個分頁工具列右上角的圓形帳戶圖示（`src/ui/AccountEntryButton.tsx`，例如公告分頁、讀經精讀器、日記分頁），按下進入 `app/account.tsx`（`src/ui/accountSurfaceComponent.tsx`）。

@@ -1,0 +1,15 @@
+{
+  "reason": "One-time measured expo-updates 56.0.28 native dependency adoption; keep the existing APK 1.002 and iOS 1.05 ratios.",
+  "packageLockGitBlobSha256": "a6d8df2e7113dcb4201f3165cb9c7a699b4fe79153b046ac48a51b62538c894d",
+  "measurements": {
+    "apkBytes": {
+      "beforeBytes": 62709053,
+      "afterBytes": 66334086,
+      "beforeRunId": "39180557586",
+      "afterRunId": "39182315192",
+      "beforeCommit": "7e8ece8b713aa91bfbf510c5895630cdf4fe4a9d",
+      "afterCommit": "1746776596163c3e8a8b5b6f15b1f23df8d1eb27",
+      "afterBranchHead": "b685955a4561834e2d551ccb3abe5d754d46db11"
+    }
+  }
+}

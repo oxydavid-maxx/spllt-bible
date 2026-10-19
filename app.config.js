@@ -33,9 +33,6 @@ module.exports = ({ config }) => {
     useEmbeddedUpdate: true,
     disableAntiBrickingMeasures: false,
   };
-  // CI can exercise the real native channel switch without contacting the real update service.
-  // EAS profiles always force checks on, even when a CI environment variable is inherited.
-  nextConfig.extra = { ...config.extra, otaCheckEnabled: !isolatedOtaCi };
   // Android-only Settings.System bridge; iOS has no Firebase Test Lab system setting.
   plugins.push('./plugins/withQingmuTestLab');
   // iOS builds carry the Android versionCode as their build number, so one bump in app.json releases both

@@ -66,7 +66,7 @@ jobs:
         run: |
           RUN=$(gh run list --workflow android.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
           if [ -n "$RUN" ]; then gh run download "$RUN" --name android-summary --dir ci-out/base || true; fi
-          npx tsx scripts/ci/compare-baseline.ts ci-out/android-summary.json ci-out/base/android-summary.json apkBytes 1.002 "APK 大小" >> "$GITHUB_STEP_SUMMARY"
+          npx tsx scripts/ci/compare-baseline.ts ci-out/android-summary.json ci-out/base/android-summary.json apkBytes 1.002 "APK 大小" - scripts/ci/eas-update-size-baseline.json >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         uses: actions/upload-artifact@v4
         with:

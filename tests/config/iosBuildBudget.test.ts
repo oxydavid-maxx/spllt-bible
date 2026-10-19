@@ -1,8 +1,20 @@
 // tests/config/iosBuildBudget.test.ts
 import { describe, expect, it } from 'vitest';
-import { checkIosAppFiles, checkIosInfoPlist, checkIosPods } from '../../src/config/iosBuildBudget';
+import { checkIosAppFiles, checkIosInfoPlist, checkIosPods, checkIosUpdatesPlist } from '../../src/config/iosBuildBudget';
 
 describe('iOS build guards', () => {
+  it('allows the real channel API but stops a CI app before launch if it can contact the real update service', () => {
+    const expected = { url: 'https://u.expo.dev/synthetic', runtimeVersion: '1.0.0' };
+    const good = { EXUpdatesEnabled: true, EXUpdatesURL: expected.url, EXUpdatesRuntimeVersion: '1.0.0', EXUpdatesCheckOnLaunch: 'NEVER', EXUpdatesRequestHeaders: { 'expo-channel-name': 'production' } };
+    expect(checkIosUpdatesPlist(good, expected)).toEqual([]);
+    expect(checkIosUpdatesPlist({ ...good, EXUpdatesCheckOnLaunch: 'ALWAYS' }, expected)).toContain('CI must embed NEVER before the simulator can launch');
+    expect(checkIosUpdatesPlist({ ...good, EXUpdatesEnabled: false }, expected)).toContain('expo-updates must stay enabled for the native channel-switch proof');
+    expect(checkIosUpdatesPlist({ ...good, EXUpdatesDisableAntiBrickingMeasures: true }, expected)).toContain('anti-bricking measures must stay enabled');
+  });
+  it('rejects missing native update configuration, incompatible runtime and a disabled embedded fallback', () => {
+    expect(checkIosUpdatesPlist({}, { url: 'https://u.expo.dev/synthetic', runtimeVersion: '1.0.0' })).toHaveLength(5);
+    expect(checkIosUpdatesPlist({ EXUpdatesHasEmbeddedUpdate: false }, { url: 'https://u.expo.dev/synthetic', runtimeVersion: '1.0.0' })).toContain('embedded update fallback must stay enabled');
+  });
   const good = { CFBundleIdentifier: 'org.qingmu.youth', CFBundleVersion: '40', UIBackgroundModes: ['audio'], NSCameraUsageDescription: '允許竹科聖經掃描好友 QR 碼' };
   it('accepts the expected bundle, background audio and Chinese purpose strings', () => {
     expect(checkIosInfoPlist(good, { bundleId: 'org.qingmu.youth', buildNumber: '40', requireChineseStrings: ['NSCameraUsageDescription'] })).toEqual([]);

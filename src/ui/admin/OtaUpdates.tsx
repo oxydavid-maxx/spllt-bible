@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import * as Updates from 'expo-updates';
-import Constants from 'expo-constants';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuthSnapshot } from '../../services/authSession';
 import { createGamificationApiClient } from '../../services/gamificationApiClient';
@@ -10,7 +9,9 @@ import { theme } from '../Theme';
 /** Fire after rendering; a stalled/offline update service never owns the app's loading state. */
 export async function checkOtaUpdateInBackground(): Promise<void> {
   try {
-    if (!Updates.isEnabled || Constants.expoConfig?.extra?.otaCheckEnabled === false) return;
+    // NEVER is reserved for the isolated native CI build. Read the installed binary's policy,
+    // not OTA manifest metadata, so a CI export can never switch off a production installation.
+    if (!Updates.isEnabled || Updates.checkAutomatically !== Updates.UpdatesCheckAutomaticallyValue.ON_ERROR_RECOVERY) return;
     const result = await Updates.checkForUpdateAsync();
     if (result.isAvailable || result.isRollBackToEmbedded) await Updates.fetchUpdateAsync();
     // Deliberately no reloadAsync: downloaded assets apply on the next cold start, including while reading/audio plays.

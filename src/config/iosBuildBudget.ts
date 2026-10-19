@@ -5,6 +5,20 @@
  */
 export interface IosPlistExpectation { bundleId: string; buildNumber?: string; requireChineseStrings: string[] }
 
+/** CI must never contact the real EAS project, including error recovery before JS renders. */
+export function checkIosUpdatesPlist(plist: Record<string, unknown>, expected: { url: string; runtimeVersion: string }): string[] {
+  const problems: string[] = [];
+  if (plist.EXUpdatesEnabled !== true) problems.push('expo-updates must stay enabled for the native channel-switch proof');
+  if (plist.EXUpdatesURL !== expected.url) problems.push('unexpected update URL');
+  if (plist.EXUpdatesRuntimeVersion !== expected.runtimeVersion) problems.push('native runtime must match the app version');
+  if ((plist.EXUpdatesRequestHeaders as Record<string, string> | undefined)?.['expo-channel-name'] !== 'production') problems.push('CI release must embed the production channel');
+  if (plist.EXUpdatesCheckOnLaunch !== 'NEVER') problems.push('CI must embed NEVER before the simulator can launch');
+  // Missing optional keys use the SDK defaults; record the raw plist rather than inventing observed values.
+  if (plist.EXUpdatesDisableAntiBrickingMeasures === true) problems.push('anti-bricking measures must stay enabled');
+  if (plist.EXUpdatesHasEmbeddedUpdate === false) problems.push('embedded update fallback must stay enabled');
+  return problems;
+}
+
 const CJK = /[\u3400-\u9fff]/;
 
 export function checkIosInfoPlist(plist: Record<string, unknown>, expected: IosPlistExpectation): string[] {

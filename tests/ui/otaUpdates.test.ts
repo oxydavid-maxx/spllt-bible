@@ -2,12 +2,13 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ allowed: false, memberId: 'member', token: 'token', enabled: true, checksEnabled: true, channel: 'production', check: vi.fn(), fetch: vi.fn(), override: vi.fn(), reload: vi.fn() }));
+const state = vi.hoisted(() => ({ allowed: false, memberId: 'member', token: 'token', enabled: true, checksEnabled: true, nativePolicy: 'ON_ERROR_RECOVERY', channel: 'production', check: vi.fn(), fetch: vi.fn(), override: vi.fn(), reload: vi.fn() }));
 vi.hoisted(() => { (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Switch: 'Switch', StyleSheet: { create: (s: unknown) => s } }));
 vi.mock('expo-constants', () => ({ default: { get expoConfig() { return { extra: { otaCheckEnabled: state.checksEnabled } }; } } }));
 vi.mock('expo-updates', () => ({
   get isEnabled() { return state.enabled; }, get channel() { return state.channel; },
+  get checkAutomatically() { return state.nativePolicy; }, UpdatesCheckAutomaticallyValue: { NEVER: 'NEVER', ON_ERROR_RECOVERY: 'ON_ERROR_RECOVERY' },
   checkForUpdateAsync: state.check, fetchUpdateAsync: state.fetch,
   setUpdateRequestHeadersOverride: state.override, reloadAsync: state.reload,
 }));
@@ -19,7 +20,7 @@ let tree: TestRenderer.ReactTestRenderer | null = null;
 const render = async () => { await act(async () => { tree = TestRenderer.create(React.createElement(AdminOtaUpdatesEntry)); }); };
 const toggle = () => tree!.root.findByType('Switch' as never);
 beforeEach(() => {
-  state.allowed = false; state.memberId = 'member'; state.token = 'token'; state.channel = 'production'; state.enabled = true; state.checksEnabled = true;
+  state.allowed = false; state.memberId = 'member'; state.token = 'token'; state.channel = 'production'; state.enabled = true; state.checksEnabled = true; state.nativePolicy = 'ON_ERROR_RECOVERY';
   state.check.mockReset().mockResolvedValue({ isAvailable: true }); state.fetch.mockReset().mockResolvedValue({ isNew: true });
   state.override.mockReset(); state.reload.mockReset();
 });
@@ -46,8 +47,18 @@ describe('background OTA checks', () => {
   it('does not download when no update exists and does not call the network in isolated CI', async () => {
     state.check.mockResolvedValueOnce({ isAvailable: false });
     await checkOtaUpdateInBackground(); expect(state.fetch).not.toHaveBeenCalled();
-    state.check.mockClear(); state.checksEnabled = false;
+    state.check.mockClear(); state.checksEnabled = false; state.nativePolicy = 'NEVER';
     await checkOtaUpdateInBackground(); expect(state.check).not.toHaveBeenCalled();
+  });
+  it('uses the installed native policy so CI update metadata cannot suppress a production installation', async () => {
+    state.checksEnabled = false; state.nativePolicy = 'ON_ERROR_RECOVERY';
+    await checkOtaUpdateInBackground();
+    expect(state.check).toHaveBeenCalledOnce();
+  });
+  it('does not contact EAS when the installed native policy cannot be recognized', async () => {
+    state.nativePolicy = 'unknown';
+    await checkOtaUpdateInBackground();
+    expect(state.check).not.toHaveBeenCalled();
   });
 });
 

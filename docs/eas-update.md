@@ -69,7 +69,13 @@ npx eas-cli@24.13.0 update:rollback <目前-production-最新-group-ID> --platfo
 
 ## CI 隔離
 
-只有 `CI=true` 且 `QINGMU_CI_DISABLE_OTA_CHECKS=1`，並且沒有 EAS build profile/`EAS_BUILD=true` 與正式 Gradle 簽章旗標 `QINGMU_RELEASE_SIGNING_PROPERTIES` 時，`extra.otaCheckEnabled` 才設 false；兩個原生套件仍啟用，可驗官方 header API，但不呼叫正式更新服務。EAS production/preview 與本機簽章正式建置即使繼承 CI 旗標仍會檢查。一般本機 Gradle 正式建置不可設定這組 CI 專用旗標。測試會守住正式設定；iOS CI 使用記憶體假資料管理者驗證切換持久化，不發布 OTA。
+只有 `CI=true` 且 `QINGMU_CI_DISABLE_OTA_CHECKS=1`，並且沒有 EAS build profile/`EAS_BUILD=true` 與正式 Gradle 簽章旗標 `QINGMU_RELEASE_SIGNING_PROPERTIES` 時，原生 `checkAutomatically` 才設 `NEVER`。原生更新套件仍啟用，可驗官方 header API，但不呼叫正式更新服務。App 從官方 `Updates.checkAutomatically` 讀取安裝檔內的政策，只在正式的 `ON_ERROR_RECOVERY` 政策下手動背景檢查；不從 OTA manifest 讀取停用旗標，因此測試用 metadata 不會抑制正式安裝的後續檢查。
+
+EAS production/preview 與本機簽章正式建置即使繼承 CI 旗標仍保留 `ON_ERROR_RECOVERY`。一般本機 Gradle 正式建置不可設定這組 CI 專用旗標。iOS CI 在啟動前直接讀回成品 `Expo.plist` 守門，再用記憶體假資料管理者驗證切換持久化；不發布 OTA。
+
+## 原生套件的一次性大小基準
+
+`scripts/ci/eas-update-size-baseline.json` 記錄這次導入前後的實測 bytes、各自 CI run/commit 與 raw committed package-lock blob SHA-256。只有下載的 main 基準 bytes 和套件 digest 都符合時才採用新基準；main 已採用新套件後回到正常比較。APK 1.002/iOS 1.05 的比例不變，記憶體不套用這個大小調整。缺值、0 或字串測量一律 FAIL。PR/REPORT 另列最終候選和原 main 的實際增量。
 
 ## 依據
 
