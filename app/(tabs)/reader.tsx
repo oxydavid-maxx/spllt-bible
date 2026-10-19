@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, Linking, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { buildFixtureModels } from '../../src/ui/routes';
 import { YouVersionReader } from '../../src/ui/YouVersionReader';
 import { FullscreenReaderLayout, readerCanvasInsets, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
 import { createJournalFolderMirror } from '../../src/services/journalFolderMirror';
@@ -9,6 +8,7 @@ import { createReaderSpeedStore, DEFAULT_READER_SPEED, isReaderSpeed, type Reade
 import { formatReadingDateLabel } from '../../src/ui/ReadingDateNavigator';
 import { openQingmuReaderPositionStore } from '../../src/storage/mobileDatabase';
 import type { ReaderPosition } from '../../src/storage/readerPosition';
+import { useReaderAudioSnapshot } from '../../src/services/readerAudioBridge';
 import { fixtureProfile } from '../../src/ui/fixtureProfile';
 import { getYouVersionContentMetadata, getYouVersionVersionOptions } from '../../src/config/youVersionContent';
 import { buildYouVersionChapterUrl } from '../../src/ui/youVersionReaderConfig';
@@ -39,12 +39,12 @@ export default function ReaderScreen() {
   useEffect(() => { if (!chrome.focused) setPlanOpen(false); }, [chrome.focused]);
   // A chapter that failed to load while this tab was out of sight retries when it comes back.
   const retrySignal = useReaderRetrySignal(chrome.focused);
-  const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession();
+  const audio = useReaderAudioSnapshot();
+  const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession({ visible: chrome.focused, playing: audio.state === 'playing', finished: audio.finished || audio.state === 'inactive' || audio.state === 'retry' || audio.state === 'unavailable' });
   const auth = useAuthSnapshot();
   const session = auth.session;
   const memberId = session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
-  const model = buildFixtureModels(selectedDate);
-  const references = day?.references ?? model.reader.references;
+  const references = day?.references ?? [];
   const referencesKey = references.join('|');
   const [preferencesStore] = useState(createNativeReaderPreferencesStore);
   const preferences = useReaderPreferences(memberId, preferencesStore);
@@ -213,6 +213,7 @@ export default function ReaderScreen() {
     showTools: chrome.showTools,
     textSettings: preferences.preferences.settings,
     narrationSpeed,
+    focused: chrome.focused,
   });
   const syncError = completion.syncError;
   useEffect(() => {

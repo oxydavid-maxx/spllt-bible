@@ -391,7 +391,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
         <View accessible={false} style={styles.audioCell}>
           {/* Kept mounted on the 靈修 tab: it owns the chapter's player. */}
           <View style={onDevotion ? styles.hidden : styles.audioInner}>
-            <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={false} readerAction active={audioOwnerActive} sharedOwner />
+            <ChapterAudioControls ref={audioControlRef} chapterUsfm={chapterUsfm} versionId={versionId} translationName={metadata?.translationName} bottomCell={false} readerAction active={audioOwnerActive} visible={chrome.focused} sharedOwner />
           </View>
           {onDevotion && devotion ? <Pressable accessibilityRole="button" accessibilityLabel={devotion.speaking ? '暫停朗讀' : '朗讀靈修'} onPress={playDevotion} style={styles.devotionPlay}><PlayPauseGlyph playing={devotion.speaking} /></Pressable> : null}
         </View>

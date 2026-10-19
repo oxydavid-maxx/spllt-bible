@@ -21,12 +21,14 @@ import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { useCongregation } from '../../src/ui/congregation/congregationStore';
 import { theme } from '../../src/ui/Theme';
 import { createApiClient } from '../../src/services/apiClient';
+import { readReadingDays } from '../../src/services/readingDaysRead';
+import { readViewerCapabilities } from '../../src/services/viewerCapabilities';
 import { useCompletionController } from '../../src/services/useCompletionController';
 import type { CompletionAwardEvent, CompletionSyncEvent } from '../../src/services/completionController';
 import { applyCompletionSyncToProfile } from '../../src/ui/completionProfileSync';
 import { CompletionTodayButton } from '../../src/ui/CompletionTodayButton';
 import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
-import { getReadingPlan, getReadingPlanId, getReadingPlanSpan, getScheduledReading, setSelectedReadingDate } from '../../src/ui/readingSession';
+import { getReadingPlan, replaceReadingDaysRange, getReadingPlanId, getReadingPlanSpan, getScheduledReading, setSelectedReadingDate } from '../../src/ui/readingSession';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { isWithinCompletionWindow, taipeiDate } from '../../src/domain/gamificationV1';
 import type { CompletionRecord } from '../../src/domain/completion';
@@ -118,10 +120,13 @@ export default function ProgressScreen() {
   useEffect(() => {
     let active = true;
     const expectedAuthEpoch = auth.epoch;
-    if (!completionClient || !session) return () => { active = false; };
+    if (!completionClient || !session || !focused || !appForeground) return () => { active = false; };
     const range = readingDaysRange(calendarMonth, today);
-    void completionClient.getReadingDays(range.from, range.to).then((response) => {
+    void readReadingDays(session, range.from, range.to, () => completionClient.getReadingDays(range.from, range.to)).then((response) => {
       if (!active || !response || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
+      replaceReadingDaysRange(range.from, range.to, response.days);
+      completion.reconcileRemoteDays?.(response.days);
+      setConfirmedDays(current => Object.fromEntries(Object.entries(current).filter(([date]) => date < range.from || date > range.to)));
       const fetched = new Map(response.days.map((day) => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', canComplete: day.canComplete }] as const));
       setSchedule((current) => {
         const days = new Map([...current.days].filter(([date]) => date < range.from || date > range.to));
@@ -131,7 +136,7 @@ export default function ProgressScreen() {
       if (!pickedDate.current && calendarMonth === today.slice(0, 7)) setSelectedDate(defaultSelectedDate(today, fetched));
     }).catch(() => undefined);
     return () => { active = false; };
-  }, [completionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh]);
+  }, [completionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh, focused, appForeground]);
   const loadedDevotionRanges = useRef<Array<{ from: string; to: string }>>([]);
   useEffect(() => {
     let active = true;
@@ -157,7 +162,7 @@ export default function ProgressScreen() {
   useEffect(() => {
     let active = true;
     const expectedAuthEpoch = auth.epoch;
-    if (!devotionClient || !session) return () => { active = false; };
+    if (!devotionClient || !session || !focused || !appForeground) return () => { active = false; };
     const range = readingDaysRange(calendarMonth, today);
     void devotionClient.getDevotionDates(range.from, range.to).then((dates) => {
       if (!active || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
@@ -165,7 +170,7 @@ export default function ProgressScreen() {
       setDevotionDates((current) => new Set([...[...current].filter((date) => date < range.from || date > range.to), ...dates]));
     }).catch(() => undefined);
     return () => { active = false; };
-  }, [devotionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh]);
+  }, [devotionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh, focused, appForeground]);
   const isLive = useCallback((generation: number, expectedScope: ScoreScope, expectedMember?: string | null, requiresUnlock = false) => Boolean(focusedRef.current && appActive.current && requestGeneration.current === generation && activeScope.current === expectedScope && (expectedMember === undefined || expectedMember === activeMember.current) && session && isCurrentAuthSession(session) && (!requiresUnlock || guard.current.state === 'unlocked')), [session]);
   // Account-wide secondary content is independent of the selected chart range/member.
   const isViewLive = useCallback((generation: number) => Boolean(focusedRef.current && appActive.current && viewGeneration.current === generation && session && isCurrentAuthSession(session)), [session]);
@@ -203,7 +208,7 @@ export default function ProgressScreen() {
         const preserveScanner = wasActive && focusedRef.current && activeSheet.current === 'scan' && scannerActivityRequest.current !== null;
         resumeScannerAfterActivity.current = preserveScanner;
         clearProtectedState(preserveScanner, true, true);
-      } else if (focusedRef.current) {
+      } else if (!wasActive && focusedRef.current) {
         const preserveScanner = resumeScannerAfterActivity.current && activeSheet.current === 'scan';
         resumeScannerAfterActivity.current = false;
         refreshOnForeground.current(preserveScanner);
@@ -330,11 +335,11 @@ export default function ProgressScreen() {
   }, [clearProtectedState, refreshOwnProfile]));
   // Everything secondary waits for the one critical own-profile request to settle.
   useEffect(() => {
-    if (!client || !session || !focused || !primaryReady || capabilities) return;
+    if (!client || !session || !focused || !primaryReady) return;
     let active = true; const generation = viewGeneration.current;
-    void client.getCapabilities().then((value) => { if (active && isViewLive(generation)) setCapabilities(value); }).catch((reason) => { if (active && isViewLive(generation)) setError(messageFor(reason)); });
+    void readViewerCapabilities(JSON.stringify([session.memberId, session.sessionToken, auth.epoch]), () => client.getCapabilities()).then((value) => { if (active && isViewLive(generation)) setCapabilities(value); }).catch((reason) => { if (active && isViewLive(generation)) setError(messageFor(reason)); });
     return () => { active = false; };
-  }, [client, session, focused, primaryReady, capabilities, isViewLive]);
+  }, [client, session, focused, primaryReady, secondaryRefresh, isViewLive]);
 
   const chooseScope = async (nextScope: ScoreScope) => {
     if (!client || !session || !focusedRef.current || !appActive.current || (nextScope === scope && !(nextScope !== 'me' && selected))) return;
@@ -526,7 +531,7 @@ export default function ProgressScreen() {
     refreshCompletionProfile(event);
   }, [refreshCompletionProfile, session?.memberId]);
   // The same shared controller the reading tab uses, pointed at whichever day the calendar selected.
-  const completion = useCompletionController({ planId: selectedPlanId, taskDate: selectedDate, canComplete: selectedCanComplete, onAward: onCompletionAward, onConfirmed: onCompletionConfirmed });
+  const completion = useCompletionController({ planId: selectedPlanId, taskDate: selectedDate, canComplete: selectedCanComplete, refreshRemote: false, onAward: onCompletionAward, onConfirmed: onCompletionConfirmed });
   // The selected day's own record is the freshest word on it (it flips the moment the button is
   // pressed); other days take a confirmed sync event over the schedule.
   const localRecordTouched = (record: CompletionRecord) => record.revision > 0 || record.syncStatus !== 'CONFIRMED' || record.status !== 'UNREPORTED';

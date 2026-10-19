@@ -1,0 +1,50 @@
+import React from 'react';
+import TestRenderer, { act } from 'react-test-renderer';
+import { afterEach, expect, it, vi } from 'vitest';
+const native = vi.hoisted(() => ({ values: new Map<string, string>(), foreground: new Set<() => void>() }));
+vi.hoisted(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
+const primitive = vi.hoisted(() => (name: string) => (props: any) => require('react').createElement(name, props, props.children));
+vi.mock('react-native', () => ({ Image: primitive('Image'), Pressable: primitive('Pressable'), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (s: unknown) => s }, Linking: {} }));
+vi.mock('expo-router', () => ({ router: { push: vi.fn() } }));
+vi.mock('../../src/ui/GoogleLoginCard', () => ({ GoogleLoginCard: () => null }));
+vi.mock('../../src/ui/ReminderSettings', () => ({ ReminderSettings: () => null }));
+vi.mock('../../src/ui/congregation/CongregationSetting', () => ({ CongregationSetting: () => null }));
+vi.mock('../../src/services/reminderRuntime', () => ({ getReminderRuntimeOwner: () => null, useReminderRuntimeSnapshot: () => ({ ready: false }) }));
+vi.mock('expo-secure-store', () => ({ getItemAsync: async (key: string) => native.values.get(key) ?? null, setItemAsync: async (key: string, value: string) => { native.values.set(key, value); }, deleteItemAsync: async (key: string) => { native.values.delete(key); } }));
+vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: () => void) => { native.foreground.add(fn); return () => native.foreground.delete(fn); } }));
+import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
+import { AccountSurface } from '../../src/ui/accountSurfaceComponent';
+import { AuthProvider, clearAuthSession, getAuthSnapshot, persistAuthSession, setAuthSession, useAuthSnapshot } from '../../src/services/authSession';
+let tree: TestRenderer.ReactTestRenderer | null = null;
+const person = (displayName: string) => ({ memberId: 'm1', displayName, avatarUrl: null, groupId: null, groupName: null });
+afterEach(async () => { await act(async () => tree?.unmount()); tree = null; clearAuthSession(); vi.useRealTimers(); });
+it('refreshes a successful profile on foreground once, updating all readers without idle reads (9)', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-19T02:00:00Z'));
+  await persistAuthSession({ memberId: 'm1', sessionToken: 'synthetic' }, 3600);
+  let name = '舊姓名'; const load = vi.fn(async () => person(name));
+  function Profile() { const auth = useAuthSnapshot(); return React.createElement('Profile', { name: auth.profile?.displayName, initial: auth.profile?.displayName.slice(0, 1) }); }
+  await act(async () => { tree = TestRenderer.create(React.createElement(AuthProvider, { loadProfile: load, children: React.createElement(React.Fragment, null, React.createElement(Profile), React.createElement(AccountSurface), React.createElement(AccountEntryButton)) })); });
+  expect(getAuthSnapshot().profile?.displayName).toBe('舊姓名');
+  const identityEpoch = getAuthSnapshot().epoch;
+  vi.useFakeTimers(); name = '新姓名'; await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
+  expect(load).toHaveBeenCalledTimes(1);
+  await act(async () => { native.foreground.forEach(fn => fn()); });
+  expect(tree!.root.findByType('Profile' as never).props).toMatchObject({ name: '新姓名', initial: '新' });
+  const labels = tree!.root.findAll(node => String(node.type) === 'Text').map(node => node.children.join(''));
+  expect(labels).toContain('新姓名'); expect(labels.filter(label => label === '新')).toHaveLength(2); expect(labels).not.toContain('舊姓名');
+  expect(load).toHaveBeenCalledTimes(2);
+  // Refreshing a name must not create a new auth owner or invalidate other in-flight page reads.
+  expect(getAuthSnapshot().epoch).toBe(identityEpoch);
+});
+it('cannot restore an old member after a foreground profile response arrives late (9)', async () => {
+  await persistAuthSession({ memberId: 'm1', sessionToken: 'synthetic' }, 3600);
+  let resolve!: (value: ReturnType<typeof person>) => void;
+  const load = vi.fn().mockResolvedValueOnce(person('舊')).mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+  await act(async () => { tree = TestRenderer.create(React.createElement(AuthProvider, { loadProfile: load, children: null })); });
+  await act(async () => { native.foreground.forEach(fn => fn()); });
+  expect(load).toHaveBeenCalledTimes(2);
+  await act(async () => { await persistAuthSession({ memberId: 'm2', sessionToken: 'other' }, 3600); });
+  await act(async () => { resolve(person('不該出現')); });
+  expect(getAuthSnapshot().session?.memberId).toBe('m2');
+  expect(getAuthSnapshot().profile?.displayName).not.toBe('不該出現');
+});

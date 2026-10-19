@@ -2,22 +2,24 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const native = vi.hoisted(() => ({
-  values: new Map<string, string>(), speak: vi.fn(), setDevotion: vi.fn(async () => undefined), getDevotionDates: vi.fn(async (): Promise<string[]> => []),
+  listeners: new Set<(state: string) => void>(), focused: true, values: new Map<string, string>(), speak: vi.fn(), setDevotion: vi.fn(async () => undefined), getDevotionDates: vi.fn(async (): Promise<string[]> => []),
   post: { date: '2026-10-14', weekday: '三', passages: '詩118', title: '測試題目', sections: [{ heading: '默想經文', paragraphs: ['測試段落'] }], song: { youtubeId: 'abcdefghijk' } },
 }));
 vi.hoisted(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
 vi.mock('expo-speech', () => ({ speak: native.speak, stop: async () => undefined }));
-vi.mock('react-native', () => ({ AppState: { addEventListener: () => ({ remove() {} }) } }));
+vi.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: (_: string, fn: (s: string) => void) => { native.listeners.add(fn); return { remove: () => native.listeners.delete(fn) }; } } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async (k: string) => native.values.get(k) ?? null, setItemAsync: async (k: string, v: string) => { native.values.set(k, v); } }));
 vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => ({ getDevotionDates: native.getDevotionDates, setDevotion: native.setDevotion, getDevotional: async () => native.post }) }));
 vi.mock('../../src/ui/devotion/DevotionalView', () => ({ DevotionalView: (p: any) => React.createElement('DevotionalView', p) }));
 import { useReaderDevotion, type ReaderDevotionBinding } from '../../src/ui/devotion/useReaderDevotion';
+let rerender: () => void;
 let binding: ReaderDevotionBinding; let view: TestRenderer.ReactTestRenderer;
 async function mount(memberId: string, textSettings?: { fontSize: number; lineSpacing: number } | null) {
-  function Harness() { binding = useReaderDevotion({ session: { memberId, sessionToken: 'synthetic-token' }, date: '2026-10-14', baseUrl: 'https://fixture.test', showTools: vi.fn(), textSettings, narrationSpeed: 1.5 }); return null; }
+  function Harness() { binding = useReaderDevotion({ session: { memberId, sessionToken: 'synthetic-token' }, date: '2026-10-14', baseUrl: 'https://fixture.test', showTools: vi.fn(), textSettings, narrationSpeed: 1.5, focused: native.focused }); return null; }
+  rerender = () => view.update(React.createElement(Harness));
   await act(async () => { view = TestRenderer.create(React.createElement(Harness)); });
 }
-beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:00:00Z')); native.speak.mockClear(); native.setDevotion.mockClear(); native.getDevotionDates.mockReset().mockResolvedValue([]); vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));  });
+beforeEach(() => { native.focused = true; vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:00:00Z')); native.speak.mockClear(); native.setDevotion.mockClear(); native.getDevotionDates.mockReset().mockResolvedValue([]); vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));  });
 afterEach(() => { act(() => view?.unmount()); vi.useRealTimers(); vi.unstubAllGlobals(); });
 // 2026-10-17 (維護者): reaching the last chapter's end asks for the day's post once, so 接著讀靈修 › only
 // shows when there is a 靈修 to read; no timer, no offer window.
@@ -103,4 +105,25 @@ it('two quick leaf presses produce only one pending mutation and one completion 
   await act(async () => { binding.devotion!.onToggle(); binding.devotion!.onToggle(); });
   expect(native.setDevotion).toHaveBeenCalledTimes(1);
   expect(binding.completionEvent?.operationId).toBe('devotion-1');
+});
+
+
+it('rechecks the leaf on foreground and reader tab return, including a failed first read; never polls (3)', async () => {
+  native.getDevotionDates.mockRejectedValueOnce(new Error('offline'));
+  await mount('leaf-refresh'); expect(binding.devotion?.completed).toBe(false);
+  const initial = native.getDevotionDates.mock.calls.length;
+  vi.useFakeTimers(); await act(async () => { await vi.advanceTimersByTimeAsync(600_000); }); expect(native.getDevotionDates).toHaveBeenCalledTimes(initial);
+  native.getDevotionDates.mockResolvedValue(['2026-10-14']);
+  await act(async () => { native.listeners.forEach(fn => fn('background')); native.listeners.forEach(fn => fn('active')); });
+  expect(binding.devotion?.completed).toBe(true); expect(native.getDevotionDates).toHaveBeenCalledTimes(initial + 1);
+  await act(async () => { native.listeners.forEach(fn => fn('active')); }); expect(native.getDevotionDates).toHaveBeenCalledTimes(initial + 1);
+});
+
+
+it('rechecks the leaf after returning to the same reader tab (3)', async () => {
+  await mount('leaf-tab'); const reads = native.getDevotionDates.mock.calls.length;
+  await act(async () => { native.focused = false; rerender(); });
+  native.getDevotionDates.mockResolvedValue(['2026-10-14']);
+  await act(async () => { native.focused = true; rerender(); });
+  expect(binding.devotion?.completed).toBe(true); expect(native.getDevotionDates).toHaveBeenCalledTimes(reads + 1);
 });

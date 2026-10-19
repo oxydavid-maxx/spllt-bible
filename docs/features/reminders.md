@@ -23,6 +23,10 @@
 
 聚會提醒（`meetingEnabled`/`meetingAdvanceMinutes`）的畫面欄位在 `src/ui/ReminderSettings.tsx` 裡還存在，但帳戶頁用 `showMeeting={false}` 一律不顯示（`src/ui/accountSurfaceComponent.tsx:41`），伺服器也可以用環境變數強制關閉（見「已知限制」），所以不列進上表。
 
+## 設定更新 (2026-10-19)
+
+回到前景時重新讀後端的提醒開關與時間，並依新設定重排/取消本機提醒；不必重開。重讀與設定寫入依序處理，保留本機尚待保存的欄位意圖；閒置不重讀。
+
 ## 行為規格
 
 ### 開啟與時間設定
@@ -57,6 +61,8 @@
 - 後端有一個背景 worker（`server/reminderWorker.ts`，每 15 秒一次）會找到期的聚會提醒並透過 FCM 送出，但要環境變數 `QINGMU_REMINDER_WORKER_AUTOSTART=true` 才會啟動（`server/remoteConfiguration.ts:35-44`）。
 
 ## 決定（為什麼這樣做）
+
+- 看過的資料要跟上：回到前景、切回頁面時重讀，不用計時器 (維護者 2026-10-19)。
 
 **刻意不做：**
 

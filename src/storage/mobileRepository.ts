@@ -75,6 +75,9 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
     database.execSync('ALTER TABLE qingmu_completions ADD COLUMN pending_status TEXT');
   }
 
+  const listeners = new Set<() => void>();
+  const notify = () => listeners.forEach(listener => listener());
+
   function get(record: Pick<CompletionRecord, 'memberId' | 'planId' | 'taskDate'>): CompletionRecord | undefined {
     return toRecord(
       database.getFirstSync<StoredCompletion>(
@@ -140,6 +143,7 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
       database.execSync('ROLLBACK');
       throw error;
     }
+    notify();
     return record;
   }
 
@@ -195,6 +199,7 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
       }
       if (!commandSettled) break;
     }
+    notify();
     return results;
   }
 
@@ -260,8 +265,24 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
     return run;
   }
 
+  function mergeRemote(record: CompletionRecord): CompletionRecord {
+    const current = get(record);
+    // Recheck at commit time: a read can arrive after a local tap or a newer sync.
+    if (current && (current.syncStatus !== 'CONFIRMED' || hasPendingCompletion(record) || current.revision > record.revision)) return current;
+    database.runSync(
+      `INSERT INTO qingmu_completions (member_id, plan_id, task_date, status, revision, sync_status, pending_status, last_operation_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(member_id, plan_id, task_date) DO UPDATE SET status=excluded.status, revision=excluded.revision, sync_status=excluded.sync_status, pending_status=excluded.pending_status, last_operation_id=excluded.last_operation_id`,
+      record.memberId, record.planId, record.taskDate, record.status, record.revision, 'CONFIRMED', null, current?.lastOperationId ?? null,
+    );
+    notify();
+    return get(record)!;
+  }
+
   return {
     get,
+    mergeRemote,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     saveCompletion,
     flush,
     hasPendingCompletion,

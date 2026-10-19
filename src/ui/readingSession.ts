@@ -1,5 +1,6 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { canonicalReadingPlan, getAdjacentScheduledDates, getInitialReadingDate, getPeriodForDate, getReadingDay } from '../domain/calendar';
+import type { ReadingDaySnapshot } from '../services/apiClient';
 import type { ReadingPlan } from '../domain/types';
 
 export interface ReadingPlanSnapshot extends ReadingPlan {
@@ -22,6 +23,23 @@ function initialDate(): string {
 let activePlan: ReadingPlanSnapshot = canonicalReadingPlan;
 let planIdByDate = new Map(canonicalReadingPlan.days.map((day) => [day.date, canonicalReadingPlan.planId]));
 let selectedDate = initialDate();
+let followsToday = true;
+let selectionDay = readingToday();
+let deferDateUntilAudioEnds = false;
+function readingToday(): string {
+  const configured = process.env.EXPO_PUBLIC_QINGMU_TEST_DATE?.trim();
+  return configured && validDateOnly(configured) ? configured : todayInTaipei();
+}
+function refreshVisibleDate(playing: boolean, finished: boolean): void {
+  if (!followsToday) return;
+  const today = getInitialReadingDate(activePlan, readingToday());
+  if (today === selectedDate) return;
+  if (playing) { deferDateUntilAudioEnds = true; return; }
+  if (deferDateUntilAudioEnds && !finished) return;
+  deferDateUntilAudioEnds = false;
+  selectedDate = today;
+  publish();
+}
 let snapshotRevision = 0;
 let todayReaderTabPressRevision = 0;
 let todayReaderTabPressMemberId: string | null = null;
@@ -34,7 +52,11 @@ let journalEntryRevision = 0;
 let pendingJournalQuote: string | null = null;
 
 export function setSelectedReadingDate(date: string): void {
-  if (!validDateOnly(date) || date === selectedDate) return;
+  if (!validDateOnly(date)) return;
+  selectionDay = readingToday();
+  followsToday = date === selectionDay;
+  deferDateUntilAudioEnds = false;
+  if (date === selectedDate) return;
   selectedDate = date;
   if (todayReaderTabPressTargetDate && todayReaderTabPressTargetDate !== date) {
     todayReaderTabPressTargetDate = null;
@@ -43,9 +65,15 @@ export function setSelectedReadingDate(date: string): void {
   publish();
 }
 
+/** A cross-midnight return must not erase a historical choice or paused narration. */
+export function preserveReadingDateOnReturn(): boolean {
+  return deferDateUntilAudioEnds || (!followsToday && selectionDay !== readingToday());
+}
+
 /** An explicit tap on the visible Reader tab is an entry action even when today is already selected. */
 export function requestTodayReaderTabPress(date: string, memberId: string | null, authEpoch: number, resetToAssignedStart = false): void {
   if (!validDateOnly(date)) return;
+  followsToday = true; selectionDay = readingToday(); deferDateUntilAudioEnds = false;
   todayReaderTabPressSameDate = selectedDate === date;
   selectedDate = date;
   todayReaderTabPressRevision += 1;
@@ -100,6 +128,19 @@ export function setReadingPlan(plan: ReadingPlanSnapshot): void {
     }
     selectedDate = fallbackDate;
   }
+  publish();
+}
+
+/** A successful server range replaces that range, including dates removed by the server.
+ * Keep the selected date even when it becomes a rest day; never resurrect bundled passages. */
+export function replaceReadingDaysRange(from: string, to: string, days: ReadingDaySnapshot[]): void {
+  const byDate = new Map(activePlan.days.filter(day => day.date < from || day.date > to).map(day => [day.date, day]));
+  for (const day of days) {
+    if (day.taskDate < from || day.taskDate > to) continue;
+    byDate.set(day.taskDate, { date: day.taskDate, planId: day.planId, sourceRows: [], references: [...day.references], revision: day.sourceRevision });
+  }
+  activePlan = normalizePlan({ ...activePlan, days: [...byDate.values()] });
+  planIdByDate = new Map(activePlan.days.map(day => [day.date, day.planId ?? activePlan.planId]));
   publish();
 }
 
@@ -158,7 +199,20 @@ function subscribe(listener: Listener): () => void {
   return () => listeners.delete(listener);
 }
 
-export function useReadingSession() {
+export function useReadingSession(visibility?: { visible: boolean; playing: boolean; finished?: boolean }) {
+  const visible = visibility?.visible ?? false;
+  const playing = visibility?.playing ?? false;
+  const finished = visibility?.finished ?? false;
+  useEffect(() => {
+    if (!visible) return;
+    refreshVisibleDate(playing, finished);
+    let alive = true; let stop: (() => void) | undefined;
+    // Keep the calendar/session module usable by Node tools and pure model tests.
+    void import('../services/appVisibility').then(({ subscribeAppActive }) => {
+      if (alive) stop = subscribeAppActive(() => refreshVisibleDate(playing, finished));
+    });
+    return () => { alive = false; stop?.(); };
+  }, [visible, playing, finished]);
   useSyncExternalStore(subscribe, () => snapshotRevision, () => snapshotRevision);
   return getReadingSessionSnapshot();
 }

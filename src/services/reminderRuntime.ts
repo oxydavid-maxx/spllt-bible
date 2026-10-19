@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { subscribeAppActive } from './appVisibility';
 import { getAuthSession, getAuthSnapshot, isCurrentAuthSession, registerAuthLifecycleListener, type AuthSession } from './authSession';
 import { buildUpcomingReadingReminderSpecs, createReminderScheduler, type ReadingScheduleEntry, type ReminderScheduler } from './reminderScheduler';
 import { createReminderReconciler, type ReminderReconciler } from './reminderReconciler';
@@ -65,6 +66,8 @@ export class ReminderRuntimeOwner {
   private generation = 0;
   private started = false;
   private unregisterAuth: (() => void) | null = null;
+  private unregisterForeground: (() => void) | null = null;
+  private foregroundWork: Promise<void> | null = null;
   private tokenSubscription: { remove: () => void } | null = null;
   private ownerGeneration = 0;
   private preferenceRevision = 0;
@@ -111,6 +114,7 @@ export class ReminderRuntimeOwner {
   start(): void {
     if (this.started) return;
     this.started = true;
+    this.unregisterForeground = subscribeAppActive(() => { void this.refreshOnForeground(); });
     this.unregisterAuth = registerAuthLifecycleListener((change) => {
       if (change.invalidated) {
         const invalidated = change.invalidated;
@@ -258,6 +262,30 @@ export class ReminderRuntimeOwner {
     }
   }
 
+  private refreshOnForeground(): Promise<void> {
+    if (this.foregroundWork) return this.foregroundWork;
+    const session = this.session; const generation = this.generation;
+    if (!session || !this.isCurrent(session, generation)) return Promise.resolve();
+    const work = this.preferenceWork.then(async () => {
+      if (this.activationReady) { await this.activationReady; return; }
+      const client = this.options.createApiClient(session);
+      const next = await this.bounded(client.getReminderSnapshot());
+      if (!this.isCurrent(session, generation) || !next || next.memberId !== session.memberId) return;
+      this.preferenceRevision = next.preferenceGeneration ?? this.preferenceRevision;
+      const permission = next.readingEnabled || next.meetingEnabled ? await this.scheduler.requestPermission().catch(() => 'denied' as const) : this.state.permission;
+      if (!this.isCurrent(session, generation)) return;
+      const state: ReminderRuntimeState = { ...this.state, ready: true, error: null, readingEnabled: next.readingEnabled, meetingEnabled: next.meetingEnabled, readingTime: next.readingTime, meetingAdvanceMinutes: next.meetingAdvanceMinutes, remoteDeliveryStatus: next.remoteDeliveryStatus, meeting: next.meetings[0] ?? null, permission };
+      this.activationBaselineReady = true;
+      this.setState(state);
+      await Promise.all([this.options.secureStore.setItemAsync('qingmu.reminder.readingEnabled', String(next.readingEnabled)), this.options.secureStore.setItemAsync('qingmu.reminder.readingTime', next.readingTime)]);
+      await this.reconcile(session, generation, { ...state, ...this.pendingPreferences }, client);
+    }).catch(() => { if (this.isCurrent(session, generation)) this.setState({ ...this.state, error: 'load' }); });
+    this.foregroundWork = work;
+    this.preferenceWork = work;
+    void work.finally(() => { if (this.foregroundWork === work) this.foregroundWork = null; });
+    return work;
+  }
+
   async retrySave(): Promise<void> {
     if (this.pendingPreferences) await this.savePreferences(this.pendingPreferences);
   }
@@ -344,7 +372,7 @@ export class ReminderRuntimeOwner {
     await this.reconcile(session, this.generation, this.state);
   }
 
-  dispose(): void { this.unregisterAuth?.(); this.unregisterAuth = null; this.tokenSubscription?.remove(); this.tokenSubscription = null; this.started = false; }
+  dispose(): void { this.unregisterForeground?.(); this.unregisterForeground = null; this.unregisterAuth?.(); this.unregisterAuth = null; this.tokenSubscription?.remove(); this.tokenSubscription = null; this.started = false; }
 }
 
 function shiftDate(date: string, offsetDays: number): string {
