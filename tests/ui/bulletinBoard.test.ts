@@ -36,6 +36,7 @@ import AnnouncementsScreen from '../../app/(tabs)/announcements';
 import { BulletinBoard } from '../../src/ui/bulletin/BulletinBoard';
 import { bulletinHeading, bulletinPageSource } from '../../src/services/bulletinClient';
 import { clampOffset, fitSize, pinchScale } from '../../src/ui/bulletin/zoomMath';
+import { androidForwardedHeaders } from '../helpers/androidImageHeaders';
 
 const WEEKS = [
   { date: '2026-10-18', postedAt: '2026-10-17T02:00:00.000Z', pages: [1, 2, 3].map((index) => ({ index, width: 760, height: 1075 })) },
@@ -55,6 +56,10 @@ describe('the 公告 tabs', () => {
     expect(byLabel('主堂').props.accessibilityState).toEqual({ selected: true });
     expect(state.fetchBulletins).toHaveBeenCalledWith(expect.objectContaining({ token: 'tok' }));
     expect(texts()).toEqual(expect.arrayContaining(['10/18 (日) 週刊', '3 張・點圖片放大', '10/11 (日) 週刊']));
+    // The screen's own sources (bulletinPageSource): the token has to reach Android's native image request too.
+    const pages = tree!.root.findAll((node) => String(node.type) === 'Image');
+    expect(pages).toHaveLength(5);
+    for (const page of pages) expect(androidForwardedHeaders(page.props.source)).toEqual({ authorization: 'Bearer tok' });
   });
 
   it('opens on 青少 for everyone else, and either side can be chosen', async () => {
@@ -76,10 +81,14 @@ describe('the 週刊 board and viewer', () => {
     await act(async () => { tree = TestRenderer.create(React.createElement(BulletinBoard, { weeks: WEEKS, status: 'ready', sourceFor, onRetry: vi.fn() })); });
     const images = tree!.root.findAll((node) => String(node.type) === 'Image');
     expect(images).toHaveLength(5);
-    expect(images[0].props.source).toEqual({ uri: 'https://api.test/api/bulletins/2026-10-18/1', headers: { authorization: 'Bearer tok' } });
+    expect(images[0].props.source).toEqual([{ uri: 'https://api.test/api/bulletins/2026-10-18/1', headers: { authorization: 'Bearer tok' } }]);
+    // React Native's Android Image sends headers only from an array source (tests/helpers/androidImageHeaders.ts).
+    for (const image of images) expect(androidForwardedHeaders(image.props.source)).toEqual({ authorization: 'Bearer tok' });
     await act(async () => { byLabel('10/18 (日) 週刊第 2 頁，點了放大').props.onPress(); });
     expect(texts()).toEqual(expect.arrayContaining(['10/18 週刊 2 / 3', '兩指放大縮小・左右滑換頁']));
-    expect(tree!.root.findAll((node) => String(node.type) === 'AnimatedImage')).toHaveLength(3);
+    const zoomable = tree!.root.findAll((node) => String(node.type) === 'AnimatedImage');
+    expect(zoomable).toHaveLength(3);
+    for (const image of zoomable) expect(androidForwardedHeaders(image.props.source)).toEqual({ authorization: 'Bearer tok' });
     await act(async () => { byLabel('關閉週刊').props.onPress(); });
     expect(tree!.root.findAll((node) => String(node.type) === 'Modal')).toHaveLength(0);
   });

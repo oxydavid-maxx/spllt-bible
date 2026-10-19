@@ -2,7 +2,9 @@
 # scripts/ios/run-flows.sh — fixture backend + counting proxy + simulator + Maestro (one flow per call).
 set -uo pipefail
 OUT=${OUT:-ci-out}; mkdir -p "$OUT/maestro"; : > "$OUT/requests.log"
-QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_ADMIN_MEMBER_IDS=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 \
+# One synthetic 週刊 (two small A4 test pages) for flow 44-bulletin; a copy, so the backend never touches the repo.
+rm -rf "$OUT/bulletins"; cp -R scripts/ios/fixtures/bulletins "$OUT/bulletins"
+QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_ADMIN_MEMBER_IDS=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 QINGMU_BULLETIN_DIR="$OUT/bulletins" \
   npx tsx server/http.ts > "$OUT/server.log" 2>&1 &
 # The app talks to the backend over HTTPS, as in production: the reader takes its Bible content host only
 # from an https API base. A throwaway CA, trusted only inside this simulator, signs a loopback certificate.
@@ -56,7 +58,7 @@ echo "$UDID" > "$OUT/udid.txt"
 export MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
 echo '{}' > "$OUT/flows.json"
 : > "$OUT/.flows-start"
-record() { python3 -c "import json,sys;p='$OUT/flows.json';d=json.load(open(p));d[sys.argv[1]]=sys.argv[2];json.dump(d,open(p,'w'))" "$1" "$2"; }
+record() { LAST_RESULT=$2; python3 -c "import json,sys;p='$OUT/flows.json';d=json.load(open(p));d[sys.argv[1]]=sys.argv[2];json.dump(d,open(p,'w'))" "$1" "$2"; }
 run_flow() {
   local flow=$1 name; name=$(basename "$flow" .yaml)
   if [ -n "${REQUIRES_KEY_PATTERN:-}" ] && [[ "$name" =~ $REQUIRES_KEY_PATTERN ]] && [ -z "${EXPO_PUBLIC_YOUVERSION_APP_KEY:-}" ]; then record "$name" SKIP; return; fi
@@ -69,6 +71,8 @@ run_flow() {
   bash scripts/ios/collect-failure.sh "$UDID" "$name"
 }
 for flow in .maestro/ios/*.yaml; do
+  # Where this flow's requests start in the log, for checks that read only what the flow caused.
+  FROM=$(wc -l < "$OUT/requests.log")
   run_flow "$flow"
   case "$(basename "$flow" .yaml)" in
     # The smoke flow ends on the 讀經 tab; its accessibility tree is what the reader flows are written against.
@@ -76,6 +80,9 @@ for flow in .maestro/ios/*.yaml; do
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
     # Narration must keep playing while the app is in the background: park it behind Settings for 20 s.
     20-audio-start) xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null ;;
+    # A 週刊 page frame looks the same loaded or blank: the flow passes only if every page was asked for with the
+    # member's token and answered 200 (a page without it is how Android showed blank pages, 2026-10-19).
+    44-bulletin) npx tsx scripts/ios/check-bulletin-requests.ts "$OUT/requests.log" "$FROM" "$OUT/bulletins" "$OUT/bulletin-requests.json" > "$OUT/maestro/44-bulletin-requests.txt" 2>&1 || { [ "$LAST_RESULT" = FAIL ] || { record 44-bulletin FAIL; bash scripts/ios/collect-failure.sh "$UDID" 44-bulletin; }; } ;;
     45-account-deletion) maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/maestro/45-account-screen.txt" 2>/dev/null || true ;;
     46-apple-login) maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/maestro/46-apple-authorization-screen.txt" 2>/dev/null || true; xcrun simctl io "$UDID" screenshot "$OUT/maestro/46-apple-native.png" ;;
     30-friend-push-open) npx tsx scripts/ios/make-friend-apns.ts "$OUT/friend.apns" && xcrun simctl push "$UDID" org.qingmu.youth "$OUT/friend.apns" ;;

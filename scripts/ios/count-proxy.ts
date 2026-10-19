@@ -3,8 +3,10 @@
 // usage: tsx scripts/ios/count-proxy.ts <listenPort> <targetPort> <log-file> [<tls-cert.pem> <tls-key.pem>]
 // With a certificate it serves HTTPS, as production does: the reader only takes its content host from an
 // https API base (src/ui/youVersionReaderConfig.ts), so over plain HTTP the Bible text never loads.
-// Log lines: "<ms> <METHOD> <path>" when a request arrives (R4 counts these), then "<ms> = <status> <path>
-// [error code]" when it answers; free-form response bodies and credentials never enter the log.
+// Log lines: "<ms> <METHOD> <path> bearer=yes|no" when a request arrives (R4 counts these), then "<ms> = <status>
+// <path> [error code]" when it answers; free-form response bodies and credentials never enter the log. bearer= says
+// only whether the request carried a bearer token, never which one: flow 44-bulletin needs every 週刊 page asked for
+// with it (scripts/ios/check-bulletin-requests.ts).
 import { appendFileSync, readFileSync } from 'node:fs';
 import { createServer, request, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createTlsServer } from 'node:https';
@@ -13,7 +15,8 @@ import { redactEvidence } from './sanitize-evidence';
 const [listen, target, log, certFile, keyFile] = process.argv.slice(2);
 const forward = (incoming: IncomingMessage, outgoing: ServerResponse) => {
   const safePath = redactEvidence(incoming.url ?? '', [process.env.EXPO_PUBLIC_YOUVERSION_APP_KEY ?? '']);
-  appendFileSync(log, `${Date.now()} ${incoming.method} ${safePath}\n`);
+  const bearer = /^bearer\s+\S/i.test(String(incoming.headers.authorization ?? '')) ? 'yes' : 'no';
+  appendFileSync(log, `${Date.now()} ${incoming.method} ${safePath} bearer=${bearer}\n`);
   // The localhost fixture can close an idle socket while the global Agent is reusing it. Isolate
   // each forwarded connection so this test-only transport cannot manufacture an app-facing 502.
   const upstream = request({ host: '127.0.0.1', port: Number(target), path: incoming.url, method: incoming.method, headers: incoming.headers, agent: false }, (response) => {

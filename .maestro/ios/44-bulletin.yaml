@@ -1,0 +1,44 @@
+# 公告 › 主堂: the 週刊 the fixture backend serves (scripts/ios/fixtures/bulletins, two synthetic A4 test pages).
+# Its pages need the member's bearer token. To Maestro a page that never loaded is the same frame as one that did, so
+# run-flows.sh then reads the request log (scripts/ios/check-bulletin-requests.ts): every page asked for with the
+# token and answered 200, none 401. Runs before 46-apple-login, which signs out.
+# Maestro reads text as a regular expression: the heading's "(日)" is matched with ".".
+appId: org.qingmu.youth
+---
+- launchApp
+# The tab bar can appear while Today is still replacing itself with Reader (00-smoke).
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 90000
+- repeat:
+    times: 3
+    while:
+      notVisible: "主堂"
+    commands:
+      - tapOn:
+          text: "公告"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "主堂"
+    timeout: 15000
+- tapOn: "主堂"
+- extendedWaitUntil:
+    visible: "8/30 .日. 週刊"
+    timeout: 20000
+- assertVisible: "2 張・點圖片放大"
+- takeScreenshot: 44-bulletin-board
+- tapOn: "8/30 .日. 週刊第 1 頁.*"
+- extendedWaitUntil:
+    visible: "8/30 週刊 1 / 2"
+    timeout: 15000
+- takeScreenshot: 44-bulletin-page-1
+- swipe:
+    direction: LEFT
+- extendedWaitUntil:
+    visible: "8/30 週刊 2 / 2"
+    timeout: 15000
+- takeScreenshot: 44-bulletin-page-2
+- tapOn: "關閉週刊"
+- extendedWaitUntil:
+    visible: "2 張・點圖片放大"
+    timeout: 15000
