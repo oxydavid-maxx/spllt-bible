@@ -1,12 +1,11 @@
+import { Image, View } from 'react-native';
+import { BRAND_ICON } from './brandIcon';
 import { Stack } from 'expo-router';
 import type { AuthStatus } from '../services/authSession';
 
-/**
- * A saved session counts while it is being restored, so a returning member never sees the sign-in
- * screen flash by. If it turns out to be gone, the guard flips and Expo Router sends them to sign in.
- */
+/** Only a restored local session opens the app; returning members never see sign-in flash. */
 export function canUseApp(status: AuthStatus): boolean {
-  return status === 'signed-in' || status === 'hydrating';
+  return status === 'signed-in';
 }
 
 /**
@@ -14,7 +13,11 @@ export function canUseApp(status: AuthStatus): boolean {
  * session lands on the sign-in screen, and the sign-in screen is out of reach once signed in.
  * List any new top-level route here; a route the layout does not name stays reachable signed out.
  */
-export function AppStack({ signedIn }: { signedIn: boolean }) {
+export function AppStack({ signedIn, hydrating = false }: { signedIn: boolean; hydrating?: boolean }) {
+  // Match the native launch screen's white background and app icon, with no routes or text yet.
+  if (hydrating) return <View testID="auth-startup" style={{ flex: 1, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+    <Image source={BRAND_ICON} style={{ width: 200, height: 200 }} accessibilityIgnoresInvertColors />
+  </View>;
   return <Stack screenOptions={{ headerShown: false }}>
     <Stack.Protected guard={signedIn}>
       <Stack.Screen name="index" />

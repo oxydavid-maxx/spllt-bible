@@ -7,6 +7,7 @@ const doubles = vi.hoisted(() => ({
   platform: { OS: 'android' },
   listeners: new Set<(state: string) => void>(),
   establishSession: vi.fn(), persist: vi.fn(), finish: vi.fn(), sequence: 0,
+  storage: new Map<string, string>(),
   primitive: (name: string) => (props: Record<string, unknown>) => require('react').createElement(name, props, props.children as never),
 }));
 vi.mock('react-native', () => ({
@@ -26,6 +27,7 @@ vi.mock('../../src/services/authSession', () => ({
   finishAuthSessionAttempt: doubles.finish, configureAuthSessionTransport: vi.fn(),
   persistEstablishedAuthSession: doubles.persist,
 }));
+vi.mock('expo-secure-store', () => ({ getItemAsync: async (key: string) => doubles.storage.get(key) ?? null, setItemAsync: async (key: string, value: string) => { doubles.storage.set(key, value); }, deleteItemAsync: async (key: string) => { doubles.storage.delete(key); } }));
 import { GoogleLoginCard } from '../../src/ui/GoogleLoginCard';
 
 function deferred<T>() {
@@ -44,13 +46,13 @@ beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime('2026-10-18T12:00:00Z');
   process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = 'synthetic-client';
   process.env.EXPO_PUBLIC_QINGMU_FIXTURE = 'false';
-  doubles.sequence = 0; doubles.listeners.clear();
+  doubles.storage.clear(); doubles.sequence = 0; doubles.listeners.clear();
   doubles.establishSession.mockReset().mockResolvedValue(session);
   doubles.persist.mockReset().mockResolvedValue(true); doubles.finish.mockReset();
   signIn = vi.fn();
   const native = {
-    GoogleOneTapSignIn: { configure: vi.fn(), checkPlayServices: vi.fn().mockResolvedValue(undefined), signIn,
-      createAccount: vi.fn(), presentExplicitSignIn: vi.fn() },
+    GoogleOneTapSignIn: { configure: vi.fn(), checkPlayServices: vi.fn().mockResolvedValue(undefined), signIn: vi.fn(),
+      createAccount: vi.fn(), presentExplicitSignIn: signIn },
     isSuccessResponse: (value: any) => value?.type === 'success',
     isNoSavedCredentialFoundResponse: () => false,
     isCancelledResponse: (value: any) => value?.type === 'cancelled',
@@ -92,6 +94,49 @@ describe.each(['android', 'ios'])('Google login native wait recovery on %s (real
     expect(doubles.finish).not.toHaveBeenCalled();
     signIn.mockResolvedValue(success()); await press();
     expect(doubles.persist).toHaveBeenCalledTimes(1);
+  });
+  it('ignores a second press while the progress marker is still being written', async () => {
+    signIn.mockReturnValue(new Promise(() => {})); await render();
+    await act(async () => { button().props.onPress(); button().props.onPress(); });
+    expect(signIn).toHaveBeenCalledOnce();
+  });
+  it('persists a timestamp before invoking the picker and keeps it until the server exchange finishes', async () => {
+    const native = deferred<unknown>(), exchange = deferred<typeof session>();
+    signIn.mockImplementation(() => {
+      expect(doubles.storage.size).toBe(1);
+      expect([...doubles.storage.values()][0]).toContain(String(Date.now()));
+      return native.promise;
+    });
+    doubles.establishSession.mockReturnValue(exchange.promise);
+    await render(); await press();
+    expect(doubles.storage.size).toBe(1);
+    await act(async () => { native.resolve(success()); });
+    expect(doubles.storage.size).toBe(1);
+    await act(async () => { exchange.resolve(session); });
+    expect(doubles.storage.size).toBe(0);
+  });
+  it.each(['success', 'cancelled', 'failure', 'server-failure'] as const)('clears the local progress marker after %s', async result => {
+    signIn.mockImplementation(async () => {
+      expect(doubles.storage.size).toBe(1);
+      if (result === 'failure') throw new Error('synthetic');
+      return result === 'cancelled' ? { type: 'cancelled' } : success();
+    });
+    if (result === 'server-failure') doubles.establishSession.mockResolvedValue(null);
+    await render(); await press();
+    expect(signIn).toHaveBeenCalledOnce();
+    expect(doubles.storage.size).toBe(0);
+  });
+  it('does not let an old result clear a retry marker', async () => {
+    const old = deferred<unknown>(), next = deferred<unknown>();
+    signIn.mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);
+    await render(); await press();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); }); await press();
+    const retryMarker = [...doubles.storage.entries()];
+    expect(retryMarker).toHaveLength(1);
+    await act(async () => { old.resolve(success('old')); });
+    expect([...doubles.storage.entries()]).toEqual(retryMarker);
+    await act(async () => { next.resolve({ type: 'cancelled' }); });
+    expect(doubles.storage.size).toBe(0);
   });
   it('recovers within 60 seconds even without an AppState event', async () => {
     signIn.mockReturnValue(new Promise(() => {})); await render(); await press();

@@ -56,6 +56,7 @@
 - 梯隊：全體中，啟用帳號且積分大於 0 的人數要滿 10 人才開始分梯隊，不足時顯示「滿 10 人開始分梯隊」；滿足後分 1 到 5 梯隊，積分排前面的梯隊數字較小（`calculateBand`，`src/domain/gamificationV1.ts:104-109`）。
 - 已兌換掉的分數會在有目標獎品時顯示「可兌換 {餘額} 分‧已兌換 {已兌換} 分」（`earnedTotal - redeemableBalance`，`RewardGoalCard.tsx:37,54`）。
 - 有多個現行獎品且目標不是唯一選項時，下方出現一排可以左右滑動的獎品架，點其他獎品可以直接把目標換成它（`shelfOffersAChoice`，`RewardGoalCard.tsx:44,64-75`）。
+- 讀積分逾時 (每次 8 秒)、連不上或伺服器 5xx 時，只要頁面還開著，App 隔 2 秒、再隔 5 秒自動重讀，最多三次 (`PROFILE_RETRY_DELAYS_MS`，`app/(tabs)/progress.tsx`)。重讀期間沒有舊資料就顯示「載入中…」，有上次存的積分就照常顯示並標「目前顯示上次的積分，還沒連上更新」；三次都失敗才顯示錯誤。被拒絕或資料格式錯誤不重讀。離開分頁就停止重讀。
 
 ### 「總積分/每月」圖
 來源：`src/ui/gamification/ScoreHistoryCard.tsx`、`src/ui/gamification/scoreHistoryModel.ts`、`server/devotionProgress.ts` (`GET /api/me/score-history`)
@@ -206,6 +207,7 @@
 | `tests/ui/actionSheetDismissal.test.ts` | 操作面板（ActionSheet）點外部關閉規則 |
 | `tests/ui/friendPushBridge.test.ts` | 好友推播事件橋接 |
 | `tests/ui/progressFriendPush.test.ts` | 積分頁收到好友推播時的畫面反應 |
+| `tests/ui/progressProfileRetry.test.ts` | 第一次讀積分超過 8 秒時自動重讀、最多三次、離開分頁就停 (iOS 00-smoke 的失敗時序) |
 | `tests/ui/progressModel.test.ts` | 舊版進度顯示模型（legacy，未接畫面） |
 
 ## 相關文件
