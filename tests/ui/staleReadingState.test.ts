@@ -17,10 +17,11 @@ vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ getRe
 vi.mock('../../src/services/reminderScheduler', () => ({ createReminderScheduler: () => ({}) }));
 vi.mock('../../src/services/reminderCompletion', () => ({ syncReadingReminderForCompletion: async () => undefined }));
 import { createMobileRepository } from '../../src/storage/mobileRepository';
+import type { ReadingDaySnapshot } from '../../src/services/apiClient';
 import { useCompletionController, type UseCompletionControllerValue } from '../../src/services/useCompletionController';
 import { getReadingPlan, getReadingSessionSnapshot, resetReadingPlan, setSelectedReadingDate } from '../../src/ui/readingSession';
 let db: DatabaseSync; let tree: TestRenderer.ReactTestRenderer | null = null; let value: UseCompletionControllerValue;
-const day = (taskDate = '2026-10-19', status = 'UNREPORTED', revision = 0, references = ['PSA.1']) => ({ taskDate, planId: 'church-2026-09', references, sourceRevision: 2, sourceDigest: 'fixture', status, revision, canComplete: true });
+const day = (taskDate = '2026-10-19', status: ReadingDaySnapshot['status'] = 'UNREPORTED', revision = 0, references = ['PSA.1']): ReadingDaySnapshot => ({ taskDate, planId: 'church-2026-09', references, sourceRevision: 2, sourceDigest: 'fixture', status, revision, canComplete: true });
 let remote = [day()];
 function Harness() { value = useCompletionController({ planId: 'church-2026-09', taskDate: '2026-10-19', canComplete: true }); return React.createElement('Record', value.record); }
 async function mount() { await act(async () => { tree = TestRenderer.create(React.createElement(Harness)); }); }
@@ -136,4 +137,45 @@ it('coalesces the old-date and new-date consumers into one reading-days query on
   const reads = state.read.mock.calls.length;
   vi.setSystemTime(new Date('2026-10-19T16:01:00Z')); await foreground();
   expect(getReadingSessionSnapshot().selectedDate).toBe('2026-10-20'); expect(state.read).toHaveBeenCalledTimes(reads + 1);
+});
+
+
+it('reconciles a calendar response through the current owner after a date switch while reading (review P2)', async () => {
+  let date = '2026-10-19';
+  function CalendarOwner() { value = useCompletionController({ planId: 'church-2026-09', taskDate: date, canComplete: true, refreshRemote: false }); return null; }
+  await act(async () => { tree = TestRenderer.create(React.createElement(CalendarOwner)); });
+  // Progress's month read keeps this callback when only selectedDate changes.
+  const callbackCapturedByMonthRead = value.reconcileRemoteDays!;
+  date = '2026-10-17';
+  await act(async () => { tree!.update(React.createElement(CalendarOwner)); });
+  await act(async () => { callbackCapturedByMonthRead([day(date, 'COMPLETED', 1)]); });
+  expect(value.record).toMatchObject({ taskDate: date, status: 'COMPLETED', revision: 1 });
+  expect(state.repository.get({ memberId: 'self', planId: 'church-2026-09', taskDate: date })).toMatchObject({ status: 'COMPLETED' });
+});
+
+
+it('rejects a prior login epoch calendar callback after a date switch (review P2)', async () => {
+  const previous = { ...state.auth, session: { ...state.auth.session } }; let date = '2026-10-19';
+  function CalendarOwner() { value = useCompletionController({ planId: 'church-2026-09', taskDate: date, canComplete: true, refreshRemote: false }); return null; }
+  try {
+    await act(async () => { tree = TestRenderer.create(React.createElement(CalendarOwner)); });
+    const previousCallback = value.reconcileRemoteDays!;
+    state.auth = { ...previous, epoch: previous.epoch + 1, session: { memberId: 'self', sessionToken: 'new-token' } }; date = '2026-10-17';
+    await act(async () => { tree!.update(React.createElement(CalendarOwner)); });
+    await act(async () => { previousCallback([day(date, 'COMPLETED', 9)]); });
+    expect(state.repository.get({ memberId: 'self', planId: 'church-2026-09', taskDate: date })).toBeUndefined();
+    expect(value.record.status).toBe('UNREPORTED');
+  } finally { state.auth = previous; }
+});
+
+it('preserves the new date pending completion when a captured month callback finishes (review P2)', async () => {
+  let date = '2026-10-19';
+  function CalendarOwner() { value = useCompletionController({ planId: 'church-2026-09', taskDate: date, canComplete: true, refreshRemote: false }); return null; }
+  await act(async () => { tree = TestRenderer.create(React.createElement(CalendarOwner)); });
+  const captured = value.reconcileRemoteDays!; date = '2026-10-17';
+  await act(async () => { tree!.update(React.createElement(CalendarOwner)); });
+  await act(async () => { await value.complete(); });
+  await act(async () => { captured([day(date, 'NOT_COMPLETED', 8)]); });
+  expect(value.record).toMatchObject({ taskDate: date, status: 'COMPLETED', syncStatus: 'PENDING_SAVE' });
+  expect(state.repository.pendingCount()).toBe(1);
 });

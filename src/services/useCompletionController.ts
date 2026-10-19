@@ -131,12 +131,18 @@ export function useCompletionController(options: UseCompletionControllerOptions)
   }, [memberId, sessionToken, auth.epoch, options.planId, options.taskDate]);
 
   const reconcileRemoteDays = useCallback((days: ReadingDaySnapshot[]) => {
-    if (!isCurrent() || !memberId) return;
+    // A calendar range belongs to the login, not the selected date. Its response
+    // still updates the shared repository when the member picks another day.
+    if (!isSessionCurrent() || !memberId) return;
     const repository = getRepository();
     for (const day of days) repository?.mergeRemote({ memberId, planId: day.planId, taskDate: day.taskDate, status: day.status, revision: day.revision, syncStatus: 'CONFIRMED' });
-    const current = repository?.get(identity);
-    if (current) setRecord(current);
-  }, [owner, isCurrent]);
+    // The new date's subscription reads its own record; an old callback must not
+    // replace that UI state with the date it originally captured.
+    if (isCurrent()) {
+      const current = repository?.get(identity);
+      if (current) setRecord(current);
+    }
+  }, [owner, isCurrent, isSessionCurrent]);
   const remoteReadGeneration = useRef(0);
   const refreshRemoteRef = useRef<() => void>(() => undefined);
   refreshRemoteRef.current = () => {
