@@ -89,7 +89,7 @@ function render(props: Partial<React.ComponentProps<typeof ReadingCalendarCard>>
   act(() => {
     renderer = TestRenderer.create(React.createElement(ReadingCalendarCard, {
       month: '2026-09', today: TODAY, selectedDate: '2026-09-25', days: september(mockDone), onSelect: () => undefined,
-      action: React.createElement('Action'), ...props,
+      ...props,
     }));
   });
   return renderer;
@@ -124,27 +124,18 @@ describe('the calendar card', () => {
     expect(flat(cell(view, '2026-09-30').props.style).opacity).toBe(0.45);
   });
 
-  it('puts the selected day, its passages and the action under the grid', () => {
-    const view = render();
-    expect(texts(view)).toEqual(expect.arrayContaining(['9/25 (五)', '多1、多2、詩101']));
-    expect(view.root.findAll((node) => (node.type as unknown) === 'Action')).toHaveLength(1);
+  // 維護者 2026-10-19: the selected day's line, its buttons and the one-line reasons moved to the day
+  // card at the top of the page (tests/ui/selectedDayCard.test.ts); the calendar only picks the day.
+  it('no longer writes the selected day, its passages or why it has no button under the grid', () => {
+    for (const [date, line] of [['2026-09-25', '9/25 (五)'], ['2026-09-10', '9/10 (四) 已超過 7 天，不能補登'], ['2026-09-20', '9/20 (日) 這天沒有讀經'], ['2026-09-29', '9/29 (二) 還沒到，當天再來打卡']]) {
+      const shown = texts(render({ selectedDate: date }));
+      expect(shown).not.toContain(line);
+      expect(shown).not.toContain('多1、多2、詩101');
+    }
   });
 
   it('does not display a correction explanation (reading-plan.md 決定)', () => {
     expect(texts(render()).join('')).not.toContain('讀經表原本');
-  });
-
-  it('shows one line and no action for a day that cannot be completed', () => {
-    for (const [date, line] of [['2026-09-10', '9/10 (四) 已超過 7 天，不能補登'], ['2026-09-20', '9/20 (日) 這天沒有讀經'], ['2026-09-29', '9/29 (二) 還沒到，當天再來打卡']]) {
-      const view = render({ selectedDate: date });
-      expect(texts(view)).toContain(line);
-      expect(view.root.findAll((node) => (node.type as unknown) === 'Action')).toHaveLength(0);
-    }
-  });
-
-  it('keeps the action for a finished day, which is where its undo lives', () => {
-    const view = render({ selectedDate: '2026-09-26' });
-    expect(view.root.findAll((node) => (node.type as unknown) === 'Action')).toHaveLength(1);
   });
 
   it('reports the tapped day and the month arrows', () => {

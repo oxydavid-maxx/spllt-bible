@@ -1,12 +1,17 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { Reward, ScoreChartQuery, ScoreProfile as ScoreProfileData } from '../../services/gamificationApiClient';
 import { theme } from '../Theme';
 import { RewardGoalCard } from './RewardGoalCard';
 import { ScoreProfileChart } from './ScoreProfileChart';
 
-export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onChartChange, today, lead, community, showChartViewToggle, chart, handedOutBy }: {
+export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onChartChange, today, lead, community, showChartViewToggle, chart, handedOutBy, scrollRef }: {
   handedOutBy?: '輔導' | '同工';
+  /**
+   * The page's scroller, for the screen to bring the top back into view: the own page does when a
+   * calendar day is tapped, because that day's buttons are in the card at the top.
+   */
+  scrollRef?: Ref<ScrollView>;
   profile: ScoreProfileData;
   /** Active reward catalogue for the member's own shelf. */
   rewards?: Reward[];
@@ -15,8 +20,8 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
   onChartChange?: (query: ScoreChartQuery) => void;
   today?: string;
   /**
-   * The top of the page, above the reward goal: on the member's own page, the reading calendar and
-   * the prize banner. Inside this scroll container so the whole page scrolls as one.
+   * The top of the page, above the reward goal: on the member's own page, the day card, 團體 and the
+   * reading calendar. Inside this scroll container so the whole page scrolls as one.
    */
   lead?: ReactNode;
   /** Passed to the chart; the own page turns its 走勢/日曆 toggle off. */
@@ -34,7 +39,7 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
   chart?: ReactNode;
 }) {
   const privateData = profile.private;
-  return <ScrollView contentContainerStyle={styles.content}>
+  return <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
     {lead}
     {privateData ? <RewardGoalCard handedOutBy={handedOutBy} target={privateData.targetReward} redeemableBalance={privateData.redeemableBalance} earnedTotal={profile.earnedTotal} rewards={rewards} canEditTarget={profile.permissions.canEditTarget} onChooseTarget={onChooseTarget} onOpenPicker={onChooseReward} displayName={profile.displayName} band={profile.band} /> : <View style={styles.header}>
       <Text style={styles.name}>{profile.displayName}</Text>

@@ -81,9 +81,11 @@ beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new D
 afterAll(() => { vi.useRealTimers(); });
 afterEach(() => { act(() => { renderer?.unmount(); }); renderer = null; completion.options.length = 0; });
 
+// The page's one scroller, as the native ScrollView would hand it to a ref.
+const pageScroll = { scrollTo: vi.fn() };
 async function mount() {
   readingDays.mockImplementation(async (from: string, to: string) => serverDays(from, to));
-  await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
+  await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen), { createNodeMock: (element) => element.type === 'ScrollView' ? pageScroll : null }); });
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
   return renderer!;
 }
@@ -94,6 +96,8 @@ const texts = () => renderer!.root.findAll((node) => (node.type as unknown) === 
 const isCompletionButton = (node: TestRenderer.ReactTestInstance) => (node.type as unknown) === 'Pressable' && node.props?.accessibilityRole === 'button' && /讀經/.test(String(node.props.accessibilityLabel ?? '')) && node.props.accessibilityLabel !== '匯出讀經卡' && !/^\d{4}-/.test(String(node.props.accessibilityLabel));
 const buttons = () => renderer!.root.findAll(isCompletionButton);
 const lastOptions = () => completion.options[completion.options.length - 1];
+const byName = (name: string) => renderer!.root.findAll((node) => (node.type as { name?: string }).name === name);
+const scrollOrder = () => (renderer!.root.findByType('ScrollView' as never).children as TestRenderer.ReactTestInstance[]).map((child) => (child.type as { name?: string }).name ?? String(child.type));
 
 describe('the 積分 page opens on its calendar', () => {
   it('opens the shared plan from any calendar day and switches to the chosen reading date', async () => {
@@ -106,21 +110,22 @@ describe('the 積分 page opens on its calendar', () => {
     expect((await import('../../src/ui/readingSession')).getReadingSessionSnapshot().selectedDate).toBe('2026-10-15');
     expect(renderer!.root.findAllByType('ReadingPlanSheet' as never)).toHaveLength(0);
   });
-  it('scrolls as one page: 團體, then 個人 with the calendar, reward goal and chart — with no button above it', async () => {
+  it('scrolls as one page: the day card, then 團體, then 個人 with the calendar, reward goal and chart (維護者 2026-10-19)', async () => {
     devotionApi.getGroupReading.mockResolvedValueOnce({ month: '2026-09', today: '2026-09-27', todayReaders: null, yesterdayReaders: 4, days: [], monthReads: 40, busiest: null, qualifyingDays: 15, prizes: [], myDaysThisMonth: 3 });
     devotionApi.getScoreHistory.mockResolvedValueOnce({ from: '2026-09-01', today: '2026-09-27', points: [0, 1, 2], devotions: [0, 0, 1], months: [{ month: '2026-09', points: 2, devotionDays: 1 }] });
     await mount();
     const scroll = renderer!.root.findByType('ScrollView' as never);
-    const order = (scroll.children as TestRenderer.ReactTestInstance[]).map((child) => (child.type as { name?: string }).name ?? String(child.type));
-    expect(order.slice(0, 6)).toEqual(['SectionHeader', 'GroupReadingCard', 'SectionHeader', 'ReadingCalendarCard', 'RewardGoalCard', 'ScoreHistoryCard']);
+    const order = scrollOrder();
+    expect(order.slice(0, 7)).toEqual(['SelectedDayCard', 'SectionHeader', 'GroupReadingCard', 'SectionHeader', 'ReadingCalendarCard', 'RewardGoalCard', 'ScoreHistoryCard']);
     expect(scroll.children.filter((child) => typeof child !== 'string' && (child.type as { name?: string }).name === 'SectionHeader').map((child) => (child as TestRenderer.ReactTestInstance).props.title)).toEqual(['團體', '個人']);
     // 一起走過 is gone, and 全體 is not a tab any more: only 自己 and 好友.
     expect(order).not.toContain('CommunityProgress');
     const tabs = renderer!.root.findAll((node) => (node.type as unknown) === 'Pressable' && node.props.accessibilityRole === 'tab').map((node) => node.props.accessibilityLabel);
     expect(tabs).toEqual(['自己', '好友', '總積分', '每月']);
-    // The only completion button on the page is the calendar's.
+    // The only completion button on the page is the day card's.
     expect(buttons()).toHaveLength(1);
     expect(scroll.findAll(isCompletionButton)).toHaveLength(1);
+    expect(byName('SelectedDayCard')[0].findAll(isCompletionButton)).toHaveLength(1);
     expect(texts()).not.toContain('今天沒有可完成的讀經');
   });
 
@@ -292,5 +297,87 @@ describe('the 積分 page opens on its calendar', () => {
     await act(async () => resolve([{ date: '2026-09-25', rows: ['門'], completed: true, devoted: false }]));
     expect(cardExport.share).not.toHaveBeenCalled();
     auth.epoch = oldEpoch;
+  });
+});
+
+// 維護者 2026-10-19: the day's two buttons sit at the very top, above 團體, and follow the day picked
+// in the calendar below; a picked day other than today says 補登 and offers 回到今天.
+describe('the day card at the top of 自己', () => {
+  const at = (iso: string) => vi.setSystemTime(new Date(iso));
+  afterEach(() => { at('2026-09-27T04:00:00.000Z'); });
+  const card = () => byName('SelectedDayCard')[0];
+  const calendar = () => byName('ReadingCalendarCard')[0];
+  const textsOf = (node: TestRenderer.ReactTestInstance) => node.findAll((child) => (child.type as unknown) === 'Text').map((child) => child.children.join(''));
+  const pressable = (node: TestRenderer.ReactTestInstance, label: string) => node.findAll((child) => (child.type as unknown) === 'Pressable' && child.props.accessibilityLabel === label);
+  // The 靈修 and the 讀經 button, not a calendar cell or a footer link.
+  const dayButtons = (node: TestRenderer.ReactTestInstance) => node.findAll((child) => (child.type as unknown) === 'Pressable' && /讀經|靈修/.test(String(child.props.accessibilityLabel ?? '')) && child.props.accessibilityLabel !== '匯出讀經卡' && !/^\d{4}-/.test(String(child.props.accessibilityLabel))).map((child) => child.props.accessibilityLabel);
+  const nextMonth = async () => { await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '下個月' }).props.onPress(); await Promise.resolve(); await Promise.resolve(); }); };
+
+  it('comes straight before the calendar when the backend serves no 團體', async () => {
+    await mount();
+    expect(scrollOrder().slice(0, 3)).toEqual(['SelectedDayCard', 'ReadingCalendarCard', 'RewardGoalCard']);
+  });
+
+  it('on today says 今天· with the date and passages, has both buttons, and neither 補登 nor 回到今天', async () => {
+    at('2026-09-25T04:00:00.000Z');
+    await mount();
+    expect(textsOf(card())).toEqual(expect.arrayContaining(['今天·9/25 (五)', '多1、多2、詩101']));
+    expect(dayButtons(card())).toEqual(['完成今日靈修', '完成今日讀經']);
+    expect(textsOf(card())).not.toContain('補登');
+    expect(pressable(card(), '回到今天')).toHaveLength(0);
+  });
+
+  it('follows a day tapped in the calendar: 補登 before its date, its buttons, one scroll back to the top, and 回到今天 brings today back', async () => {
+    at('2026-09-25T04:00:00.000Z');
+    await mount();
+    pageScroll.scrollTo.mockClear();
+    await act(async () => { cell('2026-09-24').props.onPress(); });
+    const shown = textsOf(card());
+    expect(shown).toEqual(expect.arrayContaining(['補登', '9/24 (四)', '詩1', '回到今天 ›']));
+    expect(shown.indexOf('補登')).toBeLessThan(shown.indexOf('9/24 (四)'));
+    expect(shown.join('')).not.toContain('今天·');
+    expect(dayButtons(card())).toEqual(['我已讀了靈修', '我已完成讀經']);
+    expect(lastOptions()).toMatchObject({ taskDate: '2026-09-24' });
+    expect(pageScroll.scrollTo).toHaveBeenCalledExactlyOnceWith({ y: 0, animated: true });
+    await act(async () => { pressable(card(), '回到今天')[0].props.onPress(); });
+    expect(textsOf(card())).toContain('今天·9/25 (五)');
+    expect(textsOf(card())).not.toContain('補登');
+    expect(pressable(card(), '回到今天')).toHaveLength(0);
+    expect(cell('2026-09-25').props.accessibilityState).toEqual({ selected: true });
+    expect(lastOptions()).toMatchObject({ taskDate: '2026-09-25' });
+  });
+
+  it('brings the calendar back to this month with 回到今天', async () => {
+    at('2026-09-25T04:00:00.000Z');
+    await mount();
+    await nextMonth();
+    await act(async () => { cell('2026-10-02').props.onPress(); });
+    expect(texts()).toContain('2026年10月');
+    await act(async () => { pressable(card(), '回到今天')[0].props.onPress(); await Promise.resolve(); await Promise.resolve(); });
+    expect(texts()).toContain('2026年9月');
+    expect(textsOf(card())).toContain('今天·9/25 (五)');
+  });
+
+  it('gives an old or a future day one line and no buttons', async () => {
+    await mount();
+    for (const [date, line] of [['2026-09-10', '9/10 (四) 已超過 7 天，不能補登'], ['2026-09-29', '9/29 (二) 還沒到，當天再來打卡']]) {
+      await act(async () => { cell(date).props.onPress(); });
+      expect(textsOf(card())).toContain(line);
+      expect(dayButtons(card())).toEqual([]);
+      // Nothing to backfill on such a day, so no 補登 either; 回到今天 still leads back.
+      expect(textsOf(card())).not.toContain('補登');
+      expect(pressable(card(), '回到今天')).toHaveLength(1);
+    }
+  });
+
+  it('leaves the calendar card without the selected day or its buttons, keeping 匯出讀經卡 and 整份計畫', async () => {
+    await mount();
+    expect(dayButtons(calendar())).toEqual([]);
+    expect(textsOf(calendar())).not.toContain('9/25 (五)');
+    expect(textsOf(calendar())).not.toContain('多1、多2、詩101');
+    expect(pressable(calendar(), '匯出讀經卡')).toHaveLength(1);
+    expect(pressable(calendar(), '整份計畫')).toHaveLength(1);
+    // The day the page opened on (9/25, today 9/27 having no reading) is at the top instead.
+    expect(textsOf(card())).toEqual(expect.arrayContaining(['補登', '9/25 (五)', '多1、多2、詩101']));
   });
 });
