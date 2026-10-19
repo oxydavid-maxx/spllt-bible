@@ -20,7 +20,11 @@ appId: org.qingmu.youth
     timeout: 30000
 - tapOn: "開啟帳戶"
 - extendedWaitUntil:
-    visible: "刪除帳號與資料"
+    visible: "登出"
+    timeout: 15000
+- scrollUntilVisible:
+    element: "刪除帳號與資料"
+    direction: DOWN
     timeout: 15000
 - tapOn: "刪除帳號與資料"
 - assertVisible: "這會永久刪除你的帳號與伺服器上的個人資料，無法復原。"

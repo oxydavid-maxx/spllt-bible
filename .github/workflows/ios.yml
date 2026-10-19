@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: 120
     env:
       OUT: ci-out
+      # Only this fixture simulator skips startup requests; EAS profiles force them on.
+      QINGMU_CI_DISABLE_OTA_CHECKS: '1'
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_QINGMU_FIXTURE: 'true'
       EXPO_PUBLIC_QINGMU_DEV_TOKEN: ci-fixture-token
@@ -74,9 +76,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          RUN=$(gh run list --workflow ios.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          read -r RUN SHA <<< "$(gh run list --workflow ios.yml --branch main --status success --limit 1 --json databaseId,headSha --jq '.[0] // empty | "\(.databaseId) \(.headSha)"')"
           if [ -n "$RUN" ]; then gh run download "$RUN" --name ios-summary --dir ci-out/base || true; fi
-          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json appBytes 1.05 "R5 .app 大小" >> "$GITHUB_STEP_SUMMARY"
+          # package.json of the commit that measured main's size decides whether the expo-updates increment still applies (shallow checkout: fetch it).
+          mkdir -p ci-out/base
+          if [ -n "$SHA" ]; then { git cat-file -e "$SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$SHA"; } && git show "$SHA:package.json" > ci-out/base/package.json || rm -f ci-out/base/package.json; fi
+          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json appBytes 1.05 "R5 .app 大小" - scripts/ci/eas-update-size-baseline.json ci-out/base/package.json >> "$GITHUB_STEP_SUMMARY"
           npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json footprintMB 1.10 "R3 記憶體 vs main" same-flows >> "$GITHUB_STEP_SUMMARY"
       - name: sanitize evidence before upload
         id: sanitize_evidence

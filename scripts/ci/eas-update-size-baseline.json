@@ -1,0 +1,24 @@
+{
+  "reason": "One-time measured expo-updates 56.0.28 native increment (after minus before, same main commit); added to main's size only while main's baseline commit does not depend on expo-updates. The APK 1.002 and iOS 1.05 ratios are unchanged.",
+  "dependency": { "name": "expo-updates", "version": "56.0.28" },
+  "measurements": {
+    "apkBytes": {
+      "beforeBytes": 62709053,
+      "afterBytes": 66334086,
+      "beforeRunId": "39180557586",
+      "afterRunId": "39182315192",
+      "beforeCommit": "7e8ece8b713aa91bfbf510c5895630cdf4fe4a9d",
+      "afterCommit": "1746776596163c3e8a8b5b6f15b1f23df8d1eb27",
+      "afterBranchHead": "b685955a4561834e2d551ccb3abe5d754d46db11"
+    },
+    "appBytes": {
+      "beforeBytes": 142200579,
+      "afterBytes": 146029090,
+      "beforeRunId": "39180557599",
+      "afterRunId": "39182315294",
+      "beforeCommit": "7e8ece8b713aa91bfbf510c5895630cdf4fe4a9d",
+      "afterCommit": "1746776596163c3e8a8b5b6f15b1f23df8d1eb27",
+      "afterBranchHead": "b685955a4561834e2d551ccb3abe5d754d46db11"
+    }
+  }
+}
