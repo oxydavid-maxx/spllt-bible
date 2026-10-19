@@ -15,6 +15,10 @@ tail -n 40 "$DIR/$NAME.log" > "$DIR/$NAME-maestro-tail.txt" 2>/dev/null || true
 xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "process == \"$EXE\"" 2>/dev/null   | awk '/Unhandled JS Exception|Terminating app due to uncaught exception/ {grab=90} grab > 0 {print; grab--}' | head -n 120 > "$DIR/$NAME-js-fatal.txt" || true
 xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "process == \"$EXE\"" 2>/dev/null \
   | grep -Ei 'error|exception|fatal|terminat|crash|unhandled|invariant|not bundled|red ?box' | tail -n 60 > "$DIR/$NAME-app-log.txt" || true
+# The fixture build's bounded read-error lines (operation, code, status; gamificationApiClient.ts) in a file of their
+# own: XCTest "(error: (null))" query lines filled the 60-line tail above and pushed them out (39182073666).
+xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "process == \"$EXE\"" 2>/dev/null \
+  | grep -F 'CI_GAMIFICATION_READ_ERROR' | tail -n 40 > "$DIR/$NAME-read-errors.txt" || true
 # Network evidence: what ATS / URL loading said, whether the fixture backend is up, and what reached it.
 xcrun simctl spawn "$UDID" log show --last 5m --style compact --predicate "process == \"$EXE\"" 2>/dev/null   | grep -Ei 'Transport Security|cleartext|NSURLError|kCFErrorDomain|Task <|nw_connection|127\.0\.0\.1|8788' | tail -n 40 > "$DIR/$NAME-network.txt" || true
 { echo "== server.log (tail)"; tail -n 30 "$OUT/server.log" 2>/dev/null; echo "== requests.log: answers with 4xx/5xx"; grep " = [45][0-9][0-9] " "$OUT/requests.log" 2>/dev/null | tail -n 20; echo "== requests.log (tail)"; tail -n 16 "$OUT/requests.log" 2>/dev/null; echo "== health now"; curl -s -o /dev/null -w '%{http_code}
