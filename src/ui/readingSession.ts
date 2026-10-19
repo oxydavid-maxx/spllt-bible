@@ -236,11 +236,12 @@ export function useReadingDateRollover(visibility?: ReadingDateVisibility) {
   const devotionFinished = visibility?.devotionFinished ?? true;
   useEffect(() => {
     if (!visible) return;
-    refreshVisibleDate(playing, finished, devotionPlaying, devotionFinished);
     let alive = true; let stop: (() => void) | undefined;
     // Keep the calendar/session module usable by Node tools and pure model tests.
-    void import('../services/appVisibility').then(({ subscribeAppActive }) => {
-      if (alive) stop = subscribeAppActive(() => refreshVisibleDate(playing, finished, devotionPlaying, devotionFinished));
+    void import('../services/appVisibility').then(({ isAppHidden, subscribeAppActive }) => {
+      if (!alive) return;
+      if (!isAppHidden()) refreshVisibleDate(playing, finished, devotionPlaying, devotionFinished);
+      stop = subscribeAppActive(() => refreshVisibleDate(playing, finished, devotionPlaying, devotionFinished));
     });
     return () => { alive = false; stop?.(); };
   }, [visible, playing, finished, devotionPlaying, devotionFinished]);
