@@ -2,7 +2,7 @@
 # scripts/ios/run-flows.sh — fixture backend + counting proxy + simulator + Maestro (one flow per call).
 set -uo pipefail
 OUT=${OUT:-ci-out}; mkdir -p "$OUT/maestro"; : > "$OUT/requests.log"
-QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 \
+QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_ADMIN_MEMBER_IDS=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 \
   npx tsx server/http.ts > "$OUT/server.log" 2>&1 &
 # The app talks to the backend over HTTPS, as in production: the reader takes its Bible content host only
 # from an https API base. A throwaway CA, trusted only inside this simulator, signs a loopback certificate.

@@ -24,6 +24,8 @@ jobs:
     timeout-minutes: 120
     env:
       OUT: ci-out
+      # Only this fixture simulator skips startup requests; EAS profiles force them on.
+      QINGMU_CI_DISABLE_OTA_CHECKS: '1'
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_QINGMU_FIXTURE: 'true'
       EXPO_PUBLIC_QINGMU_DEV_TOKEN: ci-fixture-token

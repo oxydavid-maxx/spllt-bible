@@ -18,6 +18,7 @@ import { createReminderDeviceRevokeQueue } from '../src/services/reminderDeviceR
 import { getReadingPlanId } from '../src/ui/readingSession';
 import { registerConfiguredFriendPushTask } from '../src/services/friendPush';
 import { configureChapterAudio } from '../src/services/chapterAudioStartup';
+import { OtaUpdateCheck } from '../src/ui/admin/OtaUpdates';
 
 // At module scope, as the meeting task once was: a push that wakes a closed app has to find the task
 // already defined. A phone without the native modules simply has no friend notifications.
@@ -55,5 +56,5 @@ export default function RootLayout() {
   }, []);
   configureReminderRuntime(reminderRuntime);
   // The gesture root stays for react-native-gesture-handler users; the SDK's sheets no longer need it (they are the app's own, src/ui/sheet/bottomSheet.tsx).
-  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} /><CongregationGate /><UpdatePrompt /></AuthProvider></GestureHandlerRootView>;
+  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><OtaUpdateCheck /><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} /><CongregationGate /><UpdatePrompt /></AuthProvider></GestureHandlerRootView>;
 }

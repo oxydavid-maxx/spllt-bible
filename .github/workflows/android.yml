@@ -16,6 +16,9 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      # Isolated CI only: keep expo-updates linked and its switch API active, skip real OTA requests.
+      QINGMU_CI_DISABLE_OTA_CHECKS: '1'
     steps:
       - uses: actions/checkout@v4
         with:

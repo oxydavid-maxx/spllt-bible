@@ -87,7 +87,7 @@ export function AccountSurface({ adminEntry }: { adminEntry?: ReactNode } = {}) 
 const styles = StyleSheet.create({
   // The identity block reads left-aligned like a member row on a printed roster.
   // The 72dp centred avatar was the only element on the screen with no job.
-  card: { flex: 1, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg, gap: theme.spacing.md, backgroundColor: theme.colors.background },
+  card: { flexGrow: 1, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg, gap: theme.spacing.md, backgroundColor: theme.colors.background },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: theme.colors.primary, color: theme.colors.white, fontSize: theme.type.metric.size, fontWeight: '800', textAlign: 'center', textAlignVertical: 'center' },
   avatarImage: { width: 56, height: 56, borderRadius: 28, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline },
   title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' },

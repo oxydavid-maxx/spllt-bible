@@ -44,6 +44,7 @@ vi.mock('../../src/ui/UpdatePrompt', () => ({ UpdatePrompt: () => null }));
 // Background chapter audio is configured at Root; its own behaviour is in tests/services/chapterAudioBackground.test.ts.
 vi.mock('../../src/services/chapterAudioStartup', () => ({ configureChapterAudio: state.configureAudio }));
 
+vi.mock('../../src/ui/admin/OtaUpdates', () => ({ OtaUpdateCheck: 'OtaUpdateCheck' }));
 import RootLayout from '../../app/_layout';
 import { setSelectedReadingDate, useReadingSession } from '../../src/ui/readingSession';
 import * as SecureStore from 'expo-secure-store';

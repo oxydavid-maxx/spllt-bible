@@ -1,0 +1,51 @@
+# Official native header override with anti-bricking enabled; synthetic administrator only.
+# CI startup checks are disabled, so this never requests an update from the real EAS project.
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 90000
+- tapOn: "開啟帳戶"
+- extendedWaitUntil:
+    visible: "登出"
+    timeout: 15000
+- scrollUntilVisible:
+    element: "先收到測試版更新"
+    direction: DOWN
+    timeout: 15000
+- assertVisible: "只給管理者：先拿到還沒發給大家的修正，驗收用。"
+- assertVisible:
+    text: "先收到測試版更新"
+    checked: false
+- takeScreenshot: 43-ota-production
+- tapOn: "先收到測試版更新"
+- assertVisible:
+    text: "先收到測試版更新"
+    checked: true
+- assertVisible: "下次開啟時會在背景下載，再下一次開啟時套用。"
+- takeScreenshot: 43-ota-preview
+# Restart, then observe the persisted native channel through Updates.channel.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 90000
+- tapOn: "開啟帳戶"
+- scrollUntilVisible:
+    element: "先收到測試版更新"
+    direction: DOWN
+    timeout: 15000
+- assertVisible:
+    text: "先收到測試版更新"
+    checked: true
+- tapOn: "先收到測試版更新"
+- assertVisible:
+    text: "先收到測試版更新"
+    checked: false
+- scrollUntilVisible:
+    element: "版本 0.*"
+    direction: DOWN
+    timeout: 15000
+- takeScreenshot: 43-ota-account-bottom
+- tapOn: "返回"

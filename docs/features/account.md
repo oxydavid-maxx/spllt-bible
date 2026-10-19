@@ -8,6 +8,8 @@
 
 ## 從哪裡進
 
+- JS/圖片 OTA：0.5.35 起隨商店建置啟用 EAS Update；畫面掛載後背景檢查一次，下載後下一次冷啟動生效，失敗/離線不擋使用。管理者在帳戶頁管理區可切「先收到測試版更新」，說明「只給管理者：先拿到還沒發給大家的修正，驗收用。」一般成員看不到。切換只改這支手機的頻道，下次開啟下載，再下一次開啟套用；關閉回到建置頻道。詳見 [操作與回復](../eas-update.md)。
+
 - 還沒登入、或登入過期時：`app/sign-in.tsx`（`src/ui/SignInScreen.tsx`）。整個 App 在路由層就被鎖住——`src/ui/AppStack.tsx` 用 `Stack.Protected` 把 `(tabs)`、`account` 都鎖在「已登入」條件下，只要不是已登入（或正在還原登入狀態），只有 `sign-in` 這條路可以進。
 - 已登入時：多個分頁工具列右上角的圓形帳戶圖示（`src/ui/AccountEntryButton.tsx`，例如公告分頁、讀經精讀器、日記分頁），按下進入 `app/account.tsx`（`src/ui/accountSurfaceComponent.tsx`）。
 - App 更新提示：不用進任何分頁，App 一啟動、或從背景回到前景時就會自己彈出（`src/ui/UpdatePrompt.tsx`，在 `app/_layout.tsx` 最外層渲染，蓋在包括登入畫面之上）。
@@ -108,6 +110,8 @@
 - **只有 Android 會看到任何更新提示**：`checkAppUpdate` 和 `fetchUpdateState` 一開頭都檢查 `Platform.OS !== 'android'`，是的話直接回「沒有更新」，**不問 Play、不發任何網路請求**——這是為了符合 App Store 2.5.2（不能引導使用者去裝會改變功能的安裝檔）；iOS 交給 App Store 自己的自動更新。
 
 ## 決定（為什麼這樣做）
+
+- **OTA 不重載正在使用的 App，也不關防變磚保護** (維護者 2026-10-19)：0.5.35 起用 Expo 官方 EAS Update 傳送同 runtime 的 JS/資源修正；原生套件、權限、SDK 等改動仍上架。runtime 採 appVersion，每次商店發版更新 version。管理者沿用 canViewAllScores，可在原正式 App 選 preview，使用官方 request-header override，保留預設 production。開關只改本機；相容與操作流程見 [eas-update.md](../eas-update.md)。
 
 - 2026-10-19：Play 測試機的新 Google 身分加驗過的 token email 網域訊號，與既有 App 旗標、IP 清單任一命中即建員停用，且僅限首次建員；既有會員與 Apple 路徑不變。網域僅有社群回報，尚未在正式環境確認，因此 log 分別記錄每個訊號的狀態供下次上傳查核，不記個資或 email 本身。
 

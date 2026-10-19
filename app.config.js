@@ -16,6 +16,26 @@ module.exports = ({ config }) => {
     ...(hasIosServices ? { iosGoogleServicesFile: iosServices } : {}),
   };
   const nextConfig = { ...config };
+  // Local Gradle does not consume eas.json. Embed its default channel too, so the official
+  // request-header override API can switch this exact release build to preview without disabling recovery.
+  const isolatedOtaCi = process.env.CI === 'true' && process.env.QINGMU_CI_DISABLE_OTA_CHECKS === '1'
+    && !process.env.EAS_BUILD_PROFILE && process.env.EAS_BUILD !== 'true'
+    && !process.env.QINGMU_RELEASE_SIGNING_PROPERTIES;
+  nextConfig.runtimeVersion = { policy: 'appVersion' };
+  nextConfig.updates = {
+    ...config.updates,
+    url: `https://u.expo.dev/${config.extra.eas.projectId}`,
+    requestHeaders: { 'expo-channel-name': process.env.EAS_BUILD_PROFILE === 'preview' ? 'preview' : 'production' },
+    enabled: true,
+    // One JS check after rendering, never on the launch critical path or on a polling timer.
+    checkAutomatically: 'NEVER',
+    fallbackToCacheTimeout: 0,
+    useEmbeddedUpdate: true,
+    disableAntiBrickingMeasures: false,
+  };
+  // CI can exercise the real native channel switch without contacting the real update service.
+  // EAS profiles always force checks on, even when a CI environment variable is inherited.
+  nextConfig.extra = { ...config.extra, otaCheckEnabled: !isolatedOtaCi };
   // Android-only Settings.System bridge; iOS has no Firebase Test Lab system setting.
   plugins.push('./plugins/withQingmuTestLab');
   // iOS builds carry the Android versionCode as their build number, so one bump in app.json releases both
