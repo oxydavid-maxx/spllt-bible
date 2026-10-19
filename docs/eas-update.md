@@ -18,7 +18,7 @@
 
 ## 管理者手機
 
-從「積分」右上角頭像進帳戶頁，往下捲到管理區，切換「先收到測試版更新」。說明：「只給管理者：先拿到還沒發給大家的修正，驗收用。」沿用既有伺服器 `canViewAllScores` 身分判斷，一般成員看不到。
+從「積分」右上角頭像進帳戶頁，往下捲到管理區，切換「先收到測試版更新」。說明：「只給管理者：先拿到還沒發給大家的修正，驗收用。」沿用既有伺服器 `canViewAllScores` 身分判斷，和帳戶頁其他管理入口共用同一次查詢 (`useViewerCapabilities`)，進頁面和回到前景時重新確認；一般成員看不到。
 
 開啟呼叫官方 `Updates.setUpdateRequestHeadersOverride({ 'expo-channel-name': 'preview' })`; 關閉同樣明確傳 `production`. 選擇存在這支手機的原生儲存，不改伺服器頻道對應。切換不立即下載/重載：下次開啟背景下載，再下一次開啟套用；畫面會提示這件事。`Updates.channel` 在下次冷啟動後讀回選擇。關閉不使用 `null` 回到建置預設，因為 EAS preview 建置的預設也是 preview, 會與關閉狀態矛盾。preview 與 production 必須保持本機資料格式相容，避免切回後讀不到先前資料。
 

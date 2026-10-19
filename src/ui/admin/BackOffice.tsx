@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuthSnapshot } from '../../services/authSession';
-import { createGamificationApiClient } from '../../services/gamificationApiClient';
+import { useViewerCapabilities } from '../../services/viewerCapabilities';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../services/adminUnlockGuard';
 import { theme } from '../Theme';
 
@@ -23,24 +23,9 @@ export const BACK_OFFICE_RULES: ReadonlyArray<[string, string]> = [
 
 const apiBaseUrl = () => runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl;
 
-function useIsAdmin(): boolean {
-  const auth = useAuthSnapshot();
-  const session = auth.status === 'signed-in' ? auth.session : null;
-  const [allowed, setAllowed] = useState(false);
-  useEffect(() => {
-    setAllowed(false);
-    if (!session) return;
-    let active = true;
-    const client = createGamificationApiClient({ baseUrl: apiBaseUrl(), token: session.sessionToken, memberId: session.memberId });
-    void client.getCapabilities().then((value) => { if (active) setAllowed(Boolean(value.canViewAllScores)); }).catch(() => undefined);
-    return () => { active = false; };
-  }, [session?.memberId, session?.sessionToken]);
-  return allowed;
-}
-
 /** The row on 我的帳戶; only an administrator sees it. */
 export function BackOfficeEntry() {
-  if (!useIsAdmin()) return null;
+  if (!useViewerCapabilities()?.canViewAllScores) return null;
   return <Pressable accessibilityRole="button" accessibilityLabel="後台規則與文件" onPress={() => router.push('/back-office')} style={styles.entry}>
     <Text style={styles.entryLabel}>後台規則與文件</Text>
     <Text style={styles.entryValue}>管理者 ›</Text>
@@ -86,6 +71,7 @@ export function BackOfficePage() {
       {state.status === 'loading' ? <Text style={styles.note}>載入中…</Text> : null}
       {state.status === 'error' ? <Text style={styles.note}>暫時讀不到文件連結。</Text> : null}
       {state.status === 'ready' && !state.links.length ? <Text style={styles.note}>還沒有設定文件連結。</Text> : null}
+      {state.status === 'error' || (state.status === 'ready' && !state.links.length) ? <Pressable accessibilityRole="button" accessibilityLabel="重試讀取文件連結" onPress={() => setAttempt(count => count + 1)} style={styles.retry}><Text style={styles.retryText}>重試</Text></Pressable> : null}
       {state.links.map((link) => <Pressable key={link.url} accessibilityRole="link" accessibilityLabel={`開啟${link.name}`} onPress={() => { void WebBrowser.openBrowserAsync(link.url); }} style={styles.row}>
         <Text style={styles.key}>{link.name}</Text><Text style={styles.link}>開啟 ›</Text>
       </Pressable>)}

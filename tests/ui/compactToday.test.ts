@@ -17,7 +17,7 @@ vi.mock('../../src/ui/readingSession', () => ({
   setSelectedReadingDate: boundary.setDate,
   requestTodayReaderTabPress: boundary.todayTabPress,
   setJournalEntryDate: boundary.setDiaryDate,
-  getReadingSessionSnapshot: () => ({ selectedDate: boundary.selectedDate }),
+  preserveReadingDateOnReturn: () => false, getReadingSessionSnapshot: () => ({ selectedDate: boundary.selectedDate }),
 }));
 vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ status: 'signed-out', session: null, epoch: 0 }) }));
 

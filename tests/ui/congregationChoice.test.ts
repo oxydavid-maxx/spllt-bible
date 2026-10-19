@@ -7,11 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   auth: { status: 'signed-in', session: { memberId: 'm1', sessionToken: 't1' } } as { status: string; session: { memberId: string; sessionToken: string } | null },
   congregation: null as 'youth' | 'main' | null,
+  foreground: new Set<(revision?: number) => void>(),
   get: vi.fn(),
   set: vi.fn(),
 }));
 vi.hoisted(() => { (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
 const primitive = vi.hoisted(() => (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children));
+vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: (revision?: number) => void) => { state.foreground.add(fn); return () => state.foreground.delete(fn); } }));
 vi.mock('react-native', () => ({ Modal: primitive('Modal'), Pressable: primitive('Pressable'), Text: primitive('Text'), View: primitive('View'), StyleSheet: { create: (s: unknown) => s } }));
 vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => state.auth }));
 vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => ({ getCongregation: state.get, setCongregation: state.set }) }));
@@ -19,7 +21,7 @@ vi.mock('../../src/ui/gamification/ActionSheet', () => ({ ActionSheet: (props: {
   props.visible ? require('react').createElement('ActionSheet', props, props.children, ...(props.actions ?? []).map((action) => require('react').createElement('Pressable', { key: action.label, accessibilityLabel: action.label, onPress: action.onPress }))) : null }));
 import { CongregationGate } from '../../src/ui/congregation/CongregationGate';
 import { CongregationSetting } from '../../src/ui/congregation/CongregationSetting';
-import { resetCongregationStore } from '../../src/ui/congregation/congregationStore';
+import { resetCongregationStore, useCongregation } from '../../src/ui/congregation/congregationStore';
 
 let tree: TestRenderer.ReactTestRenderer | null = null;
 const texts = () => tree!.root.findAll((node) => String(node.type) === 'Text').map((node) => node.children.join(''));
@@ -76,4 +78,40 @@ describe('changing it on the account page', () => {
     expect(texts()).toContain('主堂');
     expect(tree!.root.findAll((node) => String(node.type) === 'ActionSheet')).toHaveLength(0);
   });
+});
+
+
+it('refreshes all mounted congregation consumers once on foreground and never while idle (7)', async () => {
+  vi.useFakeTimers(); state.congregation = 'youth';
+  await mount(React.createElement(React.Fragment, null, React.createElement(CongregationGate), React.createElement(CongregationSetting)));
+  expect(state.get).toHaveBeenCalledTimes(1);
+  state.congregation = 'main';
+  await act(async () => { await vi.advanceTimersByTimeAsync(86_400_000); });
+  expect(state.get).toHaveBeenCalledTimes(1);
+  await act(async () => { state.foreground.forEach(fn => fn()); });
+  expect(texts()).toContain('主堂'); expect(state.get).toHaveBeenCalledTimes(2);
+  vi.useRealTimers();
+});
+
+
+it('keeps a newly saved congregation when an older foreground read returns late (7)', async () => {
+  let current!: ReturnType<typeof useCongregation>;
+  function Harness() { current = useCongregation(); return null; }
+  state.congregation = 'youth'; await mount(React.createElement(Harness));
+  let resolve!: (value: string) => void; state.get.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+  await act(async () => { state.foreground.forEach(fn => fn()); });
+  await act(async () => { await current.choose('main'); });
+  await act(async () => { resolve('youth'); });
+  expect(current.value).toBe('main');
+});
+
+
+it('rechecks congregation on a newer foreground even while the older read is pending (7)', async () => {
+  state.congregation = 'youth'; await mount(React.createElement(CongregationSetting));
+  let resolve!: (v: string) => void; state.get.mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+  await act(async () => { state.foreground.forEach(fn => fn(1)); });
+  state.congregation = 'main';
+  await act(async () => { state.foreground.forEach(fn => fn(2)); });
+  expect(state.get).toHaveBeenCalledTimes(3); expect(texts()).toContain('主堂');
+  await act(async () => { resolve('youth'); }); expect(texts()).toContain('主堂');
 });

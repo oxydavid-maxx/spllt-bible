@@ -1,5 +1,6 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { canonicalReadingPlan, getAdjacentScheduledDates, getInitialReadingDate, getPeriodForDate, getReadingDay } from '../domain/calendar';
+import type { ReadingDaySnapshot } from '../services/apiClient';
 import type { ReadingPlan } from '../domain/types';
 
 export interface ReadingPlanSnapshot extends ReadingPlan {
@@ -21,7 +22,31 @@ function initialDate(): string {
 
 let activePlan: ReadingPlanSnapshot = canonicalReadingPlan;
 let planIdByDate = new Map(canonicalReadingPlan.days.map((day) => [day.date, canonicalReadingPlan.planId]));
+let knownPlanMonths = new Set(canonicalReadingPlan.dates.map(date => date.slice(0, 7)));
 let selectedDate = initialDate();
+let followsToday = true;
+let selectionDay = readingToday();
+const deferredDateNarration = new Set<'chapter' | 'devotion'>();
+function readingToday(): string {
+  const configured = process.env.EXPO_PUBLIC_QINGMU_TEST_DATE?.trim();
+  return configured && validDateOnly(configured) ? configured : todayInTaipei();
+}
+function refreshVisibleDate(playing: boolean, finished: boolean, devotionPlaying = false, devotionFinished = true): void {
+  if (!followsToday) return;
+  const today = readingToday();
+  // Initial entry may clamp to the bundled plan, but an actual day rollover must
+  // reach today so the reader can discover a newly added server month.
+  if (today === selectionDay) return;
+  if (today === selectedDate) { selectionDay = today; return; }
+  if (playing) deferredDateNarration.add('chapter');
+  if (devotionPlaying) deferredDateNarration.add('devotion');
+  if (playing || devotionPlaying) return;
+  if (deferredDateNarration.has('chapter') && !finished) return;
+  if (deferredDateNarration.has('devotion') && !devotionFinished) return;
+  deferredDateNarration.clear();
+  selectedDate = today; selectionDay = today;
+  publish();
+}
 let snapshotRevision = 0;
 let todayReaderTabPressRevision = 0;
 let todayReaderTabPressMemberId: string | null = null;
@@ -34,7 +59,11 @@ let journalEntryRevision = 0;
 let pendingJournalQuote: string | null = null;
 
 export function setSelectedReadingDate(date: string): void {
-  if (!validDateOnly(date) || date === selectedDate) return;
+  if (!validDateOnly(date)) return;
+  selectionDay = readingToday();
+  followsToday = date === selectionDay;
+  deferredDateNarration.clear();
+  if (date === selectedDate) return;
   selectedDate = date;
   if (todayReaderTabPressTargetDate && todayReaderTabPressTargetDate !== date) {
     todayReaderTabPressTargetDate = null;
@@ -43,9 +72,15 @@ export function setSelectedReadingDate(date: string): void {
   publish();
 }
 
+/** A cross-midnight return must not erase a historical choice or paused narration. */
+export function preserveReadingDateOnReturn(): boolean {
+  return deferredDateNarration.size > 0 || (!followsToday && selectionDay !== readingToday());
+}
+
 /** An explicit tap on the visible Reader tab is an entry action even when today is already selected. */
 export function requestTodayReaderTabPress(date: string, memberId: string | null, authEpoch: number, resetToAssignedStart = false): void {
   if (!validDateOnly(date)) return;
+  followsToday = true; selectionDay = readingToday(); deferredDateNarration.clear();
   todayReaderTabPressSameDate = selectedDate === date;
   selectedDate = date;
   todayReaderTabPressRevision += 1;
@@ -91,6 +126,7 @@ function validDateOnly(value: string): boolean {
 /** Replace the active schedule, used by focused tests and a plan switch. */
 export function setReadingPlan(plan: ReadingPlanSnapshot): void {
   activePlan = normalizePlan(plan);
+  knownPlanMonths = new Set(activePlan.dates.map(date => date.slice(0, 7)));
   planIdByDate = new Map(activePlan.days.map((day) => [day.date, day.planId ?? activePlan.planId]));
   if (!getReadingDay(activePlan, selectedDate)) {
     const fallbackDate = activePlan.days[0]?.date ?? selectedDate;
@@ -103,10 +139,31 @@ export function setReadingPlan(plan: ReadingPlanSnapshot): void {
   publish();
 }
 
+/** A successful server range replaces that range, including dates removed by the server.
+ * Keep the selected date even when it becomes a rest day; never resurrect bundled passages. */
+export function replaceReadingDaysRange(from: string, to: string, days: ReadingDaySnapshot[]): void {
+  // A known month remains a query scope even when its authoritative answer is empty.
+  // Otherwise deleting its last day would prevent this app from ever seeing restored dates.
+  for (let month = from.slice(0, 7); month <= to.slice(0, 7);) {
+    knownPlanMonths.add(month);
+    const next = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
+    month = next.toISOString().slice(0, 7);
+  }
+  const byDate = new Map(activePlan.days.filter(day => day.date < from || day.date > to).map(day => [day.date, day]));
+  for (const day of days) {
+    if (day.taskDate < from || day.taskDate > to) continue;
+    byDate.set(day.taskDate, { date: day.taskDate, planId: day.planId, sourceRows: [], references: [...day.references], revision: day.sourceRevision });
+  }
+  activePlan = normalizePlan({ ...activePlan, days: [...byDate.values()] });
+  planIdByDate = new Map(activePlan.days.map(day => [day.date, day.planId ?? activePlan.planId]));
+  publish();
+}
+
 /** Merge a server schedule while preserving old dates and their original plan IDs. */
 export function mergeReadingPlan(plan: ReadingPlanSnapshot): void {
   const byDate = new Map(activePlan.days.map((day) => [day.date, day]));
   for (const day of plan.days) {
+    knownPlanMonths.add(day.date.slice(0, 7));
     byDate.set(day.date, day);
     planIdByDate.set(day.date, day.planId ?? plan.planId);
   }
@@ -117,6 +174,7 @@ export function mergeReadingPlan(plan: ReadingPlanSnapshot): void {
 
 export function resetReadingPlan(): void {
   activePlan = canonicalReadingPlan;
+  knownPlanMonths = new Set(canonicalReadingPlan.dates.map(date => date.slice(0, 7)));
   planIdByDate = new Map(canonicalReadingPlan.days.map((day) => [day.date, canonicalReadingPlan.planId]));
   publish();
 }
@@ -142,6 +200,9 @@ export function getReadingPlan(): ReadingPlanSnapshot {
   return activePlan;
 }
 
+/** Query scopes include months that the server has emptied, so a later entry can discover additions. */
+export function getReadingPlanMonths(): string[] { return [...knownPlanMonths].sort(); }
+
 /** First and last scheduled dates of the active plan: the months there is anything to show. */
 export function getReadingPlanSpan(): { first: string; last: string } | null {
   return activePlan.dates.length > 0 ? { first: activePlan.dates[0], last: activePlan.dates[activePlan.dates.length - 1] } : null;
@@ -158,7 +219,36 @@ function subscribe(listener: Listener): () => void {
   return () => listeners.delete(listener);
 }
 
-export function useReadingSession() {
+export interface ReadingDateVisibility {
+  visible: boolean;
+  playing: boolean;
+  finished?: boolean;
+  devotionPlaying?: boolean;
+  devotionFinished?: boolean;
+}
+
+/** Called after both chapter and devotion narration bindings are known. */
+export function useReadingDateRollover(visibility?: ReadingDateVisibility) {
+  const visible = visibility?.visible ?? false;
+  const playing = visibility?.playing ?? false;
+  const finished = visibility?.finished ?? false;
+  const devotionPlaying = visibility?.devotionPlaying ?? false;
+  const devotionFinished = visibility?.devotionFinished ?? true;
+  useEffect(() => {
+    if (!visible) return;
+    let alive = true; let stop: (() => void) | undefined;
+    // Keep the calendar/session module usable by Node tools and pure model tests.
+    void import('../services/appVisibility').then(({ isAppHidden, subscribeAppActive }) => {
+      if (!alive) return;
+      if (!isAppHidden()) refreshVisibleDate(playing, finished, devotionPlaying, devotionFinished);
+      stop = subscribeAppActive(() => refreshVisibleDate(playing, finished, devotionPlaying, devotionFinished));
+    });
+    return () => { alive = false; stop?.(); };
+  }, [visible, playing, finished, devotionPlaying, devotionFinished]);
+}
+
+export function useReadingSession(visibility?: ReadingDateVisibility) {
+  useReadingDateRollover(visibility);
   useSyncExternalStore(subscribe, () => snapshotRevision, () => snapshotRevision);
   return getReadingSessionSnapshot();
 }

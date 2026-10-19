@@ -397,6 +397,40 @@ export async function hydrateAuthSnapshot(options: { secureStore?: SecureStoreLi
   try { return await restorePromise; } finally { restorePromise = null; }
 }
 
+let profileRefreshSequence = 0;
+let profileRefresh: { epoch: number; visibleRevision: number; work: Promise<AuthSnapshot> } | null = null;
+/** A profile read changes display data, never the authenticated identity/epoch. */
+export function refreshAuthProfile(visibleRevision = 0): Promise<AuthSnapshot> {
+  const session = snapshot.status === 'signed-in' ? snapshot.session : null;
+  const load = configuredProfileLoader;
+  if (!session || !load) return Promise.resolve(snapshot);
+  if (restorePromise) return restorePromise;
+  const expectedEpoch = epoch;
+  if (profileRefresh?.epoch === expectedEpoch && profileRefresh.visibleRevision === visibleRevision) return profileRefresh.work;
+  const sequence = ++profileRefreshSequence;
+  const owns = () => epoch === expectedEpoch && sequence === profileRefreshSequence && isCurrentAuthSession(session);
+  const owner = activeStorageOwner;
+  const work = (async () => {
+    try {
+      const profile = await load(session);
+      if (!owns()) return snapshot;
+      if (profile?.memberId === session.memberId) {
+        publish({ ...snapshot, profile, profileStatus: 'ready' });
+        await enqueueStorageMutation(async () => {
+          if (!owns()) return;
+          const value = JSON.stringify(profile);
+          await SecureStore.setItemAsync(owner ? ownerKeys(owner).profile : legacyKeys().profile, value);
+          if (owner && owns()) await SecureStore.setItemAsync(legacyKeys().profile, value);
+        });
+      } else if (!snapshot.profile) publish({ ...snapshot, profileStatus: 'empty' });
+    } catch { if (owns() && !snapshot.profile) publish({ ...snapshot, profileStatus: 'error' }); }
+    return snapshot;
+  })();
+  profileRefresh = { epoch: expectedEpoch, visibleRevision, work };
+  void work.finally(() => { if (profileRefresh?.work === work) profileRefresh = null; });
+  return work;
+}
+
 export async function retryAuthProfile(): Promise<AuthSnapshot> {
   if (!configuredProfileLoader || snapshot.status !== 'signed-in' || !snapshot.session) return snapshot;
   return hydrateAuthSnapshot({ loadProfile: configuredProfileLoader });
@@ -422,8 +456,8 @@ export function AuthProvider({ children, loadProfile }: { children: ReactNode; l
     // runs every react-native getter and on iOS kills the release app (PushNotificationIOS's NativeEventEmitter).
     void import('./appVisibility').then(({ subscribeAppActive }) => {
       if (!alive) return;
-      unsubscribe = subscribeAppActive(() => {
-        if (alive) { void flushAuthSessionRevocations(); void upgradeLegacyAuthSession(); }
+      unsubscribe = subscribeAppActive(visibleRevision => {
+        if (alive) { void flushAuthSessionRevocations(); void upgradeLegacyAuthSession(); void refreshAuthProfile(visibleRevision); }
       });
     }).catch(() => { /* A later provider mount will attach the native foreground listener. */ });
     return () => { alive = false; unsubscribe?.(); };

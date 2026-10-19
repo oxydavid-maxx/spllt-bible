@@ -11,7 +11,7 @@
 - JS/圖片 OTA: 0.5.35 起隨商店建置啟用 EAS Update; 畫面掛載後背景檢查一次，下載後下一次冷啟動生效，失敗/離線不擋使用。管理者在帳戶頁管理區可切「先收到測試版更新」，說明「只給管理者：先拿到還沒發給大家的修正，驗收用。」一般成員看不到。切換只改這支手機的頻道，下次開啟下載，再下一次開啟套用；關閉回到 production. 登出、換別的成員登入，或伺服器說已不是管理者時，App 自動把這支手機切回 production. 詳見 [操作與回復](../eas-update.md)。
 - 更新請求中的隨機安裝識別碼與必要更新資訊，見 [隱私權政策](../play/privacy-policy.md) 的 Expo EAS Update 說明。
 
-- 還沒登入、或登入過期時：`app/sign-in.tsx`（`src/ui/SignInScreen.tsx`）。整個 App 在路由層就被鎖住——`src/ui/AppStack.tsx` 用 `Stack.Protected` 把 `(tabs)`、`account` 都鎖在「已登入」條件下，只要不是已登入（或正在還原登入狀態），只有 `sign-in` 這條路可以進。
+- 還沒登入、或登入過期時：`app/sign-in.tsx`（`src/ui/SignInScreen.tsx`）。整個 App 在路由層就被鎖住——`src/ui/AppStack.tsx` 用 `Stack.Protected` 把 `(tabs)`、`account` 都鎖在「已登入」條件下，還原本機登入狀態時，只顯示與原生開機畫面相同的白色背景及 App 圖示，不顯示文字、分頁或登入頁。本機有有效帳號直接進 App，沒有則直接進 `sign-in`；不等待 profile 網路請求，已登入者不會閃過登入頁。
 - 已登入時：多個分頁工具列右上角的圓形帳戶圖示（`src/ui/AccountEntryButton.tsx`，例如公告分頁、讀經精讀器、日記分頁），按下進入 `app/account.tsx`（`src/ui/accountSurfaceComponent.tsx`）。
 - App 更新提示：不用進任何分頁，App 一啟動、或從背景回到前景時就會自己彈出（`src/ui/UpdatePrompt.tsx`，在 `app/_layout.tsx` 最外層渲染，蓋在包括登入畫面之上）。
 
@@ -36,9 +36,11 @@
 
 ### Google 登入（`src/ui/GoogleLoginCard.tsx`、`src/services/googleNative.ts`、`src/services/apiClient.ts`、`server/routes.ts`）
 
+- 叫出 Google 選帳號視窗前，先用既有 SecureStore 記下登入進行中與開始時間，不存帳號或 token；成功、取消或失敗 (含伺服器確認失敗) 都清掉記號。重試的新記號不會被舊結果清掉。
+- App 重新啟動後，如果還沒登入且記號未滿 10分鐘，登入按鈕上方顯示「剛才的登入沒有完成，請再按一次。」，並清掉記號；按下登入後提示消失。滿 10分鐘、時間異常、記號無效或已登入時只清掉，不提示。逾時只恢復按鈕的流程仍保留記號，直到該次登入結束或重按。
 - Android 與 iOS 等待原生 Google 登入結果時，按鈕顯示「正在登入…」並暫時停用。App 從非前景回到前景後等待 10秒，或原生等待滿 60秒仍無結果時，只恢復按鈕並顯示「登入沒有完成，請再按一次。」；這不會結束該次登入。使用者沒有重按時，晚到的 SUCCESS 照常向伺服器確認身份並完成登入，CANCELLED 或失敗照常顯示原本的文字。使用者重按後以新嘗試為準，舊結果不會交換伺服器 session、改變畫面或覆蓋新的登入。收到成功結果開始向伺服器確認身份時，按鈕會再次停用、清掉重試提示，這個階段不套用原生等待期限；正常流程與文字不變。
 - 沒有設定 `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`/`EXPO_PUBLIC_GOOGLE_CLIENT_ID` 時，畫面顯示「正式登入尚未連接」，不出現登入按鈕；設了測試旗標 `EXPO_PUBLIC_QINGMU_FIXTURE=true` 時則顯示「目前是測試身份」，兩者都不會呼叫 Google。
-- 正常路徑：呼叫 `react-native-nitro-google-signin`（`GoogleOneTapSignIn`）取得 Google ID token，中途沒有存好的憑證會自動改試「建立帳號」再改「明確登入」；使用者取消時顯示「你取消了登入。」，裝置沒有 Google Play 服務時顯示「這台裝置沒有可用的Google服務。」，其他失敗一律顯示「登入沒有完成，請稍後再試。」。
+- 正常路徑：呼叫 `react-native-nitro-google-signin`（`GoogleOneTapSignIn`）取得 Google ID token，按一下只呼叫一次 `presentExplicitSignIn()`，不先呼叫 `signIn()` 或 `createAccount()`；使用者取消時顯示「你取消了登入。」，裝置沒有 Google Play 服務時顯示「這台裝置沒有可用的Google服務。」，其他失敗一律顯示「登入沒有完成，請稍後再試。」。
 - 拿到 ID token 後呼叫 `POST /api/session/google`（帶 `persistentDevice: true`，即 `session_type: 'device'`）。目前正式環境的組態（`googleAudience` 已設定且沒有 `fixtureToken`）會把 `autoProvisionGoogleMembers` 設成 `true`（`server/http.ts`），所以**新的 Google 身份第一次登入就會自動建立會員**，不會走到下面的啟用碼畫面——這與 `SignInScreen.tsx` 上寫的「第一次登入會自動建立帳號」一致。
 - 伺服器仍可能回 `UNKNOWN_MEMBER`（例如自動建立帳號被關掉的組態）：這時畫面切到「這個Google身份尚未完成帳戶啟用，請輸入同工提供的一次性啟用碼。」，輸入框送到 `POST /api/onboarding/claim`（`server/membership.ts` 的 `claimMemberInvite`）。啟用碼綁定規則：碼不存在或雜湊比不到 → 拒絕；碼已用過 → 拒絕；已過期 → 拒絕；碼對應的會員資料跟現有紀錄衝突 → 拒絕；同一個 Google 身份重複送同一支已綁定的碼 → 視為成功（`alreadyBound: true`），不會重複建立會員或報錯。
 - 帳號被停用（`disabled_at` 有值）時，無論走哪條路徑都回 403 `ACCOUNT_DISABLED`；client 端目前把它與其他失敗一起顯示成「伺服器沒有確認身份，請稍後再試。」（沒有專屬文案）。
@@ -110,8 +112,16 @@
   - `UpdateBanner`：讀經精讀器（`app/(tabs)/reader.tsx`）更多閱讀工具面板裡的一行提示，可以按「稍後」關掉本次顯示。
 - **只有 Android 會看到任何更新提示**：`checkAppUpdate` 和 `fetchUpdateState` 一開頭都檢查 `Platform.OS !== 'android'`，是的話直接回「沒有更新」，**不問 Play、不發任何網路請求**——這是為了符合 App Store 2.5.2（不能引導使用者去裝會改變功能的安裝檔）；iOS 交給 App Store 自己的自動更新。
 
+## 可見時更新 (2026-10-19)
+
+- 回到前景時重讀姓名、青少/主堂歸屬及提醒設定。姓名改變後，帳戶頁和頭像字首一起更新；讀取失敗保留已有姓名，不改登入身分。
+- 每次進帳戶頁或積分頁重新確認管理者資格；同一個帳戶頁的三個管理入口 (後台規則與文件、全部積分、先收到測試版更新) 共用一次查詢，資格被撤回後隱藏入口；測試版開關同時把這支手機切回 production. 受保護資料仍由後端檢查權限。
+- 後台文件讀取失敗或清單尚未設定時，文件區顯示「重試」；按下後再次解鎖並重讀。閒置不自行重試。
+
 ## 決定（為什麼這樣做）
 
+- 登入只叫一次 Google 官方的登入視窗；開 App 時先顯示開機畫面再決定去哪；登入中被系統關掉重開時說清楚 (維護者 2026-10-19，起因：使用者以為被踢出來)。
+- 看過的資料要跟上：回到前景、切回頁面時重讀，不用計時器 (維護者 2026-10-19)。
 - **OTA 不重載正在使用的 App, 也不關防變磚保護** (維護者 2026-10-19)：0.5.35 起用 Expo 官方 EAS Update 傳送同 runtime 的 JS/資源修正；原生套件、權限、SDK 等改動仍上架。runtime 採 appVersion, 每次商店發版更新 version. 管理者沿用 canViewAllScores, 可在原正式 App 選 preview, 使用官方 request-header override, 保留預設 production. 開關只改本機；相容與操作流程見 [eas-update.md](../eas-update.md)。選擇存在手機上、比登入的人活得久，開關卻只有管理者看得到，所以 preview 只跟著管理者 (主管審查 2026-10-19)：沒有人登入、換成別的成員，或伺服器回答不是管理者，就自動切回 production; preview 手機確認是管理者之前不檢查更新，一般 production 手機開 App 不多發請求。
 
 - 2026-10-19：Play 測試機的新 Google 身分加驗過的 token email 網域訊號，與既有 App 旗標、IP 清單任一命中即建員停用，且僅限首次建員；既有會員與 Apple 路徑不變。網域僅有社群回報，尚未在正式環境確認，因此 log 分別記錄每個訊號的狀態供下次上傳查核，不記個資或 email 本身。
@@ -157,6 +167,10 @@
 - 青少/主堂：`GET /api/me/congregation` 回 `{congregation}`，值是 `youth`、`main`，還沒選是 `null`；`PUT` 同一個路徑存 `{congregation}`，其他值回 400 `INVALID_CONGREGATION`。資料表 `member_affiliations` (`server/congregation.ts`)，刪除帳號時一起刪。
 
 ## 守住它的測試
+
+- `tests/ui/authStartup.test.ts`、`tests/ui/appStackGuard.test.ts`：還原期間只顯示開機畫面，本機資料決定下一頁，不等網路。
+- `tests/ui/signInScreen.test.ts`、`tests/ui/googleLoginRecovery.test.ts`：重開提示期限、一次性消費、登入各結果清記號、重試隔離與既有逾時/晚到結果。
+- `tests/services/googleNative.test.ts`：Google 官方 explicit 視窗只呼叫一次，沒有 One Tap 或建立帳號的前置呼叫。
 
 - `tests/server/testLabEmail.test.ts`、`tests/server/testLabSignal.test.ts`、`tests/server/googleAutoProvision.test.ts` — 系統訊號/IP/驗過的 token email 網域任一成立停用新會員、舊版相容、既有會員不變、停用會員無 session。
 - `tests/services/googleSession.test.ts`、`tests/services/testLabSession.test.ts`、`tests/config/testLabConfig.test.ts` — Android 設定橋接與登入請求、iOS 不帶訊號、Expo 原生產生與重複執行。

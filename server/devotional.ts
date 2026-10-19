@@ -27,7 +27,7 @@ export interface DevotionalPost {
 }
 
 export interface DevotionalView extends Omit<DevotionalPost, 'youtubeId'> {
-  song: { youtubeId: string; title: string | null };
+  song: { youtubeId: string; title: string | null; channel: string | null };
 }
 
 const HEADER = /^📖🌾\s*《\s*(.+?)\s*》\s*$/u;
@@ -89,14 +89,15 @@ export function shortSongTitle(title: string): string | null {
   return head || null;
 }
 
-export type SongTitleLookup = (youtubeId: string) => Promise<string | null>;
+export interface SongMetadata { title: string | null; channel: string | null }
+export type SongTitleLookup = (youtubeId: string) => Promise<SongMetadata | null>;
 
 /**
- * YouTube's public oEmbed answers with the video title, and with an error when the owner does not
- * allow embedding. One lookup per video, kept for the life of the process: the title never changes.
+ * YouTube's public oEmbed answers with the video title and channel, and with an error when the owner does not
+ * allow embedding. One lookup per video, kept for the life of the process: the metadata is fetched together.
  */
 export function createSongTitleLookup(fetchImpl: typeof fetch = fetch, timeoutMs = 3000): SongTitleLookup {
-  const cache = new Map<string, Promise<string | null>>();
+  const cache = new Map<string, Promise<SongMetadata | null>>();
   return (youtubeId) => {
     if (!YOUTUBE_ID.test(youtubeId)) return Promise.resolve(null);
     let pending = cache.get(youtubeId);
@@ -105,8 +106,8 @@ export function createSongTitleLookup(fetchImpl: typeof fetch = fetch, timeoutMs
         try {
           const response = await fetchImpl(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${youtubeId}`)}`, { signal: AbortSignal.timeout(timeoutMs) });
           if (!response.ok) return null;
-          const body = await response.json() as { title?: unknown };
-          return typeof body.title === 'string' ? shortSongTitle(body.title) : null;
+          const body = await response.json() as { title?: unknown; author_name?: unknown };
+          return { title: typeof body.title === 'string' ? shortSongTitle(body.title) : null, channel: typeof body.author_name === 'string' ? body.author_name : null };
         } catch {
           cache.delete(youtubeId);
           return null;
@@ -126,7 +127,8 @@ export async function readDevotional(dir: string | undefined, date: string, song
   const post = parseDevotionalPost(text);
   if (!post || post.date !== date) return null;
   const { youtubeId, ...rest } = post;
-  return { ...rest, song: { youtubeId, title: await songTitle(youtubeId) } };
+  const metadata = await songTitle(youtubeId);
+  return { ...rest, song: { youtubeId, title: metadata?.title ?? null, channel: metadata?.channel ?? null } };
 }
 
 /** GET /api/devotional/player?v=<id>: the page below, or null for every other request. */

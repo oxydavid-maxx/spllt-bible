@@ -2,9 +2,12 @@ import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ allowed: false, status: 'signed-in', memberId: 'member', token: 'token', enabled: true, checksEnabled: true, nativePolicy: 'ON_ERROR_RECOVERY', channel: 'production', check: vi.fn(), fetch: vi.fn(), override: vi.fn(), reload: vi.fn(), capabilities: vi.fn() }));
+const state = vi.hoisted(() => ({ allowed: false, status: 'signed-in', memberId: 'member', token: 'token', enabled: true, checksEnabled: true, nativePolicy: 'ON_ERROR_RECOVERY', channel: 'production', check: vi.fn(), fetch: vi.fn(), override: vi.fn(), reload: vi.fn(), capabilities: vi.fn(), foreground: new Set<(revision?: number) => void>() }));
 vi.hoisted(() => { (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true; });
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Switch: 'Switch', StyleSheet: { create: (s: unknown) => s } }));
+// The account page is a focused screen; useViewerCapabilities (#73) refetches on focus and on return to the foreground.
+vi.mock('expo-router', () => ({ useFocusEffect: (fn: () => void) => require('react').useEffect(fn, [fn]) }));
+vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: (revision?: number) => void) => { state.foreground.add(fn); return () => state.foreground.delete(fn); } }));
 vi.mock('expo-constants', () => ({ default: { get expoConfig() { return { extra: { otaCheckEnabled: state.checksEnabled } }; } } }));
 vi.mock('expo-updates', () => ({
   get isEnabled() { return state.enabled; }, get channel() { return state.channel; },
@@ -15,6 +18,7 @@ vi.mock('expo-updates', () => ({
 vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => state.status === 'signed-in' ? { status: 'signed-in', session: { memberId: state.memberId, sessionToken: state.token } } : { status: state.status, session: null } }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ createGamificationApiClient: () => ({ getCapabilities: state.capabilities }) }));
 let ota: typeof import('../../src/ui/admin/OtaUpdates');
+let viewer: typeof import('../../src/services/viewerCapabilities');
 const checkOtaUpdateInBackground = () => ota.checkOtaUpdateInBackground();
 
 let tree: TestRenderer.ReactTestRenderer | null = null;
@@ -26,7 +30,9 @@ beforeEach(async () => {
   state.check.mockReset().mockResolvedValue({ isAvailable: true }); state.fetch.mockReset().mockResolvedValue({ isNew: true });
   state.override.mockReset(); state.reload.mockReset();
   state.capabilities.mockReset().mockImplementation(async () => ({ canViewAllScores: state.allowed }));
+  state.foreground.clear();
   ota = await import('../../src/ui/admin/OtaUpdates');
+  viewer = await import('../../src/services/viewerCapabilities');
 });
 afterEach(() => { act(() => tree?.unmount()); tree = null; });
 
@@ -182,5 +188,38 @@ describe('preview channel never outlives administrator access', () => {
     // Same member, role removed on the server and noticed by the next lookup in this process.
     state.allowed = false; state.token = 'refreshed-token'; await rerender(both());
     expect(state.override).toHaveBeenLastCalledWith(production);
+  });
+});
+
+// #73 moved the account page's administrator rows to one shared lookup that re-checks on focus and on return
+// to the foreground; the OTA switch is one of those rows, and the startup guard joins the same request.
+describe('the OTA switch shares the administrator rows\' capability lookup', () => {
+  const Neighbour = () => (viewer.useViewerCapabilities()?.canViewAllScores ? React.createElement('Text', null, 'neighbour') : null);
+  const foreground = async () => { await act(async () => { state.foreground.forEach((fn) => fn(1)); }); };
+  it('asks the server once for the switch and a neighbouring administrator row', async () => {
+    state.allowed = true;
+    await act(async () => { tree = TestRenderer.create(React.createElement(React.Fragment, null, React.createElement(ota.AdminOtaUpdatesEntry), React.createElement(Neighbour))); });
+    expect(state.capabilities).toHaveBeenCalledOnce();
+    expect(toggle()).toBeDefined();
+  });
+  it('reappears with its neighbours when a failed lookup is retried on return to the foreground', async () => {
+    state.allowed = true; state.capabilities.mockRejectedValueOnce(new Error('offline'));
+    await render();
+    expect(tree!.toJSON()).toBeNull();
+    await foreground();
+    expect(toggle()).toBeDefined();
+  });
+  it('hides itself and returns preview to production when the role is removed while the page is open', async () => {
+    state.allowed = true; await render();
+    act(() => toggle().props.onValueChange(true));
+    state.allowed = false; await foreground();
+    expect(tree!.toJSON()).toBeNull();
+    expect(state.override).toHaveBeenLastCalledWith({ 'expo-channel-name': 'production' });
+  });
+  it('the startup guard and the account page share one in-flight lookup', async () => {
+    state.channel = 'preview'; state.allowed = true;
+    await act(async () => { tree = TestRenderer.create(React.createElement(React.Fragment, null, React.createElement(ota.OtaUpdateCheck), React.createElement(ota.AdminOtaUpdatesEntry))); });
+    expect(state.capabilities).toHaveBeenCalledOnce();
+    expect(state.check).toHaveBeenCalledOnce(); expect(state.override).not.toHaveBeenCalled();
   });
 });

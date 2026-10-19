@@ -12,6 +12,12 @@ describe('iOS failure evidence before diagnostic side effects', () => {
     expect(collector).toContain('$NAME-native-screen-capture.txt');
   });
 
+  it('keeps the fixture read-error classification out of reach of the generic error tail', () => {
+    // 39182073666: XCTest query lines filled the 60-line app-log tail and the READ_TIMEOUT line was lost.
+    expect(collector).toContain("grep -F 'CI_GAMIFICATION_READ_ERROR'");
+    expect(collector).toContain('$NAME-read-errors.txt');
+  });
+
   it('keeps non-error audio diagnostics separate from the generic error-only tail', () => {
     expect(collector).toContain('$NAME-audio.txt');
     expect(collector).toContain('\\[chapter-audio\\]|AVAudioSession|AVPlayer|playbackStatus|timeControlStatus');

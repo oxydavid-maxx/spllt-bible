@@ -1,7 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuthSnapshot, type AuthSession, type VerifiedProfile } from '../src/services/authSession';
+import { consumeInterruptedGoogleLogin } from '../src/services/googleNative';
 import { AppStack, canUseApp } from '../src/ui/AppStack';
 import { UpdatePrompt } from '../src/ui/UpdatePrompt';
 import { CongregationGate } from '../src/ui/congregation/CongregationGate';
@@ -25,7 +26,16 @@ import { OtaUpdateCheck } from '../src/ui/admin/OtaUpdates';
 void registerConfiguredFriendPushTask().catch(() => undefined);
 
 export default function RootLayout() {
-  const signedIn = canUseApp(useAuthSnapshot().status);
+  const authStatus = useAuthSnapshot().status;
+  const signedIn = canUseApp(authStatus);
+  const hydrating = authStatus === 'hydrating';
+  const checkedStartup = useRef(false);
+  useEffect(() => {
+    if (hydrating || checkedStartup.current) return;
+    checkedStartup.current = true;
+    // Signed-out starts consume and display the notice on SignInScreen instead.
+    if (signedIn) void consumeInterruptedGoogleLogin(true).catch(() => undefined);
+  }, [hydrating, signedIn]);
   const [reminderScheduler] = useState(() => createReminderScheduler());
   useEffect(() => { void reminderScheduler.cancelRetiredMeetingReminders().catch(() => undefined); }, [reminderScheduler]);
   // Chapter narration keeps playing on other tabs, in other apps and on a locked screen; without this
@@ -56,5 +66,6 @@ export default function RootLayout() {
   }, []);
   configureReminderRuntime(reminderRuntime);
   // The gesture root stays for react-native-gesture-handler users; the SDK's sheets no longer need it (they are the app's own, src/ui/sheet/bottomSheet.tsx).
-  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><OtaUpdateCheck /><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} /><CongregationGate /><UpdatePrompt /></AuthProvider></GestureHandlerRootView>;
+  // OtaUpdateCheck stays outside the hydrating gate: it waits for a definite member itself on a preview phone.
+  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><OtaUpdateCheck /><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} hydrating={hydrating} />{!hydrating && <><CongregationGate /><UpdatePrompt /></>}</AuthProvider></GestureHandlerRootView>;
 }

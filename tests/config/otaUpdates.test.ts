@@ -73,6 +73,19 @@ describe('EAS Update native startup configuration', () => {
     expect(publish).toMatch(/Android.*iPhone|iPhone.*Android/);
   });
 
+  // #71 and this PR both rewrote the same RootLayout line. Taking either side alone passes every other
+  // test: one drops the OTA owner, the other silently drops #71's splash/hydrating gate (sign-in flash).
+  it('keeps #71\'s hydrating gate and the OTA owner outside it in RootLayout', () => {
+    const root = readFileSync('app/_layout.tsx', 'utf8');
+    const returned = root.slice(root.lastIndexOf('return <GestureHandlerRootView'));
+    expect(returned).toContain('<AppStack signedIn={signedIn} hydrating={hydrating} />');
+    expect(returned).toContain('{!hydrating && <><CongregationGate /><UpdatePrompt /></>}');
+    const gate = returned.indexOf('{!hydrating &&');
+    expect(returned.indexOf('<OtaUpdateCheck />')).toBeGreaterThan(-1);
+    expect(returned.indexOf('<OtaUpdateCheck />')).toBeLessThan(gate);
+    expect(returned.slice(gate)).not.toContain('<OtaUpdateCheck />');
+  });
+
   it('wires a single non-blocking startup owner and never uses URL overrides or forced reloads', () => {
     const root = readFileSync('app/_layout.tsx', 'utf8');
     expect(root.match(/<OtaUpdateCheck\s*\/>/g)).toHaveLength(1);
