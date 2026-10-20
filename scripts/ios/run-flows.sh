@@ -53,6 +53,8 @@ maestro --version > /dev/null 2>&1
 # two 180 s windows; later starts are quick.
 MAESTRO_DRIVER_STARTUP_TIMEOUT=600000 maestro --device "$UDID" hierarchy --no-reinstall-driver > /dev/null 2>&1 || echo "maestro driver warm-up failed"
 echo "$UDID" > "$OUT/udid.txt"
+# PROOF BRANCH ONLY: keep UIKit and touch-routing debug lines in the simulator log.
+for sub in com.apple.UIKit com.apple.backboard com.apple.SpringBoard com.apple.FrontBoard; do xcrun simctl spawn "$UDID" log config --mode 'level:debug,persist:debug' --subsystem $sub > /dev/null 2>&1 || echo "log config $sub failed"; done
 export MAESTRO_DRIVER_STARTUP_TIMEOUT=180000
 echo '{}' > "$OUT/flows.json"
 : > "$OUT/.flows-start"
@@ -82,7 +84,11 @@ cycles() {
     keep_debug "21-audio-after-background-c$i"
   done
 }
-keep_debug() { local d; d=$(ls -td "$HOME"/.maestro/tests/*/ 2>/dev/null | head -1); [ -n "$d" ] && tail -n 120 "$d/maestro.log" > "$OUT/maestro/$1-maestro-debug-all.txt" 2>/dev/null; }
+keep_debug() {
+  local d; d=$(ls -td "$HOME"/.maestro/tests/*/ 2>/dev/null | head -1); [ -n "$d" ] && tail -n 120 "$d/maestro.log" > "$OUT/maestro/$1-maestro-debug-all.txt" 2>/dev/null
+  # Every process: who cancels a touch (UIKit gesture gates, backboardd, SpringBoard), not just the app's own lines.
+  xcrun simctl spawn "$UDID" log show --last 150s --style compact --info --debug 2>/dev/null | grep -Ei 'cancel|gesture|gate|touch|HIDEvent|defer|breadcrumb|resign|deactivat|CI_DIAG' | grep -v 'Replying to query' | tail -n 1500 > "$OUT/maestro/$1-sys.txt" || true
+}
 for flow in .maestro/ios/*.yaml; do
   run_flow "$flow"
   case "$(basename "$flow" .yaml)" in 21-*) keep_debug 21-audio-after-background; cycles ;; esac
