@@ -133,7 +133,7 @@ export default function AnnouncementsScreen() {
       ? <BulletinBoard
           weeks={bulletins.weeks}
           status={bulletins.status}
-          sourceFor={(date, index) => bulletinPageSource(apiBaseUrl, session?.sessionToken ?? '', date, index)}
+          sourceFor={(date, index, width) => bulletinPageSource(apiBaseUrl, session?.sessionToken ?? '', date, index, width)}
           onRetry={() => { setBulletins((now) => ({ ...now, status: 'loading' })); setBulletinRetry((count) => count + 1); }}
         />
       : announcement

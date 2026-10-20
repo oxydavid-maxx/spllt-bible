@@ -27,7 +27,7 @@ vi.mock('react-native', () => ({
   Image: image, Linking: { openURL: vi.fn() }, Modal: primitive('Modal'), PanResponder: { create: () => ({ panHandlers: {} }) },
   // A Pixel 8: 412 × 915 dp at 2.625 (1080 px wide). The test window is 400 dp wide.
   PixelRatio: { get: () => 2.625, getPixelSizeForLayoutSize: (size: number) => Math.round(size * 2.625) },
-  Platform: { OS: 'android' }, Pressable: primitive('Pressable'), StyleSheet: { create: (s: unknown) => s, absoluteFillObject: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } }, Text: primitive('Text'), View: primitive('View'),
+  Platform: { OS: 'android' }, Pressable: primitive('Pressable'), StyleSheet: { create: (s: unknown) => s, absoluteFill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } }, Text: primitive('Text'), View: primitive('View'),
   useWindowDimensions: () => ({ width: 400, height: 800 }),
 }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: (props: { children?: unknown }) => require('react').createElement('SafeAreaView', props, props.children), useSafeAreaInsets: () => state.insets }));
@@ -226,8 +226,8 @@ describe('the 週刊 board and viewer', () => {
     expect(flat(bar.props.style).paddingTop).toBeLessThan(47);
     // Pages are laid out in the space under the status bar, which the stage measures, not in the whole window.
     expect(typeof stage.props.onLayout).toBe('function');
-    await act(async () => { stage.props.onLayout({ nativeEvent: { layout: { x: 0, y: 47, width: 400, height: 753 } } }); });
-    expect(modal().findAll((node) => node.props.accessible === true && String(node.props.accessibilityLabel).startsWith('10/18 週刊第 1 頁'))[0].parent!.props.style).toMatchObject({ width: 400, height: 753 });
+    await act(async () => { stage.props.onLayout({ nativeEvent: { layout: { x: 0, y: 47, width: 400, height: 719 } } }); });
+    expect(modal().findAll((node) => node.props.accessible === true && String(node.props.accessibilityLabel).startsWith('10/18 週刊第 1 頁'))[0].parent!.props.style).toMatchObject({ width: 400, height: 719 });
     const source = readFileSync('src/ui/bulletin/BulletinViewer.tsx', 'utf8');
     expect(source, 'one layout for both platforms').not.toMatch(/Platform\.OS/);
   });

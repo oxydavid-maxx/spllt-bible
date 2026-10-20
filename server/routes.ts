@@ -28,7 +28,8 @@ import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDat
 import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
 import { applyRewardSheet, listRewards, readRewardSheetPush, rewardOnSide, sheetRedemptionsFor } from './rewardSheet';
 import { rewardSheetReadingStats } from './rewardSheetStats';
-import { listBulletins, readBulletinPage } from './bulletins';
+import { listBulletins } from './bulletins';
+import { createBulletinPhoneCopies } from './bulletinsResize';
 import { issueBulletinCookie, readBulletinCookie } from './bulletinAccess';
 import { readAdminLinks } from './adminLinks';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
@@ -332,8 +333,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
   // Signs the 週刊 page cookie (server/bulletinAccess.ts); without a session secret it lasts as long as the process.
   const bulletinCookieKey = options.sessionSecret ?? randomBytes(32);
   const bulletinPagePath = /^\/api\/bulletins\/(\d{4}-\d{2}-\d{2})\/(\d{1,2})$/;
-  const bulletinPageResponse = (date: string, index: number): ApiResponse => {
-    const bytes = readBulletinPage(options.bulletinDir, date, index);
+  // ?w=<width>: the list's phone copy (server/bulletinsResize.ts); without it, the original (full screen, older apps).
+  const bulletinPhoneCopies = createBulletinPhoneCopies(options.bulletinDir);
+  const bulletinPageResponse = async (date: string, index: number, width: string | null): Promise<ApiResponse> => {
+    const bytes = await bulletinPhoneCopies.page(date, index, width === null ? null : Number(width));
     return bytes ? { status: 200, body: {}, binaryBody: bytes, headers: { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=604800' } }
       : gamificationError({ status: 404, code: 'BULLETIN_NOT_FOUND' });
   };
@@ -566,7 +569,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
     const cookiePage = request.method === 'GET' && !request.headers.authorization ? url.pathname.match(bulletinPagePath) : null;
     if (cookiePage) {
       const memberId = readBulletinCookie(request.headers.cookie, bulletinCookieKey, now().getTime());
-      if (memberId && memberExists(options.db.db, memberId) && isMemberEnabled(options.db.db, memberId)) return bulletinPageResponse(cookiePage[1], Number(cookiePage[2]));
+      if (memberId && memberExists(options.db.db, memberId) && isMemberEnabled(options.db.db, memberId)) return bulletinPageResponse(cookiePage[1], Number(cookiePage[2]), url.searchParams.get('w'));
     }
     const auth = options.productionGoogleAuth && options.sessionSecret
       ? await authenticateSessionOrGoogle(request.headers, options.productionGoogleAuth, options.sessionSecret, sessions)
@@ -741,7 +744,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
         return { ...listed, headers: { ...listed.headers, 'set-cookie': issueBulletinCookie(auth.memberId, bulletinCookieKey, now().getTime()) } };
       }
       const bulletinPage = url.pathname.match(bulletinPagePath);
-      if (request.method === 'GET' && bulletinPage) return bulletinPageResponse(bulletinPage[1], Number(bulletinPage[2]));
+      if (request.method === 'GET' && bulletinPage) return bulletinPageResponse(bulletinPage[1], Number(bulletinPage[2]), url.searchParams.get('w'));
       const devotionalMatch = url.pathname.match(/^\/api\/devotional\/([^/]+)$/);
       if (request.method === 'GET' && devotionalMatch) {
         const date = decodeURIComponent(devotionalMatch[1]);

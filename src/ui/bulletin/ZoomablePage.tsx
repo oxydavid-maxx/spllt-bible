@@ -1,14 +1,21 @@
-import { useMemo, useRef } from 'react';
-import { Animated, PanResponder, View, type GestureResponderEvent, type ImageSourcePropType } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { Animated, Image, PanResponder, Pressable, StyleSheet, Text, View, type GestureResponderEvent, type ImageSourcePropType } from 'react-native';
+import { theme } from '../Theme';
+import { PAGE_FAILED, PAGE_LOADING, PageStatus, usePageLoad } from './BulletinPageStatus';
 import { clampOffset, distance, fitSize, pinchScale, type Point } from './zoomMath';
 
 /**
  * One 週刊 page in the viewer: two fingers zoom (up to 4×), one finger moves a zoomed page. At normal size a
  * one-finger swipe is left to the pager, so pages still turn. Built on React Native's own touch responder:
  * reanimated is deliberately not linked in this app (docs/design/lean-reader-sheets.md).
+ *
+ * The original is downloaded here, not in the list (2026-10-20). Until it is in, the page shows the phone copy the list
+ * already has (`preview`), or the grey 週刊載入中… box when there is none yet; the label says 載入中 until the original
+ * is in. When the original cannot be loaded, a button says so and asks for it again.
  */
-export function ZoomablePage({ source, page, view, label, onZoomChange }: {
+export function ZoomablePage({ source, preview, page, view, label, onZoomChange }: {
   source: ImageSourcePropType;
+  preview?: ImageSourcePropType;
   page: { width: number; height: number };
   view: { width: number; height: number };
   label: string;
@@ -21,6 +28,8 @@ export function ZoomablePage({ source, page, view, label, onZoomChange }: {
   const state = useRef({ scale: 1, offset: { x: 0, y: 0 } as Point, pinching: false, startScale: 1, startDistance: 0, startTouch: { x: 0, y: 0 } as Point, startOffset: { x: 0, y: 0 } as Point });
   const zoomChange = useRef(onZoomChange);
   zoomChange.current = onZoomChange;
+  const original = usePageLoad();
+  const [previewShown, setPreviewShown] = useState(false);
 
   const responder = useMemo(() => {
     const now = state.current;
@@ -64,12 +73,32 @@ export function ZoomablePage({ source, page, view, label, onZoomChange }: {
     });
   }, [view.width, view.height, fitted.width, fitted.height, scale, offsetX, offsetY]);
 
-  return <View style={{ width: view.width, height: view.height, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }} {...responder.panHandlers}>
-    <Animated.Image
-      accessibilityLabel={label}
-      source={source}
-      resizeMode="contain"
-      style={{ width: fitted.width, height: fitted.height, transform: [{ translateX: offsetX }, { translateY: offsetY }, { scale }] }}
-    />
+  const failed = original.state === 'error';
+  const shown = original.state === 'ready' || previewShown;
+  return <View style={{ width: view.width, height: view.height }}>
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={original.state === 'ready' ? label : `${label}，載入中`}
+      style={styles.fill}
+      {...responder.panHandlers}
+    >
+      <Animated.View style={{ width: fitted.width, height: fitted.height, transform: [{ translateX: offsetX }, { translateY: offsetY }, { scale }] }}>
+        {preview ? <Image testID="bulletin-page-preview" source={preview} resizeMode="contain" onLoad={() => setPreviewShown(true)} style={StyleSheet.absoluteFill} /> : null}
+        <Image key={original.attempt} testID="bulletin-page-original" source={source} resizeMode="contain" onLoad={original.onLoad} onError={original.onError} style={StyleSheet.absoluteFill} />
+        {shown ? null : <PageStatus text={failed ? undefined : PAGE_LOADING} />}
+      </Animated.View>
+    </View>
+    {failed ? <View pointerEvents="box-none" style={[StyleSheet.absoluteFill, styles.fill]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${label}載不到，點一下再試`} onPress={original.retry} style={styles.retry}>
+        <Text style={styles.retryText}>{PAGE_FAILED}</Text>
+      </Pressable>
+    </View> : null}
   </View>;
 }
+
+const styles = StyleSheet.create({
+  fill: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  retry: { minHeight: theme.control.tap, justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderRadius: theme.radius.button, backgroundColor: 'rgba(0,0,0,0.75)' },
+  retryText: { color: '#FFFFFF', fontSize: theme.type.body.size, fontWeight: '700' },
+});
