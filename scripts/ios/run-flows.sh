@@ -2,8 +2,8 @@
 # scripts/ios/run-flows.sh — fixture backend + counting proxy + simulator + Maestro (one flow per call).
 set -uo pipefail
 OUT=${OUT:-ci-out}; mkdir -p "$OUT/maestro"; : > "$OUT/requests.log"
-# One synthetic 週刊 (two small A4 test pages) for flow 44-bulletin; a copy, so the backend never touches the repo.
-rm -rf "$OUT/bulletins"; cp -R scripts/ios/fixtures/bulletins "$OUT/bulletins"
+# One synthetic 週刊 for flow 44-bulletin (two A4 pages at 2481 × 3509, drawn for the run; no picture is kept in the repo).
+rm -rf "$OUT/bulletins"; npx tsx scripts/ios/make-bulletin-fixture.ts "$OUT/bulletins" > "$OUT/bulletin-fixture.txt" 2>&1 || { echo 'fixture 週刊 could not be made'; cat "$OUT/bulletin-fixture.txt"; exit 1; }
 QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_ADMIN_MEMBER_IDS=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 QINGMU_BULLETIN_DIR="$OUT/bulletins" \
   npx tsx server/http.ts > "$OUT/server.log" 2>&1 &
 # The app talks to the backend over HTTPS, as in production: the reader takes its Bible content host only
@@ -80,9 +80,15 @@ for flow in .maestro/ios/*.yaml; do
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
     # Narration must keep playing while the app is in the background: park it behind Settings for 20 s.
     20-audio-start) xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null ;;
-    # A 週刊 page frame looks the same loaded or blank: the flow passes only if every page was asked for with the
-    # member's token and answered 200 (a page without it is how Android showed blank pages, 2026-10-19).
-    44-bulletin) npx tsx scripts/ios/check-bulletin-requests.ts "$OUT/requests.log" "$FROM" "$OUT/bulletins" "$OUT/bulletin-requests.json" > "$OUT/maestro/44-bulletin-requests.txt" 2>&1 || { [ "$LAST_RESULT" = FAIL ] || { record 44-bulletin FAIL; bash scripts/ios/collect-failure.sh "$UDID" 44-bulletin; }; } ;;
+    # The flow passes only if every 週刊 page was asked for with the member's token and answered 200 (a page without it
+    # is how Android showed blank pages, 2026-10-19), the list took a phone copy smaller than the original, and the
+    # full-screen page it ends on leaves the status bar uncovered (0.5.35 covered it, 2026-10-20).
+    44-bulletin)
+      xcrun simctl io "$UDID" screenshot "$OUT/maestro/44-bulletin-viewer.png" > /dev/null 2>&1
+      CHECKS=0
+      npx tsx scripts/ios/check-bulletin-requests.ts "$OUT/requests.log" "$FROM" "$OUT/bulletins" "$OUT/bulletin-requests.json" > "$OUT/maestro/44-bulletin-requests.txt" 2>&1 || CHECKS=1
+      npx tsx scripts/ios/check-bulletin-viewer.ts "$OUT/maestro/44-bulletin-viewer.png" "$OUT/bulletin-viewer.json" > "$OUT/maestro/44-bulletin-viewer.txt" 2>&1 || CHECKS=1
+      [ "$CHECKS" = 0 ] || [ "$LAST_RESULT" = FAIL ] || { record 44-bulletin FAIL; bash scripts/ios/collect-failure.sh "$UDID" 44-bulletin; } ;;
     45-account-deletion) maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/maestro/45-account-screen.txt" 2>/dev/null || true ;;
     46-apple-login) maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/maestro/46-apple-authorization-screen.txt" 2>/dev/null || true; xcrun simctl io "$UDID" screenshot "$OUT/maestro/46-apple-native.png" ;;
     30-friend-push-open) npx tsx scripts/ios/make-friend-apns.ts "$OUT/friend.apns" && xcrun simctl push "$UDID" org.qingmu.youth "$OUT/friend.apns" ;;
