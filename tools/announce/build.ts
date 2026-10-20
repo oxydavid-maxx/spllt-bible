@@ -20,8 +20,8 @@ const GATHERING_TABS = ['正慧姐青崇一三周第二堂規劃', '小丁第二
 const FIRST_SESSION_KIND: Record<string, string> = { 中亮第一三周信息排班: '信息', 中亮第二四周青年啟發內容: '青年啟發' };
 const STANDING_TAB = '常設';
 /**
- * What the second session is called, whatever its tab plans (維護者, 2026-10-01): the plan is the
- * leaders' working notes (創世記3~5章／分組進行), not something to announce.
+ * The second session's name when nothing else names it. A planned one shows its row's topic and owner
+ * (維護者, 2026-10-20: the 10-01 rule hid 吃喝玩樂躺平系列: 青年館電影院 behind 青少團契).
  */
 const SECOND_SESSION_TITLE = '青少團契';
 
@@ -141,7 +141,7 @@ function standingFrom(workbook: Buffer): Record<string, string> | null {
 /**
  * Both sessions of one Sunday (光佑, 2026-09-27): the first from whichever first-session tab covers
  * that week (信息 on the first and third Sundays, 青年啟發 on the second and fourth). The second is
- * there when a second-session tab has a row for that Sunday, and is only ever called 青少團契.
+ * there when a second-session tab has a row for that Sunday, with that row's topic and owner; its note stays out.
  * Titles are the cell's first line; the rest of a 青年啟發 cell is the small-group questions.
  */
 function sessionsOn(program: Buffer, date: string): NextSession[] {
@@ -152,7 +152,7 @@ function sessionsOn(program: Buffer, date: string): NextSession[] {
   }
   for (const tab of GATHERING_TABS) {
     const row = rowFor(readPlanRows(xlsxSheetRows(program, tab)), date);
-    if (row) { sessions.push({ label: '第二堂', kind: null, title: SECOND_SESSION_TITLE, owner: null }); break; }
+    if (row) { sessions.push({ label: '第二堂', kind: null, title: headline(row.topic) || SECOND_SESSION_TITLE, owner: row.owner || null }); break; }
   }
   return sessions;
 }
@@ -314,7 +314,7 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
   const thisWeekSermon = rowFor(sermonRows, week);
   const upcoming = nextAfter([...gatheringRows, ...sermonRows], week);
   const sessions = upcoming ? sessionsOn(program, upcoming.date) : [];
-  // Older phones show only topic and owner: they carry the first session, or just 青少團契.
+  // Older phones show only topic and owner: they carry the first session, or else the second.
   const headlineSession = sessions[0] ?? { title: SECOND_SESSION_TITLE, owner: null };
   const roles = upcoming ? rolesOn(xlsxSheetRows(sunday, '2026服事表'), upcoming.date) : [];
   const currentSessions = await sessionFiles(entries, program, week, speakers.get(week) ?? null, options);
