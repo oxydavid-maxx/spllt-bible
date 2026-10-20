@@ -10,6 +10,8 @@ import { fixtureProfile } from '../../src/ui/fixtureProfile';
 import { getReadingSessionSnapshot, preserveReadingDateOnReturn, requestTodayReaderTabPress, setJournalEntryDate } from '../../src/ui/readingSession';
 import { useReaderImmersionSnapshot } from '../../src/ui/readerImmersionState';
 import { getReaderAudioSnapshot } from '../../src/services/readerAudioBridge';
+import { useEffect } from 'react';
+import { ciDiag } from '../../src/ui/ciDiag';
 
 export default function TabsLayout() {
   const readerImmersed = useReaderImmersionSnapshot();
@@ -18,12 +20,16 @@ export default function TabsLayout() {
   const pathname = usePathname();
   // Reader is a hidden sibling route; keep its visible reading entry selected for users and screen readers.
   const readerRouteSelected = pathname === '/reader';
+  useEffect(() => { ciDiag('pathname', { pathname }); }, [pathname]);
+  useEffect(() => { ciDiag('tabs-immersed', { readerImmersed }); }, [readerImmersed]);
   const accountEntry = () => <AccountEntryButton />;
   return (
     <Tabs
       initialRouteName="today"
       screenListeners={({ route }) => ({
+        tabLongPress: () => { ciDiag('tab-long-press', { route: route.name }); },
         tabPress: event => {
+          ciDiag('tab-press', { route: route.name, prevented: event.defaultPrevented });
           if (event.defaultPrevented) return;
           if (route.name === 'today') {
             // Narration keeps playing on every tab (光佑 2026-09-28). While a chapter plays, 讀經 only

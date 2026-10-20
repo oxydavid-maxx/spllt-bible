@@ -20,6 +20,10 @@ import { getReadingPlanId } from '../src/ui/readingSession';
 import { registerConfiguredFriendPushTask } from '../src/services/friendPush';
 import { configureChapterAudio } from '../src/services/chapterAudioStartup';
 import { OtaUpdateCheck } from '../src/ui/admin/OtaUpdates';
+import { ciDiag, startCiStallMonitor } from '../src/ui/ciDiag';
+
+startCiStallMonitor();
+const touchData = (e: { nativeEvent: { pageX: number; pageY: number; timestamp: number; touches?: unknown[] } }) => ({ x: Math.round(e.nativeEvent.pageX), y: Math.round(e.nativeEvent.pageY), t: Math.round(e.nativeEvent.timestamp), n: e.nativeEvent.touches?.length ?? -1 });
 
 // At module scope, as the meeting task once was: a push that wakes a closed app has to find the task
 // already defined. A phone without the native modules simply has no friend notifications.
@@ -67,5 +71,5 @@ export default function RootLayout() {
   configureReminderRuntime(reminderRuntime);
   // The gesture root stays for react-native-gesture-handler users; the SDK's sheets no longer need it (they are the app's own, src/ui/sheet/bottomSheet.tsx).
   // OtaUpdateCheck stays outside the hydrating gate: it waits for a definite member itself on a preview phone.
-  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><OtaUpdateCheck /><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} hydrating={hydrating} />{!hydrating && <><CongregationGate /><UpdatePrompt /></>}</AuthProvider></GestureHandlerRootView>;
+  return <GestureHandlerRootView style={{ flex: 1 }} onTouchStartCapture={(e) => ciDiag('touch-start', touchData(e))} onTouchEndCapture={(e) => ciDiag('touch-end', touchData(e))} onTouchCancelCapture={(e) => ciDiag('touch-cancel', touchData(e))}><AuthProvider loadProfile={loadProfile}><OtaUpdateCheck /><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} hydrating={hydrating} />{!hydrating && <><CongregationGate /><UpdatePrompt /></>}</AuthProvider></GestureHandlerRootView>;
 }

@@ -15,6 +15,7 @@ import { formatChapterTitleZhTw, formatReferenceZhTw } from '../domain/scripture
 import { theme } from './Theme';
 import { formatReadingDateHeader, formatReadingDateLabel } from './ReadingDateNavigator';
 import { setReaderImmersed } from './readerImmersionState';
+import { ciDiag } from './ciDiag';
 import type { ReaderOverlayControls } from './YouVersionReader';
 import type { ReaderCanvasInsets, ReaderRevealReason } from './readerSettingsBridge';
 import type { ReadAlongPosition } from './readAlongBridge';
@@ -72,7 +73,7 @@ export function useReaderChrome() {
   // settings / chapter / version sheet is open: the tab bar floats over the scripture, so it would
   // otherwise cover the sheet's buttons (the font row sat half under it, 2026-09-28).
   const barsHidden = focused && (!toolsVisible || verseSelected || sheetOpen);
-  useEffect(() => { setReaderImmersed(barsHidden); }, [barsHidden]);
+  useEffect(() => { ciDiag('reader-bars', { barsHidden, toolsVisible, verseSelected, sheetOpen, focused }); setReaderImmersed(barsHidden); }, [barsHidden]);
   useEffect(() => {
     let active = true;
     let latestEvent: boolean | null = null;
@@ -108,8 +109,9 @@ export function useReaderChrome() {
     if (!isFocused || talkBack || popupOpen) return;
     setToolsVisible(false);
   }, []);
-  const revealTools = useCallback((_reason?: ReaderRevealReason) => showTools(), [showTools]);
+  const revealTools = useCallback((_reason?: ReaderRevealReason) => { ciDiag('reader-reveal', { reason: _reason }); showTools(); }, [showTools]);
   const handleCanvasScroll = useCallback(({ direction, deltaY }: { direction: 'up' | 'down'; deltaY: number }) => {
+    ciDiag('reader-scroll', { direction, deltaY: Math.round(deltaY) });
     if (Math.abs(deltaY) < 12) return;
     if (direction === 'down') hideTools();
     else showTools();
