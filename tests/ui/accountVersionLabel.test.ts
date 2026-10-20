@@ -53,7 +53,22 @@ describe('account page version', () => {
     state.profileLoaded = true;
     Object.assign(update, { isEmbeddedLaunch: false, updateId: '0a1b2c3d-4e5f-4789-abcd-ef0123456789', createdAt: new Date(2026, 9, 20, 13, 5) });
     try {
-      expect(await versionTexts()).toEqual(['版本 0.5.24 (47) · 更新 20261020-0a1b2c']);
+      expect(await versionTexts()).toEqual(['版本 0.5.24 (47) · 更新 20261020-456789']);
+    } finally {
+      Object.assign(update, { isEmbeddedLaunch: true, updateId: null, createdAt: null });
+    }
+  });
+
+  // EAS update IDs are UUIDv7: the front is the time, so two updates published hours apart share it
+  // (20261020: preview 01a15891-… and production 01a158f0-… both read 01a158). The end is random.
+  it('tells apart two updates published the same afternoon', async () => {
+    state.profileLoaded = true;
+    try {
+      Object.assign(update, { isEmbeddedLaunch: false, updateId: '01a15891-2561-7d7e-aff1-574ccc8a8355', createdAt: new Date(2026, 9, 20, 17, 7) });
+      const preview = await versionTexts();
+      Object.assign(update, { updateId: '01a158f0-23ea-7b91-abca-86ca1fbff271', createdAt: new Date(2026, 9, 20, 18, 51) });
+      const production = await versionTexts();
+      expect([preview, production]).toEqual([['版本 0.5.24 (47) · 更新 20261020-8a8355'], ['版本 0.5.24 (47) · 更新 20261020-bff271']]);
     } finally {
       Object.assign(update, { isEmbeddedLaunch: true, updateId: null, createdAt: null });
     }
