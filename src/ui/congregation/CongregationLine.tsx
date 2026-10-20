@@ -45,10 +45,12 @@ function CongregationChangeSheet({ current, choose, onClose }: { current: Congre
     try { await choose(picked!); onClose(); } catch { setFailed(true); setSaving(false); }
   };
   const label = saving ? '儲存中…' : changing ? `改成：${whereSentence(picked!)}` : '請選要改成哪一邊';
+  // The side the member is on now comes first, marked 「(現在)」, then the one they can change to (mock v3 ⑤).
+  const choices = [...CHOICES].sort((left, right) => Number(right.value === current) - Number(left.value === current));
   // Rendered only while open (CongregationLine), so it always starts with nothing picked.
   return <ActionSheet visible title={QUESTION} onClose={onClose} dismissOnOutsideTap={!saving}
     actions={[{ label, disabled: !changing || saving, onPress: () => { void save(); } }]}>
-    {CHOICES.map((choice) => {
+    {choices.map((choice) => {
       const selected = picked === choice.value;
       const name = choice.value === current ? `${choice.name} (現在)` : choice.name;
       return <Pressable

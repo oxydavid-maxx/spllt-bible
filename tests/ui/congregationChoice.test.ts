@@ -208,8 +208,9 @@ describe('the line that says where I meet, and 改', () => {
     await mount(React.createElement(CongregationLine, { variant: 'points' }));
     await press(button('改我在哪裡聚會'));
     expect(sheet()[0].props.title).toBe('我平常在哪裡聚會？');
-    expect(button('主堂 (現在)，社青、家長、長輩')).toBeDefined();
-    expect(button('青少，國中、高中、大專學生')).toBeDefined();
+    // The side I am on now first, then the one I can change to.
+    expect(tree!.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityRole === 'radio').map((node) => node.props.accessibilityLabel))
+      .toEqual(['主堂 (現在)，社青、家長、長輩', '青少，國中、高中、大專學生']);
     expect(texts()).toContain('改了之後，我以前讀經的天數會一起算到新的那一邊；積分不會變。');
     expect(button('請選要改成哪一邊').props.disabled).toBe(true);
     await press(button('主堂 (現在)，社青、家長、長輩'));
