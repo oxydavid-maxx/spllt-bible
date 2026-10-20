@@ -69,7 +69,9 @@ describe('collecting the 週刊 from the church group', () => {
     logs = []; contents = new Map(); closers = [];
     fetchContent = vi.fn(async (id: string) => contents.get(id) ?? jpeg(100, 100));
     const collector = createBulletinCollector({ dir: join(dir, 'bulletins'), fetchContent, log: (line) => logs.push(line), schedule: (run) => { closers.push(run); } });
+    // Cgroup is the 公布欄; photos from any other group are never fetched (tests/server/lineGroups.test.ts).
     webhook = createLineWebhook({ channelSecret: SECRET, devotionalDir: join(dir, 'devotionals'), log: (line) => logs.push(line),
+      groups: { purposeOf: async (groupId: string) => (groupId === 'Cgroup' ? 'bulletin-board' as const : 'other' as const) },
       onImage: (image) => { const run = collector.receive(image); pending.push(run); return run; } });
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));

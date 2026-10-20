@@ -98,6 +98,9 @@ def launch(label):
         'QINGMU_DEVOTIONAL_DIR': str(PILOT / 'devotionals'),
         # 主堂週刊 pages from the LINE group, newest 8 Sundays (server/bulletins.ts).
         'QINGMU_BULLETIN_DIR': str(PILOT / 'bulletins'),
+        # The LINE groups the bot has seen, ID and name only; the 公布欄 is the one whose 靈修 and 週刊 are kept
+        # (server/lineGroups.ts). A missing file only means each group's name is asked of LINE once more.
+        'QINGMU_LINE_GROUPS_FILE': str(PILOT / 'line-groups.json'),
         # 後台規則與文件: the back-office links, private ([{"name", "url"}]); missing lists nothing.
         'QINGMU_ADMIN_LINKS_FILE': str(PILOT / 'admin-links.json'),
         # Estimating what a suggested prize costs uses the Claude CLI already installed for

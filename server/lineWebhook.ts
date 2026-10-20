@@ -4,13 +4,16 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { LineImage } from './bulletins';
 import { parseDevotionalPost } from './devotional';
+import type { LineGroupDirectory } from './lineGroups';
 
 /**
  * Receives the pastor's daily 靈修 from the church's LINE group the moment it is posted (between about 5:30 and
- * 7:30 every morning), instead of someone copying it by hand. LINE forwards every message in a group the bot is
- * in; this keeps only a group text that the 靈修 reader parses (server/devotional.ts) and writes it as that day's
- * YYYYMMDD.txt. A photo in a group goes to the 週刊 collector (server/bulletins.ts), which keeps only a set of
- * A4 pages. Everything else is dropped: not stored, not logged. The bot never replies or posts.
+ * 7:30 every morning), instead of someone copying it by hand. LINE forwards every message in every group the bot
+ * is in; only the 「竹科靈糧堂訊息公布欄」 group's are taken (server/lineGroups.ts, 2026-10-20). From that group, a
+ * text that the 靈修 reader parses (server/devotional.ts) is written as that day's YYYYMMDD.txt, and a photo goes
+ * to the 週刊 collector (server/bulletins.ts), which keeps only a set of A4 pages. A photo from any other group is
+ * never downloaded and its text never stored. Everything else is dropped: not stored, not logged. The bot never
+ * replies or posts.
  *
  * LINE signs each delivery with the channel secret (X-Line-Signature = base64 HMAC-SHA256 of the raw body,
  * https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/); unsigned requests get 401.
@@ -25,10 +28,12 @@ const LOOKS_LIKE_DEVOTIONAL = /^\s*📖|溪邊的樹|背誦經文/u;
 export interface LineWebhookConfig {
   channelSecret: string;
   devotionalDir: string;
+  /** Which group an event came from (server/lineGroups.ts); only the 公布欄's 靈修 and 週刊 are taken. */
+  groups: Pick<LineGroupDirectory, 'purposeOf'>;
   log?: (line: string) => void;
   /** A day's file was written or corrected (the server prepares its audio); not awaited. */
   onSaved?: (date: string) => void;
-  /** A photo posted in a group (the 週刊, server/bulletins.ts); not awaited, so LINE is answered at once. */
+  /** A photo posted in the 公布欄 group (the 週刊, server/bulletins.ts); not awaited, so LINE is answered at once. */
   onImage?: (image: LineImage) => Promise<void>;
 }
 
@@ -57,7 +62,7 @@ function signedByLine(secret: string, rawBody: Buffer, signature: string | undef
 interface LineEvent {
   type?: unknown;
   timestamp?: unknown;
-  source?: { type?: unknown; userId?: unknown };
+  source?: { type?: unknown; groupId?: unknown; userId?: unknown };
   message?: { type?: unknown; text?: unknown; id?: unknown; contentProvider?: { type?: unknown } };
 }
 
@@ -103,9 +108,14 @@ export function createLineWebhook(config: LineWebhookConfig) {
     let events: unknown;
     try { events = (JSON.parse(delivery.rawBody.toString('utf8')) as { events?: unknown }).events; } catch { return { status: 400, body: { error: 'INVALID_JSON' } }; }
     for (const event of Array.isArray(events) ? events as LineEvent[] : []) {
-      const image = config.onImage && event ? groupImage(event) : null;
+      const groupId = event?.source?.type === 'group' && typeof event.source.groupId === 'string' ? event.source.groupId : null;
+      // Not from a group, or the bot was just removed from it (nothing left to ask LINE about).
+      if (!groupId || event.type === 'leave') continue;
+      // Any event from a group not seen before (a join included) has LINE asked for the group's name, once.
+      if (await config.groups.purposeOf(groupId) !== 'bulletin-board') continue;
+      const image = config.onImage ? groupImage(event) : null;
       if (image) { void config.onImage!(image).catch(() => log('LINE_BULLETIN_FAILED')); continue; }
-      if (event?.type !== 'message' || event.source?.type !== 'group' || event.message?.type !== 'text' || typeof event.message.text !== 'string') continue;
+      if (event.type !== 'message' || event.message?.type !== 'text' || typeof event.message.text !== 'string') continue;
       if (!LOOKS_LIKE_DEVOTIONAL.test(event.message.text)) continue;
       await save(event.message.text);
     }

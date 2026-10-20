@@ -22,7 +22,8 @@ import { createDevotionalAudio, latestDevotionalDate, readAzureSpeechConfig, war
 import { devotionalPlayerResponse } from './devotional';
 import { createLineWebhook, LINE_WEBHOOK_BODY_LIMIT, LINE_WEBHOOK_PATH, readLineChannelSecret } from './lineWebhook';
 import { createBulletinCollector, type LineImage } from './bulletins';
-import { createLineContentFetcher, readLineChannelIdFile } from './lineContent';
+import { createLineClient, readLineChannelIdFile } from './lineContent';
+import { createLineGroupDirectory } from './lineGroups';
 import { installNat64Fallback } from './nat64Fallback';
 import { deriveFormRegistrationKey } from './eventRegistrations';
 
@@ -194,11 +195,20 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
   const lineChannelSecret = readLineChannelSecret(process.env.QINGMU_LINE_SECRET_FILE);
   // 主堂週刊: off unless the channel ID sits beside the secret and a folder is configured (server/bulletins.ts).
   const lineChannelId = readLineChannelIdFile(process.env.QINGMU_LINE_SECRET_FILE);
-  const bulletins = lineChannelSecret && lineChannelId && process.env.QINGMU_BULLETIN_DIR?.trim()
-    ? createBulletinCollector({ dir: process.env.QINGMU_BULLETIN_DIR.trim(), fetchContent: createLineContentFetcher({ channelId: lineChannelId, channelSecret: lineChannelSecret }) })
+  // One short-lived token downloads the 週刊 photos and asks each group's name (server/lineContent.ts).
+  const lineApi = lineChannelSecret && lineChannelId ? createLineClient({ channelId: lineChannelId, channelSecret: lineChannelSecret }) : null;
+  const bulletins = lineApi && process.env.QINGMU_BULLETIN_DIR?.trim()
+    ? createBulletinCollector({ dir: process.env.QINGMU_BULLETIN_DIR.trim(), fetchContent: lineApi.fetchContent })
     : null;
+  const lineGroupsFile = process.env.QINGMU_LINE_GROUPS_FILE?.trim();
   const lineWebhook = lineChannelSecret && process.env.QINGMU_DEVOTIONAL_DIR?.trim()
     ? createLineWebhook({ channelSecret: lineChannelSecret, devotionalDir: process.env.QINGMU_DEVOTIONAL_DIR.trim(),
+      // Only the 公布欄 group's 靈修 and 週刊 are taken (server/lineGroups.ts). Without the channel ID LINE cannot be
+      // asked a group's name, so only the groups already in the file are known.
+      groups: createLineGroupDirectory({
+        ...(lineGroupsFile ? { file: lineGroupsFile } : {}),
+        lookup: lineApi ? lineApi.groupSummary : async () => { throw new Error('LINE_CHANNEL_ID_MISSING'); },
+      }),
       ...(devotionalAudio ? { onSaved: (date: string) => { void warmDevotionalAudio(devotionalAudio, devotionalDir, date); } } : {}),
       ...(bulletins ? { onImage: (image: LineImage) => bulletins.receive(image) } : {}) })
     : null;
@@ -222,7 +232,7 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
       response.end(player.body);
       return;
     }
-    // LINE's delivery of the church group's messages; only the 靈修 is kept (server/lineWebhook.ts).
+    // LINE's delivery of the groups' messages; only the 公布欄's 靈修 and 週刊 are kept (server/lineWebhook.ts).
     if (request.method === 'POST' && (request.url ?? '').split('?')[0] === LINE_WEBHOOK_PATH) {
       const raw = lineWebhook ? await readRawBody(request, LINE_WEBHOOK_BODY_LIMIT) : null;
       const reply = !lineWebhook ? { status: 404, body: { error: 'NOT_FOUND' } }

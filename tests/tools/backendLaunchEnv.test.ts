@@ -18,6 +18,12 @@ describe('the production backend launch environment', () => {
     expect(launcher).toMatch(/'QINGMU_BULLETIN_DIR': str\(PILOT \/ 'bulletins'\)/);
   });
 
+  // 2026-10-20: which LINE group is the 公布欄 is looked up once and remembered beside the other private folders.
+  it('hands the server the private file of LINE groups it has seen', () => {
+    expect(readFileSync('server/http.ts', 'utf8')).toContain('process.env.QINGMU_LINE_GROUPS_FILE');
+    expect(launcher).toMatch(/'QINGMU_LINE_GROUPS_FILE': str\(PILOT \/ 'line-groups\.json'\)/);
+  });
+
   it('hands the server the LINE channel secret file, so the 靈修 webhook is on', () => {
     expect(readFileSync('server/http.ts', 'utf8')).toContain('process.env.QINGMU_LINE_SECRET_FILE');
     expect(launcher).toMatch(/read_line_environment\(PILOT \/ 'line-runtime-config\.json'\)/);

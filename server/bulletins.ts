@@ -7,6 +7,8 @@ import { join } from 'node:path';
  * A4 pages. A bulletin is two or more A4 portrait pages from one person, each within 10 minutes of the one before;
  * an A4 page the same person adds within 3 hours joins that bulletin. Every other photo is looked at for its size
  * only and dropped at once: not stored, and logged without anything that identifies it. The bot never posts.
+ * Only that group's photos ever get here: one from any other group the bot is in is not even downloaded
+ * (server/lineGroups.ts, 2026-10-20).
  *
  * Checked against the group's history on 2026-10-17 (7/12–10/13, 74 photos): all 13 weekly bulletins were three
  * exact A4 pages (1722 × 2435) from the same person early on Sunday, pages within two minutes of each other, except
@@ -19,7 +21,7 @@ import { join } from 'node:path';
  */
 export interface BulletinPage { index: number; width: number; height: number }
 export interface BulletinWeek { date: string; postedAt: string; pages: BulletinPage[] }
-/** A photo posted in a group. The sender's LINE id is used to tell posts apart and is never stored or logged. */
+/** A photo posted in the 公布欄 group. The sender's LINE id is used to tell posts apart and is never stored or logged. */
 export interface LineImage { messageId: string; timestamp: number; senderId?: string }
 
 export const KEEP_WEEKS = 8;
