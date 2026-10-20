@@ -19,8 +19,8 @@ function initial(profile: VerifiedProfile): string {
  * The installed version as testers report it, e.g. 版本 0.5.24 (47). The number in brackets is the
  * versionCode Google Play counts, so "which build do you have" has one answer. null when the native
  * version cannot be read (tests, web), so the page shows nothing rather than an invented version.
- * A downloaded update (docs/eas-update.md) keeps the store version, so its day and the start of its ID
- * follow, e.g. 版本 0.5.35 (60) · 更新 20261020-0a1b2c; the store build's own copy adds nothing.
+ * A downloaded update (docs/eas-update.md) keeps the store version, so its day and the end of its ID
+ * follow, e.g. 版本 0.5.35 (60) · 更新 20261020-456789 (the random end: an ID starts with the time); the store build's own copy adds nothing.
  */
 export interface RunningUpdate { isEmbeddedLaunch: boolean; updateId: string | null; createdAt: Date | null }
 
@@ -29,7 +29,7 @@ export function appVersionLabel(version: string | null, build: string | null, up
   if (!name) return null;
   const code = build?.trim();
   const label = code ? `版本 ${name} (${code})` : `版本 ${name}`;
-  const id = update && !update.isEmbeddedLaunch ? update.updateId?.replace(/-/g, '').slice(0, 6) : null;
+  const id = update && !update.isEmbeddedLaunch ? update.updateId?.replace(/-/g, '').slice(-6) : null;
   if (!id) return label;
   const at = update?.createdAt;
   const day = at ? `${at.getFullYear()}${String(at.getMonth() + 1).padStart(2, '0')}${String(at.getDate()).padStart(2, '0')}-` : '';
