@@ -20,6 +20,8 @@ const POST = [
   'https://youtu.be/abcdefghijk',
 ].join('\n');
 const SECRET = '0123456789abcdef0123456789abcdef';
+// The church's 公布欄 group, already known; which group is which is covered in lineGroups.test.ts.
+const BOARD_ONLY = { purposeOf: async (groupId: string) => (groupId === 'Cgroup' ? 'bulletin-board' as const : 'other' as const) };
 
 function sign(body: string, secret = SECRET) {
   return createHmac('sha256', secret).update(Buffer.from(body, 'utf8')).digest('base64');
@@ -38,7 +40,7 @@ describe('LINE webhook for the pastor\'s daily 靈修', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'qm-line-'));
     logs = [];
-    webhook = createLineWebhook({ channelSecret: SECRET, devotionalDir: join(dir, 'devotionals'), log: (line) => logs.push(line) });
+    webhook = createLineWebhook({ channelSecret: SECRET, devotionalDir: join(dir, 'devotionals'), groups: BOARD_ONLY, log: (line) => logs.push(line) });
     expect(parseDevotionalPost(POST)?.date).toBe('2030-01-02');
   });
   afterEach(() => { rmSync(dir, { recursive: true, force: true }); vi.restoreAllMocks(); });
@@ -94,7 +96,7 @@ describe('LINE webhook for the pastor\'s daily 靈修', () => {
 
   it('tells the server each newly saved or corrected day (to prepare its audio), not a redelivery or a rejected post', async () => {
     const saved: string[] = [];
-    webhook = createLineWebhook({ channelSecret: SECRET, devotionalDir: join(dir, 'devotionals'), log: (line) => logs.push(line), onSaved: (date) => saved.push(date) });
+    webhook = createLineWebhook({ channelSecret: SECRET, devotionalDir: join(dir, 'devotionals'), groups: BOARD_ONLY, log: (line) => logs.push(line), onSaved: (date) => saved.push(date) });
     await deliver(groupText(POST));
     await deliver(groupText(POST));
     await deliver(groupText(POST.replace('這是測試禱告。', '這是更正後的測試禱告。')));
