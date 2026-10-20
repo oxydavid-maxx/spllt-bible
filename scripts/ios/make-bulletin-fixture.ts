@@ -3,12 +3,17 @@
 // pictures that size are a few megabytes of binary in a public repo. The pages are drawn, not photographed: a header
 // band, two columns of glyph-like marks, a table and a soft photo block, so they compress about like a printed
 // bulletin and the phone copy (server/bulletinsResize.ts) has real work to do. Nothing here is a real bulletin.
-// usage: tsx scripts/ios/make-bulletin-fixture.ts <bulletin-dir>
-import { mkdirSync, writeFileSync } from 'node:fs';
+// The phone copies are made here too, with the backend's own code, before the simulator starts: on the CI Mac one copy
+// took 31 s while the simulator ran, longer than a request waits for it. The receipt records each page's size and its
+// copies' sizes (the KB a phone downloads per page, before and after).
+// usage: tsx scripts/ios/make-bulletin-fixture.ts <bulletin-dir> [<receipt.json>]
+import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BulletinWeek } from '../../server/bulletins';
 import { loadJimp } from '../../server/bulletinsImage';
+import { createBulletinPhoneCopies } from '../../server/bulletinsResize';
+import { BULLETIN_LIST_WIDTHS } from '../../src/domain/bulletinWidths';
 
 export const FIXTURE_WEEK = { date: '2026-08-30', postedAt: '2026-08-29T22:00:00.000Z' } as const;
 export const FIXTURE_PAGE = { width: 2481, height: 3509 } as const;
@@ -93,8 +98,29 @@ export async function writeFixtureBulletin(dir: string, size: { width: number; h
   return week;
 }
 
+export interface FixtureCopies { date: string; pages: Array<{ index: number; bytes: number; copies: Record<string, number | null> }> }
+
+/** Makes every phone copy of the fixture 週刊 the way the backend does, and reports the sizes (null: not made). */
+export async function makeFixtureCopies(dir: string, week: BulletinWeek): Promise<FixtureCopies> {
+  const copies = createBulletinPhoneCopies(dir, { log: () => undefined });
+  const pages: FixtureCopies['pages'] = [];
+  for (const page of week.pages) {
+    const made: Record<string, number | null> = {};
+    for (const width of BULLETIN_LIST_WIDTHS) made[width] = (await copies.copy(week.date, page.index, width))?.length ?? null;
+    pages.push({ index: page.index, bytes: statSync(join(dir, week.date, `${page.index}.jpg`)).size, copies: made });
+  }
+  return { date: week.date, pages };
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const dir = process.argv[2];
-  if (!dir) { console.error('usage: tsx scripts/ios/make-bulletin-fixture.ts <bulletin-dir>'); process.exit(2); }
-  void writeFixtureBulletin(dir).then((week) => console.log(`fixture 週刊 ${week.date}: ${week.pages.map((page) => `${page.index}.jpg ${page.width}x${page.height}`).join(', ')}`), (error) => { console.error(error); process.exit(1); });
+  const [dir, receipt] = process.argv.slice(2);
+  if (!dir) { console.error('usage: tsx scripts/ios/make-bulletin-fixture.ts <bulletin-dir> [<receipt.json>]'); process.exit(2); }
+  void (async () => {
+    const week = await writeFixtureBulletin(dir);
+    const made = await makeFixtureCopies(dir, week);
+    if (receipt) writeFileSync(receipt, JSON.stringify(made, null, 2));
+    const kb = (bytes: number | null) => (bytes === null ? 'none' : `${(bytes / 1024).toFixed(1)}KB`);
+    for (const page of made.pages) console.log(`fixture 週刊 ${made.date} page ${page.index}: original ${kb(page.bytes)}, ${Object.entries(page.copies).map(([width, bytes]) => `w${width} ${kb(bytes)}`).join(', ')}`);
+    if (made.pages.some((page) => Object.values(page.copies).includes(null))) { console.error('phone copies could not be made (server/bulletinsResize.ts)'); process.exit(1); }
+  })().catch((error) => { console.error(error); process.exit(1); });
 }

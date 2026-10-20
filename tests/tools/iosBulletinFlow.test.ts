@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { parseAllDocuments } from 'yaml';
 import { checkBulletinRequests } from '../../scripts/ios/check-bulletin-requests';
 import { checkViewerTop, type Bitmap } from '../../scripts/ios/check-bulletin-viewer';
-import { FIXTURE_PAGE, FIXTURE_WEEK, writeFixtureBulletin } from '../../scripts/ios/make-bulletin-fixture';
+import { FIXTURE_PAGE, FIXTURE_WEEK, makeFixtureCopies, writeFixtureBulletin, type FixtureCopies } from '../../scripts/ios/make-bulletin-fixture';
 import { isA4Portrait, jpegSize, listBulletins } from '../../server/bulletins';
 import { createDatabase } from '../../server/db';
 import { createApiHandler } from '../../server/routes';
@@ -91,9 +91,11 @@ describe('the full-screen screenshot', () => {
 
 describe('the fixture 週刊', () => {
   let dir: string;
+  let made: FixtureCopies;
   beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), 'qm-fixture-bulletin-'));
-    await writeFixtureBulletin(dir);
+    // What run-flows.sh does before the simulator starts: draw the pages, then make their phone copies.
+    made = await makeFixtureCopies(dir, await writeFixtureBulletin(dir));
   }, 120_000);
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -108,7 +110,13 @@ describe('the fixture 週刊', () => {
       expect(size).toEqual(FIXTURE_PAGE);
       expect(isA4Portrait(size!.width, size!.height)).toBe(true);
     }
-    expect(readdirSync(join(dir, '2026-08-30')).sort()).toEqual(['1.jpg', '2.jpg', 'meta.json']);
+    expect(readdirSync(join(dir, '2026-08-30')).sort()).toEqual(['1.jpg', '1.w1080.jpg', '1.w1440.jpg', '1.w720.jpg', '2.jpg', '2.w1080.jpg', '2.w1440.jpg', '2.w720.jpg', 'meta.json']);
+    // The receipt is the KB a phone downloads per page: the original before, the 1080 copy after.
+    for (const page of made.pages) {
+      expect(page.bytes).toBe(readFileSync(join(dir, '2026-08-30', `${page.index}.jpg`)).length);
+      for (const width of ['720', '1080', '1440']) expect(page.copies[width]).toBe(readFileSync(join(dir, '2026-08-30', `${page.index}.w${width}.jpg`)).length);
+      expect(page.copies['1080']!).toBeLessThan(page.bytes / 3);
+    }
     // No picture is kept in the repo, real or test: the CI copy is made by scripts/ios/make-bulletin-fixture.ts.
     expect(existsSync('scripts/ios/fixtures/bulletins')).toBe(false);
   });
@@ -127,7 +135,7 @@ describe('the fixture 週刊', () => {
       expect((await page({ authorization: 'Bearer wrong-token' })).status).toBe(401);
       const copy = await page({ authorization: 'Bearer ci-fixture-token' }, '?w=1080');
       expect(jpegSize(copy.binaryBody!)?.width).toBe(1080);
-      expect(copy.binaryBody!.length).toBeLessThan(original.binaryBody!.length / 3);
+      expect([...copy.binaryBody!]).toEqual([...readFileSync(join(dir, '2026-08-30', '1.w1080.jpg'))]);
     } finally { db.close(); }
   }, 60_000);
 });
@@ -198,7 +206,7 @@ describe('flow 44-bulletin', () => {
   });
 
   it('gives the fixture backend a 週刊 made for the run and turns a page without its token, an original in the list or a covered status bar into a failed flow', () => {
-    expect(runner).toMatch(/make-bulletin-fixture\.ts "\$OUT\/bulletins"/);
+    expect(runner).toMatch(/make-bulletin-fixture\.ts "\$OUT\/bulletins" "\$OUT\/bulletin-fixture\.json"/);
     expect(runner).not.toContain('scripts/ios/fixtures/bulletins');
     expect(runner).toContain('QINGMU_BULLETIN_DIR="$OUT/bulletins"');
     // The log is read from the line where this flow started, so earlier flows cannot pass or fail it.

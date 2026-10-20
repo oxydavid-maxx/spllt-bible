@@ -16,6 +16,9 @@ const A4 = { width: 1654, height: 2339 }; // A4 at 200 dpi: wide enough to be cu
 let original: Uint8Array;
 let narrow: Uint8Array;
 let dir: string;
+const until = async (done: () => boolean, ms = 30_000) => {
+  for (const end = Date.now() + ms; !done() && Date.now() < end;) await new Promise((wait) => setTimeout(wait, 20));
+};
 
 beforeAll(async () => {
   original = await syntheticBulletinPage(A4, 1);
@@ -37,7 +40,15 @@ describe('the 週刊 page API', () => {
       const api = createApiHandler({ db, fixtureToken: 'fixture', bulletinDir: dir });
       const as = { authorization: 'Bearer fixture', 'x-qingmu-member-id': 'm' };
       const get = (url: string, headers: Record<string, string> = as) => api({ method: 'GET', url, headers });
-      const small = await get(`/api/bulletins/${DATE}/1?w=1080`);
+      // The first ask makes the copy; it waits up to 3 s for it (a slow machine gets the original and the next ask the
+      // copy), so each first ask here is repeated once its copy is on disk.
+      const made = async (url: string, copy: string, headers?: Record<string, string>) => {
+        const first = await get(url, headers);
+        expect(first.status).toBe(200);
+        await until(() => existsSync(join(dir, DATE, copy)));
+        return get(url, headers);
+      };
+      const small = await made(`/api/bulletins/${DATE}/1?w=1080`, '1.w1080.jpg');
       expect(small.status).toBe(200);
       expect(small.headers?.['content-type']).toBe('image/jpeg');
       expect(small.headers?.['cache-control']).toBe('private, max-age=604800');
@@ -50,7 +61,7 @@ describe('the 週刊 page API', () => {
       expect([...(await get(`/api/bulletins/${DATE}/1`)).binaryBody!]).toEqual([...original]);
       // Only the backend's own widths are made: anything else is rounded to one, never a new file per number.
       expect(jpegSize((await get(`/api/bulletins/${DATE}/1?w=1000`)).binaryBody!)?.width).toBe(1080);
-      expect(jpegSize((await get(`/api/bulletins/${DATE}/1?w=99999`)).binaryBody!)?.width).toBe(1440);
+      expect(jpegSize((await made(`/api/bulletins/${DATE}/1?w=99999`, '1.w1440.jpg')).binaryBody!)?.width).toBe(1440);
       expect([...(await get(`/api/bulletins/${DATE}/1?w=abc`)).binaryBody!]).toEqual([...original]);
       // A page already narrower than the copy is sent as it is.
       expect([...(await get(`/api/bulletins/${DATE}/2?w=720`)).binaryBody!]).toEqual([...narrow]);
@@ -61,7 +72,7 @@ describe('the 週刊 page API', () => {
       // The list cookie that older Android apps rely on (server/bulletinAccess.ts) opens the phone copy too.
       const list = await get('/api/bulletins');
       const cookie = String(list.headers?.['set-cookie']).split(';')[0];
-      const byCookie = await get(`/api/bulletins/${DATE}/1?w=720`, { cookie });
+      const byCookie = await made(`/api/bulletins/${DATE}/1?w=720`, '1.w720.jpg', { cookie });
       expect(byCookie.status).toBe(200);
       expect(jpegSize(byCookie.binaryBody!)?.width).toBe(720);
     } finally { db.close(); }
@@ -73,7 +84,7 @@ describe('making the phone copies', () => {
     const copies = createBulletinPhoneCopies(dir);
     let ticks = 0;
     const timer = setInterval(() => { ticks += 1; }, 5);
-    const [a, b] = await Promise.all([copies.page(DATE, 1, 720), copies.page(DATE, 1, 720)]);
+    const [a, b] = await Promise.all([copies.copy(DATE, 1, 720), copies.copy(DATE, 1, 720)]);
     clearInterval(timer);
     expect(a).toBe(b);
     expect(jpegSize(a!)?.width).toBe(720);
@@ -97,11 +108,22 @@ describe('making the phone copies', () => {
     expect([...(await copies.page(DATE, 1, 1080))!]).toEqual([...broken]);
     expect(existsSync(join(dir, DATE, '1.w1080.jpg'))).toBe(false);
     expect(logs).toEqual([`BULLETIN_PHONE_COPY_FAILED date=${DATE} page=1`]);
+    // Not tried again until the page changes.
+    expect([...(await copies.page(DATE, 1, 1080))!]).toEqual([...broken]);
+    expect(logs).toHaveLength(1);
+  }, 60_000);
+
+  it('gives a request the original when its copy takes longer than it waits, and keeps the copy for the next', async () => {
+    const copies = createBulletinPhoneCopies(dir, { waitMs: 0 });
+    expect([...(await copies.page(DATE, 1, 1080))!]).toEqual([...original]);
+    expect(jpegSize((await copies.copy(DATE, 1, 1080))!)?.width).toBe(1080);
+    expect(existsSync(join(dir, DATE, '1.w1080.jpg'))).toBe(true);
+    expect(jpegSize((await copies.page(DATE, 1, 1080))!)?.width).toBe(1080);
   }, 60_000);
 
   it('does not keep a copy of a page that was posted again while the copy was being made', async () => {
     const copies = createBulletinPhoneCopies(dir);
-    const pending = copies.page(DATE, 1, 720);
+    const pending = copies.copy(DATE, 1, 720);
     // The church office posts that Sunday again (server/bulletins.ts swaps the folder in).
     writeFileSync(join(dir, DATE, '1.jpg'), narrow);
     expect(jpegSize((await pending)!)?.width).toBe(720);

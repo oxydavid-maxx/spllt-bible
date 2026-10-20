@@ -2,8 +2,9 @@
 # scripts/ios/run-flows.sh — fixture backend + counting proxy + simulator + Maestro (one flow per call).
 set -uo pipefail
 OUT=${OUT:-ci-out}; mkdir -p "$OUT/maestro"; : > "$OUT/requests.log"
-# One synthetic 週刊 for flow 44-bulletin (two A4 pages at 2481 × 3509, drawn for the run; no picture is kept in the repo).
-rm -rf "$OUT/bulletins"; npx tsx scripts/ios/make-bulletin-fixture.ts "$OUT/bulletins" > "$OUT/bulletin-fixture.txt" 2>&1 || { echo 'fixture 週刊 could not be made'; cat "$OUT/bulletin-fixture.txt"; exit 1; }
+# One synthetic 週刊 for flow 44-bulletin (two A4 pages at 2481 × 3509, drawn for the run; no picture is kept in the repo),
+# with its phone copies made now, while the runner is idle (bulletin-fixture.json: KB per page and per copy).
+rm -rf "$OUT/bulletins"; npx tsx scripts/ios/make-bulletin-fixture.ts "$OUT/bulletins" "$OUT/bulletin-fixture.json" > "$OUT/bulletin-fixture.txt" 2>&1 || { echo 'fixture 週刊 could not be made'; cat "$OUT/bulletin-fixture.txt"; exit 1; }
 QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_ADMIN_MEMBER_IDS=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 QINGMU_BULLETIN_DIR="$OUT/bulletins" \
   npx tsx server/http.ts > "$OUT/server.log" 2>&1 &
 # The app talks to the backend over HTTPS, as in production: the reader takes its Bible content host only
