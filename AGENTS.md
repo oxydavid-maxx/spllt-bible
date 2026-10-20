@@ -98,7 +98,7 @@
 ## 編輯注意
 
 - **換行字元**：有些檔案刻意保留 CRLF（見 `.gitattributes`）。改檔要保留原本的換行；push 前比較 `git diff --stat` 和 `git diff --ignore-cr-at-eol --stat`，差很多就是換行被改了。
-- `patches/`（YouVersion SDK 擴充）用 patch-package 重新產生，不要手改 patch 檔。改到 `patches/` 或 lockfile，下次建置會重裝套件。
+- `patches/`（YouVersion SDK 擴充；`expo++@expo+cli`、`@expo+metro-config` 是 OTA 打包改壞 Hermes bytecode 的上游修正，拿掉的條件見 [docs/eas-update.md](docs/eas-update.md)）用 patch-package 重新產生，不要手改 patch 檔。改到 `patches/` 或 lockfile，下次建置會重裝套件。
 - 後端要向下相容：舊版 App 還會連新的後端。
 - 後端的對外連線有 IPv4 備援 (`server/nat64Fallback.ts`，2026-10-20)：部署主機的網路有時只剩 IPv6，只有 IPv4 的服務 (LINE、Azure Speech) 會改走公開 NAT64。它只在直接啟動 `server/http.ts` 時開啟，`QINGMU_NAT64_FALLBACK=0` 可關；不要另外為對外連線指定 `lookup` 或只用 IPv4 (`family: 4`)，那樣會繞過備援。
 - 發版腳本用 Node（tsx）執行，它們載入的 App 模組（例如 `src/services/updateCheck.ts`、`src/config/installLink.ts`）不可 import `react-native`：Node 解析不了它，發版檢查會直接壞掉。平台判斷由 App 裡的呼叫端傳入。守衛測試：`tests/tools/releaseScriptsLoad.test.ts`。
