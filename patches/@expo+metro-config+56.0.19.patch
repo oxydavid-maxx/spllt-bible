@@ -1,0 +1,167 @@
+diff --git a/node_modules/@expo/metro-config/build/serializer/serializeChunks.d.ts b/node_modules/@expo/metro-config/build/serializer/serializeChunks.d.ts
+index 1df10cb..65fe9fe 100644
+--- a/node_modules/@expo/metro-config/build/serializer/serializeChunks.d.ts
++++ b/node_modules/@expo/metro-config/build/serializer/serializeChunks.d.ts
+@@ -58,4 +58,11 @@ export declare class Chunk {
+ export declare function getSortedModules(modules: Module<MixedOutput>[], { createModuleId, }: {
+     createModuleId: (path: string) => number;
+ }): readonly Module<any>[];
++/** Backport of expo/expo#49627: compile a serialized JS asset to Hermes bytecode in place (`.js` -> `.hbc`). */
++export declare function transformJsAssetToHermesBytecodeAsync({ projectRoot, jsAsset, mapAsset, filename, }: {
++    projectRoot: string;
++    jsAsset: SerialAsset;
++    mapAsset?: SerialAsset | null;
++    filename?: string;
++}): Promise<void>;
+ export {};
+diff --git a/node_modules/@expo/metro-config/build/serializer/serializeChunks.js b/node_modules/@expo/metro-config/build/serializer/serializeChunks.js
+index 10c8ce3..830e442 100644
+--- a/node_modules/@expo/metro-config/build/serializer/serializeChunks.js
++++ b/node_modules/@expo/metro-config/build/serializer/serializeChunks.js
+@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.Chunk = void 0;
+ exports.graphToSerialAssetsAsync = graphToSerialAssetsAsync;
+ exports.getSortedModules = getSortedModules;
++exports.transformJsAssetToHermesBytecodeAsync = transformJsAssetToHermesBytecodeAsync;
+ const bundleToString_1 = __importDefault(require("@expo/metro/metro/lib/bundleToString"));
+ const isResolvedDependency_1 = require("@expo/metro/metro/lib/isResolvedDependency");
+ const assert_1 = __importDefault(require("assert"));
+@@ -376,44 +377,24 @@ class Chunk {
+             });
+         }
+         if (this.boolishTransformOption('bytecode') && this.isHermesEnabled()) {
+-            const adjustedSource = jsAsset.source.replace(/^\/\/# (sourceMappingURL)=(.*)$/gm, (...props) => {
+-                if (props[1] === 'sourceMappingURL') {
+-                    const mapName = props[2].replace(/\.js\.map$/, '.hbc.map');
+-                    return `//# ${props[1]}=` + mapName;
+-                }
+-                return '';
+-            });
+-            // TODO: Generate hbc for each chunk
+-            const hermesBundleOutput = await getBuildHermesBundleAsync()({
+-                projectRoot: this.options.projectRoot,
+-                filename: this.name,
+-                code: adjustedSource,
+-                map: assets[1] ? assets[1].source : null,
+-                // TODO: Maybe allow prod + no minify.
+-                minify: true, //!this.options.dev,
+-            });
+-            if (hermesBundleOutput.hbc) {
+-                // TODO: Unclear if we should add multiple assets, link the assets, or mutate the first asset.
+-                // jsAsset.metadata.hbc = hermesBundleOutput.hbc;
+-                // @ts-expect-error: TODO
+-                jsAsset.source = hermesBundleOutput.hbc;
+-                jsAsset.filename = jsAsset.filename.replace(/\.js$/, '.hbc');
+-                // Replace mappings with hbc
+-                if (jsAsset.metadata.paths) {
+-                    jsAsset.metadata.paths = Object.fromEntries(Object.entries(jsAsset.metadata.paths).map(([key, value]) => [
+-                        key,
+-                        Object.fromEntries(Object.entries(value).map(([key, value]) => [
+-                            key,
+-                            value ? value.replace(/\.js$/, '.hbc') : value,
+-                        ])),
+-                    ]));
+-                }
++            if (jsAsset.metadata.expoDomComponentReferences?.length) {
++                // Defer bytecode compilation: the DOM component export renames each
++                // wrapper html to its content-hashed filename inside this bundle, and
++                // that rename must be applied to the serialized JS. Patching the name
++                // into compiled bytecode is unsound (hermesc overlap-packs strings
++                // sharing suffix/prefix bytes, so a same-length in-place replacement
++                // can corrupt neighbouring strings). The export commands compile
++                // deferred assets via `transformJsAssetToHermesBytecodeAsync` after
++                // the renames.
++                jsAsset.metadata.deferredHermesBytecode = true;
+             }
+-            if (assets[1] && hermesBundleOutput.sourcemap) {
+-                assets[1].source = debugId
+-                    ? (0, sourceMap_1.appendDebugIdToSourceMap)(hermesBundleOutput.sourcemap, debugId)
+-                    : hermesBundleOutput.sourcemap;
+-                assets[1].filename = assets[1].filename.replace(/\.js\.map$/, '.hbc.map');
++            else {
++                await transformJsAssetToHermesBytecodeAsync({
++                    projectRoot: this.options.projectRoot,
++                    jsAsset,
++                    mapAsset: assets[1] ?? null,
++                    filename: this.name,
++                });
+             }
+         }
+         return assets;
+@@ -664,4 +645,62 @@ async function serializeChunksAsync(chunks, serializerConfig, options, recompute
+     await Promise.all(serializeTasks);
+     return jsAssets;
+ }
++/**
++ * Compile a serialized JS asset to Hermes bytecode in place, renaming the
++ * asset (`.js` -> `.hbc`), rewriting its chunk paths metadata, and replacing
++ * the source map with the Hermes-composed one.
++ *
++ * This runs as a standalone step (rather than inline in the chunk serializer)
++ * so `expo export` can defer it until after DOM component exports have
++ * renamed the DOM html assets inside the serialized JS. Renaming inside
++ * already-compiled bytecode is unsound: hermesc overlap-packs strings that
++ * share suffix/prefix bytes, so a same-length in-place replacement can
++ * overwrite bytes belonging to a neighbouring string.
++ *
++ * `filename` only feeds hermesc error reporting. It defaults to the chunk's
++ * absolute entry path, matching the `Chunk.name` the serializer passes when it
++ * compiles inline (`originFilename` is that path relative to `projectRoot`).
++ *
++ * Backport of expo/expo#49627 (fixes expo/expo#49626).
++ */
++async function transformJsAssetToHermesBytecodeAsync({ projectRoot, jsAsset, mapAsset, filename = path_1.default.resolve(projectRoot, jsAsset.originFilename), }) {
++    const debugId = (0, debugId_1.stringToUUID)(path_1.default.basename(jsAsset.filename, path_1.default.extname(jsAsset.filename)));
++    const adjustedSource = jsAsset.source.replace(/^\/\/# (sourceMappingURL)=(.*)$/gm, (...props) => {
++        if (props[1] === 'sourceMappingURL') {
++            const mapName = props[2].replace(/\.js\.map$/, '.hbc.map');
++            return `//# ${props[1]}=` + mapName;
++        }
++        return '';
++    });
++    // TODO: Generate hbc for each chunk
++    const hermesBundleOutput = await getBuildHermesBundleAsync()({
++        projectRoot,
++        filename,
++        code: adjustedSource,
++        map: mapAsset ? mapAsset.source : null,
++        // TODO: Maybe allow prod + no minify.
++        minify: true,
++    });
++    if (hermesBundleOutput.hbc) {
++        // TODO: Unclear if we should add multiple assets, link the assets, or mutate the first asset.
++        jsAsset.source = hermesBundleOutput.hbc;
++        jsAsset.filename = jsAsset.filename.replace(/\.js$/, '.hbc');
++        // Replace mappings with hbc
++        if (jsAsset.metadata.paths) {
++            jsAsset.metadata.paths = Object.fromEntries(Object.entries(jsAsset.metadata.paths).map(([key, value]) => [
++                key,
++                Object.fromEntries(Object.entries(value).map(([key, value]) => [
++                    key,
++                    value ? value.replace(/\.js$/, '.hbc') : value,
++                ])),
++            ]));
++        }
++    }
++    if (mapAsset && hermesBundleOutput.sourcemap) {
++        mapAsset.source = debugId
++            ? (0, sourceMap_1.appendDebugIdToSourceMap)(hermesBundleOutput.sourcemap, debugId)
++            : hermesBundleOutput.sourcemap;
++        mapAsset.filename = mapAsset.filename.replace(/\.js\.map$/, '.hbc.map');
++    }
++}
+ //# sourceMappingURL=serializeChunks.js.map
+\ No newline at end of file
+diff --git a/node_modules/@expo/metro-config/build/serializer/serializerAssets.d.ts b/node_modules/@expo/metro-config/build/serializer/serializerAssets.d.ts
+index cabbe1f..c3fdea2 100644
+--- a/node_modules/@expo/metro-config/build/serializer/serializerAssets.d.ts
++++ b/node_modules/@expo/metro-config/build/serializer/serializerAssets.d.ts
+@@ -11,6 +11,8 @@ export type SerialAsset = {
+         reactServerReferences?: string[];
+         reactClientReferences?: string[];
+         expoDomComponentReferences?: string[];
++        /** Set when Hermes bytecode compilation was deferred so DOM component html renames can be applied to the serialized JS first (see `transformJsAssetToHermesBytecodeAsync`). */
++        deferredHermesBytecode?: boolean;
+         loaderReferences?: string[];
+         requires?: string[];
+     };

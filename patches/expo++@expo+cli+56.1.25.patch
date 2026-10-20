@@ -1,0 +1,162 @@
+diff --git a/node_modules/expo/node_modules/@expo/cli/build/src/export/compileDeferredHermesArtifacts.js b/node_modules/expo/node_modules/@expo/cli/build/src/export/compileDeferredHermesArtifacts.js
+new file mode 100644
+index 0000000..1636564
+--- /dev/null
++++ b/node_modules/expo/node_modules/@expo/cli/build/src/export/compileDeferredHermesArtifacts.js
+@@ -0,0 +1,65 @@
++"use strict";
++Object.defineProperty(exports, "__esModule", {
++    value: true
++});
++Object.defineProperty(exports, "compileDeferredHermesArtifactsAsync", {
++    enumerable: true,
++    get: function() {
++        return compileDeferredHermesArtifactsAsync;
++    }
++});
++function _serializeChunks() {
++    const data = require("@expo/metro-config/build/serializer/serializeChunks");
++    _serializeChunks = function() {
++        return data;
++    };
++    return data;
++}
++/**
++ * Compile the JS artifacts whose Hermes bytecode compilation the serializer deferred
++ * (chunks that reference DOM components, see `metadata.deferredHermesBytecode`), and
++ * move their `files` entries from `.js` / `.js.map` to `.hbc` / `.hbc.map`.
++ *
++ * `expo export` renames each DOM component html to its content hash inside the `files`
++ * entry of the serialized JS, so the `files` entries are synced back onto the artifacts
++ * before compiling. `export:embed` does not rename, which makes the sync a no-op there.
++ *
++ * Backport of expo/expo#49627 (fixes expo/expo#49626).
++ */ async function compileDeferredHermesArtifactsAsync({ projectRoot, artifacts, files }) {
++    for (const artifact of artifacts){
++        if (artifact.type !== 'js' || !artifact.metadata.deferredHermesBytecode) {
++            continue;
++        }
++        delete artifact.metadata.deferredHermesBytecode;
++        const jsFilename = artifact.filename;
++        const jsEntry = files.get(jsFilename);
++        if (typeof (jsEntry == null ? void 0 : jsEntry.contents) === 'string') {
++            artifact.source = jsEntry.contents;
++        }
++        const mapArtifact = artifacts.find((asset)=>asset.type === 'map' && asset.filename === `${jsFilename}.map`) ?? null;
++        const mapFilename = mapArtifact == null ? void 0 : mapArtifact.filename;
++        const mapEntry = mapFilename ? files.get(mapFilename) : undefined;
++        if (mapArtifact && typeof (mapEntry == null ? void 0 : mapEntry.contents) === 'string') {
++            mapArtifact.source = mapEntry.contents;
++        }
++        await (0, _serializeChunks().transformJsAssetToHermesBytecodeAsync)({
++            projectRoot,
++            jsAsset: artifact,
++            mapAsset: mapArtifact
++        });
++        if (jsEntry) {
++            files.delete(jsFilename);
++            files.set(artifact.filename, {
++                ...jsEntry,
++                contents: artifact.source
++            });
++        }
++        if (mapArtifact && mapEntry && mapFilename) {
++            files.delete(mapFilename);
++            files.set(mapArtifact.filename, {
++                ...mapEntry,
++                contents: mapArtifact.source
++            });
++        }
++    }
++}
+diff --git a/node_modules/expo/node_modules/@expo/cli/build/src/export/embed/exportEmbedAsync.js b/node_modules/expo/node_modules/@expo/cli/build/src/export/embed/exportEmbedAsync.js
+index 4177cf7..28f0dca 100644
+--- a/node_modules/expo/node_modules/@expo/cli/build/src/export/embed/exportEmbedAsync.js
++++ b/node_modules/expo/node_modules/@expo/cli/build/src/export/embed/exportEmbedAsync.js
+@@ -127,6 +127,7 @@ const _ansi = require("../../utils/ansi");
+ const _dir = require("../../utils/dir");
+ const _env = require("../../utils/env");
+ const _nodeEnv = require("../../utils/nodeEnv");
++const _compileDeferredHermesArtifacts = require("../compileDeferredHermesArtifacts");
+ const _exportDomComponents = require("../exportDomComponents");
+ const _exportHermes = require("../exportHermes");
+ const _persistMetroAssets = require("../persistMetroAssets");
+@@ -357,6 +358,14 @@ async function exportEmbedBundleAndAssetsAsync(projectRoot, options) {
+                 }
+             }));
+         }
++        // Compile the bytecode the serializer deferred for chunks that reference DOM
++        // components. `export:embed` does not rename the DOM html assets, so this can
++        // run right after the DOM component exports.
++        await (0, _compileDeferredHermesArtifacts.compileDeferredHermesArtifactsAsync)({
++            projectRoot,
++            artifacts: bundles.artifacts,
++            files
++        });
+         return {
+             files,
+             bundle: {
+diff --git a/node_modules/expo/node_modules/@expo/cli/build/src/export/exportApp.js b/node_modules/expo/node_modules/@expo/cli/build/src/export/exportApp.js
+index ec74445..979ea3e 100644
+--- a/node_modules/expo/node_modules/@expo/cli/build/src/export/exportApp.js
++++ b/node_modules/expo/node_modules/@expo/cli/build/src/export/exportApp.js
+@@ -50,6 +50,7 @@ function _path() {
+     };
+     return data;
+ }
++const _compileDeferredHermesArtifacts = require("./compileDeferredHermesArtifacts");
+ const _createMetadataJson = require("./createMetadataJson");
+ const _exportAssets = require("./exportAssets");
+ const _exportDomComponents = require("./exportDomComponents");
+@@ -266,6 +267,13 @@ async function exportAppAsync(projectRoot, { platforms, outputDir, clear, dev, d
+                         })
+                     ];
+                 }));
++                // Compile the bytecode the serializer deferred for chunks that reference DOM
++                // components, now that the html renames are applied to their serialized JS.
++                await (0, _compileDeferredHermesArtifacts.compileDeferredHermesArtifactsAsync)({
++                    projectRoot,
++                    artifacts: bundle.artifacts,
++                    files
++                });
+                 if (platform === 'web') {
+                     // TODO: Unify with exportStaticAsync
+                     // TODO: Maybe move to the serializer.
+diff --git a/node_modules/expo/node_modules/@expo/cli/build/src/export/exportDomComponents.js b/node_modules/expo/node_modules/@expo/cli/build/src/export/exportDomComponents.js
+index cee1be1..44f8f6b 100644
+--- a/node_modules/expo/node_modules/@expo/cli/build/src/export/exportDomComponents.js
++++ b/node_modules/expo/node_modules/@expo/cli/build/src/export/exportDomComponents.js
+@@ -172,20 +172,21 @@ function transformNativeBundleForMd5Filename({ domComponentReference, nativeBund
+         const assetEntity = files.get(artifact.filename);
+         (0, _assert().default)(assetEntity);
+         if (Buffer.isBuffer(assetEntity.contents)) {
+-            const searchBuffer = Buffer.from(`${hash}.html`, 'utf8');
+-            const replaceBuffer = Buffer.from(`${htmlMd5}.html`, 'utf8');
+-            (0, _assert().default)(searchBuffer.length === replaceBuffer.length);
+-            let index = assetEntity.contents.indexOf(searchBuffer, 0);
+-            while(index !== -1){
+-                replaceBuffer.copy(assetEntity.contents, index);
+-                index = assetEntity.contents.indexOf(searchBuffer, index + searchBuffer.length);
++            var _artifact_metadata_expoDomComponentReferences;
++            // Already compiled Hermes bytecode. Sibling chunks without DOM component
++            // references (e.g. workers) never contain the html placeholder, so leave
++            // them untouched: rewriting bytecode in place is unsound because hermesc
++            // overlap-packs strings sharing suffix/prefix bytes, so a same-length
++            // replacement can clobber a neighbouring string (expo/expo#49626).
++            if ((_artifact_metadata_expoDomComponentReferences = artifact.metadata.expoDomComponentReferences) == null ? void 0 : _artifact_metadata_expoDomComponentReferences.length) {
++                throw new Error(`Cannot rename DOM component asset "${htmlOutputName}" inside the compiled Hermes bytecode of "${artifact.filename}": the chunk was compiled before the rename. ` + 'This usually means the project resolves a different @expo/metro-config version than @expo/cli (for example, @expo/metro-config installed directly); run `npx expo-doctor` to find the mismatch. ' + 'Otherwise, it is a bug in Expo CLI: chunks that reference DOM components must be compiled after the rename (see `compileDeferredHermesArtifactsAsync`).');
+             }
+-        } else {
+-            const search = `${hash}.html`;
+-            const replace = `${htmlMd5}.html`;
+-            (0, _assert().default)(search.length === replace.length);
+-            assetEntity.contents = assetEntity.contents.toString().replaceAll(search, replace);
++            continue;
+         }
++        const search = `${hash}.html`;
++        const replace = `${htmlMd5}.html`;
++        (0, _assert().default)(search.length === replace.length);
++        assetEntity.contents = assetEntity.contents.toString().replaceAll(search, replace);
+     }
+ } //#endregion `npx export` for updates
+ 

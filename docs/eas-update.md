@@ -47,44 +47,76 @@
    建立後再讀回兩個頻道，核對 branch ID 不同，再繼續發送。
 
 1. 確認商店已安裝包含 expo-updates 的版本，原生相容、version/runtime 相同。記錄 source commit, runtime, 兩平台、更新前的 production update group ID; 第一個 OTA 沒有前一組時記錄嵌入版本。
-2. 在固定且乾淨的來源匯出/檢查；本機測試允許這兩條，不會上傳：
+2. 在固定且乾淨的來源 (`git status` 沒有改動)，**每個平台分開**匯出、檢查、推到 preview 頻道。一律用這個腳本，不要直接執行 `eas update` 指令：
 
    ```sh
-   npx expo export --platform ios --platform android --dump-assetmap --output-dir dist-native
+   npx tsx scripts/ota/ota-update.ts --platform android --message "修正說明" --publish
+   npx tsx scripts/ota/ota-update.ts --platform ios --message "修正說明" --publish
    ```
 
-3. 發送 preview, 保存輸出的 update group ID, runtime 與每平台的 update ID:
+   腳本 (`scripts/ota/ota-update.ts`) 依序做三件事，任何一步失敗就以結束碼 1 停下：
+   - 清掉 `dist/ota-<平台>`，用 `npx eas-cli@24.13.0 env:exec production` 帶入 EAS production 環境變數並設 `EXPO_NO_DOTENV=1`，執行 `npx expo export --platform <平台> --output-dir dist/ota-<平台> --dump-sourcemap --dump-assetmap --clear`。這和 `eas update --environment production` 自己打包時的環境與參數相同 (已對照 eas-cli 24.13.0 原始碼)。
+   - 跑推送前檢查 `scripts/ota/verify-ota-bundle.ts` 並印出檢查表 (見下一節)。有 FAIL 就不推。
+   - 檢查全部 PASS 才執行 `npx eas-cli@24.13.0 update --skip-bundler --input-dir dist/ota-<平台> --platform <平台> --channel preview --environment production --message "修正說明" --non-interactive --json`，上傳的就是剛剛檢查過的那個資料夾。腳本只會推到 preview 頻道。
 
-   ```sh
-   npx eas-cli@24.13.0 update --channel preview --environment production --platform all --message "修正說明" --json
-   ```
+   不帶 `--publish` 時只匯出和檢查，通過後印出推送指令。只想在本機檢查、不連 EAS 的話，改帶 `--local-env` (不含 EAS 環境變數，只驗證，永遠不推)。訊息不可含 `"`、`%`、`$`、`` ` `` 或換行。
 
-4. **兩個平台分別驗收**。同一組 preview update 裡 Android 和 iOS 是各自執行的兩份更新，iOS 的讀經器等走不同的原生路徑，只看一支手機不代表另一個平台沒問題。維護者在一支 Android 和一支 iPhone 的管理區各自開啟開關，完整關閉 App 後重開，等背景下載；再完整關閉重開，驗收可見的小字變更、讀經、朗讀、登入與既有功能，確認手機所見內容和該 preview update group 相符：帳戶頁最下面的版本行會多「· 更新 <日期>-<更新編號前 6 碼>」，要和第 3 步記下的該平台 update ID 對得上。每個平台分別記下結果。
-5. 哪個平台驗收通過，就只把那個平台原樣重發到 production, **不重新 export/build**; 另一個平台驗完再用同一個 group ID 推。`<已驗收的 group ID>` 必須使用第 3 步保存的 ID; republish 會建立新的 group ID, 但沿用已驗收的程式/資源：
+   每個平台都要保存輸出的 update group ID, runtime 和 update ID; 分開推，兩個平台各有自己的 group 編號。
+
+   為什麼不直接 `eas update`：它打包完立刻上傳，中間沒有機會檢查 bytecode 內容；而且 `--platform all` 在這個專案會連 web 一起打包而失敗 (eas-cli 從專案根目錄找不到放在 `node_modules/expo/node_modules` 裡的 `@expo/cli`，退回舊的 `--platform=all` 參數，web 端的 expo-sqlite wasm 解析失敗)。
+
+3. **兩個平台分別驗收**。Android 和 iOS 是各自執行的兩份更新，iOS 的讀經器等走不同的原生路徑，只看一支手機不代表另一個平台沒問題。維護者在一支 Android 和一支 iPhone 的管理區各自開啟開關，完整關閉 App 後重開，等背景下載；再完整關閉重開，驗收可見的小字變更、讀經、朗讀、登入與既有功能，確認手機所見內容和該平台的 preview update group 相符：帳戶頁最下面的版本行會多「· 更新 <日期>-<更新編號前 6 碼>」，要和第 2 步記下的該平台 update ID 對得上。每個平台分別記下結果。
+4. 哪個平台驗收通過，就只把那個平台原樣重發到 production, **不重新匯出或建置**。`<group ID>` 必須使用第 2 步保存的、那個平台自己的 ID; republish 會建立新的 group ID, 但沿用已驗收的程式/資源：
 
    ```sh
    # Android 手機驗收通過後
-   npx eas-cli@24.13.0 update:republish --group <已驗收的-group-ID> --destination-channel production --platform android --message "preview Android 驗收通過" --json
+   npx eas-cli@24.13.0 update:republish --group <Android 的-preview-group-ID> --destination-channel production --platform android --message "preview Android 驗收通過" --json
    # iPhone 驗收通過後
-   npx eas-cli@24.13.0 update:republish --group <已驗收的-group-ID> --destination-channel production --platform ios --message "preview iOS 驗收通過" --json
+   npx eas-cli@24.13.0 update:republish --group <iOS 的-preview-group-ID> --destination-channel production --platform ios --message "preview iOS 驗收通過" --json
    ```
 
-   推 production 不用 `--platform all`: 它會把沒開過的那個平台一起送給所有人。某個平台驗收沒過就不推它，修正後從第 3 步重新發 preview.
+   推 production 不用 `--platform all`。某個平台驗收沒過就不推它，修正後從第 2 步重新發那個平台的 preview.
 
-6. 保存每個平台新的 production group ID 與其來源 preview group ID. 管理者關閉開關，按上述兩次冷啟動流程確認 production; 其他成員在後續冷啟動收到更新。
+5. 保存每個平台新的 production group ID 與其來源 preview group ID. 管理者關閉開關，按上述兩次冷啟動流程確認 production; 其他成員在後續冷啟動收到更新。
+
+## 推送前的 bytecode 檢查 (2026-10-20)
+
+2026-10-20 第一份 preview 更新 (Android, main `5630d06`) 在手機一套用就閃退：`src/domain/calendar.ts` 的 `loadReadingPlan` 拋「invalid date at index 30」，expo-updates 退回舊版也失敗，下一次啟動才回到內建版本。問題在 Expo 的打包工具，不在 App 程式：
+
+1. `expo export` 先把 JS 編成 Hermes bytecode 檔，之後 `@expo/cli` 56.1.25 才在 bytecode 裡把網頁元件 (`'use dom'`；這個 App 是 YouVersion 讀經器的 8 個) 的 html 檔名原地換成內容雜湊 (`transformNativeBundleForMd5Filename`)。
+2. hermesc 會讓共用位元組的字串在字串表裡頭尾重疊，原地換檔名時連鄰居一起改掉。用同一個套件資料夾重新匯出 `5630d06`，Android bytecode 裡「2026-10-06」「2026-12-21」「PSA.119.1-88」都被改了，讀經計畫的日期檢查就讓 App 一啟動就閃退。
+3. 改到哪些字串，取決於 `node_modules` 的實際路徑 (被替換的佔位檔名是網頁元件檔案路徑的 md5)：換一台電腦或一個資料夾，就換一批字串被改，所以不是每次都看得出來。Android 和 iOS 也各自不同。
+4. 商店內建的版本走 `export:embed`，先替換文字再交給原生建置編譯，沒有這個問題。
+
+上游：[expo/expo#49626](https://github.com/expo/expo/issues/49626) 是問題回報，[expo/expo#49627](https://github.com/expo/expo/pull/49627) 是修正。兩個在 2026-10-20 都還沒合併，npm 上最新的 @expo/cli 56.1.26 也不含修正。
+
+| 項目 | 做法 |
+|---|---|
+| 修正 | `patches/expo++@expo+cli+56.1.25.patch`、`patches/@expo+metro-config+56.0.19.patch` 用 patch-package 套上游 #49627 的修法：含網頁元件的 bundle 延後編譯，先在 JS 裡換好 html 檔名再交給 hermesc 編譯；`@expo/cli` 不再改已編好的 bytecode 檔，遇到就直接報錯。不含網頁元件的 bundle 檔，以及商店建置用的 `export:embed` 流程，編出來的東西不變。 |
+| 推送前檢查 | `scripts/ota/verify-ota-bundle.ts <匯出資料夾> --platform <平台>`：(1) bytecode 檔尾的 SHA-1 是 hermesc 對整個檔案算的，對不上就代表編完之後被改過；(2) 讀經計畫的每個日期、經文代號和原文都要在 bytecode 裡，缺的會列出 bytecode 裡實際的樣子；(3) 網頁元件 html 的檔名要等於內容的 md5 值，也要跟 bytecode 裡的參照一一對上 (expo-updates 依內容雜湊存檔，對不上 App 就找不到網頁元件)。任何一項 FAIL 就不推。 |
+| 推送 | `scripts/ota/ota-update.ts`：匯出、檢查、通過才 `eas update --skip-bundler` 推同一個資料夾 (上一節第 2 步)。 |
+| 守衛測試 | `tests/tools/otaBytecodeGate.test.ts` (檢查本身，含用 hermesc 重現「2026-10-06」被改的情形)、`tests/tools/otaHermesPatch.test.ts` (裝好的 Expo 工具鏈真的先換名再編譯)。 |
+
+### 上游修好後怎麼拿掉 patch
+
+1. 確認 #49627 或同等修正已經合併，而且進到這個 SDK 會裝的 `@expo/cli`、`@expo/metro-config` 版本 (看兩個套件的 CHANGELOG)。
+2. 升級 expo 套件 (用 `npx expo install --fix` 對齊版本)，刪掉上面兩個 patch 檔，`npm install`。版本變了而 patch 還在時，`postinstall` 的 `patch-package --error-on-fail` 會在套不上時直接失敗，提醒做這個決定。
+3. `npx vitest run tests/tools/otaHermesPatch.test.ts` 要全過。測試照 #49627 的檔名和函式名寫；上游改了名字就照上游改測試，但「含網頁元件的 bundle 不能在編完之後被改」這條不能拿掉。
+4. 兩個平台各跑一次 `npx tsx scripts/ota/ota-update.ts --platform <平台> --message 檢查 --local-env`，檢查結果要全部通過。
+5. 推送前檢查和 `--skip-bundler` 流程保留，不跟著 patch 一起拿掉。
 
 ## 回復
 
-若上一組 OTA 已驗證可用，將那一組重新送到 production, 不重新打包。`--platform` 寫出問題的平台；兩個平台都要退回、而且那一組兩個平台都驗過，才用 `all`:
+若上一組 OTA 已驗證可用，將那一組重新送到 production, 不重新打包。兩個平台的 group 是分開的，`--group` 用出問題那個平台自己的上一組，`--platform` 寫那個平台：
 
 ```sh
-npx eas-cli@24.13.0 update:republish --group <上一組已驗證可用的-group-ID> --destination-channel production --platform <android|ios|all> --message "回復上一版" --json
+npx eas-cli@24.13.0 update:republish --group <該平台上一組已驗證可用的-group-ID> --destination-channel production --platform <android|ios> --message "回復上一版" --json
 ```
 
 若這是第一組 OTA, 或要退回商店內嵌版本，CLI 支援對目前該 branch/runtime 最新 group 執行 rollback; 它會重發前一組，沒有前一組才送出回到 embedded 的指令。先核對 group 身分，勿把 preview 的 ID 當成 production:
 
 ```sh
-npx eas-cli@24.13.0 update:rollback <目前-production-最新-group-ID> --platform <android|ios|all> --message "撤回問題更新" --json
+npx eas-cli@24.13.0 update:rollback <該平台目前-production-最新-group-ID> --platform <android|ios> --message "撤回問題更新" --json
 ```
 
 這些操作不會即時重啟所有手機。可正常啟動的手機要連網冷啟動下載復原，再重新開啟套用；啟動崩潰由保留的 expo-updates 復原機制處理，不保證能挽救任何任意資料遷移，因此仍須保持資料格式相容。沒有網路時繼續用現有本機版本。
@@ -110,4 +142,6 @@ Android 的同等檢查是 `scripts/android/check-updates-config.ts`: prebuild �
 - [Override 設定與防變磚限制](https://docs.expo.dev/eas-update/override/)
 - [EAS CLI update/republish/rollback](https://docs.expo.dev/eas/cli/)
 
-命令參數已用 `npx eas-cli@24.13.0 <command> --help` 核對。該版 CLI 的 publish.js 將 `update --platform all` 映射成上面的兩個 native `--platform` 參數，不匯出 Web; 本機等價 export 已成功。頻道初始化行為也已核對 CLI 原始碼；未實際建立頻道或發布。實測發送/同組推廣由維護者在 0.5.35 上架後完成。
+命令參數已用 `npx eas-cli@24.13.0 <command> --help` 核對。頻道初始化行為也已核對 CLI 原始碼；未實際建立頻道或發布。實測發送/同組推廣由維護者在 0.5.35 上架後完成。
+
+2026-10-20 更正：該版 CLI 的 publish.js 只有在從專案根目錄解析得到 `@expo/cli` 時，才把 `update --platform all` 拆成兩個 native `--platform` 參數；這個專案的 `@expo/cli` 裝在 `node_modules/expo/node_modules`，解析不到，會退回 `--platform=all` 連 web 一起匯出而失敗。`update --skip-bundler`/`--input-dir`、`env:exec` 的行為，以及 `--environment` 會帶入 EAS 變數、`EXPO_NO_DOTENV=1` 和 `--clear`，都已對照 eas-cli 24.13.0 的 `build/commands/update/index.js`、`build/project/publish.js`、`build/utils/expoCli.js`、`build/commands/env/exec.js`。
