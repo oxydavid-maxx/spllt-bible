@@ -63,6 +63,35 @@ describe('the prize lists', () => {
     expect((await target('y')).status).toBe(200);
     expect((await target('m')).status).toBe(409);
   });
+
+  // 選目標獎品 (維護者 2026-10-20): the other side's prizes can be looked at, never aimed at.
+  it('lists the other side’s prizes when asked, says which side it answered, and still refuses them as a target', async () => {
+    const f = setup([['y', '小明'], ['m', '王姊妹']]);
+    await f.choose('m', 'main');
+    await f.push({ youth: f.side([{ row: 2, name: '電影票', points: 75, listed: true }]), main: f.side() });
+    const ask = async (memberId: string, side?: string) => f.api({ method: 'GET', url: `/api/rewards${side === undefined ? '' : `?congregation=${side}`}`, headers: f.as(memberId) });
+    const own = (await ask('m')).body as { congregation: string; rewards: Array<{ rewardId: string; name: string }> };
+    expect(own).toMatchObject({ congregation: 'main', rewards: [] });
+    const youth = (await ask('m', 'youth')).body as { congregation: string; rewards: Array<{ rewardId: string; name: string; costPoints: number }> };
+    expect(youth.congregation).toBe('youth');
+    expect(youth.rewards.map((reward) => [reward.name, reward.costPoints])).toEqual([['電影票', 75]]);
+    expect((await ask('m', 'adult')).status).toBe(400);
+    const aim = await f.api({ method: 'PUT', url: '/api/me/reward-target', headers: { ...f.as('m'), 'content-type': 'application/json' }, body: JSON.stringify({ rewardId: youth.rewards[0].rewardId }) });
+    expect(aim.status).toBe(409);
+  });
+
+  it('stops showing a target from the side a member left, and shows it again when they come back', async () => {
+    const f = setup([['y', '小明']]);
+    await f.push({ youth: f.side([{ row: 2, name: '電影票', points: 75, listed: true }]), main: f.side([{ row: 2, name: '書籤', points: 20, listed: true }]) });
+    const prize = (await f.rewards('y'))[0].rewardId;
+    await f.api({ method: 'PUT', url: '/api/me/reward-target', headers: { ...f.as('y'), 'content-type': 'application/json' }, body: JSON.stringify({ rewardId: prize }) });
+    const target = async () => ((await f.api({ method: 'GET', url: '/api/points/profiles/y?scope=me', headers: f.as('y') })).body as { private: { targetReward: { name: string } | null } }).private.targetReward;
+    expect((await target())?.name).toBe('電影票');
+    await f.choose('y', 'main');
+    expect(await target()).toBeNull();
+    await f.choose('y', 'youth');
+    expect((await target())?.name).toBe('電影票');
+  });
 });
 
 describe('the redemption rows', () => {

@@ -1,0 +1,71 @@
+# .maestro/ios/44-congregation.yaml — 積分頁 青少/主堂 (維護者 2026-10-20, mock v3 ② ③ ⑤).
+# The fixture member was there before the split, so they are 青少 and never see the first choice.
+# Text selectors are regular expressions: the parentheses in 「(不是主堂)」 are escaped.
+# The flow changes the member to 主堂 and back, so the later flows see the fixture member as before.
+appId: org.qingmu.youth
+---
+- launchApp
+# The tab bar can appear while Today is still replacing itself with Reader (00-smoke).
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 90000
+- repeat:
+    times: 3
+    while:
+      notVisible: "開啟積分操作"
+    commands:
+      - tapOn:
+          text: "積分"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "開啟積分操作"
+    timeout: 30000
+# ② One line under 團體 says where I count, with its own 改.
+- scrollUntilVisible:
+    element: '我在青少聚會 \(不是主堂\)'
+    direction: DOWN
+    timeout: 30000
+- assertVisible: "改我在哪裡聚會"
+- assertVisible: "青少一起讀經"
+- takeScreenshot: 44-points-youth
+# ③ Looking at 全教會 changes only the screen, and says so.
+- tapOn: "全教會"
+- extendedWaitUntil:
+    visible: '我在青少聚會 \(不是主堂\)，這裡只是看看全教會。'
+    timeout: 15000
+- assertVisible: "全教會一起讀經"
+- takeScreenshot: 44-points-looking
+- tapOn: "青少"
+- extendedWaitUntil:
+    visible: "青少一起讀經"
+    timeout: 15000
+# ⑤ 改: nothing to confirm until the other side is picked; the button names the change.
+- tapOn: "改我在哪裡聚會"
+- extendedWaitUntil:
+    visible: "我平常在哪裡聚會？"
+    timeout: 15000
+- assertVisible: "請選要改成哪一邊"
+- assertVisible: '青少 \(現在\)，國中、高中、大專學生'
+- tapOn: "主堂，社青、家長、長輩"
+- extendedWaitUntil:
+    visible: '改成：我在主堂聚會 \(不是青少\)'
+    timeout: 10000
+- takeScreenshot: 44-change-sheet
+- tapOn: '改成：我在主堂聚會 \(不是青少\)'
+- extendedWaitUntil:
+    visible: '我在主堂聚會 \(不是青少\)'
+    timeout: 20000
+- extendedWaitUntil:
+    visible: "全教會一起讀經"
+    timeout: 20000
+- takeScreenshot: 44-points-main
+# Back to 青少.
+- tapOn: "改我在哪裡聚會"
+- extendedWaitUntil:
+    visible: '主堂 \(現在\)，社青、家長、長輩'
+    timeout: 15000
+- tapOn: "青少，國中、高中、大專學生"
+- tapOn: '改成：我在青少聚會 \(不是主堂\)'
+- extendedWaitUntil:
+    visible: '我在青少聚會 \(不是主堂\)'
+    timeout: 20000

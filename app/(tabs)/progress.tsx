@@ -10,15 +10,16 @@ import * as SecureStore from 'expo-secure-store';
 import { ActionSheet } from '../../src/ui/gamification/ActionSheet';
 import { FriendQrPanel } from '../../src/ui/gamification/FriendQrPanel';
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
-import { RewardControls } from '../../src/ui/gamification/RewardControls';
 import { RedemptionList } from '../../src/ui/gamification/RedemptionList';
 import { GroupReadingCard } from '../../src/ui/gamification/GroupReadingCard';
 import { ScoreHistoryCard } from '../../src/ui/gamification/ScoreHistoryCard';
 import { DevotionTodayButton } from '../../src/ui/gamification/DevotionTodayButton';
-import { createDevotionClient, type GroupReading, type ScoreHistory } from '../../src/services/devotionClient';
+import { createDevotionClient, type Congregation, type GroupReading, type ScoreHistory } from '../../src/services/devotionClient';
 import { consumeOpenAllScores, subscribeOpenAllScores } from '../../src/services/allScoresRequest';
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
+import { RewardPicker } from '../../src/ui/gamification/RewardPicker';
 import { useCongregation } from '../../src/ui/congregation/congregationStore';
+import { CongregationLineView } from '../../src/ui/congregation/CongregationLine';
 import { theme } from '../../src/ui/Theme';
 import { createApiClient } from '../../src/services/apiClient';
 import { readReadingDays } from '../../src/services/readingDaysRead';
@@ -46,6 +47,14 @@ type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'redemptions' | null;
 
 export default function ProgressScreen() {
   const congregation = useCongregation();
+  // Where the member counts (青少/主堂). The 團體 card and the prize picker can look at the other side; each
+  // opening starts on this one (維護者 2026-10-20). Null while unknown: the first-run choice is then on screen.
+  const ownSide = congregation.value;
+  const [groupSide, setGroupSide] = useState<Congregation | null>(null);
+  const [groupFailed, setGroupFailed] = useState<Congregation | null>(null);
+  const [rewardSide, setRewardSide] = useState<Congregation | null>(null);
+  const [otherRewards, setOtherRewards] = useState<Reward[] | null>(null);
+  const [otherRewardsFailed, setOtherRewardsFailed] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
@@ -342,8 +351,8 @@ export default function ProgressScreen() {
   }, [client, session, clearProtectedState, loadProfile]);
   refreshOnForeground.current = refreshOwnProfile;
   useFocusEffect(useCallback(() => {
-    // Each visit starts on this month and lets the page choose the day again.
-    pickedDate.current = false; setCalendarMonth(taipeiDate().slice(0, 7));
+    // Each visit starts on this month and lets the page choose the day again, with 團體 on the member's own side.
+    pickedDate.current = false; setCalendarMonth(taipeiDate().slice(0, 7)); setGroupSide(null); setGroupFailed(null);
     focusedRef.current = true; setFocused(true); refreshOwnProfile(); openRequestedFriends.current(); openRequestedAll.current();
     return () => { focusedRef.current = false; setFocused(false); clearProtectedState(false, true, true); };
   }, [clearProtectedState, refreshOwnProfile]));
@@ -386,7 +395,8 @@ export default function ProgressScreen() {
     if (!client || !session) return;
     const generation = requestGeneration.current; const expectedScope = activeScope.current;
     if (!isLive(generation, expectedScope, undefined, expectedScope === 'all')) return;
-    // Open with the last known list; slow/offline refreshes must not hide the picker.
+    // Open with the last known list; slow/offline refreshes must not hide the picker. Always on the member's own side.
+    setRewardSide(null); setOtherRewards(null); setOtherRewardsFailed(false);
     setSheet('rewards');
     const origin = sheetVersion.current;
     const owns = () => sheetVersion.current === origin && isLive(generation, expectedScope, undefined, expectedScope === 'all');
@@ -394,6 +404,17 @@ export default function ProgressScreen() {
     client.cancelReads?.('/api/rewards');
     try { const value = await client.getRewards(); if (owns()) setRewards(value); }
     catch { /* Keep the existing list silently; the next opening retries. */ }
+  };
+  const pickerOwn: Congregation = ownSide ?? 'youth';
+  // 「主堂獎品｜青少獎品」: the other side's list is read when asked for and shown without any way to pick from it.
+  const viewRewards = async (side: Congregation) => {
+    if (side === pickerOwn) { setRewardSide(null); return; }
+    if (!client || !session) return;
+    const generation = requestGeneration.current; const expectedScope = activeScope.current; const origin = sheetVersion.current;
+    const owns = () => sheetVersion.current === origin && isLive(generation, expectedScope, undefined, expectedScope === 'all');
+    setRewardSide(side); setOtherRewards(null); setOtherRewardsFailed(false);
+    try { const value = await client.getRewards(side); if (owns()) setOtherRewards(value); }
+    catch { if (owns()) setOtherRewardsFailed(true); }
   };
   const loadRedemptions = async () => {
     if (!client || !session) return;
@@ -469,9 +490,25 @@ export default function ProgressScreen() {
   useEffect(() => {
     if (!devotionClient || !session || !focused || !primaryReady || scope !== 'me') return;
     let active = true; const generation = viewGeneration.current;
-    void devotionClient.getGroupReading(groupMonth).then((value) => { if (active && isViewLive(generation)) setGroupReading(value); }).catch(() => undefined);
+    // The member's own side asks without naming it, as before (and as an older server understands).
+    const asked = groupSide;
+    void (asked ? devotionClient.getGroupReading(groupMonth, asked) : devotionClient.getGroupReading(groupMonth)).then((value) => {
+      if (!active || !isViewLive(generation)) return;
+      setGroupReading(value); setGroupFailed(asked && value.scope !== asked ? asked : null);
+    }).catch(() => { if (active && isViewLive(generation) && asked) setGroupFailed(asked); });
     return () => { active = false; };
-  }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, groupMonth, isViewLive]);
+  }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, groupMonth, groupSide, isViewLive]);
+  const viewGroup = (side: Congregation) => { setGroupFailed(null); setGroupSide(side === ownSide ? null : side); };
+  // After a change of side (here, on 我的帳戶, or on another phone) the page reads everything again for the new
+  // side: its group numbers, its prizes, and the profile, whose target from the side left behind is gone.
+  const seenOwnSide = useRef<Congregation | null>(null);
+  useEffect(() => {
+    const previous = seenOwnSide.current;
+    if (ownSide) seenOwnSide.current = ownSide;
+    if (!previous || !ownSide || previous === ownSide) return;
+    setGroupSide(null); setGroupFailed(null); setRewardSide(null);
+    refreshOwnProfile();
+  }, [ownSide, refreshOwnProfile]);
   useEffect(() => {
     if (!devotionClient || !session || !focused || !primaryReady || scope !== 'me') return;
     let active = true; const generation = viewGeneration.current;
@@ -619,7 +656,7 @@ export default function ProgressScreen() {
     {/* A number with no note beside it claims to be current. This one is not. */}
     {profileStale && ownProfile ? <Text style={styles.stale}>目前顯示上次的積分，還沒連上更新</Text> : null}
     {scope === 'me' && !ownProfile ? <View style={styles.noteBox}><Text style={styles.note}>正在載入你的積分。</Text></View> : null}
-    {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} onSelect={openProfile} /></View> : null}
+    {scope !== 'me' ? <View style={showingProfile ? styles.hiddenList : styles.listSurface}><PeopleList people={people} showRank={scope === 'all'} showCongregation={scope === 'all'} onSelect={openProfile} /></View> : null}
     {showingProfile ? <><Pressable accessibilityRole="button" accessibilityLabel="返回積分清單" onPress={() => { requestGeneration.current += 1; stopPrefetch(); activeMember.current = null; setBusy(false); setProfile(null); setSelected(null); }} style={styles.back}><Text style={styles.backText}>‹ 返回清單</Text></Pressable><ScoreProfile profile={profile} onChartChange={loadProfileChart} /></> : null}
     {scope === 'me' && ownProfile ? <ScoreProfile
       profile={ownProfile}
@@ -656,13 +693,18 @@ export default function ProgressScreen() {
             {completion.syncError ? <Text accessibilityRole="alert" style={styles.stale}>{completion.record.syncStatus === 'SAVE_FAILED' && !completion.retryable ? '完成記錄無法同步，本機完成狀態仍保留。' : '同步遇到問題，完成狀態已保留，連線後會重試。'}</Text> : null}
           </View>}
         />
-        {groupReading ? <>
+        {groupReading || ownSide ? <>
           <SectionHeader title="團體" />
-          <GroupReadingCard
+          {/* Where I count, said once with its own 改 (維護者 2026-10-20): a wrong side shows up here, in the numbers. */}
+          {ownSide ? <CongregationLineView variant="points" congregation={congregation} /> : null}
+          {groupReading ? <GroupReadingCard
             view={groupReading}
+            own={ownSide}
+            onView={ownSide ? viewGroup : undefined}
+            failedSide={groupFailed}
             onPreviousMonth={groupMonth > groupFirstMonth ? () => setGroupMonth(shiftMonth(groupMonth, -1)) : undefined}
             onNextMonth={groupMonth < today.slice(0, 7) ? () => setGroupMonth(shiftMonth(groupMonth, 1)) : undefined}
-          />
+          /> : null}
           <SectionHeader title="個人" />
         </> : null}
         <ReadingCalendarCard
@@ -699,7 +741,7 @@ export default function ProgressScreen() {
       {friendNotice ? <Text style={[styles.note, styles.friendNoticeHint]}>名單已經更新，可以關掉了</Text> : null}
     </ActionSheet>
     <ActionSheet visible={sheet === 'scan'} title="掃描好友 QR" onClose={() => setSheet(null)}><FriendQrPanel client={client!} mode="scan" onClaimed={scanClaimed} onActivityStart={beginScannerActivity} /></ActionSheet>
-    <ActionSheet visible={sheet === 'rewards'} title="選擇目標獎品" dismissOnOutsideTap onClose={() => setSheet(null)}><RewardControls rewards={rewards ?? shelfRewards ?? []} selectedRewardId={selectedRewardId} canEdit onSelect={(rewardId) => void setTarget(rewardId)} /></ActionSheet>
+    <ActionSheet visible={sheet === 'rewards'} title="選擇目標獎品" dismissOnOutsideTap onClose={() => setSheet(null)}><RewardPicker own={pickerOwn} viewing={rewardSide ?? pickerOwn} ownRewards={rewards ?? shelfRewards ?? []} otherRewards={otherRewards} otherFailed={otherRewardsFailed} selectedRewardId={selectedRewardId} onView={(side) => { void viewRewards(side); }} onSelect={(rewardId) => void setTarget(rewardId)} /></ActionSheet>
     <ActionSheet visible={sheet === 'redemptions'} title="領取紀錄" dismissOnOutsideTap onClose={() => setSheet(null)}><RedemptionList redemptions={redemptions} /></ActionSheet>
     {!appForeground ? <View testID="progress-inactive-cover" pointerEvents="auto" style={styles.inactiveCover} /> : null}
   </View>;

@@ -41,6 +41,20 @@ describe('the congregation client', () => {
     await expect(client.setCongregation('main')).rejects.toThrow();
   });
 
+  // 積分頁 (維護者 2026-10-20): the group card can look at the other side; without one the server answers the member's own.
+  it('asks the group reading for the side looked at, and the member’s own side otherwise', async () => {
+    const { db, client } = clientFor('m', ['y', 'm']);
+    db.db.prepare("UPDATE member_affiliations SET congregation = 'main' WHERE member_id = 'm'").run();
+    expect((await client.getGroupReading('2026-10')).scope).toBe('main');
+    expect((await client.getGroupReading('2026-10', 'youth')).scope).toBe('youth');
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => { urls.push(url); return new Response('{}', { status: 500 }); }) as unknown as typeof fetch;
+    const recorder = createDevotionClient({ baseUrl: 'https://api.test', token: 't', memberId: 'm', fetchImpl });
+    await recorder.getGroupReading('2026-10', 'main').catch(() => undefined);
+    await recorder.getGroupReading('2026-10').catch(() => undefined);
+    expect(urls).toEqual(['https://api.test/api/points/group?month=2026-10&congregation=main', 'https://api.test/api/points/group?month=2026-10']);
+  });
+
   it('refuses a reply it does not understand', async () => {
     const fetchImpl = (async () => new Response(JSON.stringify({ congregation: 'adult' }), { status: 200 })) as unknown as typeof fetch;
     const client = createDevotionClient({ baseUrl: 'https://api.test', token: 't', memberId: 'm', fetchImpl });

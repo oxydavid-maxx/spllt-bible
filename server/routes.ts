@@ -26,7 +26,7 @@ import type { DevotionalAudio } from './devotionalAudio';
 import { createSongTitleLookup, isDevotionalDate, readDevotional, type SongTitleLookup } from './devotional';
 import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDates, setDevotion } from './devotionProgress';
 import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
-import { applyRewardSheet, listRewards, readRewardSheetPush, sheetRedemptionsFor } from './rewardSheet';
+import { applyRewardSheet, listRewards, readRewardSheetPush, rewardOnSide, sheetRedemptionsFor } from './rewardSheet';
 import { rewardSheetReadingStats } from './rewardSheetStats';
 import { listBulletins, readBulletinPage } from './bulletins';
 import { issueBulletinCookie, readBulletinCookie } from './bulletinAccess';
@@ -607,14 +607,21 @@ export function createApiHandler(options: ApiHandlerOptions) {
         return gamificationJson(200, { days: readReadingDays(options.db.db, from, to, today, auth.memberId), timezone: 'Asia/Taipei', today });
       }
       // Each congregation has its own prize list (維護者 2026-10-17); a member aims only at their own side's.
+      // `?congregation=` looks at one side's list (維護者 2026-10-20: the other side is seen, never chosen); the
+      // answer names the side, so the app can tell it from an older server that ignores the question.
       if (request.method === 'GET' && url.pathname === '/api/rewards') {
-        return gamificationJson(200, { rewards: listRewards(options.db.db, congregationOf(options.db.db, auth.memberId)) });
+        const asked = url.searchParams.get('congregation');
+        if (asked !== null && !isCongregation(asked)) return gamificationError({ status: 400, code: 'INVALID_CONGREGATION' });
+        const side = asked ?? congregationOf(options.db.db, auth.memberId);
+        return gamificationJson(200, { rewards: listRewards(options.db.db, side), congregation: side });
       }
       if (request.method === 'GET' && url.pathname === '/api/points/people') {
         const scope = url.searchParams.get('scope');
         if (scope !== 'friends' && scope !== 'all') return gamificationError({ status: 400, code: 'INVALID_SCOPE' });
         const people = getPeople(options.db.db, auth.memberId, scope, resolvedAdminMemberIds());
-        return Array.isArray(people) ? gamificationJson(200, { scope, people }) : gamificationError(people);
+        if (!Array.isArray(people)) return gamificationError(people);
+        // 全體 (administrators only, getPeople) says where each person counts (維護者 2026-10-20); friends never see it.
+        return gamificationJson(200, { scope, people: scope === 'all' ? people.map((person) => ({ ...person, congregation: congregationOf(options.db.db, person.memberId) })) : people });
       }
       const scoreProfileMatch = url.pathname.match(/^\/api\/points\/profiles\/([^/]+)$/);
       if (request.method === 'GET' && scoreProfileMatch) {
@@ -642,6 +649,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
           throw error;
         }
         if (isGamificationError(profile)) return gamificationError(profile);
+        // A target from the side the member left is not their target any more (維護者 2026-10-20); the row stays,
+        // so it comes back if they change back. Old apps read the same answer.
+        const target = profile.private?.targetReward;
+        if (target && !rewardOnSide(options.db.db, target.rewardId, congregationOf(options.db.db, memberId))) profile.private!.targetReward = null;
         if (scope !== 'me' && scope !== 'all') delete profile.private;
         if (scope === 'all' && !adminMembers.includes(auth.memberId)) delete profile.private;
         return gamificationJson(200, profile as unknown as Record<string, unknown>);
@@ -675,7 +686,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
       // enters a group number; see server/devotionProgress.ts.
       if (request.method === 'GET' && url.pathname === '/api/points/group') {
         const today = taipeiDate(now());
-        const view = getGroupReading(options.db.db, auth.memberId, url.searchParams.get('month') ?? today.slice(0, 7), today);
+        // `?congregation=` looks at the other side's numbers (維護者 2026-10-20); without it, the member's own side.
+        const asked = url.searchParams.get('congregation');
+        if (asked !== null && !isCongregation(asked)) return gamificationError({ status: 400, code: 'INVALID_CONGREGATION' });
+        const view = getGroupReading(options.db.db, auth.memberId, url.searchParams.get('month') ?? today.slice(0, 7), today, asked ?? undefined);
         return view ? gamificationJson(200, view as unknown as Record<string, unknown>) : gamificationError({ status: 400, code: 'INVALID_MONTH' });
       }
       // 青少/主堂 (維護者 2026-10-17): null until a new member chooses; see server/congregation.ts.

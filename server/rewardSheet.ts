@@ -77,6 +77,15 @@ export function listRewards(db: DatabaseSync, side: Congregation): ListedReward[
   return (rows as Array<{ reward_id: string; name: string; cost_points: number; revision: number }>).map((row) => ({ rewardId: row.reward_id, name: row.name, costPoints: row.cost_points, active: true, revision: row.revision }));
 }
 
+/**
+ * Whether a prize belongs to this side: the sheet's own tab, or for 青少 a prize from the in-app list before the
+ * sheet. A member who changes sides keeps their target row; it shows again if they come back (維護者 2026-10-20).
+ */
+export function rewardOnSide(db: DatabaseSync, rewardId: string, side: Congregation): boolean {
+  const row = db.prepare('SELECT congregation FROM rewards WHERE reward_id = ?').get(rewardId) as { congregation: string | null } | undefined;
+  return Boolean(row) && (row!.congregation === side || (row!.congregation === null && side === 'youth'));
+}
+
 /** The member's own rows, shaped like the app's 領取紀錄 entries; the date is noon in Taipei. */
 export function sheetRedemptionsFor(db: DatabaseSync, memberId: string): Array<Record<string, unknown>> {
   return (db.prepare('SELECT congregation, row_number, reward_name, points, redeemed_on FROM sheet_redemptions WHERE member_id = ? ORDER BY redeemed_on DESC, congregation, row_number').all(memberId) as Array<{ congregation: string; row_number: number; reward_name: string; points: number; redeemed_on: string }>)

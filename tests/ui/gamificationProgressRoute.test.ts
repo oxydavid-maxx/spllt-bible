@@ -51,6 +51,8 @@ describe('progress gamification route', () => {
     await act(async () => { friends.props.onPress(); });
     expect(api.getPeople).toHaveBeenCalledWith('friends');
     expect(renderer.root.findByType('PeopleList' as any).props.showRank).toBe(false);
+    // Where each person meets is for administrators in 全體 only (維護者 2026-10-20).
+    expect(renderer.root.findByType('PeopleList' as any).props.showCongregation).toBe(false);
     const person = renderer.root.findByType('PeopleList' as any).props.people[0];
     await act(async () => { renderer.root.findByType('PeopleList' as any).props.onSelect(person); });
     expect(api.getProfile).toHaveBeenCalledWith('friend', 'friends', expect.stringMatching(/^\d{4}-\d{2}$/));
@@ -131,6 +133,7 @@ describe('progress gamification route', () => {
     await act(async () => { requestOpenAllScores(); });
     expect(api.getPeople).toHaveBeenCalledWith('all');
     const list = renderer.root.findByType('PeopleList' as any);
+    expect(list.props.showCongregation).toBe(true);
     await act(async () => { list.props.onSelect(list.props.people[0]); });
     expect(renderer.root.findByType('ScoreProfile' as any).props.onOpenActions).toBeUndefined();
     await act(async () => { renderer.root.findAll((node) => node.props.accessibilityLabel === '開啟積分操作')[0].props.onPress(); });

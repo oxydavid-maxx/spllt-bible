@@ -68,18 +68,18 @@
 
 | 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
 |---|---|---|---|---|
-| 青少一起讀經 | 每天讀經人數的月曆 (2 人以上才顯示)，今天、昨天各幾人；主堂看「全教會一起讀經」 | 積分「自己」最上方「團體」 | Android、iOS | [points.md](points.md) |
+| 青少一起讀經 | 每天讀經人數的月曆 (2 人以上才顯示)，今天、昨天各幾人；主堂看「全教會一起讀經」；「全教會｜青少」可以看另一邊，上面一行「我在主堂聚會 (不是青少)」和「改」 | 積分「自己」最上方「團體」 | Android、iOS | [points.md](points.md) |
 | 團體獎 | 一個月 15 天讀經的人數夠了就累積一個月：懶骨頭 15 人 × 2 個月、沙發 20 人 × 4 個月；只有青少有 | 積分「團體」 | Android、iOS | [points.md](points.md) |
 | 完成今日靈修/讀經 | 當天卡兩顆鈕，跟著月曆選的那天：左靈修葉子、右讀經書，未完成白底綠框，完成後填滿深綠白圖示 | 積分「自己」最上面的當天卡 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 積分月曆 | 點任一天看經文與狀態，未來/過期也能看；期限內可以補打卡；讀了靈修的日子標金色「靈修」 | 積分「自己」的「個人」 | Android、iOS | [reading-plan.md](reading-plan.md) |
 | 匯出讀經卡 | 本月或本季匯出 A4 PDF，含讀經勾選、靈修標記與未完成天數，離線可分享/列印 | 積分「自己」的個人讀經月曆卡下排左邊「匯出讀經卡 ›」 | Android、iOS | [points.md](points.md) |
 | 範圍切換 | 自己、好友兩個分頁；管理者從帳戶頁進來才多一個「全體 (管理)」 | 積分頁頂部 | Android、iOS | [points.md](points.md) |
 | 自己的積分 | 總積分、梯隊、目標獎品進度、「總積分/每月」圖 (金色虛線是靈修) | 積分「自己」的「個人」 | Android、iOS | [points.md](points.md) |
-| 目標獎品 | 從自己那一邊 (青少或主堂) 的獎品選一個，看還差幾分 | 積分「自己」 | Android、iOS | [points.md](points.md) |
+| 目標獎品 | 從自己那一邊 (青少或主堂) 的獎品選一個，看還差幾分；另一邊的獎品看得到、不能選 | 積分「自己」 | Android、iOS | [points.md](points.md) |
 | 好友 | 加好友後互相看積分（看不到對方的餘額和目標） | 積分「好友」 | Android、iOS | [points.md](points.md) |
 | 好友 QR | 出示或掃描 QR 馬上互加好友 | 積分頁選單 | Android、iOS | [points.md](points.md) |
 | 好友通知 | 有人加你好友時收到通知 | 系統通知 | Android、iOS | [points.md](points.md) |
-| 全體排名 (管理) | 管理者從帳戶頁最下面進來，解鎖後看全體積分 | 帳戶頁「全體 (管理) ›」 | Android、iOS | [points.md](points.md) |
+| 全體排名 (管理) | 管理者從帳戶頁最下面進來，解鎖後看全體積分，每個人旁邊標主堂或青少 | 帳戶頁「全體 (管理) ›」 | Android、iOS | [points.md](points.md) |
 | 獎品與兌換 | 獎品清單和兌換紀錄在 Google 試算表；紙本兌換後同工寫一列，可兌換積分跟著扣 | 試算表；App 的積分「自己」和「我的領取紀錄」 | Android、iOS | [points.md](points.md) |
 
 ## 日記
@@ -108,7 +108,7 @@
 | 刪除帳號 | 二次確認後刪除伺服器個資並登出，無需寄信 | 帳戶頁「刪除帳號與資料」 | Android、iOS | [account.md](account.md) |
 | 啟用碼 | 認不出 Google 帳號時，用一次性啟用碼綁定 | 登入畫面（需要時才出現） | Android、iOS | [account.md](account.md) |
 | 帳戶頁 | 回前景更新名字、歸屬和提醒；進頁重驗管理資格；看自己的名字和小組、設定提醒、登出、刪除帳號與資料、看 App 版本 | 右上角頭像 | Android、iOS | [account.md](account.md) |
-| 青少/主堂 | 新會員第一次登入選青少或主堂，之後可以在帳戶頁改 | 登入後第一個畫面、帳戶頁「我在哪裡聚會」 | Android、iOS | [account.md](account.md) |
+| 青少/主堂 | 新會員第一次登入一定要選青少或主堂 (沒有預設、讀不到也照樣問)；之後在帳戶頁或積分頁「我在主堂聚會 (不是青少)」旁的「改」改 | 登入後第一個畫面、帳戶頁、積分「團體」 | Android、iOS | [account.md](account.md) |
 | App 更新提示 | 有新版時提示更新：Play 裝的在 App 裡更新，側載的開安裝頁 | 開 App 或回到前景時自動出現 | 只有 Android | [account.md](account.md) |
 | JS/圖片背景更新 | 同一商店版本背景下載，下次冷啟動套用；管理者可先收 preview | 自動；帳戶頁最下面的管理區 | Android, iOS | [account.md](account.md) |
 
