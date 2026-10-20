@@ -1,0 +1,114 @@
+# .github/workflows/ios-ota-verify.yml — iPhone OTA acceptance on the iOS simulator, run by hand after each iOS
+# push to a channel (docs/eas-update.md). It rebuilds the App Store build's native layer for the simulator, lets the
+# app's own startup check download from the real EAS Update service, cold-starts twice and judges whether the
+# second start runs exactly the update of the given group (scripts/ios/ota-verify.ts). It never publishes,
+# republishes or changes a channel, consumes no secret, and signs in only as the local fixture's synthetic member.
+name: ios-ota-verify
+on:
+  workflow_dispatch:
+    inputs:
+      group_id:
+        description: 'EAS Update group ID of the iOS update to verify'
+        required: true
+        type: string
+      channel:
+        description: 'Channel the simulator build follows (the group must be what it serves)'
+        type: choice
+        options: [preview, production]
+        default: preview
+concurrency:
+  group: ios-ota-verify-${{ inputs.group_id }}-${{ inputs.channel }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  simulator:
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      OUT: ${{ github.workspace }}/ota-out
+      NATIVE: ${{ github.workspace }}/native
+      GROUP_ID: ${{ inputs.group_id }}
+      CHANNEL: ${{ inputs.channel }}
+      # The API host the update was exported with (EAS production environment). On this runner only, the name
+      # points at the local fixture backend, so the update runs signed in and never reaches the real backend.
+      OTA_API_HOST: api.luminexhealthbiohack.com
+      EXPO_NO_TELEMETRY: '1'
+      # The store build's channel comes from app.config.js: EAS_BUILD_PROFILE=preview embeds preview, otherwise
+      # production. A set profile also keeps the startup check (ON_ERROR_RECOVERY): this job must NOT set
+      # QINGMU_CI_DISABLE_OTA_CHECKS, which only the isolated fixture CI uses.
+      EAS_BUILD_PROFILE: ${{ inputs.channel }}
+      # Embedded JS only (cold start 1): a synthetic administrator on the local fixture backend, so the app keeps its
+      # channel and checks it (src/ui/admin/OtaUpdates.tsx). The update under test brings its own JS and settings.
+      EXPO_PUBLIC_QINGMU_FIXTURE: 'true'
+      EXPO_PUBLIC_QINGMU_DEV_TOKEN: ci-fixture-token
+      EXPO_PUBLIC_QINGMU_API_BASE_URL: https://127.0.0.1:8788
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # This checkout runs the verdict and the fixture backend (backward compatible with older apps).
+      - run: npm ci
+      - name: which update, which store build
+        id: resolve
+        run: node_modules/.bin/tsx scripts/ios/ota-verify.ts resolve "$GROUP_ID" "$CHANNEL" "$OUT"
+      - name: check out the store build's commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.native_commit }}
+          path: native
+      - run: sudo xcode-select -s /Applications/Xcode_26.4.1.app
+      - run: npm ci
+        working-directory: native
+      - run: npx expo prebuild --platform ios --no-install --clean
+        working-directory: native
+      - uses: actions/cache@v4
+        with:
+          path: native/ios/Pods
+          key: pods-ota-${{ hashFiles('native/package-lock.json', 'native/patches/**', 'native/app.json', 'native/app.config.js') }}
+      - run: pod install
+        working-directory: native/ios
+      - name: simulator Release build (same script as the ios workflow)
+        working-directory: native
+        run: |
+          # Embedded JS entry: store the synthetic member's session as a real sign-in does, then start the app.
+          cp "$GITHUB_WORKSPACE/scripts/ios/ota-seed-entry.js" ota-seed-entry.js
+          echo '| 守門 | 結果 | 備註 |' >> "$GITHUB_STEP_SUMMARY" && echo '|---|---|---|' >> "$GITHUB_STEP_SUMMARY"
+          ENTRY_FILE="$NATIVE/ota-seed-entry.js" bash "$GITHUB_WORKSPACE/scripts/ios/build-simulator.sh"
+          echo "$NATIVE/$(cat "$OUT/app-path.txt")" > "$OUT/app-path.txt"
+      - name: store build's embedded update time, native read-back
+        run: node_modules/.bin/tsx scripts/ios/ota-verify.ts native "$(cat "$OUT/app-path.txt")" "$OUT" "$NATIVE"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: install Maestro 2.10.0
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION=2.10.0 bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Taipei time zone
+        run: sudo systemsetup -settimezone Asia/Taipei > /dev/null 2>&1 || echo 'systemsetup failed; launches still set TZ'
+      - name: two cold starts
+        run: APP="$(cat "$OUT/app-path.txt")" bash scripts/ios/ota-sim-run.sh
+      - name: verdict
+        if: always()
+        run: node_modules/.bin/tsx scripts/ios/ota-verify.ts verdict "$OUT" | tee -a "$GITHUB_STEP_SUMMARY"; exit "${PIPESTATUS[0]}"
+      - name: sanitize evidence before upload
+        id: sanitize_evidence
+        if: always()
+        run: node_modules/.bin/tsx scripts/ios/sanitize-evidence.ts "$OUT"
+      - if: always() && steps.sanitize_evidence.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ota-verify
+          path: |
+            ota-out/*.json
+            ota-out/*.png
+            ota-out/*.txt
+            ota-out/requests.log
+            ota-out/requests-api*.log
+            ota-out/maestro/*.log
+            ota-out/maestro/*.xml
+          retention-days: 30
