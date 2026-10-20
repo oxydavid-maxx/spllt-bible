@@ -113,4 +113,24 @@ describe('gamification api client', () => {
     await expect(client.getMyRedemptions()).resolves.toEqual([row]);
     expect(fetchImpl.mock.calls.map((call) => call[0])).toEqual(['https://example.test/api/me/redemptions']);
   });
+
+  // 選目標獎品 (維護者 2026-10-20): the other side's list is asked for by name, and only a server that says it
+  // answered that side is believed (an older one ignores the question and sends the member's own list).
+  it('asks for one side’s prizes and refuses a list from the wrong side', async () => {
+    const reward = { rewardId: 'sheet-youth-1', name: '電影票', costPoints: 75, active: true, revision: 1 };
+    const fetchImpl = vi.fn(async (url: string) => response(url.endsWith('congregation=youth') ? { congregation: 'youth', rewards: [reward] } : { rewards: [reward] }));
+    const client = createGamificationApiClient({ baseUrl: 'https://example.test', token: 't', memberId: 'member:1', fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.getRewards('youth')).resolves.toEqual([reward]);
+    await expect(client.getRewards()).resolves.toEqual([reward]);
+    await expect(client.getRewards('main')).rejects.toMatchObject({ code: 'INVALID_API_RESPONSE' });
+    expect(fetchImpl.mock.calls.map((call) => call[0])).toEqual(['https://example.test/api/rewards?congregation=youth', 'https://example.test/api/rewards', 'https://example.test/api/rewards?congregation=main']);
+  });
+
+  it('keeps the side each person counts in on the 全體 list, and nothing else', async () => {
+    const fetchImpl = vi.fn(async () => response({ scope: 'all', people: [{ memberId: 'a', displayName: '甲', earnedTotal: 3, rank: 1, congregation: 'main' }, { memberId: 'b', displayName: '乙', earnedTotal: 1, rank: 2, congregation: 'elsewhere' }, { memberId: 'c', displayName: '丙', earnedTotal: 0, rank: null }] }));
+    const client = createGamificationApiClient({ baseUrl: 'https://example.test', token: 't', memberId: 'a', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const people = await client.getPeople('all');
+    expect(people.map((person) => person.congregation)).toEqual(['main', undefined, undefined]);
+    expect(people[1]).not.toHaveProperty('congregation');
+  });
 });
