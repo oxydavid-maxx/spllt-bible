@@ -136,7 +136,7 @@ function parseProfile(value: unknown): ScoreProfile | null {
 }
 function parsePeople(value: unknown): PersonListItem[] | null {
   const item = object(value); if (!item || !Array.isArray(item.people)) return null;
-  const people = item.people.map((entry) => { const person = object(entry); return person && string(person.memberId) && string(person.displayName) && nonNegativeInt(person.earnedTotal) && (person.rank === undefined || person.rank === null || positiveInt(person.rank)) ? { memberId: person.memberId, displayName: person.displayName, earnedTotal: person.earnedTotal, ...(person.rank !== undefined ? { rank: person.rank as number | null } : {}) } : null; });
+  const people = item.people.map((entry) => { const person = object(entry); return person && string(person.memberId) && string(person.displayName) && nonNegativeInt(person.earnedTotal) && (person.rank === undefined || person.rank === null || positiveInt(person.rank)) ? { memberId: person.memberId, displayName: person.displayName, earnedTotal: person.earnedTotal, ...(person.rank !== undefined ? { rank: person.rank as number | null } : {}), ...(person.congregation === 'youth' || person.congregation === 'main' ? { congregation: person.congregation } : {}) } : null; });
   return people.every(Boolean) ? people as PersonListItem[] : null;
 }
 function operationId(): string {
@@ -208,7 +208,9 @@ export function createGamificationApiClient(options: GamificationApiClientOption
       if (scope === 'friends' && parsed.private !== undefined) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200);
       return parsed;
     },
-    async getRewards(): Promise<Reward[]> { const body = object(await request('/api/rewards')); const values = body?.rewards; if (!Array.isArray(values)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); const rewards = values.map(parseReward); if (rewards.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return rewards as Reward[]; },
+    // Without a side, the member's own list. With one (維護者 2026-10-20: the other side is seen, never chosen), only
+    // an answer that names that side is believed: an older server ignores the question and sends the member's own.
+    async getRewards(side?: 'youth' | 'main'): Promise<Reward[]> { const body = object(await request(side ? `/api/rewards?congregation=${side}` : '/api/rewards')); const values = body?.rewards; if (!Array.isArray(values) || (side && body?.congregation !== side)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); const rewards = values.map(parseReward); if (rewards.some((value) => value === null)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return rewards as Reward[]; },
     async getMyRedemptions(): Promise<Redemption[]> { const parsed = parseRedemptions(await request('/api/me/redemptions')); if (!parsed) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return parsed; },
     async setRewardTarget(rewardId: string | null): Promise<void> { await request('/api/me/reward-target', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rewardId }) }); },
     async createFriendQr(): Promise<FriendQr> { const body = object(await request('/api/friends/qr', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })); if (!body || !string(body.payload) || !string(body.token) || !validEpoch(body.expiresAt)) throw new GamificationApiError('INVALID_API_RESPONSE', false, 200); return { payload: body.payload, token: body.token, expiresAt: body.expiresAt }; },

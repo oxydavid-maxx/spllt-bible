@@ -40,6 +40,8 @@ export interface PersonListItem {
   displayName: string;
   earnedTotal: number;
   rank?: number | null;
+  /** Only on 全體 (administrators): the side the person counts in, 青少 or 主堂 (維護者 2026-10-20). */
+  congregation?: 'youth' | 'main';
 }
 
 export interface ScoreProfile {

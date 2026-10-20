@@ -35,7 +35,6 @@ vi.mock('../../src/services/useCompletionController', () => ({ useCompletionCont
 vi.mock('../../src/ui/CompletionAwardFeedback', () => ({ CompletionAwardFeedback: () => null }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn() }));
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ getReadingDays: async () => undefined }) }));
-vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: () => () => undefined }));
 vi.mock('react-native', () => ({ AppState: { addEventListener: vi.fn(() => ({ remove: vi.fn() })) }, Pressable: primitive('Pressable'), Text: primitive('Text'), TextInput: primitive('TextInput'), View: primitive('View'), StyleSheet: { create: (value: unknown) => value } }));
 vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
 vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => devotionApi }));

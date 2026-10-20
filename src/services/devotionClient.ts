@@ -56,7 +56,8 @@ export interface DevotionClient {
   getDevotional(date: string): Promise<DevotionalPost | null>;
   getDevotionDates(from: string, to: string): Promise<string[]>;
   setDevotion(date: string, completed: boolean): Promise<void>;
-  getGroupReading(month: string): Promise<GroupReading>;
+  /** Without a side, the member's own; with one, that side's numbers to look at (維護者 2026-10-20). */
+  getGroupReading(month: string, side?: Congregation): Promise<GroupReading>;
   getScoreHistory(): Promise<ScoreHistory>;
   /** Null until the member has chosen (a member from before the split is 青少 already). */
   getCongregation(): Promise<Congregation | null>;
@@ -162,8 +163,8 @@ export function createDevotionClient(options: DevotionClientOptions): DevotionCl
         await readingProgressCache.setDevotion(options.memberId, date, completed);
       } catch { /* The server already accepted the change; do not roll it back on a cache error. */ }
     },
-    async getGroupReading(month) {
-      const view = parseGroupReading((await request(`/api/points/group?month=${encodeURIComponent(month)}`)).body);
+    async getGroupReading(month, side) {
+      const view = parseGroupReading((await request(`/api/points/group?month=${encodeURIComponent(month)}${side ? `&congregation=${side}` : ''}`)).body);
       if (!view) throw invalid();
       return view;
     },

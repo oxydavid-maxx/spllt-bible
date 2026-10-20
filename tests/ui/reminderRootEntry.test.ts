@@ -42,6 +42,9 @@ vi.mock('../../src/services/apiClient', () => ({ createApiClient: () => ({ getPr
 // The update prompt also lives at Root and listens for the foreground; it has its own test, and here
 // it would take the one AppState listener this file captures for the reminder wiring.
 vi.mock('../../src/ui/UpdatePrompt', () => ({ UpdatePrompt: () => null }));
+// The first-run 青少/主堂 choice also lives at Root; this file's backend never answers, and since 2026-10-20 a
+// member whose choice cannot be read is asked (its own test: tests/ui/congregationChoice.test.ts).
+vi.mock('../../src/ui/congregation/CongregationGate', () => ({ CongregationGate: () => null }));
 // Background chapter audio is configured at Root; its own behaviour is in tests/services/chapterAudioBackground.test.ts.
 vi.mock('../../src/services/chapterAudioStartup', () => ({ configureChapterAudio: state.configureAudio }));
 

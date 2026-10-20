@@ -96,20 +96,21 @@ describe('target reward picker refresh', () => {
     api.getRewards.mockImplementationOnce(() => refreshed.promise);
     await openPicker(screen);
     expect(text(screen)).toContain(rewardA.name);
-    expect(text(screen)).not.toContain('尚未設定獎品');
+    expect(text(screen)).not.toContain('的獎品還沒上架');
     await act(async () => { refreshed.resolve([rewardB]); });
     expect(text(screen)).toContain(rewardB.name);
   });
 
+  // An empty side says the prizes are not up yet and where 同工 add them (維護者 2026-10-20).
   it('replaces an initially empty list with new rewards on the next opening', async () => {
     const screen = await screenWithRewards([]);
     await openPicker(screen);
-    expect(text(screen)).toContain('尚未設定獎品');
+    expect(text(screen)).toContain('的獎品還沒上架');
     await act(async () => { picker(screen).props.onClose(); });
     api.getRewards.mockResolvedValueOnce([rewardB]);
     await openPicker(screen);
     expect(text(screen)).toContain(rewardB.name);
-    expect(text(screen)).not.toContain('尚未設定獎品');
+    expect(text(screen)).not.toContain('的獎品還沒上架');
   });
 
   it('does not reopen a dismissed picker or let its late response overwrite a newer opening', async () => {

@@ -1,9 +1,11 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import type { GroupReading } from '../../services/devotionClient';
+import type { Congregation, GroupReading } from '../../services/devotionClient';
 import { monthCells } from './readingCalendarModel';
 import { monthName, monthSummary, myPrizeLine, prizeProgress, prizeRule, readersLevel } from './groupReadingModel';
 import { theme } from '../Theme';
+import { GROUP_NAME, whereSentence } from '../congregation/congregationCopy';
+import { SideSwitch } from '../congregation/SideSwitch';
 
 /**
  * 團體 on the 積分 page (維護者 2026-10-14): how many youth read each day, and the prizes the church
@@ -18,6 +20,12 @@ export interface GroupReadingCardProps {
   view: GroupReading;
   onPreviousMonth?: () => void;
   onNextMonth?: () => void;
+  /** Where the member counts; when the card shows the other side it says so (維護者 2026-10-20). */
+  own?: Congregation | null;
+  /** Shows the 「全教會｜青少」 switch: looks at a side, never changes where the member counts. */
+  onView?: (side: Congregation) => void;
+  /** The side last asked for that could not be read; the card still shows the side it has. */
+  failedSide?: Congregation | null;
 }
 
 function Chevron({ direction }: { direction: 'left' | 'right' }) {
@@ -42,7 +50,7 @@ function Count({ label, readers }: { label: string; readers: number | null }) {
   </View>;
 }
 
-export function GroupReadingCard({ view, onPreviousMonth, onNextMonth }: GroupReadingCardProps) {
+export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onView, failedSide }: GroupReadingCardProps) {
   const readers = new Map(view.days.map((day) => [day.date, day.readers]));
   const busiest = view.busiest?.readers ?? 0;
   const summary = monthSummary(view);
@@ -50,18 +58,27 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth }: GroupRe
   const currentMonthName = monthName(view.today.slice(0, 7));
   // 青少/主堂 (維護者 2026-10-17): 主堂 counts the whole church and has no group prizes.
   const title = view.scope === 'main' ? '全教會一起讀經' : '青少一起讀經';
+  // Looking at the other side (維護者 2026-10-20): say so in the member's own words, and leave out the
+  // 「算你一份」 line, which is about a side they do not count in.
+  const onlyLooking = own != null && own !== view.scope;
   return <View style={styles.card} accessibilityLabel={title}>
     <View style={styles.titleRow}>
       <Text accessibilityRole="header" style={styles.title}>{title}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="上個月" accessibilityState={{ disabled: !onPreviousMonth }} disabled={!onPreviousMonth} onPress={onPreviousMonth} style={[styles.monthStep, !onPreviousMonth && styles.disabled]}><Chevron direction="left" /></Pressable>
-      <Text style={styles.monthLabel}>{monthName(view.month)}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="下個月" accessibilityState={{ disabled: !onNextMonth }} disabled={!onNextMonth} onPress={onNextMonth} style={[styles.monthStep, !onNextMonth && styles.disabled]}><Chevron direction="right" /></Pressable>
+      {onView ? <SideSwitch labels={GROUP_NAME} selected={view.scope} onSelect={onView} /> : null}
     </View>
+    {onlyLooking ? <Text style={styles.looking}>{`${whereSentence(own!)}，這裡只是看看${GROUP_NAME[view.scope]}。`}</Text> : null}
+    {failedSide && failedSide !== view.scope ? <Text accessibilityRole="alert" style={styles.failed}>{`沒有讀到${GROUP_NAME[failedSide]}的人數，請再按一次。`}</Text> : null}
     <View style={styles.counts}>
       <Count label="今天 (還在進行)" readers={view.todayReaders} />
       <Count label="昨天" readers={view.yesterdayReaders} />
     </View>
-    <Text style={styles.caption}>每一格是那天讀經的人數，顏色越深人越多</Text>
+    {/* The month pages the grid and the line under it, so it sits with them (the title row holds the switch). */}
+    <View style={styles.monthRow}>
+      <Text style={[styles.caption, styles.monthCaption]}>每一格是那天讀經的人數，顏色越深人越多</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="上個月" accessibilityState={{ disabled: !onPreviousMonth }} disabled={!onPreviousMonth} onPress={onPreviousMonth} style={[styles.monthStep, !onPreviousMonth && styles.disabled]}><Chevron direction="left" /></Pressable>
+      <Text style={styles.monthLabel}>{monthName(view.month)}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="下個月" accessibilityState={{ disabled: !onNextMonth }} disabled={!onNextMonth} onPress={onNextMonth} style={[styles.monthStep, !onNextMonth && styles.disabled]}><Chevron direction="right" /></Pressable>
+    </View>
     <View>
       <View style={styles.grid}>{WEEKDAYS.map((label) => <View key={label} style={styles.slot}><Text style={styles.weekday}>{label}</Text></View>)}</View>
       <View style={styles.grid}>
@@ -95,7 +112,7 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth }: GroupRe
             <Text style={styles.prizeRule}>{prizeRule(prize, view.qualifyingDays, index === 0)}</Text>
             <View style={styles.bar}><View style={[styles.barFill, { width: `${Math.round(prizeProgress(prize) * 100)}%` }, !first && styles.barFillQuiet]} /></View>
             <Text style={styles.prizeLine}>{`${currentMonthName}已有 `}<Text style={styles.bold}>{prize.qualifiedThisMonth}</Text>{`/${prize.members} 人讀滿 ${view.qualifyingDays} 天`}</Text>
-            {first ? <Text style={styles.prizeMine}>{myPrizeLine(view.myDaysThisMonth, view.qualifyingDays)}</Text> : null}
+            {first && !onlyLooking ? <Text style={styles.prizeMine}>{myPrizeLine(view.myDaysThisMonth, view.qualifyingDays)}</Text> : null}
           </View>
         </View>;
       })}
@@ -107,6 +124,10 @@ const styles = StyleSheet.create({
   card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, padding: 14, gap: theme.spacing.md },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   title: { flex: 1, color: theme.colors.ink, fontSize: 18, lineHeight: 24, fontWeight: '800' },
+  monthRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
+  monthCaption: { flex: 1 },
+  looking: { color: theme.colors.accent, backgroundColor: theme.colors.accentSoft, borderRadius: theme.radius.chip, paddingHorizontal: 10, paddingVertical: 6, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700' },
+  failed: { color: theme.colors.danger, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   monthStep: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   monthLabel: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
   disabled: { opacity: 0.35 },

@@ -40,6 +40,8 @@ const button = (label: string) => pressables(label)[0];
 const confirm = () => tree!.root.find((node) => String(node.type) === 'Pressable' && node.props.testID === 'congregation-confirm');
 const sheet = () => tree!.root.findAll((node) => String(node.type) === 'ActionSheet');
 async function mount(element: React.ReactElement) { await act(async () => { tree = TestRenderer.create(element); }); }
+// A failed read looks up what this phone remembers (SecureStore, loaded on demand) before it settles.
+async function settle() { for (let i = 0; i < 20; i += 1) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); }); }
 async function press(node: TestRenderer.ReactTestInstance) { await act(async () => { if (!node.props.disabled) node.props.onPress(); }); }
 
 beforeEach(() => {
@@ -49,7 +51,8 @@ beforeEach(() => {
   state.get.mockReset().mockImplementation(async () => state.congregation);
   state.set.mockReset().mockImplementation(async (value: 'youth' | 'main') => { state.congregation = value; return value; });
 });
-afterEach(() => { act(() => tree?.unmount()); tree = null; });
+// A saved choice is remembered in the background; let it land before the next test wipes this "phone".
+afterEach(async () => { act(() => tree?.unmount()); tree = null; await new Promise((resolve) => setTimeout(resolve, 50)); });
 
 describe('the first choice', () => {
   it('starts with nothing chosen and cannot be confirmed until a side is picked', async () => {
@@ -117,7 +120,7 @@ describe('the first choice', () => {
 describe('when where I meet cannot be read', () => {
   it('still asks on a phone that has never seen my choice, with 再試一次', async () => {
     state.get.mockRejectedValue(new Error('offline'));
-    await mount(React.createElement(CongregationGate));
+    await mount(React.createElement(CongregationGate)); await settle();
     expect(texts()).toContain('我平常在哪裡聚會？');
     expect(texts()).toContain('沒有連上網路，讀不到之前選的。可以直接選，或按「再試一次」。');
     state.get.mockReset().mockResolvedValueOnce('youth');
@@ -128,7 +131,7 @@ describe('when where I meet cannot be read', () => {
 
   it('stays up while 再試一次 is reading, and keeps asking a member who has not chosen', async () => {
     state.get.mockRejectedValueOnce(new Error('offline'));
-    await mount(React.createElement(CongregationGate));
+    await mount(React.createElement(CongregationGate)); await settle();
     let answer!: (value: null) => void;
     state.get.mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }));
     await press(button('再試一次'));
@@ -147,12 +150,36 @@ describe('when where I meet cannot be read', () => {
     await vi.waitFor(() => expect([...state.stored.values()]).toEqual(['main']));
     act(() => tree!.unmount()); resetCongregationStore();
     state.get.mockReset().mockRejectedValueOnce(new Error('offline'));
-    await mount(React.createElement(React.Fragment, null, React.createElement(CongregationGate), React.createElement(CongregationLine, { variant: 'points' })));
+    await mount(React.createElement(React.Fragment, null, React.createElement(CongregationGate), React.createElement(CongregationLine, { variant: 'points' }))); await settle();
     expect(texts()).not.toContain('我平常在哪裡聚會？');
     expect(texts()).toContain('我在主堂聚會 (不是青少)');
     state.get.mockResolvedValueOnce('youth');
     await act(async () => { state.foreground.forEach((fn) => fn(1)); });
     expect(texts()).toContain('我在青少聚會 (不是主堂)');
+  });
+
+  it('reads again after a timeout before asking, so one slow first answer does not ask anybody', async () => {
+    const timeout = () => Object.assign(new Error('READ_TIMEOUT'), { retryable: true });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      state.get.mockRejectedValueOnce(timeout()).mockResolvedValueOnce('youth');
+      await mount(React.createElement(CongregationGate));
+      expect(tree!.toJSON()).toBeNull();
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      expect(state.get).toHaveBeenCalledTimes(2);
+      expect(tree!.toJSON()).toBeNull();
+      act(() => tree!.unmount()); resetCongregationStore();
+      state.get.mockReset().mockRejectedValueOnce(timeout()).mockRejectedValueOnce(timeout()).mockRejectedValueOnce(timeout());
+      state.auth = { status: 'signed-in', session: { memberId: 'm3', sessionToken: 't3' } };
+      await mount(React.createElement(CongregationGate));
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      expect(tree!.toJSON()).toBeNull();
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(state.get).toHaveBeenCalledTimes(3);
+    } finally { vi.useRealTimers(); }
+    await settle();
+    expect(texts()).toContain('我平常在哪裡聚會？');
+    expect(texts()).toContain('沒有連上網路，讀不到之前選的。可以直接選，或按「再試一次」。');
   });
 
   it('remembers a choice per member, not per phone', async () => {
@@ -162,7 +189,7 @@ describe('when where I meet cannot be read', () => {
     act(() => tree!.unmount()); resetCongregationStore();
     state.auth = { status: 'signed-in', session: { memberId: 'm2', sessionToken: 't2' } };
     state.get.mockReset().mockRejectedValue(new Error('offline'));
-    await mount(React.createElement(CongregationGate));
+    await mount(React.createElement(CongregationGate)); await settle();
     expect(texts()).toContain('我平常在哪裡聚會？');
   });
 });
