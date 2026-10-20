@@ -69,10 +69,23 @@ run_flow() {
   bash scripts/ios/collect-failure.sh "$UDID" "$name"
 }
 # PROOF BRANCH ONLY: keep every flow-21 Maestro debug log, pass or fail, to line up with CI_DIAG app lines.
+# PROOF BRANCH ONLY: eight more 20 -> 20 s background -> 21 cycles right after 21 (flow 45 later deletes the account).
+EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$(cat "$OUT/app-path.txt")/Info.plist")
+cycles() {
+  mkdir -p "$OUT/cycles"
+  for i in 2 3 4 5 6 7 8 9; do
+    cp .maestro/ios/20-audio-start.yaml "$OUT/cycles/20-audio-start-c$i.yaml"
+    cp .maestro/ios/21-audio-after-background.yaml "$OUT/cycles/21-audio-after-background-c$i.yaml"
+    run_flow "$OUT/cycles/20-audio-start-c$i.yaml"
+    xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null
+    run_flow "$OUT/cycles/21-audio-after-background-c$i.yaml"
+    keep_debug "21-audio-after-background-c$i"
+  done
+}
 keep_debug() { local d; d=$(ls -td "$HOME"/.maestro/tests/*/ 2>/dev/null | head -1); [ -n "$d" ] && tail -n 120 "$d/maestro.log" > "$OUT/maestro/$1-maestro-debug-all.txt" 2>/dev/null; }
 for flow in .maestro/ios/*.yaml; do
   run_flow "$flow"
-  case "$(basename "$flow" .yaml)" in 21-*) keep_debug 21-audio-after-background ;; esac
+  case "$(basename "$flow" .yaml)" in 21-*) keep_debug 21-audio-after-background; cycles ;; esac
   case "$(basename "$flow" .yaml)" in
     # The smoke flow ends on the 讀經 tab; its accessibility tree is what the reader flows are written against.
     00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home > "$OUT/maestro/measure-home.txt" 2>&1; maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/hierarchy-home.json" 2>/dev/null || true ;;
@@ -88,15 +101,4 @@ done
 # collect every PNG the flows produced so the artifact carries them.
 find . "$HOME/.maestro" -name '*.png' -newer "$OUT/.flows-start" -not -path './node_modules/*' -not -path "./$OUT/maestro/*" -exec cp {} "$OUT/maestro/" \; 2>/dev/null || true
 
-# PROOF BRANCH ONLY: five more 20 -> 20 s background -> 21 cycles, the exact state flow 21 failed in.
-EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$(cat "$OUT/app-path.txt")/Info.plist")
-mkdir -p "$OUT/cycles"
-for i in 2 3 4 5 6; do
-  cp .maestro/ios/20-audio-start.yaml "$OUT/cycles/20-audio-start-c$i.yaml"
-  cp .maestro/ios/21-audio-after-background.yaml "$OUT/cycles/21-audio-after-background-c$i.yaml"
-  run_flow "$OUT/cycles/20-audio-start-c$i.yaml"
-  xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null
-  run_flow "$OUT/cycles/21-audio-after-background-c$i.yaml"
-  keep_debug "21-audio-after-background-c$i"
-done
 xcrun simctl spawn "$UDID" log show --last 120m --style compact --predicate "process == \"$EXE\"" 2>/dev/null | grep -F 'CI_DIAG' > "$OUT/maestro/ci-diag-log.txt" || true
