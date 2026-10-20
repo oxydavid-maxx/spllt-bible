@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as Application from 'expo-application';
+import * as Updates from 'expo-updates';
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { clearAuthSession, clearAuthSessionIfCurrent, retryAuthProfile, useAuthSnapshot } from '../services/authSession';
 import { createApiClient } from '../services/apiClient';
@@ -39,7 +40,8 @@ export function AccountSurface({ adminEntry }: { adminEntry?: ReactNode } = {}) 
     await runtime?.savePreferences(next);
   };
   const signOut = () => { clearAuthSession(); };
-  const versionLabel = appVersionLabel(Application.nativeApplicationVersion, Application.nativeBuildVersion);
+  const versionLabel = appVersionLabel(Application.nativeApplicationVersion, Application.nativeBuildVersion,
+    { isEmbeddedLaunch: Updates.isEmbeddedLaunch, updateId: Updates.updateId, createdAt: Updates.createdAt });
 
   if (confirmDelete && session) return <View style={styles.card}>
     <Text accessibilityRole="header" style={styles.title}>刪除帳號與資料</Text>
