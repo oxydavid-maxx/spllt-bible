@@ -10,6 +10,7 @@ vi.mock('react-native', () => ({ Pressable: primitive('Pressable'), Text: primit
   FlatList: (props: any) => React.createElement('FlatList', props, props.data?.map((item: any) => React.createElement(React.Fragment, { key: props.keyExtractor(item) }, props.renderItem({ item })))) }));
 
 import { clientVersionLabel, PeopleList } from '../../src/ui/gamification/PeopleList';
+import { sheetClientColumns } from '../../server/rewardSheetStats';
 import { createGamificationApiClient } from '../../src/services/gamificationApiClient';
 
 const UPDATE = '019a3c1e-7d4f-7b2e-9c41-5e8f2abff271';
@@ -29,6 +30,13 @@ describe('the version line', () => {
   });
   it('says so when the phone has never reported (an app older than this feature)', () => {
     expect(clientVersionLabel(null)).toBe('沒有版本紀錄');
+  });
+  // The prize sheet's 版本 column (光佑 2026-10-21) is written by the server, not by this component: guard that both
+  // name a version the same way, so a person reads the same text in 全體 (管理) and in the sheet.
+  it('matches the prize sheet\'s 版本 column', () => {
+    for (const client of [ANDROID, IOS]) expect(clientVersionLabel(client)).toContain(` ${sheetClientColumns(client).version} · `);
+    expect(sheetClientColumns(ANDROID).version).toBe('0.5.35 · 更新 bff271');
+    expect(sheetClientColumns(null)).toEqual({ phone: '', version: '', lastOpened: '' });
   });
 });
 

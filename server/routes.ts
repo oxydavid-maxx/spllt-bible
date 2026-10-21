@@ -29,6 +29,7 @@ import { ensureClientInstallSchema, latestClientInstall, readClientReport, recor
 import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
 import { applyRewardSheet, listRewards, readRewardSheetPush, rewardOnSide, sheetRedemptionsFor } from './rewardSheet';
 import { rewardSheetReadingStats } from './rewardSheetStats';
+import { sheetAdminMemberIds } from './sheetAdmins';
 import { listBulletins } from './bulletins';
 import { createBulletinPhoneCopies } from './bulletinsResize';
 import { issueBulletinCookie, readBulletinCookie } from './bulletinAccess';
@@ -383,7 +384,8 @@ export function createApiHandler(options: ApiHandlerOptions) {
   const policy = options.pointPolicy ?? DEFAULT_POLICY;
   const configuredAdminMemberIds = options.adminMemberIds ?? (process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean) ?? []);
   const configuredAdminSubjects = options.adminGoogleSubjects ?? (process.env.QINGMU_ADMIN_GOOGLE_SUBJECTS?.split(',').map((value) => value.trim()).filter(Boolean) ?? []);
-  const resolvedAdminMemberIds = (): string[] => {
+  // The administrators from the private settings (the owner). The prize sheet never adds or removes one of these.
+  const settingsAdminMemberIds = (): string[] => {
     const ids = new Set(configuredAdminMemberIds);
     if (configuredAdminSubjects.length > 0) {
       const placeholders = configuredAdminSubjects.map(() => '?').join(',');
@@ -392,6 +394,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
     }
     return [...ids];
   };
+  // Every administrator check below goes through here: the settings plus the people checked 管理者 in the prize
+  // sheet, who get exactly the same rights (光佑 2026-10-21, 「全部一樣」; server/sheetAdmins.ts).
+  const resolvedAdminMemberIds = (): string[] => [...new Set([...settingsAdminMemberIds(), ...sheetAdminMemberIds(options.db.db)])];
   const disableMeetingReminders = options.disableMeetingReminders ?? process.env.QINGMU_DISABLE_MEETING_REMINDERS === 'true';
   return async function handle(request: ApiRequest): Promise<ApiResponse> {
     const url = parsePath(request.url);
@@ -563,8 +568,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (!push) return json(400, { error: 'INVALID_REWARD_SHEET' });
       ensureCongregationSchema(options.db.db);
       const syncedAt = now();
-      const result = applyRewardSheet(options.db.db, push, syncedAt.toISOString());
-      return json(200, { ok: true, ...result, readingStats: rewardSheetReadingStats(options.db.db, syncedAt) });
+      const settingsAdmins = settingsAdminMemberIds();
+      const { newLabels, ...result } = applyRewardSheet(options.db.db, push, syncedAt.toISOString(), settingsAdmins);
+      return json(200, { ok: true, ...result, readingStats: rewardSheetReadingStats(options.db.db, syncedAt, settingsAdmins, newLabels) });
     }
     if (request.method === 'POST' && url.pathname === '/api/integrations/form-registrations' && (options.formRegistrationKey || options.formSyncIdentity)) {
       if (!await integrationAuthorized()) return json(401, { error: 'AUTH_INVALID' });

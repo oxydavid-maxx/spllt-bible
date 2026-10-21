@@ -30,10 +30,11 @@ describe('deployed nine-table reminder data migration', () => {
           expect(next.db.prepare('SELECT meeting_id,schedule_revision,schedule_source_ref FROM member_group_profiles').get()).toMatchObject({ meeting_id: null, schedule_revision: null, schedule_source_ref: null });
           expect(next.db.prepare('PRAGMA quick_check').get()).toMatchObject({ quick_check: 'ok' });
           // Tables added since the deployed nine: reminder delivery + sessions, then the gamification v1
-          // ledgers, friends, journal mirror and migration receipts, and the prize sheet's three (2026-10-17).
-          // Any other new table is a surprise.
+          // ledgers, friends, journal mirror and migration receipts, the prize sheet's three (2026-10-17), and the
+          // sheet's 管理者 checks with their change log (2026-10-21). Any other new table is a surprise.
           const added = ['apple_refresh_tokens', 'reminder_deliveries', 'auth_sessions', 'daily_point_entitlements', 'friend_tokens', 'friendships', 'journal_entries',
-            'member_sheet_labels', 'migration_receipts', 'mutation_receipts', 'reading_days', 'redemptions', 'reward_sheet_sync', 'reward_targets', 'rewards', 'sheet_redemptions', 'wallet_entries'];
+            'member_sheet_labels', 'migration_receipts', 'mutation_receipts', 'reading_days', 'redemptions', 'reward_sheet_sync', 'reward_targets', 'rewards', 'sheet_redemptions', 'wallet_entries',
+            'sheet_admin_changes', 'sheet_admins'];
           expect(next.db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(row => row.name)).toEqual([...tableNames, ...added].sort());
           for (const ledger of ['apple_refresh_tokens', 'wallet_entries', 'redemptions', 'friendships', 'journal_entries']) expect(next.db.prepare(`SELECT count(*) AS n FROM "${ledger}"`).get()).toMatchObject({ n: 0 });
         } finally { next.close(); }
