@@ -50,7 +50,7 @@
 | `server/fcmSender.ts` | 呼叫 FCM HTTP v1，傳聚會或一般 data-only 訊息並要求 provider message ID | `remoteConfiguration.ts` |
 | `server/fixtureVersionNotice.ts` | 從 App 設定產生高一版的 Android/TestFlight 測試更新資訊 | `http.ts` 的 fixture 分支 |
 | `server/friendPush.ts` | 加好友後非同步通知 QR 擁有人所有有效裝置；Android FCM、iOS APNs；失效 APNs token 撤銷 | `routes.ts`；`http.ts`、`remoteConfiguration.ts` 引用 sender 型別 |
-| `server/gamification.ts` | 積分 schema、讀經計畫、完成交易、得分/錢包、個人/好友權限、圖表、QR、目標與重放收據 | `db.ts`、`routes.ts`、`journal.ts`；`rewardSheetStats.ts`、`scripts/migrate-gamification.ts` |
+| `server/gamification.ts` | 積分 schema、讀經計畫、完成交易、得分/錢包、個人/好友權限、圖表、QR、目標與重放收據 | `db.ts`、`routes.ts`、`rewardSheetStats.ts`、`scripts/migrate-gamification.ts`；`journal.ts` 僅引用錯誤型別 |
 | `server/genericChapterAudio.ts` | 即時問 YouVersion 章節音訊 metadata、解析時間/歸屬、記憶體快取與去重、有限並行預熱 | `routes.ts` |
 | `server/googleVerifier.ts` | 用 Google JWKS 驗 ID token；提供指定 audience 與同步腳本用的任意 audience 驗證 | `http.ts` 注入認證函式 |
 | `server/groups.ts` | 建立小組/RPG profile 種子；依連結與聚會狀態投影可公開給會員的資料 | `http.ts`、`routes.ts`；`membership.ts` 留有未使用的 import；現行主要 UI 不提供小組入口 |
