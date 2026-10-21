@@ -118,6 +118,8 @@
 | 內容 | 位置 |
 |---|---|
 | 現在的行為（這裡） | `docs/features/` |
+| 後端模組、資料表、刪帳與外部資料流 | [後端總說明](../backend-structure.md) |
+| 畫面元素的既有設計原因與缺口 | [畫面設計原因盤點](../design/screen-rationale-inventory.md) |
 | 技術規則、兩個平台怎麼改 | [`AGENTS.md`](../../AGENTS.md) |
 | 設計討論與決定 | `docs/design/` |
 | 實作計畫與驗證紀錄 | `docs/superpowers/plans/` |
