@@ -30,6 +30,8 @@
 
 以下命令由維護者在核准發送時執行。員工實作/CI 不發布更新，也不改頻道對應。CLI 固定使用既有 EAS Build 的 24.13.0; SDK 56 發送時必須帶 `--environment`, 兩個頻道都使用同一個 production 環境，避免 API/功能旗標漂移。執行前確認沒有 `CI=true` 搭配 `QINGMU_CI_DISABLE_OTA_CHECKS=1`, 也沒有 fixture/test date 等測試旗標。
 
+沒有 iPhone 時，第 3 步的 iPhone 那一半用 GitHub Actions 的 `ios-ota-verify` 在模擬器上驗收 (見下面「iPhone 模擬器驗收」)：輸入第 2 步記下的 iOS group ID, 判定 PASS 才算 iPhone 驗收通過。
+
 0. 首次啟用由維護者核對兩頻道，必須指向不同分支。以下是操作文件，員工本工單未執行任何線上頻道查詢/建立/改指向：
 
    ```sh
@@ -128,6 +130,25 @@ npx eas-cli@24.13.0 update:rollback <該平台目前-production-最新-group-ID>
 EAS production/preview 與本機簽章正式建置即使繼承 CI 旗標仍保留 `ON_ERROR_RECOVERY`. 一般本機 Gradle 正式建置不可設定這組 CI 專用旗標。iOS CI 在啟動前直接讀回成品 `Expo.plist` 守門，再用記憶體假資料管理者驗證切換持久化；不發布 OTA.
 
 Android 的同等檢查是 `scripts/android/check-updates-config.ts`: prebuild 後讀 `android/` 的 `AndroidManifest.xml` 和 `strings.xml`, 核對 expo-updates 啟用、update URL, runtime 等於 `app.json` 的 version, `expo-channel-name` 是 production, 啟動不等待下載、防變磚與內嵌版本保留，以及 check-on-launch 政策。正式本機建置 `scripts/build-android.ps1 -Variant release` 在 Gradle 前用預設的 `ERROR_RECOVERY_ONLY` 執行，不符就停；維護者自己的發版腳本也要在 prebuild 之後、Gradle 之前呼叫它 (`npx tsx scripts/android/check-updates-config.ts --project <repo>`)。Android CI 用 `--check-on-launch NEVER` 檢查同一份真實 prebuild 輸出。改了 version 一定重新 `npx expo prebuild --platform android --clean`, 不手改 `android/`.
+
+## iPhone 模擬器驗收 (`ios-ota-verify`, 2026-10-21)
+
+沒有 iPhone 時，iOS 的驗收 (「發送流程」第 3 步) 用手動觸發的 GitHub Actions `ios-ota-verify`：輸入 iOS 的 update group ID 和頻道 (預設 `preview`，推到 production 之後也可以驗 production 的 group)，一輪約 40 分鐘，判定表在 run 的摘要，截圖和紀錄在 artifact `ios-ota-verify`。它不推送、不改頻道、不用任何 secret, 也不加進 PR 的自動檢查。
+
+```sh
+gh workflow run ios-ota-verify.yml -f group_id=<iOS 的 group ID> -f channel=preview
+```
+
+| 步驟 | 做法 |
+|---|---|
+| 要驗哪個 update | 讀公開的 `https://u.expo.dev/<projectId>/group/<group ID>` (App 也用這個服務，不用 token)，取得 iOS update 的 ID, runtime 和建立時間。group 不存在或沒有 iOS update 就判 FAIL |
+| 原生層 | 依 runtime 在 `scripts/ios/store-builds.json` 找商店 build 的 commit, 在那個 commit 用 `EAS_BUILD_PROFILE=<頻道>` 建 Release 模擬器 App (`scripts/ios/build-simulator.sh`), 啟動檢查維持 `ON_ERROR_RECOVERY`。讀回成品的版本、build 號、runtime, update URL, 頻道和 `ERROR_RECOVERY_ONLY`；原生設定組成要和這份 update 匯出時的正式設定相同，只差頻道 |
+| 內建 update 的時間 | expo-updates 只收比正在跑的版本新的 update. 今天才建的模擬器 App 比每一份已推的 OTA 都新，會全部拒收，所以把 `EXUpdates.bundle/app.manifest` 的時間改成商店 build 在 EAS 完成的時間 (進位到整秒) 再重簽；商店 App 的內建版本就是在那次建置裡產生的 |
+| 第一次冷啟動 | 內建 JS 的入口換成 `scripts/ios/ota-seed-entry.js`：本機假資料後端的管理者 (`fixture:self`) 照真正登入的方式存好登入狀態，App 自己的啟動檢查 (`src/ui/admin/OtaUpdates.tsx`) 從頻道背景下載 |
+| 第二次冷啟動 | 執行下載的 update. 所有畫面都要登入 (`src/ui/AppStack.tsx`)，所以這台 runner 把 update 的 API 主機名稱指到同一個本機假資料後端 (hosts 檔，憑證只在這台模擬器信任)：update 用登入狀態打開讀經頁和帳戶頁，正式後端收不到任何請求 |
+| 判定 (`scripts/ios/ota-verify.ts verdict`) | 9 項全部 PASS 才 PASS: group 有 iOS update, 頻道現在發的就是它、原生層、內建時間、只連本機、第一次下載的是它、第二次跑的是它 (帳戶頁版本行「· 更新 <台北日期>-<ID 最後 6 碼>」，而且 expo-updates 記錄它成功啟動)、沒有閃退或 ErrorRecovery, 讀經頁打開今天 (台北) 讀經計畫的那幾段。量不到一律 FAIL |
+
+每個 iOS 商店 build 在發版 PR 裡於 `scripts/ios/store-builds.json` 加一筆 (`eas build:list --platform ios --json` 的 `gitCommitHash` 和 `completedAt`)；沒有登記的 runtime 直接 FAIL. 模擬器結果不代替 App Store 安裝入口的驗收；Google/Apple 登入、推播和正式後端的真實資料也不在這裡驗。
 
 ## 原生套件的一次性大小基準
 
