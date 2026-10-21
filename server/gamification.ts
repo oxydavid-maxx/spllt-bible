@@ -547,7 +547,8 @@ export function canViewMember(db: DatabaseSync, viewerId: string, memberId: stri
 export function getPeople(db: DatabaseSync, viewerId: string, scope: 'friends' | 'all', adminMemberIds: readonly string[] = []): PersonListItem[] | GamificationError {
   if (scope === 'all' && !adminMemberIds.includes(viewerId)) return { status: 403, code: 'ADMIN_REQUIRED' };
   const members = scope === 'all'
-    ? db.prepare('SELECT id, display_name FROM members ORDER BY id').all() as Array<{ id: string; display_name: string }>
+    // Disabled accounts (Play test robots, people who left) stay out, as on the sheet and in the ranks (光佑 20261021).
+    ? db.prepare('SELECT id, display_name FROM members WHERE disabled_at IS NULL OR disabled_at = 0 ORDER BY id').all() as Array<{ id: string; display_name: string }>
     : db.prepare(`SELECT CASE WHEN f.member_low = ? THEN f.member_high ELSE f.member_low END AS id, m.display_name, f.created_at
       FROM friendships f JOIN members m ON m.id = CASE WHEN f.member_low = ? THEN f.member_high ELSE f.member_low END
       WHERE (f.member_low = ? OR f.member_high = ?) AND (m.disabled_at IS NULL OR m.disabled_at = 0) ORDER BY f.created_at DESC, id`).all(viewerId, viewerId, viewerId, viewerId) as Array<{ id: string; display_name: string; created_at: number }>;
