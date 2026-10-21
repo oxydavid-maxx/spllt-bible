@@ -91,6 +91,8 @@ jobs:
       - name: Taipei time zone
         run: sudo systemsetup -settimezone Asia/Taipei > /dev/null 2>&1 || echo 'systemsetup failed; launches still set TZ'
       - name: two cold starts
+        # A stuck simulator or driver ends this step, not the job: the verdict and the evidence upload still run.
+        timeout-minutes: 60
         run: APP="$(cat "$OUT/app-path.txt")" bash scripts/ios/ota-sim-run.sh
       - name: verdict
         if: always()

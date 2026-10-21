@@ -426,12 +426,29 @@ async function resolveCommand(groupId: string, channelInput: string, out: string
 
 const PLIST_KEYS = ['CFBundleIdentifier', 'CFBundleShortVersionString', 'CFBundleVersion', 'CFBundleExecutable', 'CFBundleURLTypes',
   'EXUpdatesEnabled', 'EXUpdatesURL', 'EXUpdatesRuntimeVersion', 'EXUpdatesRequestHeaders', 'EXUpdatesCheckOnLaunch', 'EXUpdatesLaunchWaitMs', 'EXUpdatesHasEmbeddedUpdate'];
+/**
+ * One plist key. plutil writes JSON only for a dictionary or an array: run 39522793472 read CFBundleURLTypes and
+ * EXUpdatesRequestHeaders but every string, number and boolean came back empty, so the bundle id, version, runtime,
+ * update URL and the executable name (crash reports, JS fatals) were all unmeasured. A scalar is read with `raw`,
+ * which prints strings as they are and booleans as true/false.
+ */
+export function plistKey(extract: (key: string, format: 'json' | 'raw') => string, key: string): { found: boolean; value?: unknown } {
+  try { return { found: true, value: JSON.parse(extract(key, 'json')) }; } catch { /* a scalar, or absent */ }
+  try {
+    const text = extract(key, 'raw').replace(/\r?\n$/, '');
+    return { found: true, value: text === 'true' ? true : text === 'false' ? false : text };
+  } catch {
+    return { found: false };
+  }
+}
 /** Key by key: a whole-file JSON conversion fails on any <data>/<date> value, and only these keys are judged. */
 const plist = (path: string): Record<string, unknown> | null => {
   if (!existsSync(path)) return null;
+  const extract = (key: string, format: 'json' | 'raw') => run('plutil', ['-extract', key, format, '-o', '-', path]);
   const values: Record<string, unknown> = {};
   for (const key of PLIST_KEYS) {
-    try { values[key] = JSON.parse(run('plutil', ['-extract', key, 'json', '-o', '-', path])); } catch { /* absent in this plist */ }
+    const read = plistKey(extract, key);
+    if (read.found) values[key] = read.value;
   }
   return values;
 };

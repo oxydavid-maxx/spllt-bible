@@ -65,8 +65,10 @@ run_flow() {
       record "$name" "$([ $attempt = 1 ] && echo PASS || echo RERUN-PASS)"; break
     fi
     record "$name" FAIL
-    # Retry only when the driver never started (no test case in the report); an assertion failure is final.
-    grep -q '<testcase' "$OUT/maestro/$name.xml" 2>/dev/null && break
+    # Retry only when the tool failed: the driver never started (no test case in the report) or became unreachable
+    # mid-flow (run 39522793472: DeviceUnreachableException, connection refused). An assertion failure is final.
+    grep -q '<testcase' "$OUT/maestro/$name.xml" 2>/dev/null \
+      && ! grep -Eq 'DeviceUnreachableException|XCUITestServerError' "$OUT/maestro/$name.xml" 2>/dev/null && break
   done
   maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/hierarchy-$name.json" 2>/dev/null || rm -f "$OUT/hierarchy-$name.json"
   xcrun simctl io "$UDID" screenshot "$OUT/$name.png" > /dev/null 2>&1 || true

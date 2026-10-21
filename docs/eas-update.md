@@ -30,6 +30,8 @@
 
 以下命令由維護者在核准發送時執行。員工實作/CI 不發布更新，也不改頻道對應。CLI 固定使用既有 EAS Build 的 24.13.0; SDK 56 發送時必須帶 `--environment`, 兩個頻道都使用同一個 production 環境，避免 API/功能旗標漂移。執行前確認沒有 `CI=true` 搭配 `QINGMU_CI_DISABLE_OTA_CHECKS=1`, 也沒有 fixture/test date 等測試旗標。
 
+沒有 iPhone 時，第 3 步的 iPhone 那一半用 GitHub Actions 的 `ios-ota-verify` 在模擬器上驗收 (見下面「iPhone 模擬器驗收」)：輸入第 2 步記下的 iOS group ID, 判定 PASS 才算 iPhone 驗收通過。
+
 0. 首次啟用由維護者核對兩頻道，必須指向不同分支。以下是操作文件，員工本工單未執行任何線上頻道查詢/建立/改指向：
 
    ```sh
@@ -66,8 +68,6 @@
    為什麼不直接 `eas update`：它打包完立刻上傳，中間沒有機會檢查 bytecode 內容；而且 `--platform all` 在這個專案會連 web 一起打包而失敗 (eas-cli 從專案根目錄找不到放在 `node_modules/expo/node_modules` 裡的 `@expo/cli`，退回舊的 `--platform=all` 參數，web 端的 expo-sqlite wasm 解析失敗)。
 
 3. **兩個平台分別驗收**。Android 和 iOS 是各自執行的兩份更新，iOS 的讀經器等走不同的原生路徑，只看一支手機不代表另一個平台沒問題。維護者在一支 Android 和一支 iPhone 的管理區各自開啟開關，完整關閉 App 後重開，等背景下載；再完整關閉重開，驗收可見的小字變更、讀經、朗讀、登入與既有功能，確認手機所見內容和該平台的 preview update group 相符：帳戶頁最下面的版本行會多「· 更新 <日期>-<更新編號最後 6 碼>」，要和第 2 步記下的該平台 update ID 對得上。每個平台分別記下結果。
-
-   沒有 iPhone 時，iPhone 這一半用 GitHub Actions 的 `ios-ota-verify` 在模擬器上驗收 (見下面「iPhone 模擬器驗收」)：輸入第 2 步記下的 iOS group ID, 判定 PASS 才算 iPhone 驗收通過。
 4. 哪個平台驗收通過，就只把那個平台原樣重發到 production, **不重新匯出或建置**。`<group ID>` 必須使用第 2 步保存的、那個平台自己的 ID; republish 會建立新的 group ID, 但沿用已驗收的程式/資源：
 
    ```sh

@@ -4,7 +4,7 @@ import { parse, parseAllDocuments } from 'yaml';
 import { appVersionLabel } from '../../src/ui/accountSurface';
 import {
   configDifferences, embeddedCommitTime, expectedReading, googleIosUrlScheme, hexId, hierarchyTexts, judge, parseDbRows, parseManifestResponse,
-  storeBuildFor, updateLabelSuffix, type Evidence, type StoreBuild,
+  plistKey, storeBuildFor, updateLabelSuffix, type Evidence, type StoreBuild,
 } from '../../scripts/ios/ota-verify';
 
 // The iPhone OTA acceptance on the simulator (.github/workflows/ios-ota-verify.yml). Shapes below were recorded
@@ -109,6 +109,33 @@ describe('iPhone OTA acceptance: which update', () => {
     const tree = { attributes: { accessibilityText: '' }, children: [{ attributes: { text: '版本 0.5.35 (60) · 更新 20261021-20d84d', value: '' }, children: [] }, { attributes: { accessibilityText: '開啟帳戶' } }] };
     expect(hierarchyTexts(JSON.stringify(tree))).toEqual(['版本 0.5.35 (60) · 更新 20261021-20d84d', '開啟帳戶']);
     expect(hierarchyTexts('maestro: driver not running')).toBeNull();
+  });
+
+  it('reads every plist key the native check needs, also strings, numbers and booleans plutil will not write as JSON', () => {
+    // As plutil answered on the macos-26 runner (run 39522793472): JSON only for a dictionary or an array.
+    const info: Record<string, unknown> = {
+      CFBundleIdentifier: 'org.qingmu.youth', CFBundleVersion: '60', CFBundleExecutable: 'app', EXUpdatesEnabled: true, EXUpdatesHasEmbeddedUpdate: false,
+      EXUpdatesLaunchWaitMs: 0, EXUpdatesRequestHeaders: { 'expo-channel-name': 'preview' }, CFBundleURLTypes: [{ CFBundleURLSchemes: ['org.qingmu.youth'] }],
+    };
+    const extract = (key: string, format: 'json' | 'raw') => {
+      if (!(key in info)) throw new Error(`Could not extract value, error: No value at that key path or invalid key path: ${key}`);
+      const value = info[key];
+      if (format === 'json') { if (typeof value !== 'object') throw new Error('Could not extract value: Invalid object in plist for destination format'); return JSON.stringify(value); }
+      return `${String(value)}\n`;
+    };
+    expect(plistKey(extract, 'CFBundleIdentifier')).toEqual({ found: true, value: 'org.qingmu.youth' });
+    expect(plistKey(extract, 'CFBundleVersion')).toEqual({ found: true, value: '60' });
+    expect(plistKey(extract, 'CFBundleExecutable')).toEqual({ found: true, value: 'app' });
+    expect(plistKey(extract, 'EXUpdatesEnabled')).toEqual({ found: true, value: true });
+    expect(plistKey(extract, 'EXUpdatesHasEmbeddedUpdate')).toEqual({ found: true, value: false });
+    expect(plistKey(extract, 'EXUpdatesLaunchWaitMs')).toEqual({ found: true, value: '0' });
+    expect(plistKey(extract, 'EXUpdatesRequestHeaders')).toEqual({ found: true, value: { 'expo-channel-name': 'preview' } });
+    expect(plistKey(extract, 'CFBundleURLTypes')).toEqual({ found: true, value: [{ CFBundleURLSchemes: ['org.qingmu.youth'] }] });
+    expect(plistKey(extract, 'EXUpdatesURL')).toEqual({ found: false });
+    // What the native check makes of the raw scalars: the store build's values pass, as they are compared.
+    const evidence = passingEvidence();
+    evidence.native = { ...evidence.native!, updates: { ...evidence.native!.updates, enabled: plistKey(extract, 'EXUpdatesEnabled').value, launchWaitMs: plistKey(extract, 'EXUpdatesLaunchWaitMs').value } };
+    expect(statusOf(evidence).native).toBe('PASS');
   });
 
   it('opens the reader on the plan entry for the Taipei day (data/reading-plan-2026.json)', () => {
