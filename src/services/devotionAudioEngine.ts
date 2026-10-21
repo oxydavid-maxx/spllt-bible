@@ -41,6 +41,8 @@ export function createDevotionAudioEngine({ device, loadAudio, timeoutMs = 8_000
       function fallback() {
         if (!active || mode === 'device') return;
         mode = 'device'; clearTimer(); controller.abort(); dispose();
+        // Device speech reports no position: the screen lights the whole paragraph again.
+        callbacks.onProgress?.(null);
         try { speakDevice(); } catch { finish('onError'); }
       }
       cancel = () => { active = false; deviceAttempt++; clearTimer(); controller.abort(); dispose(); };
@@ -62,6 +64,7 @@ export function createDevotionAudioEngine({ device, loadAudio, timeoutMs = 8_000
             onDone: () => { if (mode === 'remote') finish('onDone'); },
             onError: fallback,
             onStopped: () => { if (mode === 'remote') finish('onStopped'); },
+            onProgress: (share) => { if (active && mode === 'remote') callbacks.onProgress?.(share); },
           });
           clearTimer();
         } catch { fallback(); }

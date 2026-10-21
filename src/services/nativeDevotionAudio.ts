@@ -21,7 +21,7 @@ export function createNativeDevotionEngine(connection: () => DevotionClientOptio
       const token = ++speechToken;
       void stopped.then(() => {
         if (token !== speechToken) return;
-        Speech.speak(text, { language: 'zh-TW', rate: request?.rate ?? 1, ...callbacks });
+        Speech.speak(text, { language: 'zh-TW', rate: request?.rate ?? 1, volume: request?.volume ?? 1, onDone: callbacks.onDone, onStopped: callbacks.onStopped, onError: callbacks.onError });
       }).catch(() => { if (token === speechToken) callbacks.onError(); });
     },
   };
@@ -40,6 +40,8 @@ export function createNativeDevotionEngine(connection: () => DevotionClientOptio
     let player: ReturnType<typeof createAudioPlayer>;
     try { player = createAudioPlayer({ uri: file.uri }, { updateInterval: 250 }); }
     catch (error) { file.delete(); throw error; }
+    // As loud as the scripture recording just heard (devotionVolume); the file itself is never changed.
+    player.volume = request.volume ?? 1;
     const playback = createChapterBoundPlayback(player, `devotion:${request.date}:${request.index}`, undefined, { ownsPlayer: true });
     let rate = request.rate, disposed = false;
     let subscription: { remove(): void } | undefined;
@@ -61,7 +63,11 @@ export function createNativeDevotionEngine(connection: () => DevotionClientOptio
             if (disposed) return;
             if (status.error) { reject(new Error('DEVOTIONAL_AUDIO_PLAYBACK')); callbacks.onError(); }
             else if (status.didJustFinish) callbacks.onDone();
-            else if (status.isLoaded) start();
+            else if (status.isLoaded) {
+              start();
+              // The same 250 ms status the player already sends: the read-along needs no timer of its own.
+              if (started && status.duration > 0) callbacks.onProgress?.(Math.min(1, Math.max(0, status.currentTime / status.duration)));
+            }
           });
           if (player.isLoaded) start();
         });

@@ -85,18 +85,45 @@ describe('the 靈修 tab', () => {
     act(() => tree.unmount());
   });
 
+  // 維護者 2026-10-21: lighting a whole screen-long paragraph showed nothing; light the sentence or two heard.
+  it('lights the heading while it is said, then only the piece being heard, keeping the citation small and grey', () => {
+    const long = { ...post, sections: [post.sections[0], { heading: '默想經文', paragraphs: ['彼得前書 5:7 第一句話說得很長很長的一句。第二句話也要說得很長才行。'] }] };
+    const litTexts = (tree: TestRenderer.ReactTestRenderer) => tree.root.findAll((node) => (node.type as unknown) === 'Text' && flat(node.props.style).backgroundColor !== undefined).map(textOf);
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props({ state: { kind: 'ready', post: long }, activeIndex: 2, activePart: 0, speaking: true }))); });
+    expect(litTexts(tree)).toEqual(['默想經文']);
+    act(() => tree.update(React.createElement(DevotionalView, props({ state: { kind: 'ready', post: long }, activeIndex: 2, activePart: 2, speaking: true }))));
+    expect(litTexts(tree)).toEqual(['第二句話也要說得很長才行。']);
+    act(() => tree.update(React.createElement(DevotionalView, props({ state: { kind: 'ready', post: long }, activeIndex: 2, activePart: 1, speaking: true }))));
+    expect(litTexts(tree)).toEqual(['彼得前書 5:7 ', '第一句話說得很長很長的一句。']);
+    const label = tree.root.find((node) => node.props.testID === 'devotion-reference');
+    expect(textOf(label)).toBe('彼得前書 5:7 ');
+    expect(flat(label.props.style)).toMatchObject({ color: '#636161', fontSize: 16 * 0.65 });
+    // Every displayed character is still there, in order.
+    expect(textOf(textNamed(tree, '彼得前書 5:7 第一句話說得很長很長的一句。第二句話也要說得很長才行。'))).toBe(long.sections[1].paragraphs[0]);
+    // The phone's own voice: no position, the whole paragraph lit as before.
+    act(() => tree.update(React.createElement(DevotionalView, props({ state: { kind: 'ready', post: long }, activeIndex: 2, activePart: -1, speaking: true }))));
+    expect(litTexts(tree)).toEqual(['彼得前書 5:7 第一句話說得很長很長的一句。第二句話也要說得很長才行。']);
+    act(() => tree.unmount());
+  });
+
   it('moves to the paragraph being read when the reading starts or resumes, and to the title for the first one (光佑 2026-10-14)', () => {
     scrolls.length = 0;
     let tree!: TestRenderer.ReactTestRenderer;
     act(() => { tree = TestRenderer.create(React.createElement(DevotionalView, props({ activeIndex: 2, speaking: false }))); });
     const sections = tree.root.findAll((node) => (node.type as unknown) === 'View' && typeof node.props.onLayout === 'function');
-    act(() => { sections[1].props.onLayout({ nativeEvent: { layout: { y: 500 } } }); textNamed(tree, '第三段').props.onLayout({ nativeEvent: { layout: { y: 40 } } }); });
+    act(() => { sections[1].props.onLayout({ nativeEvent: { layout: { y: 500 } } }); textNamed(tree, '第三段').props.onLayout({ nativeEvent: { layout: { y: 40, height: 27 } } }); });
     // Paused on 第三段 after the member scrolled away: nothing pulls the page back until ▶.
     expect(scrolls).toEqual([]);
     act(() => tree.update(React.createElement(DevotionalView, props({ activeIndex: 2, speaking: true }))));
-    // The date row and chapter chips lie over the top of the page (insets.top 96): the paragraph
-    // starts just under them, where the title sits on an unscrolled page, not hidden beneath them.
-    expect(scrolls.at(-1)).toMatchObject({ y: 500 + 40 - (96 + 14) });
+    // The date row and chapter chips lie over the top of the page (insets.top 96): the section starts
+    // just under them, where the title sits on an unscrolled page, not hidden beneath them. 第三段 opens
+    // 默想經文, whose heading is said (and lit) first, so the heading comes along (2026-10-21).
+    expect(scrolls.at(-1)).toMatchObject({ y: 500 - (96 + 14) });
+    // A later paragraph of a section starts just under the header itself.
+    act(() => { sections[0].props.onLayout({ nativeEvent: { layout: { y: 100 } } }); textNamed(tree, '第二段').props.onLayout({ nativeEvent: { layout: { y: 160, height: 54 } } }); });
+    act(() => tree.update(React.createElement(DevotionalView, props({ activeIndex: 1, speaking: true }))));
+    expect(scrolls.at(-1)).toMatchObject({ y: 100 + 160 - (96 + 14) });
     act(() => tree.update(React.createElement(DevotionalView, props({ activeIndex: 0, speaking: true }))));
     expect(scrolls.at(-1)).toMatchObject({ y: 0 });
     act(() => tree.unmount());

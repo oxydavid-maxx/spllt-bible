@@ -5,6 +5,7 @@ import { createDevotionSpeech } from '../../services/devotionSpeech';
 import { createNativeDevotionEngine } from '../../services/nativeDevotionAudio';
 import { createDevotionVoiceStore } from '../../services/devotionVoicePreferences';
 import { createDevotionPreferencesStore } from '../../services/devotionPreferences';
+import { devotionVolume } from '../../domain/devotionVoice';
 import { isWithinCompletionWindow, taipeiDate } from '../../domain/gamificationV1';
 import type { DevotionCompletionEvent } from '../CompletionAwardFeedback';
 import type { ReaderDevotion } from '../FullscreenReaderLayout';
@@ -45,12 +46,14 @@ export interface ReaderDevotionBinding {
   leave: () => void;
 }
 
-export function useReaderDevotion({ session, baseUrl, date, showTools, textSettings, narrationSpeed = 1, focused = true }: {
+export function useReaderDevotion({ session, baseUrl, date, showTools, textSettings, narrationSpeed = 1, focused = true, bibleVersionId }: {
   session: { memberId: string; sessionToken: string } | null; baseUrl: string; date: string; showTools: () => void;
   /** The member's 調整字體 settings for scripture (null: the SDK defaults); the 靈修 words follow them. */
   textSettings?: { fontSize: number; lineSpacing: number } | null;
   narrationSpeed?: number;
   focused?: boolean;
+  /** The version whose recording was just heard: the 靈修 plays as loud as it (devotionVolume). */
+  bibleVersionId?: number | null;
 }): ReaderDevotionBinding {
   const refreshSignal = useReaderRetrySignal(focused);
   const memberId = session?.memberId ?? null;
@@ -82,6 +85,7 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   useEffect(() => { void preferences.load(memberId); void voices.load(memberId); }, [memberId]);
   useEffect(() => { speech.setRate(narrationSpeed); }, [speech, narrationSpeed]);
   useEffect(() => { speech.setVoice(voice); }, [speech, voice]);
+  useEffect(() => { speech.setVolume(devotionVolume(voice, bibleVersionId)); }, [speech, voice, bibleVersionId]);
   // A new day, or another member: back to the chapter, nothing read aloud from the old one.
   useEffect(() => { setSelected(false); setAtEnd(false); speakWhenReady.current = false; asking.current = null; speech.stop(); setPost(null); setMarked(null); markRevision.current++; markPendingRef.current = false; setMarkPending(false); setCompletionEvent(null); }, [date, memberId, session?.sessionToken, baseUrl, speech]);
   useEffect(() => () => speech.stop(), [speech]);
@@ -173,6 +177,7 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
     renderView: (insets) => <DevotionalView
       state={current ?? { kind: 'loading' }}
       activeIndex={spoken.date === date ? spoken.index : -1}
+      activePart={spoken.date === date ? spoken.part : -1}
       playerUrl={`${baseUrl}/api/devotional/player`}
       songRequest={songRequest}
       songFollows={follow.enabled}

@@ -54,15 +54,29 @@ describe('per-paragraph Azure audio with device speech fallback', () => {
     expect(f.audio.play).not.toHaveBeenCalled(); expect(f.device.speak).not.toHaveBeenCalled(); expect(cb.onDone).not.toHaveBeenCalled();
     expect(f.loadAudio.mock.calls[0][1].aborted).toBe(true);
   });
-  it('the reading controller passes date, paragraph, voice and rate; the next paragraph can use Azure after fallback', async () => {
+  it('the reading controller passes date, paragraph, voice, rate and volume; the next paragraph can use Azure after fallback', async () => {
     const f = setup(); f.loadAudio.mockRejectedValueOnce(new Error('502'));
     const speech = createDevotionSpeech(f.engine, vi.fn());
-    speech.setVoice('zh-TW-HsiaoChenNeural'); speech.setRate(1.5);
+    speech.setVoice('zh-TW-HsiaoChenNeural'); speech.setRate(1.5); speech.setVolume(0.29);
     speech.start('2026-10-16', { date: '2026-10-16', title: '測試', weekday: '五', passages: '詩1', sections: [{ heading: '默想', paragraphs: ['甲', '乙'] }], song: { youtubeId: 'abcdefghijk', title: null } });
     await flush();
-    expect(vi.mocked(f.device.speak).mock.calls[0][2]).toEqual({ ...context, rate: 1.5, voice: 'zh-TW-HsiaoChenNeural' });
+    expect(vi.mocked(f.device.speak).mock.calls[0][2]).toEqual({ ...context, rate: 1.5, voice: 'zh-TW-HsiaoChenNeural', volume: 0.29 });
     vi.mocked(f.device.speak).mock.calls[0][1].onDone(); await flush();
-    expect(f.loadAudio).toHaveBeenLastCalledWith({ ...context, index: 1, rate: 1.5, voice: 'zh-TW-HsiaoChenNeural' }, expect.any(AbortSignal));
+    expect(f.loadAudio).toHaveBeenLastCalledWith({ ...context, index: 1, rate: 1.5, voice: 'zh-TW-HsiaoChenNeural', volume: 0.29 }, expect.any(AbortSignal));
     speech.stop();
+  });
+
+  it('reports the share played only while Azure audio plays, and none once the phone voice takes over', async () => {
+    const f = setup();
+    const callbacks = { onDone: vi.fn(), onStopped: vi.fn(), onError: vi.fn(), onProgress: vi.fn() };
+    f.engine.speak('甲', callbacks, context); await flush();
+    const played = f.audioCallbacks() as Parameters<DevotionSegmentAudio['play']>[0];
+    played.onProgress!(0.4);
+    expect(callbacks.onProgress).toHaveBeenLastCalledWith(0.4);
+    played.onError();
+    expect(callbacks.onProgress).toHaveBeenLastCalledWith(null);
+    played.onProgress!(0.9);
+    expect(callbacks.onProgress).toHaveBeenLastCalledWith(null);
+    f.engine.stop();
   });
 });

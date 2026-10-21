@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DomWebView, type DomWebViewRef } from '@expo/dom-webview';
 import Svg, { Path } from 'react-native-svg';
-import { splitDevotionReference } from '../../domain/devotionReading';
+import { readAlongPlan, splitDevotionReference } from '../../domain/devotionReading';
 import type { DevotionalPost } from '../../services/devotionClient';
 import { READ_ALONG_HIGHLIGHT } from '../readAlongBridge';
 import { theme } from '../Theme';
@@ -13,8 +13,10 @@ import { theme } from '../Theme';
  * makes no request; it plays only while the screen is on (YouTube does not allow background play)
  * and pauses the moment the app leaves the screen.
  *
- * The words follow the reader's 調整字體 size and spacing, and the paragraph being read is lit in
- * the same grey as scripture, so the two tabs read as one page (維護者 2026-10-14).
+ * The words follow the reader's 調整字體 size and spacing, and what is being read is lit in the same grey
+ * as scripture, so the two tabs read as one page (維護者 2026-10-14). Since 2026-10-21 that is the sentence or
+ * two being heard (readAlongPlan), or the whole paragraph while its audio has not started or the phone's own
+ * voice reads it.
  */
 
 /** The SDK's own defaults (BIBLE_READER_FONT.DEFAULT, READER_LINE_SPACING.DEFAULT): unchanged readers see the old page. */
@@ -33,6 +35,8 @@ export interface DevotionalViewProps {
   onEndChange?: (atEnd: boolean) => void;
   /** The paragraph being read, counted across sections in reading order; -1 when none. */
   activeIndex: number;
+  /** The part of it being heard: 0 its heading, n ≥ 1 piece n - 1, -1 (default) the whole paragraph. */
+  activePart?: number;
   /** `${api}/api/devotional/player`: a page on our own server, so YouTube sees a real embedding site. */
   playerUrl: string;
   /** Raised when the reading has finished and the song should follow. */
@@ -62,7 +66,22 @@ export function songCaption(song: SongState, songFollows: boolean): string {
 const PLAY = 'window.qmPlay&&window.qmPlay();true;';
 const PAUSE = 'window.qmPause&&window.qmPause();true;';
 
-export function DevotionalView({ state, activeIndex, playerUrl, songRequest, songFollows, insets, onEndChange, fontSize = DEFAULT_FONT_SIZE, lineSpacing = DEFAULT_LINE_SPACING, speaking = false }: DevotionalViewProps) {
+/** A paragraph drawn as its pieces, one of them lit; the leading citation keeps its small grey label. */
+function pieceTexts(pieces: string[], reference: string, lit: number, referenceSize: number) {
+  let offset = 0;
+  return pieces.flatMap((piece, index) => {
+    const start = offset;
+    offset += piece.length;
+    const style = index === lit ? styles.pieceLit : undefined;
+    const label = start < reference.length ? Math.min(reference.length, offset) - start : 0;
+    return [
+      label > 0 ? <Text key={`${index}:label`} testID="devotion-reference" style={[styles.reference, { fontSize: referenceSize }, style]}>{piece.slice(0, label)}</Text> : null,
+      label < piece.length ? <Text key={index} style={style}>{piece.slice(label)}</Text> : null,
+    ];
+  });
+}
+
+export function DevotionalView({ state, activeIndex, activePart = -1, playerUrl, songRequest, songFollows, insets, onEndChange, fontSize = DEFAULT_FONT_SIZE, lineSpacing = DEFAULT_LINE_SPACING, speaking = false }: DevotionalViewProps) {
   const viewport = useRef({ height: 0, content: 0, y: 0 });
   const reportEnd = () => {
     const v = viewport.current;
@@ -70,13 +89,14 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
   };
   const scroller = useRef<ScrollView | null>(null);
   const sectionTops = useRef(new Map<number, number>());
-  const paragraphTops = useRef(new Map<number, { section: number; y: number }>());
+  const paragraphTops = useRef(new Map<number, { section: number; y: number; height: number; first: boolean }>());
   const player = useRef<DomWebViewRef | null>(null);
   // A delayed ready message must not auto-start audio after handing off to YouTube.
   const handedOff = useRef(false);
   const [song, setSong] = useState<SongState>('poster');
   const post = state.kind === 'ready' ? state.post : null;
   const songKey = post ? `${post.date}:${post.song.youtubeId}` : '';
+  const plan = useMemo(() => post ? readAlongPlan(post) : [], [post]);
 
   useEffect(() => { onEndChange?.(false); viewport.current = { height: 0, content: 0, y: 0 }; setSong('poster'); handedOff.current = false; sectionTops.current.clear(); paragraphTops.current.clear(); }, [songKey]);
   // The date row and chapter chips lie over the top of the page; read at scroll time, so a header
@@ -90,10 +110,27 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
     if (activeIndex === 0) { scroller.current?.scrollTo({ y: 0, animated: true }); return; }
     const place = paragraphTops.current.get(activeIndex);
     if (!place) return;
-    // The paragraph starts just under the header, where the title sits on an unscrolled page.
-    const top = (sectionTops.current.get(place.section) ?? 0) + place.y;
+    // The paragraph starts just under the header, where the title sits on an unscrolled page; a section's first
+    // paragraph brings its heading along, since that is said (and lit) first.
+    const top = (sectionTops.current.get(place.section) ?? 0) + (place.first ? 0 : place.y);
     scroller.current?.scrollTo({ y: Math.max(0, top - headerTop.current - 14), animated: true });
   }, [activeIndex, speaking]);
+  // Within a paragraph taller than the screen: once the piece heard nears the bottom, it moves up to a third of
+  // the way down. Its place is estimated from its share of the paragraph's characters, like its time.
+  useEffect(() => {
+    const pieces = plan[activeIndex]?.pieces;
+    const place = paragraphTops.current.get(activeIndex);
+    if (!speaking || activePart < 1 || !pieces || !place) return;
+    const total = pieces.reduce((sum, piece) => sum + piece.length, 0);
+    const before = pieces.slice(0, activePart - 1).reduce((sum, piece) => sum + piece.length, 0);
+    const paragraphTop = (sectionTops.current.get(place.section) ?? 0) + place.y;
+    const top = paragraphTop + place.height * before / total;
+    const bottom = paragraphTop + place.height * (before + pieces[activePart - 1].length) / total;
+    const v = viewport.current;
+    const shown = v.height - headerTop.current - insets.bottom;
+    if (v.height <= 0 || shown <= 0 || bottom <= v.y + headerTop.current + shown * 0.85) return;
+    scroller.current?.scrollTo({ y: Math.max(0, top - headerTop.current - shown / 3), animated: true });
+  }, [activePart, activeIndex, speaking, plan, insets.bottom]);
   const handledRequest = useRef(songRequest);
   useEffect(() => {
     if (songRequest === handledRequest.current) return;
@@ -151,15 +188,25 @@ export function DevotionalView({ state, activeIndex, playerUrl, songRequest, son
       <Text accessibilityRole="header" style={[styles.title, text.title]}>{`《${devotional.title}》`}</Text>
       <Text style={styles.meta}>{devotionMeta(devotional)}</Text>
     </View>
-    {devotional.sections.map((section, sectionIndex) => <View key={`${sectionIndex}:${section.heading}`} onLayout={(event) => { sectionTops.current.set(sectionIndex, event.nativeEvent.layout.y); }} style={styles.section}>
-      <Text accessibilityRole="header" style={[styles.heading, text.heading]}>{section.heading}</Text>
+    {devotional.sections.map((section, sectionIndex) => {
+      const first = unit + 1;
+      return <View key={`${sectionIndex}:${section.heading}`} onLayout={(event) => { sectionTops.current.set(sectionIndex, event.nativeEvent.layout.y); }} style={styles.section}>
+      {/* The heading said before a section's first paragraph is lit while it is said. */}
+      <Text accessibilityRole="header" style={[styles.heading, first === activeIndex && activePart === 0 && styles.headingLit, text.heading]}>{section.heading}</Text>
       {section.paragraphs.map((paragraph, paragraphIndex) => {
         unit += 1;
         const index = unit;
         const parts = splitDevotionReference(paragraph);
-        return <Text key={paragraphIndex} onLayout={(event) => { paragraphTops.current.set(index, { section: sectionIndex, y: event.nativeEvent.layout.y }); }} style={[styles.paragraph, index === activeIndex && styles.paragraphLit, text.paragraph]}>{parts.reference ? <Text testID="devotion-reference" style={[styles.reference, { fontSize: fontSize * 0.65 }]}>{parts.reference}</Text> : null}{parts.body}</Text>;
+        const active = index === activeIndex;
+        const pieces = active && activePart >= 1 ? plan[index]?.pieces : undefined;
+        // An active paragraph keeps the lit padding throughout, so lighting its pieces never moves the words.
+        return <Text key={paragraphIndex} onLayout={(event) => { const { y, height } = event.nativeEvent.layout; paragraphTops.current.set(index, { section: sectionIndex, y, height, first: paragraphIndex === 0 }); }} style={[styles.paragraph, active && (activePart < 0 ? styles.paragraphLit : styles.paragraphActive), text.paragraph]}>
+          {pieces ? pieceTexts(pieces, parts.reference, activePart - 1, fontSize * 0.65)
+            : <>{parts.reference ? <Text testID="devotion-reference" style={[styles.reference, { fontSize: fontSize * 0.65 }]}>{parts.reference}</Text> : null}{parts.body}</>}
+        </Text>;
       })}
-    </View>)}
+    </View>;
+    })}
     {devotional.song.youtubeId ? <>
     {playerMounted ? <View style={styles.songCard}>
       <View style={styles.songMedia}>
@@ -220,6 +267,9 @@ const styles = StyleSheet.create({
   // Installed YouVersion verse labels: .65em and --yv-muted-foreground (#636161 in light mode).
   reference: { color: '#636161' },
   paragraphLit: { backgroundColor: `#${READ_ALONG_HIGHLIGHT}`, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8 },
+  paragraphActive: { paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8 },
+  pieceLit: { backgroundColor: `#${READ_ALONG_HIGHLIGHT}` },
+  headingLit: { alignSelf: 'flex-start', backgroundColor: `#${READ_ALONG_HIGHLIGHT}`, borderRadius: 6, overflow: 'hidden', paddingHorizontal: 6, marginHorizontal: -6 },
   poster: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: theme.colors.ink, aspectRatio: 16 / 9, justifyContent: 'flex-end' },
   posterCaption: { paddingHorizontal: theme.spacing.md, paddingVertical: 10, gap: 2 },
   songCard: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: theme.colors.ink },
