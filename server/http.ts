@@ -26,6 +26,7 @@ import { createLineClient, readLineChannelIdFile } from './lineContent';
 import { createLineGroupDirectory } from './lineGroups';
 import { installNat64Fallback } from './nat64Fallback';
 import { deriveFormRegistrationKey } from './eventRegistrations';
+import { fixtureVersionNotice } from './fixtureVersionNotice';
 
 async function readBody(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
@@ -159,6 +160,8 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
     ...(fixtureRoster
       ? {
           weeklyDates: ['2026-09-07', '2026-09-08'],
+          // The simulator flows' version file, one build ahead of the app under test (.maestro/ios/42-testflight-update.yaml).
+          fixtureAppVersion: fixtureVersionNotice(JSON.parse(readFileSync(resolve('app.json'), 'utf8')).expo),
         }
       : {}),
     ...(googleAudience && !options.fixtureToken

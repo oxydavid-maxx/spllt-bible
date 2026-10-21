@@ -39,6 +39,9 @@ const setup = () => {
     sql('INSERT INTO mutation_receipts VALUES(?,?,?,?,?,?,?,?)', id, id, 'test', 'digest', 'test', id, JSON.stringify({ memberId: id }), 1);
     sql('INSERT INTO operations VALUES(?,?,?)', id, JSON.stringify({ memberId: id }), JSON.stringify([id]));
     sql('INSERT INTO event_registrations VALUES(?,?,?)', '2026-10-17', id, 'now');
+    // 管理者 checked in the prize sheet and its change log (光佑 2026-10-21, server/sheetAdmins.ts).
+    sql('INSERT INTO sheet_admins(member_id, granted_at) VALUES(?,?)', id, 'now');
+    sql('INSERT INTO sheet_admin_changes(member_id, label, change, changed_at) VALUES(?,?,?,?)', id, `private-${id}`, 'grant', 'now');
     sql('INSERT INTO reward_nominations(nomination_id,name,created_by,status,revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', id, `private-${id}`, id, 'OPEN', 1, 1, 1);
     sql('INSERT INTO reward_nomination_votes VALUES(?,?,?)', id, id, 1);
     sql('INSERT INTO reward_nomination_assists(nomination_id,state,attempts,requested_at,note_suggestion) VALUES(?,?,?,?,?)', id, 'DONE', 1, 1, `private-${id}`);
@@ -58,7 +61,7 @@ describe('complete server account deletion', () => {
         const contents = JSON.stringify(db.db.prepare(`SELECT * FROM "${name}"`).all());
         expect(contents, name).not.toContain('delete-me');
       }
-      for (const table of ['members', 'completions', 'wallet_entries', 'redemptions', 'member_affiliations', 'reward_nominations', 'reward_nomination_assists']) {
+      for (const table of ['members', 'completions', 'wallet_entries', 'redemptions', 'member_affiliations', 'reward_nominations', 'reward_nomination_assists', 'sheet_admins', 'sheet_admin_changes']) {
         expect(JSON.stringify(db.db.prepare(`SELECT * FROM "${table}"`).all()), table).toContain('keep-me');
       }
     } finally { db.close(); }

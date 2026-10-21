@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { openQingmuJournalStore } from '../storage/mobileDatabase';
 import type { JournalRecord } from '../storage/journalStore';
+import { useAutoUpdateHold } from './useAutoUpdateHold';
 
 /**
  * Owns one day's journal entry: load, debounce, save, and the guards that stop text being lost.
@@ -137,6 +138,8 @@ export function useJournalEntry(options: JournalEntryOptions): JournalEntryView 
     : null;
   const persistedBody = persistedDraftRef.current?.owner === owner ? persistedDraftRef.current.body : visible?.body ?? '';
   const saveStatus = visible === null ? 'empty' : draft !== persistedBody ? 'unsaved' : draft.length > 0 ? 'saved' : 'empty';
+  // Typed but not saved yet: a downloaded update must not reload the app over it (2026-10-21).
+  useAutoUpdateHold(saveStatus === 'unsaved', '日記還沒存');
 
   return {
     ready: visible !== null,

@@ -1,7 +1,7 @@
 import * as Application from 'expo-application';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { checkAppUpdate, startAppUpdate } from '../services/appUpdate';
 import { NO_UPDATE, updateActionLabel, updateTitle, type UpdateState } from '../services/updateCheck';
 import { theme } from './Theme';
@@ -48,7 +48,8 @@ export function UpdateBanner() {
       {state.note ? <Text style={[styles.note, state.mandatory && styles.onPrimarySoft]} numberOfLines={2}>{state.note}</Text> : null}
     </View>
     <Pressable accessibilityRole="button" accessibilityLabel={updateActionLabel(state)}
-      onPress={() => { void startAppUpdate(state, (url) => { void WebBrowser.openBrowserAsync(url); }); }}
+      // TestFlight opens as its own app (an in-app browser cannot show itms-beta:); the install page stays in the browser.
+      onPress={() => { void startAppUpdate(state, (url) => (state.viaTestflight ? Linking.openURL(url) : WebBrowser.openBrowserAsync(url))); }}
       style={[styles.action, state.mandatory && styles.actionOnPrimary]}>
       <Text style={[styles.actionText, state.mandatory && styles.actionTextOnPrimary]}>更新</Text>
     </Pressable>

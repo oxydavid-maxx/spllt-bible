@@ -1,4 +1,6 @@
-# An iPhone never gets the sideload update dialog (src/services/updateCheck.ts): wait past its 20 s retry.
+# An iPhone that is not a TestFlight install never gets an update dialog (src/services/appUpdate.ts), even though
+# the fixture backend publishes a newer version (server/fixtureVersionNotice.ts): wait past its 20 s retry.
+# The TestFlight case is 42-testflight-update.
 appId: org.qingmu.youth
 ---
 - launchApp

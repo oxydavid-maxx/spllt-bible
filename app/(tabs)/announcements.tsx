@@ -128,12 +128,12 @@ export default function AnnouncementsScreen() {
         <Text style={[styles.sideText, side === item.value && styles.sideTextActive]}>{item.name}</Text>
       </Pressable>)}
     </View>
-    <UpdateCard state={update} onUpdate={() => { void startAppUpdate(update, (url) => { void Linking.openURL(url).catch(() => undefined); }); }} />
+    <UpdateCard state={update} onUpdate={() => { void startAppUpdate(update, (url) => Linking.openURL(url)); }} />
     {side === 'main'
       ? <BulletinBoard
           weeks={bulletins.weeks}
           status={bulletins.status}
-          sourceFor={(date, index) => bulletinPageSource(apiBaseUrl, session?.sessionToken ?? '', date, index)}
+          sourceFor={(date, index, width) => bulletinPageSource(apiBaseUrl, session?.sessionToken ?? '', date, index, width)}
           onRetry={() => { setBulletins((now) => ({ ...now, status: 'loading' })); setBulletinRetry((count) => count + 1); }}
         />
       : announcement

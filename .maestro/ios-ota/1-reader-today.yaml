@@ -1,0 +1,20 @@
+# OTA acceptance (scripts/ios/ota-sim-run.sh), cold start 2: simctl just launched the app with the Taipei time
+# zone and it runs whatever expo-updates chose. No launchApp: it would restart the app (and re-grant permissions,
+# which ends the process). Read-only: nothing that signs in, out or writes.
+appId: org.qingmu.youth
+---
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+# Today replaces itself with the Reader at launch (00-smoke); wait for the reader, then for its content.
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 60000
+- extendedWaitUntil:
+    notVisible: "官方閱讀器還在準備中.*"
+    timeout: 60000
+- extendedWaitUntil:
+    visible: "YouVersion原生閱讀器：.*"
+    timeout: 60000
+- assertNotVisible: "重新載入"
+# Which chapters and which day: ota-verify.ts compares this screen's hierarchy with today's plan entry.

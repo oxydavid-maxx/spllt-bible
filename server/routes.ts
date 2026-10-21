@@ -25,10 +25,13 @@ import { DEFAULT_DEVOTION_VOICE, isDevotionVoice } from '../src/domain/devotionV
 import type { DevotionalAudio } from './devotionalAudio';
 import { createSongTitleLookup, isDevotionalDate, readDevotional, type SongTitleLookup } from './devotional';
 import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDates, setDevotion } from './devotionProgress';
+import { ensureClientInstallSchema, latestClientInstall, readClientReport, recordClientInstall } from './clientInstalls';
 import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
 import { applyRewardSheet, listRewards, readRewardSheetPush, rewardOnSide, sheetRedemptionsFor } from './rewardSheet';
 import { rewardSheetReadingStats } from './rewardSheetStats';
-import { listBulletins, readBulletinPage } from './bulletins';
+import { sheetAdminMemberIds } from './sheetAdmins';
+import { listBulletins } from './bulletins';
+import { createBulletinPhoneCopies } from './bulletinsResize';
 import { issueBulletinCookie, readBulletinCookie } from './bulletinAccess';
 import { readAdminLinks } from './adminLinks';
 import { createDeviceSession, isLegacySessionRevoked, isMemberEnabled, resolveDeviceSession, revokeSession } from './mobileSessions';
@@ -76,6 +79,8 @@ export interface ApiHandlerOptions {
   fixtureToken?: string;
   /** Development fixture only (authBoundary.authenticate): the member for a token-only request. */
   fixtureDefaultMemberId?: string;
+  /** Fixture backend only (server/fixtureVersionNotice.ts): the version file the CI simulator flows read. */
+  fixtureAppVersion?: Record<string, unknown>;
   productionGoogleAuth?: ProductionGoogleAuth;
   productionAppleAuth?: {
     verify: (token: string, nonce: string) => Promise<AppleIdentity>;
@@ -321,6 +326,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
   ensureEventRegistrationSchema(options.db.db);
   ensureDevotionSchema(options.db.db);
   ensureCongregationSchema(options.db.db);
+  ensureClientInstallSchema(options.db.db);
   const songTitle = options.songTitle ?? createSongTitleLookup();
   if (options.scheduleDates && options.scheduleDates.length > 0) {
     // Existing tests and local deployments can narrow the aggregate period without
@@ -332,8 +338,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
   // Signs the 週刊 page cookie (server/bulletinAccess.ts); without a session secret it lasts as long as the process.
   const bulletinCookieKey = options.sessionSecret ?? randomBytes(32);
   const bulletinPagePath = /^\/api\/bulletins\/(\d{4}-\d{2}-\d{2})\/(\d{1,2})$/;
-  const bulletinPageResponse = (date: string, index: number): ApiResponse => {
-    const bytes = readBulletinPage(options.bulletinDir, date, index);
+  // ?w=<width>: the list's phone copy (server/bulletinsResize.ts); without it, the original (full screen, older apps).
+  const bulletinPhoneCopies = createBulletinPhoneCopies(options.bulletinDir);
+  const bulletinPageResponse = async (date: string, index: number, width: string | null): Promise<ApiResponse> => {
+    const bytes = await bulletinPhoneCopies.page(date, index, width === null ? null : Number(width));
     return bytes ? { status: 200, body: {}, binaryBody: bytes, headers: { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=604800' } }
       : gamificationError({ status: 404, code: 'BULLETIN_NOT_FOUND' });
   };
@@ -376,7 +384,8 @@ export function createApiHandler(options: ApiHandlerOptions) {
   const policy = options.pointPolicy ?? DEFAULT_POLICY;
   const configuredAdminMemberIds = options.adminMemberIds ?? (process.env.QINGMU_ADMIN_MEMBER_IDS?.split(',').map((value) => value.trim()).filter(Boolean) ?? []);
   const configuredAdminSubjects = options.adminGoogleSubjects ?? (process.env.QINGMU_ADMIN_GOOGLE_SUBJECTS?.split(',').map((value) => value.trim()).filter(Boolean) ?? []);
-  const resolvedAdminMemberIds = (): string[] => {
+  // The administrators from the private settings (the owner). The prize sheet never adds or removes one of these.
+  const settingsAdminMemberIds = (): string[] => {
     const ids = new Set(configuredAdminMemberIds);
     if (configuredAdminSubjects.length > 0) {
       const placeholders = configuredAdminSubjects.map(() => '?').join(',');
@@ -385,6 +394,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
     }
     return [...ids];
   };
+  // Every administrator check below goes through here: the settings plus the people checked 管理者 in the prize
+  // sheet, who get exactly the same rights (光佑 2026-10-21, 「全部一樣」; server/sheetAdmins.ts).
+  const resolvedAdminMemberIds = (): string[] => [...new Set([...settingsAdminMemberIds(), ...sheetAdminMemberIds(options.db.db)])];
   const disableMeetingReminders = options.disableMeetingReminders ?? process.env.QINGMU_DISABLE_MEETING_REMINDERS === 'true';
   return async function handle(request: ApiRequest): Promise<ApiResponse> {
     const url = parsePath(request.url);
@@ -394,6 +406,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
         instanceId: options.instanceId ?? 'unconfigured',
         authMode: options.authMode ?? (options.productionGoogleAuth ? 'google-only' : 'fixture'),
       });
+    }
+    // The fixture backend's version file, one build ahead of the app under test; a real backend has none.
+    if (request.method === 'GET' && url.pathname === '/api/fixture/app-version.json' && options.fixtureAppVersion) {
+      return json(200, options.fixtureAppVersion);
     }
     if (request.method === 'POST' && url.pathname === '/api/device/reminders/revoke') {
       const installationId = request.headers['x-qingmu-installation-id'];
@@ -552,8 +568,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
       if (!push) return json(400, { error: 'INVALID_REWARD_SHEET' });
       ensureCongregationSchema(options.db.db);
       const syncedAt = now();
-      const result = applyRewardSheet(options.db.db, push, syncedAt.toISOString());
-      return json(200, { ok: true, ...result, readingStats: rewardSheetReadingStats(options.db.db, syncedAt) });
+      const settingsAdmins = settingsAdminMemberIds();
+      const { newLabels, ...result } = applyRewardSheet(options.db.db, push, syncedAt.toISOString(), settingsAdmins);
+      return json(200, { ok: true, ...result, readingStats: rewardSheetReadingStats(options.db.db, syncedAt, settingsAdmins, newLabels) });
     }
     if (request.method === 'POST' && url.pathname === '/api/integrations/form-registrations' && (options.formRegistrationKey || options.formSyncIdentity)) {
       if (!await integrationAuthorized()) return json(401, { error: 'AUTH_INVALID' });
@@ -566,7 +583,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
     const cookiePage = request.method === 'GET' && !request.headers.authorization ? url.pathname.match(bulletinPagePath) : null;
     if (cookiePage) {
       const memberId = readBulletinCookie(request.headers.cookie, bulletinCookieKey, now().getTime());
-      if (memberId && memberExists(options.db.db, memberId) && isMemberEnabled(options.db.db, memberId)) return bulletinPageResponse(cookiePage[1], Number(cookiePage[2]));
+      if (memberId && memberExists(options.db.db, memberId) && isMemberEnabled(options.db.db, memberId)) return bulletinPageResponse(cookiePage[1], Number(cookiePage[2]), url.searchParams.get('w'));
     }
     const auth = options.productionGoogleAuth && options.sessionSecret
       ? await authenticateSessionOrGoogle(request.headers, options.productionGoogleAuth, options.sessionSecret, sessions)
@@ -574,6 +591,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
     if ('status' in auth) return isGamificationPath(url.pathname) ? gamificationError({ status: auth.status, code: auth.error }) : json(auth.status, { error: auth.error });
     if (!memberExists(options.db.db, auth.memberId)) return isGamificationPath(url.pathname) ? gamificationError({ status: 401, code: 'AUTH_INVALID' }) : json(401, { error: 'AUTH_INVALID' });
     if (!isMemberEnabled(options.db.db, auth.memberId)) return isGamificationPath(url.pathname) ? gamificationError({ status: 401, code: 'AUTH_INVALID' }) : json(401, { error: 'ACCOUNT_DISABLED' });
+    // Which version this phone runs and the day it was opened (光佑 2026-10-21, server/clientInstalls.ts). An older
+    // app sends nothing and is served as before; a failed write never fails the request.
+    const clientReport = readClientReport(request.headers);
+    if (clientReport) { try { recordClientInstall(options.db.db, auth.memberId, clientReport, taipeiDate(now())); } catch { /* best effort */ } }
     if (request.method === 'POST' && url.pathname === '/api/session/device' && options.productionGoogleAuth && options.sessionSecret) {
       return json(200, createDeviceSession(options.db.db, auth.memberId));
     }
@@ -620,8 +641,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
         if (scope !== 'friends' && scope !== 'all') return gamificationError({ status: 400, code: 'INVALID_SCOPE' });
         const people = getPeople(options.db.db, auth.memberId, scope, resolvedAdminMemberIds());
         if (!Array.isArray(people)) return gamificationError(people);
-        // 全體 (administrators only, getPeople) says where each person counts (維護者 2026-10-20); friends never see it.
-        return gamificationJson(200, { scope, people: scope === 'all' ? people.map((person) => ({ ...person, congregation: congregationOf(options.db.db, person.memberId) })) : people });
+        // 全體 (administrators only, getPeople) says where each person counts (維護者 2026-10-20) and which version
+        // their phone runs (光佑 2026-10-21); friends never see either.
+        return gamificationJson(200, { scope, people: scope === 'all' ? people.map((person) => ({ ...person, congregation: congregationOf(options.db.db, person.memberId), client: latestClientInstall(options.db.db, person.memberId) })) : people });
       }
       const scoreProfileMatch = url.pathname.match(/^\/api\/points\/profiles\/([^/]+)$/);
       if (request.method === 'GET' && scoreProfileMatch) {
@@ -741,7 +763,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
         return { ...listed, headers: { ...listed.headers, 'set-cookie': issueBulletinCookie(auth.memberId, bulletinCookieKey, now().getTime()) } };
       }
       const bulletinPage = url.pathname.match(bulletinPagePath);
-      if (request.method === 'GET' && bulletinPage) return bulletinPageResponse(bulletinPage[1], Number(bulletinPage[2]));
+      if (request.method === 'GET' && bulletinPage) return bulletinPageResponse(bulletinPage[1], Number(bulletinPage[2]), url.searchParams.get('w'));
       const devotionalMatch = url.pathname.match(/^\/api\/devotional\/([^/]+)$/);
       if (request.method === 'GET' && devotionalMatch) {
         const date = decodeURIComponent(devotionalMatch[1]);

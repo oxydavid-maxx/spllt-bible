@@ -12,6 +12,8 @@ const native = vi.hoisted(() => ({
   values: new Map<string, string>(),
   speak: vi.fn(),
   getDevotional: vi.fn(async (_date: string): Promise<unknown> => null),
+  // Every state the 靈修 page was drawn with, in order (the DevotionalView stand-in records it).
+  shown: [] as string[],
   post: { date: '2026-10-14', weekday: '三', passages: '詩118', title: '測試題目', sections: [{ heading: '默想經文', paragraphs: ['測試段落'] }], song: { youtubeId: 'abcdefghijk', title: null } },
 }));
 vi.hoisted(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; });
@@ -46,10 +48,11 @@ vi.mock('../../src/ui/ChapterAudioControls', () => ({
 vi.mock('expo-speech', () => ({ speak: native.speak, stop: async () => undefined }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: async (k: string) => native.values.get(k) ?? null, setItemAsync: async (k: string, v: string) => { native.values.set(k, v); } }));
 vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () => ({ getDevotionDates: async () => [], setDevotion: async () => undefined, getDevotional: native.getDevotional }) }));
-vi.mock('../../src/ui/devotion/DevotionalView', () => ({ DevotionalView: (p: any) => React.createElement('DevotionalView', p) }));
+vi.mock('../../src/ui/devotion/DevotionalView', () => ({ DevotionalView: (p: any) => { native.shown.push(p.state.kind); return React.createElement('DevotionalView', p); } }));
 
 import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
-import { useReaderDevotion, type ReaderDevotionBinding } from '../../src/ui/devotion/useReaderDevotion';
+import { DEVOTIONAL_RETRY_DELAY_MS, useReaderDevotion, type ReaderDevotionBinding } from '../../src/ui/devotion/useReaderDevotion';
+import { GamificationApiError } from '../../src/services/gamificationApiClient';
 
 let chrome: ReturnType<typeof useReaderChrome>;
 let binding: ReaderDevotionBinding;
@@ -84,7 +87,7 @@ function pending() {
 
 beforeEach(() => {
   date = '2026-10-14';
-  native.listeners.clear(); native.values.clear(); native.speak.mockClear();
+  native.listeners.clear(); native.values.clear(); native.speak.mockClear(); native.shown.length = 0;
   native.getDevotional.mockReset().mockResolvedValue(null);
   vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -298,5 +301,121 @@ describe('which empty day waits for a post', () => {
     await mount();
     await act(async () => binding.devotion!.onSelect());
     expect(state()).toEqual({ kind: 'missing', awaiting });
+  });
+});
+
+// 2026-10-20 (光佑): the morning's 07:08 backend deploy dropped requests for about 3 s and the 靈修 page opened on
+// 靈修暫時無法載入. A network error or a 5xx is now asked again once, after a short wait, while 載入中 stays on;
+// only a second failure shows the error and 重試. The 0.5.34 loop (#68, #74) is the risk this must not bring back:
+// one automatic ask again per look, never a chain of them.
+describe('a network blip while loading: one automatic ask again', () => {
+  beforeEach(() => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-14T00:30:00Z')); // 10/14 (三) 08:30 Taipei
+    // A runaway loop is cut off here, so a failing run reports a count instead of hanging.
+    native.getDevotional.mockImplementation(async () => { if (asked() > 40) return new Promise(() => undefined); return null; });
+  });
+  const networkError = () => new GamificationApiError('NETWORK_ERROR', true, 0);
+  const serverError = () => new GamificationApiError('API_ERROR', true, 502);
+  const timeout = () => new GamificationApiError('READ_TIMEOUT', true, 0);
+  const wait = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
+  const failFirst = (error: () => Error) => { native.getDevotional.mockImplementationOnce(async () => { throw error(); }); };
+  const failAlways = (error: () => Error) => { native.getDevotional.mockImplementation(async () => { if (asked() > 40) return new Promise(() => undefined); throw error(); }); };
+
+  it.each([['a network error', networkError], ['a 5xx', serverError], ['a timeout', timeout]])('%s, then the post: the post shows, no error on the way', async (_case, error) => {
+    failFirst(error);
+    native.getDevotional.mockResolvedValueOnce(native.post);
+    await mount();
+    await act(async () => binding.devotion!.onSelect());
+    expect(asked()).toBe(1);
+    expect(state().kind).toBe('loading');
+    await wait(DEVOTIONAL_RETRY_DELAY_MS - 1);
+    expect(asked()).toBe(1);
+    await wait(1);
+    expect(asked()).toBe(2);
+    expect(state().kind).toBe('ready');
+    expect(native.shown.length).toBeGreaterThan(0);
+    expect(native.shown).not.toContain('error');
+  });
+
+  it.each([['network errors', networkError], ['5xx answers', serverError]])('two %s: the error and 重試, two requests in all', async (_case, error) => {
+    failAlways(error);
+    await mount();
+    await act(async () => binding.devotion!.onSelect());
+    await wait(DEVOTIONAL_RETRY_DELAY_MS);
+    expect(asked()).toBe(2);
+    expect(state().kind).toBe('error');
+    // Guard (0.5.34, #68/#74): the same failure is asked again at most once, however long the page stays open.
+    await wait(6 * 60 * 60 * 1000);
+    expect(asked()).toBe(2);
+  });
+
+  it('parked at the end of the day\'s last chapter with the backend down: two requests, then the error stays', async () => {
+    failAlways(networkError);
+    await mount();
+    await reachLastChapterEnd();
+    await wait(DEVOTIONAL_RETRY_DELAY_MS);
+    await wait(6 * 60 * 60 * 1000);
+    expect(asked()).toBe(2);
+    expect(state().kind).toBe('error');
+  });
+
+  it('重試 after the error gets one automatic ask again of its own, never more', async () => {
+    failAlways(networkError);
+    await mount();
+    await act(async () => binding.devotion!.onSelect());
+    await wait(DEVOTIONAL_RETRY_DELAY_MS);
+    const shown = state() as unknown as { kind: 'error'; onRetry: () => void };
+    expect(shown.kind).toBe('error');
+    await act(async () => shown.onRetry());
+    expect(asked()).toBe(3);
+    expect(state().kind).toBe('loading');
+    await wait(DEVOTIONAL_RETRY_DELAY_MS);
+    await wait(6 * 60 * 60 * 1000);
+    expect(asked()).toBe(4);
+    expect(state().kind).toBe('error');
+  });
+
+  it('looks during the wait send nothing more: the one question is still on its way', async () => {
+    failFirst(networkError);
+    native.getDevotional.mockResolvedValueOnce(native.post);
+    await mount();
+    await act(async () => binding.devotion!.onSelect());
+    await act(async () => binding.devotion!.onSelect());
+    await foreground();
+    await reachLastChapterEnd();
+    expect(asked()).toBe(1);
+    await wait(DEVOTIONAL_RETRY_DELAY_MS);
+    expect(asked()).toBe(2);
+    expect(state().kind).toBe('ready');
+  });
+
+  it('a day left during the wait is not asked again', async () => {
+    failFirst(networkError);
+    await mount();
+    await act(async () => binding.devotion!.onSelect());
+    await showDate('2026-10-13');
+    await wait(DEVOTIONAL_RETRY_DELAY_MS);
+    await wait(6 * 60 * 60 * 1000);
+    expect(native.getDevotional.mock.calls.map(([day]) => day)).toEqual(['2026-10-14']);
+  });
+
+  it('today\'s post not out yet stays as before: 靈修請待發佈 at once, one request, no timer', async () => {
+    // The client turns the server's DEVOTIONAL_NOT_YET_POSTED (and a plain 404) into null: not a network error.
+    native.getDevotional.mockResolvedValue(null);
+    await mount();
+    await act(async () => binding.devotion!.onSelect());
+    expect(state()).toEqual({ kind: 'missing', awaiting: true });
+    await wait(6 * 60 * 60 * 1000);
+    expect(asked()).toBe(1);
+    expect(native.shown).not.toContain('error');
+  });
+
+  it('an answer that will not change on its own (a refusal, bad data) shows the error at once', async () => {
+    failAlways(() => new GamificationApiError('INVALID_API_RESPONSE', false, 200));
+    await mount();
+    await act(async () => binding.devotion!.onSelect());
+    expect(state().kind).toBe('error');
+    await wait(6 * 60 * 60 * 1000);
+    expect(asked()).toBe(1);
   });
 });

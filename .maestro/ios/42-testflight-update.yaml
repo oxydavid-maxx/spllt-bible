@@ -1,0 +1,36 @@
+# 光佑 20261021: a TestFlight iPhone gets the same 有新版本 as Android, and 更新 opens 竹科聖經 in TestFlight;
+# an App Store install never sees a TestFlight link. The simulator has no store receipt, so this fixture build
+# takes the install source from a launch argument (src/services/iosInstallSource.ts), and the fixture backend
+# publishes a version one build ahead (server/fixtureVersionNotice.ts). The real receipt check is proven on a
+# TestFlight iPhone after release.
+appId: org.qingmu.youth
+---
+- launchApp:
+    arguments:
+      qingmuInstallSource: testflight
+- extendedWaitUntil:
+    visible: "有新版本.*"
+    timeout: 90000
+- assertVisible: "按「更新」會打開 TestFlight.*"
+- takeScreenshot: 42-testflight-prompt
+# The simulator has no TestFlight app: the itms-beta link fails and the TestFlight web page opens in Safari,
+# so the app leaves the screen. 更新 never dismisses the prompt inside the app, so "gone" means "left".
+- tapOn:
+    text: "更新到.*"
+- extendedWaitUntil:
+    notVisible: "有新版本.*"
+    timeout: 20000
+- takeScreenshot: 42-testflight-opened
+# The same build pretending to come from the App Store: no request, no prompt, past the 20 s retry.
+- launchApp:
+    arguments:
+      qingmuInstallSource: app-store
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- extendedWaitUntil:
+    visible: "有新版本.*"
+    timeout: 25000
+    optional: true
+- assertNotVisible: "有新版本.*"
+- takeScreenshot: 42-app-store-no-prompt

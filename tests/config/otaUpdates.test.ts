@@ -86,12 +86,15 @@ describe('EAS Update native startup configuration', () => {
     expect(returned.slice(gate)).not.toContain('<OtaUpdateCheck />');
   });
 
-  it('wires a single non-blocking startup owner and never uses URL overrides or forced reloads', () => {
+  // 光佑 20261021 replaced "never reload" (2026-10-19): a downloaded update is put in place on a return after
+  // 30 minutes away, behind the interruption guard (tests/tools/autoUpdateHolds.test.ts, tests/ui/otaAutoApply.test.ts).
+  it('wires a single non-blocking owner that never polls and never uses URL overrides', () => {
     const root = readFileSync('app/_layout.tsx', 'utf8');
     expect(root.match(/<OtaUpdateCheck\s*\/>/g)).toHaveLength(1);
     const source = readFileSync('src/ui/admin/OtaUpdates.tsx', 'utf8');
-    expect(source).not.toMatch(/Updates\.(reloadAsync|setUpdateURLAndRequestHeadersOverride)\s*\(/);
-    expect(source).not.toMatch(/setInterval\s*\(|AppState\.addEventListener/);
+    expect(source).not.toMatch(/Updates\.setUpdateURLAndRequestHeadersOverride\s*\(/);
+    expect(source).not.toMatch(/setInterval\s*\(|setTimeout\s*\(|AppState\.addEventListener/);
+    expect(source).toMatch(/AUTO_APPLY_AWAY_MS = 30 \* 60_000/);
     for (const workflow of ['android', 'ios']) expect(readFileSync(`.github/workflows/${workflow}.yml`, 'utf8')).toContain("QINGMU_CI_DISABLE_OTA_CHECKS: '1'");
   });
 });

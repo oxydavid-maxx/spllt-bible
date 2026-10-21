@@ -7,7 +7,7 @@ vi.hoisted(() => { (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REA
 vi.mock('react-native', () => ({ View: 'View', Text: 'Text', Switch: 'Switch', StyleSheet: { create: (s: unknown) => s } }));
 // The account page is a focused screen; useViewerCapabilities (#73) refetches on focus and on return to the foreground.
 vi.mock('expo-router', () => ({ useFocusEffect: (fn: () => void) => require('react').useEffect(fn, [fn]) }));
-vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: (revision?: number) => void) => { state.foreground.add(fn); return () => state.foreground.delete(fn); } }));
+vi.mock('../../src/services/appVisibility', () => ({ subscribeAppActive: (fn: (revision?: number) => void) => { state.foreground.add(fn); return () => state.foreground.delete(fn); }, subscribeAppHidden: () => () => undefined, isAppHidden: () => false }));
 vi.mock('expo-constants', () => ({ default: { get expoConfig() { return { extra: { otaCheckEnabled: state.checksEnabled } }; } } }));
 vi.mock('expo-updates', () => ({
   get isEnabled() { return state.enabled; }, get channel() { return state.channel; },

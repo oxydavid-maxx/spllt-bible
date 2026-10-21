@@ -54,6 +54,82 @@ export interface UpdateState {
   note: string | null;
   /** Play manages this install, so 更新 runs Play's in-app update (src/services/appUpdate.ts). */
   viaPlay?: true;
+  /** A TestFlight iPhone (光佑 2026-10-21): 更新 opens this app in TestFlight. Never set for an App Store install. */
+  viaTestflight?: true;
+}
+
+/**
+ * 竹科聖經 in the TestFlight app, then its web page when the app cannot be opened (the simulator has none).
+ * The id is the App Store Connect app id the release submits to (eas.json submit.production.ios.ascAppId).
+ */
+export const TESTFLIGHT_APP_URL = 'itms-beta://beta.itunes.apple.com/v1/app/6822755754';
+export const TESTFLIGHT_WEB_URL = 'https://beta.itunes.apple.com/v1/app/6822755754';
+
+/** The newest TestFlight build, from the version file's `ios.testflight` block (docs/app-version.md). */
+export interface PublishedTestflight {
+  /** CFBundleVersion of that build: app.config.js sets it to the Android versionCode. The only field compared. */
+  buildNumber: number;
+  versionName: string;
+  mandatory?: boolean;
+  note?: string;
+}
+
+/**
+ * The `ios` block, added 2026-10-21. Older apps read only the top-level Android fields and ignore it.
+ * `appStore` present (any object) says the app is also on the App Store: then an iPhone that cannot prove it
+ * came from TestFlight is never offered TestFlight.
+ */
+export function readPublishedIos(value: unknown): { testflight: PublishedTestflight | null; appStoreListed: boolean } {
+  const ios = typeof value === 'object' && value !== null ? (value as Record<string, unknown>).ios : null;
+  if (typeof ios !== 'object' || ios === null) return { testflight: null, appStoreListed: false };
+  const block = ios as Record<string, unknown>;
+  const appStoreListed = typeof block.appStore === 'object' && block.appStore !== null;
+  const record = typeof block.testflight === 'object' && block.testflight !== null ? block.testflight as Record<string, unknown> : null;
+  const buildNumber = record?.buildNumber;
+  const versionName = record?.versionName;
+  if (!record || typeof buildNumber !== 'number' || !Number.isInteger(buildNumber) || buildNumber <= 0 || typeof versionName !== 'string' || !versionName.trim()) {
+    return { testflight: null, appStoreListed };
+  }
+  return {
+    testflight: {
+      buildNumber, versionName: versionName.trim(), mandatory: record.mandatory === true,
+      note: typeof record.note === 'string' && record.note.trim() ? record.note.trim() : undefined,
+    },
+    appStoreListed,
+  };
+}
+
+/** A newer TestFlight build than the one running; same rule as Android: equal or older is not an update. */
+export function compareTestflight(published: PublishedTestflight | null, installedBuild: number | null): UpdateState {
+  if (!published || installedBuild === null || published.buildNumber <= installedBuild) return NO_UPDATE;
+  return {
+    available: true, mandatory: published.mandatory === true, versionName: published.versionName,
+    url: TESTFLIGHT_APP_URL, note: published.note ?? null, viaTestflight: true,
+  };
+}
+
+/**
+ * Ask on a TestFlight iPhone (src/services/appUpdate.ts decides which iPhone that is). Every failure is "no
+ * update", as on Android. `receiptProvesTestflight` false means only the store signature was seen (no receipt
+ * yet): such a phone is offered TestFlight only while the file does not say the app is on the App Store.
+ */
+export async function fetchTestflightUpdateState(
+  installedBuild: number | null,
+  { receiptProvesTestflight, url = VERSION_URL, fetchImpl = fetch }: { receiptProvesTestflight: boolean; url?: string; fetchImpl?: typeof fetch },
+): Promise<UpdateState> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetchImpl(url, { signal: controller.signal });
+    if (!response.ok) return NO_UPDATE;
+    const ios = readPublishedIos(await response.json());
+    if (ios.appStoreListed && !receiptProvesTestflight) return NO_UPDATE;
+    return compareTestflight(ios.testflight, installedBuild);
+  } catch {
+    return NO_UPDATE;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export const NO_UPDATE: UpdateState = { available: false, mandatory: false, versionName: null, url: null, note: null };
@@ -116,16 +192,17 @@ export async function fetchUpdateState(
   installedVersionCode: number | null,
   platform: string,
   fetchImpl: typeof fetch = fetch,
+  url: string = VERSION_URL,
 ): Promise<UpdateState> {
-  // The published build is a sideloaded APK. An iPhone updates from the App Store by itself, and App Review
-  // guideline 2.5.2 forbids pointing it at an installer, so iOS neither asks nor shows (UpdatePrompt,
-  // UpdateBanner and the announcements card all come through here). The caller passes Platform.OS: this
-  // module stays free of react-native because the Node release check (verify-install-link) imports it.
+  // The published build here is a sideloaded APK, and App Review guideline 2.5.2 forbids pointing an iPhone
+  // at an installer, so iOS never reads these fields; a TestFlight iPhone reads the `ios` block instead
+  // (fetchTestflightUpdateState). The caller passes Platform.OS: this module stays free of react-native
+  // because the Node release check (verify-install-link) imports it.
   if (platform !== 'android') return NO_UPDATE;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetchImpl(VERSION_URL, { signal: controller.signal });
+    const response = await fetchImpl(url, { signal: controller.signal });
     if (!response.ok) return NO_UPDATE;
     return compareToInstalled(readPublishedVersion(await response.json()), installedVersionCode);
   } catch {

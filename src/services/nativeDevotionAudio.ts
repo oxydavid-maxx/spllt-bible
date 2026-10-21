@@ -5,11 +5,16 @@ import type { SpeechEngine } from './devotionSpeech';
 import { createDevotionAudioEngine, type DevotionSegmentAudio } from './devotionAudioEngine';
 import { createPrefetchingDevotionAudio, fetchDevotionAudio } from './devotionAudioClient';
 import { createChapterBoundPlayback } from './expoAudioPlayback';
+import { addAutoUpdateProbe } from './autoUpdateGuard';
 
 // Expo's inherited SharedObject listener declaration is unresolved by this TS setup, as in ChapterAudioControls.
 interface PlaybackStatusEmitter { addListener(event: 'playbackStatusUpdate', listener: (status: AudioStatus) => void): { remove(): void } }
 
 let fileSequence = 0;
+// The device voice reads a devotion when the recorded audio is unavailable; while it speaks, a downloaded update
+// waits (2026-10-21, src/services/autoUpdateGuard.ts). Registered once, on first use; the player path reports
+// through createChapterBoundPlayback.
+let speechProbeAdded = false;
 
 export function createNativeDevotionEngine(connection: () => DevotionClientOptions | null): SpeechEngine {
   // expo-speech stop is asynchronous; a late stop must never cancel the replacement utterance.
@@ -18,6 +23,7 @@ export function createNativeDevotionEngine(connection: () => DevotionClientOptio
   const device: SpeechEngine = {
     stop() { speechToken++; stopped = stopped.then(() => Speech.stop()).catch(() => undefined); },
     speak(text, callbacks, request) {
+      if (!speechProbeAdded) { speechProbeAdded = true; addAutoUpdateProbe('朗讀中', () => Speech.isSpeakingAsync()); }
       const token = ++speechToken;
       void stopped.then(() => {
         if (token !== speechToken) return;

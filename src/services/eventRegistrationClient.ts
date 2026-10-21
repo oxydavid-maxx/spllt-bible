@@ -1,3 +1,5 @@
+import { withClientHeaders } from './clientInfo';
+
 /**
  * Sign-ups for the next gathering, as the signed-in member may see them: a head count, whether they
  * signed up themselves, and which of their friends did. The names come from the church's own
@@ -51,7 +53,7 @@ function parse(value: unknown): EventRegistrationSummary | null {
 }
 
 export async function fetchEventRegistrations(options: EventRegistrationOptions, date: string): Promise<EventRegistrationSummary | null> {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl = withClientHeaders(options.fetchImpl ?? fetch);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {

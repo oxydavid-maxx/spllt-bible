@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { createDevotionClient, type DevotionalPost } from '../../services/devotionClient';
+import { GamificationApiError } from '../../services/gamificationApiClient';
 import { createDevotionSpeech } from '../../services/devotionSpeech';
 import { createNativeDevotionEngine } from '../../services/nativeDevotionAudio';
 import { createDevotionVoiceStore } from '../../services/devotionVoicePreferences';
@@ -32,6 +33,18 @@ const preferences = createDevotionPreferencesStore({
  */
 function awaitsPost(day: string): boolean {
   return day >= taipeiDate() && new Date(`${day}T12:00:00Z`).getUTCDay() !== 0;
+}
+
+/**
+ * A load that met a network error, a timeout or a 5xx is asked once more after this wait, with 載入中 still on
+ * (2026-10-20: the 07:08 backend deploy dropped requests for about 3 s and the page opened on its error).
+ * Long enough to outlast such a restart; the second failure shows the error and 重試.
+ */
+export const DEVOTIONAL_RETRY_DELAY_MS = 4000;
+
+/** Can the same question get another answer shortly? A refusal or malformed data will not; a cancelled read has no screen left. */
+function retryableLoadError(reason: unknown): boolean {
+  return reason instanceof GamificationApiError && reason.retryable && reason.code !== 'REQUEST_CANCELLED';
 }
 
 export interface ReaderDevotionBinding {
@@ -76,7 +89,10 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   const speakWhenReady = useRef(false);
   // The one 靈修 question on its way, if any. A new day or member drops it, so its answer is ignored.
   const asking = useRef<{ scope: string } | null>(null);
-  const follow = useSyncExternalStore(preferences.subscribe, () => preferences.getSnapshot(memberId), () => preferences.getSnapshot(memberId));
+  // That question's one automatic ask again, while it waits (DEVOTIONAL_RETRY_DELAY_MS). Dropped with the question.
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dropRetry = useCallback(() => { if (retryTimer.current !== null) clearTimeout(retryTimer.current); retryTimer.current = null; }, []);
+  const follow =useSyncExternalStore(preferences.subscribe, () => preferences.getSnapshot(memberId), () => preferences.getSnapshot(memberId));
   const followRef = useRef(follow.enabled);
   followRef.current = follow.enabled;
   const [speech] = useState(() => createDevotionSpeech(createNativeDevotionEngine(() => connection.current), () => { if (followRef.current) setSongRequest((value) => value + 1); }));
@@ -87,8 +103,9 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   useEffect(() => { speech.setVoice(voice); }, [speech, voice]);
   useEffect(() => { speech.setVolume(devotionVolume(voice, bibleVersionId)); }, [speech, voice, bibleVersionId]);
   // A new day, or another member: back to the chapter, nothing read aloud from the old one.
-  useEffect(() => { setSelected(false); setAtEnd(false); speakWhenReady.current = false; asking.current = null; speech.stop(); setPost(null); setMarked(null); markRevision.current++; markPendingRef.current = false; setMarkPending(false); setCompletionEvent(null); }, [date, memberId, session?.sessionToken, baseUrl, speech]);
+  useEffect(() => { setSelected(false); setAtEnd(false); speakWhenReady.current = false; asking.current = null; dropRetry(); speech.stop(); setPost(null); setMarked(null); markRevision.current++; markPendingRef.current = false; setMarkPending(false); setCompletionEvent(null); }, [date, memberId, session?.sessionToken, baseUrl, speech, dropRetry]);
   useEffect(() => () => speech.stop(), [speech]);
+  useEffect(() => dropRetry, [dropRetry]);
   useEffect(() => {
     if (!client) { setMarked(null); return; }
     if (!focused) return;
@@ -104,19 +121,35 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   const load = useCallback((quiet = false) => {
     if (!client || asking.current?.scope === scope) return;
     const forDate = date;
-    const ask = { scope };
-    asking.current = ask;
+    const question = { scope };
+    asking.current = question;
     if (!quiet) setPost({ date: forDate, state: { kind: 'loading' } });
     const settle = (state: DevotionalState | null) => {
-      if (asking.current !== ask || scopeRef.current !== scope) return;
+      if (asking.current !== question || scopeRef.current !== scope) return;
       asking.current = null;
       // ▶ waits only for this answer: when it brings no post, nothing is read aloud later on its behalf.
       if (state?.kind !== 'ready') speakWhenReady.current = false;
       if (state) setPost((current) => current?.date === forDate ? { date: forDate, state } : current);
     };
-    void client.getDevotional(forDate)
-      .then((value: DevotionalPost | null) => settle(value ? { kind: 'ready', post: value } : { kind: 'missing', awaiting: awaitsPost(forDate) }))
-      .catch(() => settle(quiet ? null : { kind: 'error', onRetry: () => load() }));
+    const ask = (retried: boolean) => {
+      void client.getDevotional(forDate)
+        .then((value: DevotionalPost | null) => settle(value ? { kind: 'ready', post: value } : { kind: 'missing', awaiting: awaitsPost(forDate) }))
+        .catch((reason: unknown) => {
+          // 2026-10-20: a shown load that met a network error or a 5xx is asked once more after a short wait, still
+          // 載入中 and still the one question on its way, so other looks send nothing meanwhile. Only that second
+          // failure shows the error: never a chain of asks (the 0.5.34 loop, #68/#74). A quiet ask keeps 還沒有上傳 and
+          // waits for the next look, as before.
+          if (!quiet && !retried && retryableLoadError(reason) && asking.current === question && scopeRef.current === scope) {
+            retryTimer.current = setTimeout(() => {
+              retryTimer.current = null;
+              if (asking.current === question && scopeRef.current === scope) ask(true);
+            }, DEVOTIONAL_RETRY_DELAY_MS);
+            return;
+          }
+          settle(quiet ? null : { kind: 'error', onRetry: () => load() });
+        });
+    };
+    ask(false);
   }, [client, date, scope]);
   const current = post?.date === date ? post.state : null;
   const currentRef = useRef(current); currentRef.current = current;

@@ -37,6 +37,10 @@ true;
 // the state and ignores repeats, so a reveal made natively (Back, the collapsed bar) needs no reply
 // and the next downward gesture collapses again. Taps are never intercepted: tapping scripture
 // selects a verse.
+// A gesture needs a finger (2026-10-21, iOS flow 21): scrolling collapses or reveals the tools only after a finger
+// touched the scripture since the page last scrolled by itself (read-along, the day's range: src/ui/ownScrollGuard.ts).
+// Every other scroll (the page's own, however late its events come, the SDK's chapter change, layout shifts) only
+// moves the anchor and reports the edges, so the tools and the tab bar never go away while nobody touches the screen.
 const READER_CANVAS_BRIDGE = `
 (function () {
   if (window.__qingmuReaderCanvasBridge || !window.ReactNativeWebView) return;
@@ -75,13 +79,21 @@ const READER_CANVAS_BRIDGE = `
     atEnd = null;
     reportEdges(container);
   };
+  var fingerSince = false;
+  window.__qingmuPageScrolled = function () { fingerSince = false; };
+  function finger(event) { if (closest(event.target, canvasSelector)) fingerSince = true; }
+  document.addEventListener('touchstart', finger, { capture: true, passive: true });
+  document.addEventListener('touchmove', finger, { capture: true, passive: true });
   document.addEventListener('scroll', function (event) {
     var target = event.target;
     if (!closest(target, canvasSelector) || typeof target.scrollTop !== 'number') return;
-    // Read-along scrolled the page to the narrated verse: not a gesture, so neither collapse nor
-    // reveal, and the next real gesture starts from here. The chapter end is still reported.
-    if ((window.__qingmuFollowScrolling && window.__qingmuFollowScrolling())
-      || (window.__qingmuRangeScrolling && window.__qingmuRangeScrolling())) {
+    // Not a finger's: the page scrolled itself (read-along to the narrated verse, the day's range), or nothing
+    // touched the scripture since it did. Neither collapse nor reveal, and the next real gesture starts from
+    // here. The chapter top and end are still reported.
+    // Both are asked: each one's own scroll ends when it arrives.
+    var following = Boolean(window.__qingmuFollowScrolling && window.__qingmuFollowScrolling());
+    var ranging = Boolean(window.__qingmuRangeScrolling && window.__qingmuRangeScrolling());
+    if (following || ranging || !fingerSince) {
       anchor = target.scrollTop; run = null; upAccum = 0;
       reportEdges(target);
       return;

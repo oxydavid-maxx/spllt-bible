@@ -9,10 +9,12 @@ const PAGE = 'https://home.luminexhealthbiohack.com/public/jhuke-bible/';
 const SIDELOAD: UpdateState = { available: true, mandatory: false, versionName: '0.5.22', url: PAGE, note: null };
 
 describe('where the update comes from', () => {
-  it('asks nobody on iOS, which updates from the App Store and may not be pointed anywhere else', async () => {
+  it('never sends an iPhone to Play or the APK page (TestFlight iPhones: tests/services/iosTestflightUpdate.test.ts)', async () => {
     const play = vi.fn(async () => ({ updateAvailable: true }));
     const manifest = vi.fn(async () => SIDELOAD);
-    expect(await checkAppUpdate(47, 'ios', { play, manifest })).toEqual(NO_UPDATE);
+    for (const source of ['app-store', 'other', 'testflight'] as const) {
+      expect(await checkAppUpdate(47, 'ios', { play, manifest, iosSource: async () => source, testflight: async () => NO_UPDATE })).toEqual(NO_UPDATE);
+    }
     expect(play).not.toHaveBeenCalled();
     expect(manifest).not.toHaveBeenCalled();
   });

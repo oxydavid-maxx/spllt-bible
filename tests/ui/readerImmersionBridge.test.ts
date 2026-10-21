@@ -57,6 +57,12 @@ var main = document.querySelector('main'), renderer = document.querySelector('[d
 renderer.addEventListener('click', function () { sdkClicks++; });
 function scrollTo(y) { main.scrollTop = y; main.dispatchEvent(new Event('scroll')); }
 function mark(label) { msgs.push({ type: 'mark', data: label }); }
+// A finger on the scripture: only then do scrolls collapse or reveal (readerSettingsBridge.ts, 2026-10-21).
+function finger() {
+  var target = document.querySelector('.yv-v[v="2"]'), box = target.getBoundingClientRect();
+  var point = new Touch({ identifier: 1, target: target, clientX: box.left + 20, clientY: box.top + 6 });
+  target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [point], changedTouches: [point] }));
+}
 function tapVerse() {
   var target = document.querySelector('.yv-v[v="3"]'), box = target.getBoundingClientRect();
   var x = box.left + 20, y = box.top + 8;
@@ -71,7 +77,7 @@ function tapVerse() {
 // 240 ms into the pause, so that copy arrives 360 ms after scrollTo(500) and 360 ms before 'after-pause'.
 function stallRenderer() { var x = 0; for (var k = 0; k < 3e7; k++) x += Math.sqrt(k); window.__stalled = x; }
 var steps = [
-  function () { mark('start'); },
+  function () { mark('start'); finger(); },
   function () { scrollTo(200); },
   function () { mark('up60'); scrollTo(140); },
   function () { mark('up80'); scrollTo(60); },
@@ -119,7 +125,7 @@ it('asks to collapse once per downward gesture, ignores small reverse scrolls, a
     writeFileSync(page, html);
     const output = execFileSync(process.env.CHROME_PATH ?? resolveDumpDomBinary(), [
       '--headless=new', '--disable-gpu', '--disable-background-networking', '--disable-component-update', '--disable-sync', '--disable-extensions',
-      '--no-first-run', '--no-default-browser-check', '--host-resolver-rules=MAP * ~NOTFOUND',
+      '--no-first-run', '--no-default-browser-check', '--host-resolver-rules=MAP * ~NOTFOUND', '--touch-events=enabled',
       `--user-data-dir=${join(work, 'profile')}`, '--virtual-time-budget=6000', '--dump-dom', pathToFileURL(page).href,
     ], { encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     const raw = output.match(/<pre id="result">([^<]+)<\/pre>/)?.[1];

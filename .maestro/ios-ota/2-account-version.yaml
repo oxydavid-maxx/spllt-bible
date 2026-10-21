@@ -1,0 +1,24 @@
+# OTA acceptance (scripts/ios/ota-sim-run.sh), cold start 2: the account page's last line names the running update
+# ("版本 0.5.35 (60) · 更新 <date>-<last 6 of the update ID>", src/ui/accountSurface.ts). Read-only.
+# Same route as flow 43: reach the points header before opening the account (run 39182315294).
+appId: org.qingmu.youth
+---
+- repeat:
+    times: 3
+    while:
+      notVisible: "開啟積分操作"
+    commands:
+      - tapOn:
+          text: "積分"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "開啟積分操作"
+    timeout: 30000
+- tapOn: "開啟帳戶"
+- extendedWaitUntil:
+    visible: "登出"
+    timeout: 15000
+- scrollUntilVisible:
+    element: "版本 0.*"
+    direction: DOWN
+    timeout: 20000

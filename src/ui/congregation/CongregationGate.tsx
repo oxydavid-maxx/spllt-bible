@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../Theme';
+import { useAutoUpdateHold } from '../useAutoUpdateHold';
 import type { Congregation } from '../../services/devotionClient';
 import { useCongregation } from './congregationStore';
 import { CHOICES, QUESTION, whereSentence } from './congregationCopy';
@@ -25,6 +26,8 @@ export function CongregationGate() {
   const [heldFor, setHeldFor] = useState<string | null>(null);
   useEffect(() => { if (asking && congregation.key) setHeldFor(congregation.key); }, [asking, congregation.key]);
   const visible = congregation.key !== null && congregation.value === null && (asking || heldFor === congregation.key);
+  // A choice being made is not reloaded away by a downloaded update (2026-10-21).
+  useAutoUpdateHold(visible, '選青少/主堂');
   if (!visible) return null;
   const unreadable = congregation.status === 'error' || (congregation.status === 'loading' && heldFor === congregation.key);
   const retrying = congregation.status === 'loading';

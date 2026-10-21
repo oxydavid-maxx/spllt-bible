@@ -1,0 +1,13 @@
+{
+  "$comment": "iOS store builds the OTA simulator check (.github/workflows/ios-ota-verify.yml) rebuilds. One entry per App Store build, copied from `eas build:list --platform ios --json` (gitCommitHash, completedAt). completedAt becomes the simulator's embedded update time: the store binary's embedded update was created during that build, so an OTA the store app would refuse as older is refused here too. Add the new entry in the release PR of every store build.",
+  "builds": [
+    {
+      "runtime": "0.5.35",
+      "version": "0.5.35",
+      "buildNumber": "60",
+      "commit": "e9cb746c65477f7f9b8799d1100901f9c5225d89",
+      "easBuildId": "ced6cd8e-939d-4319-8d10-432d8a5668f0",
+      "completedAt": "2026-10-20T00:45:20.732Z"
+    }
+  ]
+}

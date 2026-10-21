@@ -34,6 +34,8 @@ const UPDATE: UpdateState = { available: true, mandatory: true, versionName: '0.
 const NONE: UpdateState = { available: false, mandatory: false, versionName: null, url: null, note: null };
 const LISTING = 'https://play.google.com/store/apps/details?id=org.qingmu.youth';
 const PLAY: UpdateState = { available: true, mandatory: false, versionName: null, url: LISTING, note: null, viaPlay: true };
+const TESTFLIGHT_APP = 'itms-beta://beta.itunes.apple.com/v1/app/6822755754';
+const TESTFLIGHT: UpdateState = { available: true, mandatory: false, versionName: '0.5.36', url: TESTFLIGHT_APP, note: null, viaTestflight: true };
 
 const mounted: Array<ReturnType<typeof create>> = [];
 afterEach(() => { mounted.splice(0).forEach((tree) => act(() => tree.unmount())); vi.useRealTimers(); });
@@ -96,6 +98,16 @@ describe('the update prompt', () => {
     const view = await render(async () => PLAY, async () => false);
     await act(async () => { view.byLabel('更新').props.onPress(); });
     expect(view.open).toHaveBeenCalledWith(LISTING);
+  });
+
+  // 光佑 (2026-10-21): a TestFlight iPhone gets the same prompt, and 更新 opens 竹科聖經 in TestFlight.
+  it('sends a TestFlight iPhone to TestFlight with the same prompt', async () => {
+    const view = await render(async () => TESTFLIGHT);
+    expect(view.text()).toContain('有新版本 0.5.36');
+    expect(view.text()).toContain('TestFlight');
+    expect(view.text()).not.toContain('安裝頁');
+    await act(async () => { view.byLabel('更新到 0.5.36').props.onPress(); });
+    expect(view.open).toHaveBeenCalledWith(TESTFLIGHT_APP);
   });
 
   it('shows nothing when the phone already has the newest version or the check fails', async () => {
