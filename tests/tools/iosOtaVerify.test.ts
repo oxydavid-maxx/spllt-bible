@@ -47,7 +47,7 @@ function passingEvidence(): Evidence {
     flows: { '1-reader-today': 'PASS', '2-account-version': 'PASS' },
     readerTexts: ['更多閱讀工具', '使徒行傳 1，今日第1段，共3段', '詩篇 124，今日第2段，共3段', '詩篇 125，今日第3段，共3段', 'YouVersion原生閱讀器：徒1、詩124、詩125'],
     accountTexts: ['登入', '版本 0.5.35 (60) · 更新 20261021-20d84d'],
-    end: { appRunning: true, crashReports: [], jsFatalLines: [], updatesLogLines: 42, errorRecoveryLines: [], expoErrorLog: false, simulatorClock: '2026-10-21 07:40:00 CST' },
+    end: { appRunning: true, crashReports: [], jsFatalLines: [], updatesLogLines: 42, errorRecoveryLines: [], expoErrorLog: false },
     today: '2026-10-21',
   };
 }
@@ -99,6 +99,9 @@ describe('iPhone OTA acceptance: which update', () => {
     expect(configDifferences({ ...built, plugins: [] }, production, 'preview')).toEqual(['plugins']);
     expect(configDifferences(built, production, 'production')).toEqual(['updates.requestHeaders']);
     expect(configDifferences(null, production, 'preview')).toBeNull();
+    // Run 39516902955: EAS serialises the export in another key order (ios: infoPlist first); order is not a difference.
+    const reordered = { updates: { requestHeaders: { 'expo-channel-name': 'preview' }, url: 'u' }, runtimeVersion: { policy: 'appVersion' }, plugins: ['expo-router'], ios: { buildNumber: '60' }, version: '0.5.35', name: '竹科聖經' };
+    expect(configDifferences(reordered, production, 'preview')).toEqual([]);
   });
 
   it('reads expo-updates rows and the screen text the flows end on', () => {

@@ -67,7 +67,6 @@ export interface EndState {
   updatesLogLines: number | null;
   errorRecoveryLines: string[] | null;
   expoErrorLog: boolean | null;
-  simulatorClock: string | null;
 }
 export interface Isolation {
   /** The downloaded update's files that contain https://<host> (its API base is the host the run redirects). */
@@ -158,6 +157,13 @@ export function googleIosUrlScheme(config: Record<string, unknown> | null): stri
   return null;
 }
 
+/** JSON with object keys sorted: EAS serialises the exported config in its own key order. */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`).join(',')}}`;
+  return JSON.stringify(value) ?? 'undefined';
+}
+
 /** Native-relevant config of the simulator build vs the production export; only the channel may differ. */
 export function configDifferences(built: Record<string, unknown> | null, production: Record<string, unknown> | null, channel: Channel): string[] | null {
   if (!built || !production) return null;
@@ -167,7 +173,7 @@ export function configDifferences(built: Record<string, unknown> | null, product
     return { name: config.name, slug: config.slug, scheme: config.scheme, version: config.version, sdkVersion: config.sdkVersion, runtimeVersion: config.runtimeVersion, ios: config.ios, plugins: config.plugins, updates };
   };
   const [a, b] = [pick(built), pick(production)];
-  const differences = Object.keys(a).filter(key => JSON.stringify((a as Record<string, unknown>)[key]) !== JSON.stringify((b as Record<string, unknown>)[key]));
+  const differences = Object.keys(a).filter(key => canonicalJson((a as Record<string, unknown>)[key]) !== canonicalJson((b as Record<string, unknown>)[key]));
   const headers = (built.updates as { requestHeaders?: Record<string, string> } | undefined)?.requestHeaders;
   if (headers?.['expo-channel-name'] !== channel) differences.push('updates.requestHeaders');
   return differences;
@@ -418,9 +424,16 @@ async function resolveCommand(groupId: string, channelInput: string, out: string
   return 0;
 }
 
+const PLIST_KEYS = ['CFBundleIdentifier', 'CFBundleShortVersionString', 'CFBundleVersion', 'CFBundleExecutable', 'CFBundleURLTypes',
+  'EXUpdatesEnabled', 'EXUpdatesURL', 'EXUpdatesRuntimeVersion', 'EXUpdatesRequestHeaders', 'EXUpdatesCheckOnLaunch', 'EXUpdatesLaunchWaitMs', 'EXUpdatesHasEmbeddedUpdate'];
+/** Key by key: a whole-file JSON conversion fails on any <data>/<date> value, and only these keys are judged. */
 const plist = (path: string): Record<string, unknown> | null => {
   if (!existsSync(path)) return null;
-  try { return JSON.parse(run('plutil', ['-convert', 'json', '-o', '-', path])) as Record<string, unknown>; } catch { return null; }
+  const values: Record<string, unknown> = {};
+  for (const key of PLIST_KEYS) {
+    try { values[key] = JSON.parse(run('plutil', ['-extract', key, 'json', '-o', '-', path])); } catch { /* absent in this plist */ }
+  }
+  return values;
 };
 const findFile = (dir: string, name: string): string | null => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -485,12 +498,14 @@ async function nativeCommand(app: string, out: string, nativeDir: string): Promi
   return 0;
 }
 
+// expo-updates keeps its database and files in Application Support (UpdatesUtils.updatesApplicationDocumentsDirectory).
+const UPDATES_DIR = join('Library', 'Application Support', '.expo-internal');
 const appData = (udid: string) => run('xcrun', ['simctl', 'get_app_container', udid, BUNDLE_ID, 'data'], { allowFail: true }).trim();
 const DB_SQL = "SELECT CASE typeof(id) WHEN 'blob' THEN lower(hex(id)) ELSE lower(replace(id, '-', '')) END, commit_time, status, successful_launch_count, failed_launch_count FROM updates ORDER BY commit_time;";
 export function readDb(udid: string): DbRecord {
   const data = appData(udid);
   if (!data) return { measured: false, rows: [], error: 'no app data container' };
-  const dir = join(data, 'Documents', '.expo-internal');
+  const dir = join(data, UPDATES_DIR);
   const db = existsSync(dir) ? readdirSync(dir).filter(name => /^expo-v\d+\.db$/.test(name)).sort((a, b) => Number(b.match(/\d+/)![0]) - Number(a.match(/\d+/)![0]))[0] : undefined;
   if (!db) return { measured: false, rows: [], error: 'no expo-updates database' };
   try {
@@ -518,7 +533,7 @@ async function waitDownloadCommand(udid: string, out: string, seconds: number): 
 
 async function apiHostCommand(udid: string, out: string, host: string): Promise<number> {
   const data = appData(udid);
-  const dir = data ? join(data, 'Documents', '.expo-internal') : '';
+  const dir = data ? join(data, UPDATES_DIR) : '';
   const needle = Buffer.from(`https://${host}`);
   let filesScanned = 0;
   let filesWithHost = 0;
@@ -584,12 +599,11 @@ async function collectCommand(udid: string, out: string, since: string): Promise
     updatesLogLines = lines.length;
     errorRecoveryLines = lines.filter(line => line.includes('ErrorRecovery'));
   }
-  const errorLog = data ? join(data, 'Documents', 'expo-error.log') : '';
+  const errorLog = data ? join(data, 'Library', 'Application Support', 'expo-error.log') : '';
   const expoErrorLog = data ? existsSync(errorLog) : null;
   if (expoErrorLog) copyFileSync(errorLog, join(out, 'expo-error-log.txt'));
   const end: EndState = {
     appRunning, crashReports, jsFatalLines, updatesLogLines, errorRecoveryLines, expoErrorLog,
-    simulatorClock: run('xcrun', ['simctl', 'spawn', udid, 'date', '+%Y-%m-%d %H:%M:%S %Z'], { allowFail: true }).trim() || null,
   };
   writeJson(join(out, 'end-state.json'), end);
   console.log(JSON.stringify({ ...end, jsFatalLines: jsFatalLines?.length ?? null, errorRecoveryLines: errorRecoveryLines?.length ?? null }));
