@@ -1,6 +1,6 @@
 # 公告
 
-> 狀態：0.5.22 程式碼｜平台：Android、iOS（差異見「平台差異」）｜2026-10-13 候選核對；2026-10-14 改版候選 (尚未發布)；2026-10-17 青少/主堂分頁、主堂週刊；2026-10-20 週刊只收公布欄群組
+> 狀態：0.5.22 程式碼｜平台：Android、iOS（差異見「平台差異」）｜2026-10-13 候選核對；2026-10-14 改版候選 (尚未發布)；2026-10-17 青少/主堂分頁、主堂週刊；2026-10-19 週刊圖片在 Android 也帶登入 token；2026-10-20 週刊只收公布欄群組、週刊載入中的灰框、清單用手機大小的圖、放大畫面不蓋狀態列
 
 ## 一句話
 
@@ -83,6 +83,10 @@
 
 - 公告最上面「青少」「主堂」兩個分頁，預設打開自己的那一邊，還沒選或讀不到歸屬時是青少。青少分頁就是原本的公告。
 - 主堂分頁只放週刊，不放公布欄的其他貼文。每週一段：「10/11 (日) 週刊」和「3 張・點圖片放大」，下面照貼出的順序排每一頁。點一頁開全螢幕：黑底，兩指放大 (最多 4 倍)、放大後一指移動，沒放大時左右滑換頁，右上角 × 回去；上方寫「10/11 週刊 2 / 3」，第一次放大或滑動前，下方提示「兩指放大縮小・左右滑換頁」。
+- 每一頁都帶成員的登入 token 去要 (`authorization: Bearer …`)。圖片來源一律寫成陣列 `[{ uri, headers }]` (`bulletinPageSource`, `src/services/bulletinClient.ts`), 清單 (`BulletinBoard`) 和全螢幕 (`BulletinViewer`) 用同一個。原因：React Native 0.85 的 Android `Image` 只有 `source` 是陣列時才把 headers 交給原生元件，單一物件 `{ uri, headers }` 的 headers 被丟掉，後端回 401, 頁面一片白 (0.5.34 在 Pixel 發現，2026-10-19)。iOS 兩種寫法都會帶。
+- 圖還沒到的頁 (2026-10-20)：每一頁先顯示跟那一頁同比例的灰框和「週刊載入中…」，圖到了才換成圖；載不到時灰框寫「這頁載不到，點一下再試」，點一下重新要這一頁 (不會打開全螢幕)。頁的無障礙標籤跟著狀態走：「8/30 (日) 週刊第 1 頁，載入中」→「…，點了放大」，或「…第 1 頁載不到，點一下再試」(`src/ui/bulletin/BulletinPageStatus.tsx`)。
+- 清單用手機大小的圖 (2026-10-20)：清單向後端要 `?w=<寬度>` 的縮圖，寬度取 720、1080、1440 裡面蓋得住清單寬度的最小一個 (差 5% 以內算蓋得住，`src/domain/bulletinWidths.ts`)，例如 Pixel 8 和 iPhone 17 都是 1080。點開全螢幕才要原圖；原圖還沒到時先顯示清單已經有的那張縮圖，頁的標籤寫「8/30 週刊第 1 頁，載入中」，原圖到了變「8/30 週刊第 1 頁」；原圖載不到時頁面中間有「這頁載不到，點一下再試」按鈕。
+- 全螢幕的狀態列 (2026-10-20)：狀態列那一塊維持 App 的淺色底，時間和電池照常看得到；黑色的看圖區和上方「8/30 週刊 1 / 2」那一列從狀態列下面開始。兩個平台同一種排法。
 - 還沒有週刊時寫「還沒有週刊。公布欄貼出週刊後，會出現在這裡。」；讀不到時寫「暫時讀不到週刊。」和「重新讀取」按鈕。舊後端沒有這個 API，當作還沒有週刊。
 - 週刊從哪裡來：教會在 LINE「竹科靈糧堂訊息公布欄」群組貼週刊，機器人「光佑_bot」在群組裡。只看這個群組的照片：bot 也在青少牧區公告群、青崇輔導/小組長群組，那些群組的照片不下載。同一個人貼的 A4 直式頁 (高寬比 1.36–1.47、寬至少 600 像素)，每張跟上一張相隔 10 分鐘內，兩張以上就是一期週刊；同一個人 3 小時內補貼的 A4 頁併進同一期。日期是第一頁貼出當天或之後的那個主日 (台北時間)；同一個主日之後又貼一整期，就換成新的。其他照片只看大小就丟掉，不存、記錄裡也沒有任何可以認出照片或人的資訊。
 - 下載照片用頻道 ID 和頻道密鑰換來的 15 分鐘權杖 (`server/lineContent.ts`)，不存長期權杖；機器人只收不發話。
@@ -107,6 +111,17 @@
 - **以前的主日固定日期在上、按鈕在下，非今年的日期顯示年份**：按鈕數量和手機寬度不改變行的結構，避免少量按鈕擠到日期右側或誤認年份。（維護者 2026-09-30 決定）
 - **講道紀錄一個主日一張卡，最新的標「上週」**：取代「上次講道」加「以前的主日」兩段，每週長得一樣，往下滑就是更早的週。(維護者 2026-10-14；來源：[../superpowers/plans/2026-10-14-mock-1014-redesign.md](../superpowers/plans/2026-10-14-mock-1014-redesign.md))
 - **下次聚會用深色日期塊；資料連結是文字加小圖示，不用按鈕；同類兩份檔案編號「報告投影片 1、2」，不印檔名；沒有內容的堂次收成一行；服事名單只顯示短的角色名**：一眼看到日期，卡片不被按鈕和長檔名塞滿。(維護者 2026-10-14)
+- **週刊圖片來源寫成陣列，兩個平台同一種寫法，不加 `Platform.OS` 分支** (2026-10-19)：Android 只送陣列裡的 headers, iOS 兩種都送，陣列兩邊都對。守衛 `tests/ui/imageSourceHeaders.test.ts` 掃 `src/`, `app/`, 任何帶 `headers` 的 `{ uri, … }` 不在陣列裡就失敗；同一個測試也核對 React Native 原始碼 (`Image.android.js`, `ReactImageView.kt`) 還是這樣做，升級 React Native 時會知道。
+- **後端的週刊 cookie `qm_bulletin` 保留** (`server/bulletinAccess.ts`, 另一個 PR 加的)：0.5.35 以前已經裝好的 Android App 還是用單一物件，要圖時不帶 token; cookie 讓它們不用更新也看得到週刊。新版 App 每一頁照樣帶 token, iOS 流程 `44-bulletin` 也只認帶 token 的請求，不靠 cookie.
+- **iOS 流程不只看有沒有框**：Maestro 分不出圖有沒有真的載入 (空白的框和有圖的框一樣)，所以 `44-bulletin` 跑完，`scripts/ios/run-flows.sh` 讀 `scripts/ios/count-proxy.ts` 的請求紀錄 (`scripts/ios/check-bulletin-requests.ts`)：每一頁都要帶 bearer token 去要、而且回 200, 任何週刊請求回 401 就算失敗。count-proxy 只記有沒有帶 token, 不記 token 本身。Android 的雲端驗證沒有跑流程，Android 的寫法靠上面的 unit 守衛擋。2026-10-20 起流程還會等頁的標籤從「載入中」變成載好的樣子 (圖真的到了)，請求紀錄也要看到清單要的是縮圖、全螢幕要的是原圖，而且縮圖比原圖小 (count-proxy 多記 `bytes=` 回應大小)。
+- **假資料週刊每次跑的時候畫出來，不放進 repo** (2026-10-20，取代 2026-10-19 的「兩張小的 A4 測試圖」)：縮圖要有東西可以縮，假資料要跟 10/18 週刊一樣是 2481 × 3509；這麼大的兩張圖放進公開 repo 是幾 MB 的二進位檔。`scripts/ios/make-bulletin-fixture.ts` 用固定的亂數畫標題列、兩欄像字的筆畫、表格和一塊照片，壓出來每頁約 1.2 MB，跟真的週刊差不多。不是真的週刊。
+- **縮圖在後端做，做一次存起來** (2026-10-20)：10/18 的週刊每頁 2481 × 3509，手機清單只需要約 1080 寬，LTE 上清單白了 2–5 秒 (Pixel, 0.5.35)。後端 `server/bulletinsResize.ts` 照 `?w=` 縮成 720、1080 或 1440 寬，存在原圖旁邊 (`1.w1080.jpg`)，之後直接讀檔。只做這三種寬度，別的數字都歸到其中一個，不會一個數字一個檔。
+  - 縮圖工具用 `jimp-compact` (純 JavaScript 的 Jimp 0.16)，不用 sharp：expo 本來就裝了它 (expo-asset、expo-notifications 經 `@expo/image-utils`)，後端套件資料夾不用多裝東西，也沒有原生程式。`package.json` 寫明這個依賴，裝出來的套件不變。
+  - 解一張 A4 要約 1 秒，所以放在 worker thread 一次做一張，不卡住其他請求；做完 worker 就結束，沒有常駐程式。
+  - 一個請求最多等縮圖 3 秒，超過就先給原圖，縮圖照樣做完存起來，下一個人拿縮圖。機器忙的時候會慢很多：CI 的 Mac 在模擬器跑的同時，一張做了 31 秒。所以 CI 在模擬器開機前就把假資料週刊的縮圖做好 (`scripts/ios/make-bulletin-fixture.ts`，也記下每頁和每張縮圖的大小)。
+  - 找不到縮圖工具、圖解不開、原圖本來就比縮圖窄，都直接給原圖：清單慢一點，但不會空白。縮圖做到一半週刊被換掉 (同一個主日重貼)，這張縮圖不留。
+  - 舊版 App 不帶 `?w`，照舊拿原圖；新版 App 連到還沒更新的後端，後端不認 `?w`，也是拿原圖。
+- **全螢幕的狀態列維持 App 的淺色底，不改成白字** (2026-10-20)：改狀態列顏色要動到 Modal 的視窗設定，Android 和 iOS 的做法不一樣，而且 App 其他畫面都是淺底深色圖示；讓黑色看圖區從狀態列下面開始，兩個平台同一份排版就好。iOS 流程跑完會截圖檢查：狀態列那一塊是淺色、黑色從它下面開始 (`scripts/ios/check-bulletin-viewer.ts`)。
 
 **待確認（沒有記錄，請維護者確認是否刻意）：**
 
@@ -114,7 +129,8 @@
 
 ## 平台差異
 
-- 沒有找到公告功能本身的 Android/iOS 差異；程式碼是同一份 React Native 元件與同一個 HTTPS GET。
+- 公告本身沒有 Android/iOS 分支；程式碼是同一份 React Native 元件與同一個 HTTPS GET。
+- 週刊圖片有一處 React Native 的平台行為差異：Android 的 `Image` 只從陣列 source 送出 headers, iOS 每一種 source 都送。App 一律用陣列，兩邊同一種寫法 (見「決定」)。
 - iOS 的 iOS-parity 計畫（`docs/superpowers/plans/2026-09-29-ios-parity.md` 第 9 項）本身把公告列為「預期不用改」的低風險項目，只用 Maestro 截圖確認畫面能開。
 
 ## 資料與後端
@@ -123,7 +139,7 @@
 - 報名狀況才經過後端：`GET /api/me/groups`-同層的 `GET /api/me/event-registrations?date=YYYY-MM-DD`（`src/services/eventRegistrationClient.ts` 呼叫），需要 Bearer session token 與 `x-qingmu-member-id`。
 - 後端資料表：`event_registrations`（誰報名哪天）、`event_registration_totals`（每天總人數）、`form_sync_audience`（釘住的推送者 Google audience），定義在 `server/eventRegistrations.ts` 的 `ensureEventRegistrationSchema`。
 - 發布：維護者電腦上的排程執行 `tools/announce/run.cmd` → 把 GitHub main 取到排程專用的 checkout，用那份程式產生公告、交給 `tools/announce/publisher.ts` 從另一個專用的 main checkout 推上 `announcements/`。開發用的工作目錄在哪個分支、有沒有改到一半，都不影響發布；拿不到 main 的程式或任一步失敗就不發布，上週的檔案留著（舊但不錯），原因寫在 `tools/announce/last-run.log`。
-- 週刊：`GET /api/bulletins` (最新主日在前，每頁的寬高)、`GET /api/bulletins/:主日/:頁` (圖檔，只給已登入成員)。檔案放私人部署的 `bulletins\<主日>\` (啟動程式帶 `QINGMU_BULLETIN_DIR`)，頻道 ID 放在 LINE 頻道密鑰同一個私人檔案。看過的 LINE 群組放同一層的 `line-groups.json` (啟動程式帶 `QINGMU_LINE_GROUPS_FILE`；沒帶時只記在記憶體，重開後每個群組再查一次名稱)。
+- 週刊：`GET /api/bulletins` (最新主日在前，每頁的寬高)、`GET /api/bulletins/:主日/:頁` (原圖，只給已登入成員)、`GET /api/bulletins/:主日/:頁?w=720|1080|1440` (同一頁的手機縮圖，第一次要時做好、存在原圖旁邊，見「決定」)。檔案放私人部署的 `bulletins\<主日>\` (啟動程式帶 `QINGMU_BULLETIN_DIR`)，頻道 ID 放在 LINE 頻道密鑰同一個私人檔案。看過的 LINE 群組放同一層的 `line-groups.json` (啟動程式帶 `QINGMU_LINE_GROUPS_FILE`；沒帶時只記在記憶體，重開後每個群組再查一次名稱)。
 - 週刊圖檔在 Android：React Native 的 Android Image 只有在 `source` 是陣列時才送出 headers，所以 App 要圖時沒帶登入 token，頁面一片白 (2026-10-19 在 Pixel 發現)。讀清單時後端多回一個 cookie `qm_bulletin` (`server/bulletinAccess.ts`)，只開週刊圖檔、7 天，每次讀清單都換新，每次要圖都再確認帳號還是啟用的。Android 的 fetch 和圖片載入共用同一個 cookie 儲存，所以已經裝好的 App 不用更新就看得到。
 - 舊版 App 相容：發布檔案格式是「多欄位、忽略未知鍵」設計，新加欄位不會讓舊 App 壞掉；反過來新 App 讀到沒有 `sessions`/`roles`/`sermonSlides` 的舊檔案也有對應的退回顯示。
 
@@ -139,7 +155,11 @@
 - `tests/server/eventRegistrations.test.ts` — 表單推送的兩種身份驗證（固定金鑰/Google identity token 且釘住 audience）、姓名比對規則、只回傳好友名單與總數、整批重寫上游日期的規則。
 - `tests/server/bulletins.test.ts` — 一組 A4 頁才收、照順序存在主日底下、其他照片和單張照片不存也不留可辨識的記錄、沒有張數的組會在安靜一段時間後收、同一主日換新、只留 8 週、API 只給成員、權杖重複使用而且不出現在錯誤裡。
 - `tests/server/lineGroups.test.ts` — 別的群組的 A4 照片不下載、靈修格式的文字不存、公布欄群組照舊收、查不到群組名稱時不當成公布欄、`join` 記下群組名稱 (只存編號和名稱，重開後不再查)、只向 LINE 拿權杖、群組名稱和照片，沒有回話或推播。
-- `tests/ui/bulletinBoard.test.ts` — 分頁預設自己那一邊、兩邊都能點、週刊列表帶成員權杖、點了全螢幕並能關閉、沒有週刊和讀不到的畫面、兩指放大的範圍。
+- `tests/ui/bulletinBoard.test.ts` — 分頁預設自己那一邊、兩邊都能點、週刊列表帶成員權杖、清單和全螢幕的每一頁照 Android `Image` 的規則也送得出權杖、點了全螢幕並能關閉、沒有週刊和讀不到的畫面、兩指放大的範圍；清單要縮圖 (`?w=1080`)、全螢幕要原圖並先墊縮圖；每頁的灰框「週刊載入中…」和載不到時點一下重新要；全螢幕的狀態列那一塊是 App 的底色、標題列在它下面。
+- `tests/server/bulletinPhoneCopies.test.ts` — `?w=` 給縮圖、沒有 `?w` 給原圖、寬度只歸到三種、比縮圖窄的頁給原圖、cookie 也能拿縮圖；縮圖在 worker thread 做、同一張只做一次；沒有縮圖工具或圖解不開時給原圖；做到一半原圖換掉時不留縮圖；等超過時先給原圖，做好的縮圖留給下一次。
+- `tests/ui/imageSourceHeaders.test.ts` — App 裡帶 headers 的圖片來源都是陣列 (Android 才送得出 token)；並核對 React Native 0.85 的 `Image.android.js` 和 `ReactImageView.kt` 還是這樣做。
+- `tests/tools/iosBulletinFlow.test.ts` — 假資料週刊是畫出來的兩張 2481 × 3509 A4、假資料後端只給帶 token 的請求、縮圖不到原圖的 1/3；請求紀錄檢查遇到 401, 沒帶 token, 缺頁、清單沒回 200, 清單要原圖、全螢幕沒要原圖、縮圖不比原圖小都會失敗；截圖檢查認得出狀態列被黑色蓋住；count-proxy 只記有沒有帶 token 和回應大小。
+- iOS 流程 `.maestro/ios/44-bulletin.yaml` — 公告 › 主堂看週刊，等第 1 頁載好、點開全螢幕等原圖載好、關掉再點開、滑到第 2 頁等原圖載好；跑完檢查請求紀錄 (每一頁都帶 token 而且回 200, 清單是縮圖、全螢幕是原圖) 和全螢幕截圖 (狀態列沒被蓋住)。
 
 ## 相關文件
 

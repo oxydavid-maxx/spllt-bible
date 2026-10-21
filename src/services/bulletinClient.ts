@@ -33,9 +33,17 @@ export async function fetchBulletins(options: BulletinClientOptions): Promise<Bu
   }
 }
 
-/** An image source the app's Image can load with the member's token. */
-export function bulletinPageSource(baseUrl: string, token: string, date: string, index: number): { uri: string; headers: Record<string, string> } {
-  return { uri: `${baseUrl}/api/bulletins/${date}/${index}`, headers: { authorization: `Bearer ${token}` } };
+/**
+ * An image source the app's Image can load with the member's token. An array on purpose, on both platforms: React
+ * Native 0.85's Android Image passes `headers` to the native view only when `source` is an array
+ * (Libraries/Image/Image.android.js); a single `{ uri, headers }` loses the token there, the page answers 401 and stays
+ * blank (Pixel, 0.5.34, 2026-10-19). iOS reads the headers either way. Guard: tests/ui/imageSourceHeaders.test.ts.
+ *
+ * `width` asks for the backend's phone copy of the page (src/domain/bulletinWidths.ts): the list uses it, full screen
+ * leaves it out and gets the original. A backend from before 2026-10-20 ignores it and sends the original.
+ */
+export function bulletinPageSource(baseUrl: string, token: string, date: string, index: number, width?: number): [{ uri: string; headers: Record<string, string> }] {
+  return [{ uri: `${baseUrl}/api/bulletins/${date}/${index}${width ? `?w=${width}` : ''}`, headers: { authorization: `Bearer ${token}` } }];
 }
 
 /** 「10/11 (日) 週刊」: bulletins are dated by their Sunday. */

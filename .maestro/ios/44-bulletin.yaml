@@ -1,0 +1,64 @@
+# 公告 › 主堂: the 週刊 the fixture backend serves (scripts/ios/make-bulletin-fixture.ts: two synthetic A4 pages at
+# 2481 × 3509, made for the run). Its pages need the member's bearer token. Until its picture is in, a page shows a
+# grey box and says 載入中 in its label, so the flow waits for the loaded labels: the phone copy in the list, the
+# original full screen. It ends full screen on page 2; run-flows.sh then reads the request log
+# (scripts/ios/check-bulletin-requests.ts: every page with the token and answered 200, the list's copy smaller than the
+# original) and a screenshot (scripts/ios/check-bulletin-viewer.ts: the status bar is not covered by the viewer bar).
+# Runs before 46-apple-login, which signs out.
+# Maestro reads text as a regular expression: the heading's "(日)" is matched with ".".
+appId: org.qingmu.youth
+---
+- launchApp
+# The tab bar can appear while Today is still replacing itself with Reader (00-smoke).
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 90000
+- repeat:
+    times: 3
+    while:
+      notVisible: "主堂"
+    commands:
+      - tapOn:
+          text: "公告"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "主堂"
+    timeout: 15000
+- tapOn: "主堂"
+- extendedWaitUntil:
+    visible: "8/30 .日. 週刊"
+    timeout: 20000
+- assertVisible: "2 張・點圖片放大"
+# The first page's phone copy is in (its label leaves 載入中 for 點了放大).
+- extendedWaitUntil:
+    visible: "8/30 .日. 週刊第 1 頁，點了放大"
+    timeout: 30000
+- assertNotVisible: ".*載不到.*"
+- takeScreenshot: 44-bulletin-board
+- tapOn: "8/30 .日. 週刊第 1 頁.*"
+- extendedWaitUntil:
+    visible: "8/30 週刊 1 / 2"
+    timeout: 15000
+# Full screen asks for the original; the page label drops 載入中 when it is in.
+- extendedWaitUntil:
+    visible: "8/30 週刊第 1 頁"
+    timeout: 30000
+- assertNotVisible: ".*載不到.*"
+- takeScreenshot: 44-bulletin-page-1
+- tapOn: "關閉週刊"
+- extendedWaitUntil:
+    visible: "2 張・點圖片放大"
+    timeout: 15000
+- tapOn: "8/30 .日. 週刊第 1 頁.*"
+- extendedWaitUntil:
+    visible: "8/30 週刊 1 / 2"
+    timeout: 15000
+- swipe:
+    direction: LEFT
+- extendedWaitUntil:
+    visible: "8/30 週刊 2 / 2"
+    timeout: 15000
+# run-flows.sh takes the screenshot of this screen (44-bulletin-viewer.png) once the flow has ended here.
+- extendedWaitUntil:
+    visible: "8/30 週刊第 2 頁"
+    timeout: 30000
