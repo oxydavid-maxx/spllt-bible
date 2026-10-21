@@ -214,6 +214,7 @@ export default function ReaderScreen() {
     textSettings: preferences.preferences.settings,
     narrationSpeed,
     focused: chrome.focused,
+    bibleVersionId: selectedVersionId,
   });
   useReadingDateRollover({
     visible: chrome.focused,

@@ -42,4 +42,32 @@ describe('the installed Expo adapter', () => {
     expect(player.remove).toHaveBeenCalledOnce(); expect(native.removeFile).toHaveBeenCalledOnce(); expect(removeListener).toHaveBeenCalledOnce();
     engine.stop();
   });
+  // 2026-10-21: as loud as the scripture just heard, and the share played for the read-along, from the
+  // status updates the player already sends.
+  it('plays at the requested volume and reports the share played once playing', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([0xff, 0xf3]), { headers: { 'content-type': 'audio/mpeg' } })));
+    let listener: (status: any) => void = () => {};
+    const player = { play: vi.fn(), pause: vi.fn(), remove: vi.fn(), setPlaybackRate: vi.fn(), seekTo: vi.fn(), currentTime: 0, duration: 10, playing: false, isLoaded: false, isBuffering: false, volume: 1,
+      addListener: vi.fn((_event, fn) => { listener = fn; return { remove: vi.fn() }; }) };
+    native.create.mockReturnValue(player);
+    const callbacks = { ...cb(), onProgress: vi.fn() };
+    const engine = createNativeDevotionEngine(() => ({ baseUrl: 'https://fixture.invalid', token: 'fake', memberId: 'test' }));
+    engine.speak('測試文字', callbacks, { ...request, volume: 0.46 });
+    await vi.waitFor(() => expect(player.addListener).toHaveBeenCalled());
+    expect(player.volume).toBe(0.46);
+    player.isLoaded = true; listener({ isLoaded: true, didJustFinish: false, error: null, currentTime: 2.5, duration: 10 });
+    await vi.waitFor(() => expect(player.play).toHaveBeenCalledOnce());
+    expect(callbacks.onProgress).toHaveBeenLastCalledWith(0.25);
+    listener({ isLoaded: true, didJustFinish: false, error: null, currentTime: 0, duration: 0 });
+    expect(callbacks.onProgress).toHaveBeenCalledTimes(1);
+    engine.stop();
+  });
+  it('speaks at the requested volume when the phone voice reads the paragraph', async () => {
+    native.speak.mockClear();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
+    const engine = createNativeDevotionEngine(() => ({ baseUrl: 'https://fixture.invalid', token: 'fake', memberId: 'test' }));
+    engine.speak('測試文字', cb(), { ...request, volume: 0.29 });
+    await vi.waitFor(() => expect(native.speak).toHaveBeenCalledWith('測試文字', expect.objectContaining({ volume: 0.29 })));
+    engine.stop();
+  });
 });

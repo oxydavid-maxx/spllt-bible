@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { splitDevotionReference } from '../../src/domain/devotionReading';
+import { readAlongPart, readAlongPieces, readAlongPlan, splitDevotionReference } from '../../src/domain/devotionReading';
+import { devotionVolume } from '../../src/domain/devotionVoice';
 import { speechUnits } from '../../src/services/devotionSpeech';
 
 const post = (paragraphs: string[], title = '測試題目') => ({
@@ -48,5 +49,57 @@ describe('devotional pronunciation, without changing the displayed words', () =>
   it('does not suppress an inline reference as if it were a paragraph label', () => {
     expect(speechUnits(post(['這裡的彼前5:7是提醒。']))[0].text)
       .toBe('測試題目。背誦經文。這裡的彼得前書五章七節是提醒。');
+  });
+  // 維護者 2026-10-21, by ear on the male Azure voice: 祢 sounded wrong, then 神啊 and 得著.
+  it('says 祢/祂 as 你/他, the vocative 神啊 as 神哪 and 得著 as 得着, keeping 護衛著 and the words on screen', () => {
+    const source = post(['神啊，謝謝祢，祢的話使我們得著力量，也一路保護著我們；我們屬祂。']);
+    const before = JSON.stringify(source);
+    expect(speechUnits(source)[0].text).toBe('測試題目。背誦經文。神哪，謝謝你，你的話使我們得着力量，也一路保護著我們；我們屬他。');
+    expect(JSON.stringify(source)).toBe(before);
+  });
+});
+
+describe('read-along by the share of the audio played (2026-10-21)', () => {
+  // Made-up words shaped like a real post (one long paragraph): the pastor's posts never enter this repo.
+  const meditation = '我們都知道，若只靠自己的力量，要每天安靜讀經禱告，常常做不到。然而，只要願意開始，我們就能一點一點學會，每天留一段時間給神，一直到成為習慣。當我們忙碌疲倦的時候，不用自責或者灰心放棄，因為，明天還可以重新開始，只要再回來就好。';
+  it('cuts a paragraph into pieces of a sentence or two that put it back together exactly', () => {
+    const pieces = readAlongPieces(meditation);
+    expect(pieces.join('')).toBe(meditation);
+    expect(pieces).toEqual([
+      '我們都知道，若只靠自己的力量，要每天安靜讀經禱告，常常做不到。',
+      '然而，只要願意開始，我們就能一點一點學會，',
+      '每天留一段時間給神，一直到成為習慣。',
+      '當我們忙碌疲倦的時候，不用自責或者灰心放棄，因為，',
+      '明天還可以重新開始，只要再回來就好。',
+    ]);
+    for (const piece of pieces) expect([...piece].length).toBeLessThanOrEqual(40);
+    expect(readAlongPieces('阿們！')).toEqual(['阿們！']);
+    expect(readAlongPieces('。開頭是標點')).toEqual(['。開頭是標點']);
+  });
+  it('gives each part a share of the time by its spoken length, the heading first, ending at the whole', () => {
+    const plan = readAlongPlan({ title: '測試題目', sections: [{ heading: '默想經文', paragraphs: [meditation, '這是一段很短的結尾禱告。阿們！'] }] });
+    expect(plan).toHaveLength(2);
+    const [first, second] = plan;
+    expect(first.ends).toHaveLength(first.pieces.length + 1);
+    expect(first.ends[0]).toBeGreaterThan(0);
+    expect(first.ends.at(-1)).toBeCloseTo(1);
+    expect([...first.ends].sort((a, b) => a - b)).toEqual(first.ends);
+    expect(second.ends[0]).toBe(0);
+    expect(readAlongPart(first, 0.01)).toBe(0);
+    expect(readAlongPart(first, 0.99)).toBe(first.pieces.length);
+    // No spoken heading: the first piece from the very start.
+    expect(readAlongPart(second, 0)).toBe(1);
+  });
+});
+
+describe('the 靈修 as loud as the scripture recording just heard (2026-10-21)', () => {
+  it('turns the voice down for the quiet 和合本, never up, and leaves unmeasured versions alone', () => {
+    expect(devotionVolume('zh-TW-YunJheNeural', 46)).toBe(0.46);
+    expect(devotionVolume('zh-TW-HsiaoChenNeural', 46)).toBe(0.29);
+    expect(devotionVolume('zh-TW-HsiaoChenNeural', 40)).toBe(0.94);
+    expect(devotionVolume('zh-TW-YunJheNeural', 40)).toBe(1);
+    expect(devotionVolume('zh-TW-YunJheNeural', 111)).toBe(1);
+    expect(devotionVolume('zh-TW-YunJheNeural', 406)).toBe(1);
+    expect(devotionVolume('zh-TW-YunJheNeural', null)).toBe(1);
   });
 });
