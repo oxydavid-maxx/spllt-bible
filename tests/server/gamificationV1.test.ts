@@ -164,4 +164,15 @@ describe('gamification v1 API', () => {
     expect(all.status).toBe(200);
     expect(all.body.people).toEqual(expect.arrayContaining([expect.objectContaining({ memberId: 'member-self', rank: 1 }), expect.objectContaining({ memberId: 'member-friend', rank: 1 })]));
   });
+
+  // A disabled account (a Play test robot, someone who left) is left out of 全體 the way the sheet and the ranks
+  // leave it out (光佑 20261021: a disabled member was on the phone's 全體 but not on 讀經統計).
+  it('leaves disabled accounts out of 全體', async () => {
+    const { api, database, headers } = setup();
+    await api({ method: 'PUT', url: '/api/me/completions/church-2026-09/2026-09-08', headers: headers('member-friend'), body: JSON.stringify({ operation_id: randomUUID(), expected_revision: 0, status: 'COMPLETED' }) });
+    database.db.prepare('UPDATE members SET disabled_at = ? WHERE id = ?').run(Date.now(), 'member-friend');
+    const all = await api({ method: 'GET', url: '/api/points/people?scope=all', headers: headers('member-admin') });
+    expect(all.status).toBe(200);
+    expect((all.body.people as Array<{ memberId: string }>).map((person) => person.memberId).sort()).toEqual(['member-admin', 'member-self']);
+  });
 });
