@@ -68,7 +68,10 @@ function touch(type) {
   target.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [point], changedTouches: [point] }));
 }
 var steps = [
-  [0, function () { set('reduce-motion', 0); set('follow', 1); set('follow-request', 0); set('playing-verse', 2); }],
+  // Nobody has touched the scripture yet: a scroll the SDK or a layout change makes is nobody's gesture.
+  [0, function () { mark('nobody'); moveTo(400); }],
+  [120, function () { moveTo(0); }],
+  [120, function () { mark('setup'); set('reduce-motion', 0); set('follow', 1); set('follow-request', 0); set('playing-verse', 2); }],
   // Narration reaches a verse below the band: the page asks for a smooth scroll, and nothing moves yet.
   [120, function () { mark('follow-late'); set('playing-verse', 30); }],
   [2500, function () { msgs.push({ type: 'asked', data: sent !== null }); mark('asked'); animate(1); }],
@@ -86,6 +89,9 @@ var steps = [
   [120, function () { set('passage-range', JSON.stringify({ key: 'k1', label: '彼後2:20-30', firstVerse: 20, lastVerse: 30 })); }],
   [200, function () { mark('expand'); document.querySelector('[data-qingmu-range-control]').click(); }],
   [1000, function () { main.dispatchEvent(new Event('scroll')); }],
+  // After the page's own scroll, a scroll nobody's finger made (the SDK changing chapter, text reflowing) is not
+  // a gesture either: the 21 failures had the tools collapse around a chapter change with nobody touching.
+  [120, function () { mark('untouched'); moveTo(main.scrollTop + 300); }],
   [120, function () { mark('end'); }],
 ];
 var i = 0;
@@ -139,7 +145,11 @@ describe('a scroll the reader page makes itself', () => {
       expect(between('follow-touched', 'touched')).toEqual([]);
       expect(between('touched', 'range')).toEqual(['collapse']);
       // 看整章 keeping verse 20 in place: its scroll event a second later is still the page's.
-      expect(between('expand', 'end')).toEqual([]);
+      expect(between('expand', 'untouched')).toEqual([]);
+      // Scrolls no finger made, before any touch and after the page's own scroll, never collapse (arriving back at
+      // the chapter top still reveals, as it always did).
+      expect(between('nobody', 'setup')).not.toContain('collapse');
+      expect(between('untouched', 'end')).not.toContain('collapse');
     } finally {
       if (resolve(work).startsWith(join(temporaryRoot, 'qingmu-own-scroll-'))) rmSync(work, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
     }
