@@ -14,13 +14,13 @@
 
 本機 Gradle 在 `expo prebuild` 時從 `app.config.js` 寫入 `updates.requestHeaders['expo-channel-name'] = production`; 不是只在 `eas.json` 設定。EAS 的兩個 build profile 同時明列 channel. 更新網址從既有 EAS projectId 衍生。
 
-每個 JS 冷啟動只在畫面掛載後檢查一次，背景下載，下次完整關閉並重新開啟才套用。不輪詢、不監聽回前景、不呼叫 `reloadAsync()`; 讀經和朗讀不中斷。離線、檢查/下載失敗不顯示錯誤頁，保留嵌入/快取版本。原生 `checkAutomatically: ON_ERROR_RECOVERY` 在正常啟動不重複檢查，但保留故障復原檢查；`fallbackToCacheTimeout: 0`, `useEmbeddedUpdate: true`, `disableAntiBrickingMeasures: false` 保留快速啟動與復原。完全隔離的 CI 才用 `NEVER`, 避免故障時呼叫正式更新服務。
+每個 JS 冷啟動只在畫面掛載後檢查一次，背景下載。下載好的更新在下一次冷啟動，或 App 離開 30 分鐘以上回到前景時套用 (光佑 20261021, 取代 2026-10-19 的「只在下次完整關閉再打開時套用、不呼叫 `reloadAsync()`」：長輩很少完整關 App)：回前景時若正在朗讀或播放、日記或其他輸入還沒存、面板開著就不換，等下一次 (`src/ui/admin/OtaUpdates.tsx`、`src/services/autoUpdateGuard.ts`)；換的時候呼叫官方 `Updates.reloadAsync()`，畫面重新載入約 1 秒。沒有下載好的更新時，離開 30 分鐘以上回來會再檢查一次，所以開著好幾天的 App 也收得到。不輪詢、不用計時器。離線、檢查/下載失敗不顯示錯誤頁，保留嵌入/快取版本。原生 `checkAutomatically: ON_ERROR_RECOVERY` 在正常啟動不重複檢查，但保留故障復原檢查；`fallbackToCacheTimeout: 0`, `useEmbeddedUpdate: true`, `disableAntiBrickingMeasures: false` 保留快速啟動與復原。完全隔離的 CI 才用 `NEVER`, 避免故障時呼叫正式更新服務。
 
 ## 管理者手機
 
 從「積分」右上角頭像進帳戶頁，往下捲到管理區，切換「先收到測試版更新」。說明：「只給管理者：先拿到還沒發給大家的修正，驗收用。」沿用既有伺服器 `canViewAllScores` 身分判斷，和帳戶頁其他管理入口共用同一次查詢 (`useViewerCapabilities`)，進頁面和回到前景時重新確認；一般成員看不到。
 
-開啟呼叫官方 `Updates.setUpdateRequestHeadersOverride({ 'expo-channel-name': 'preview' })`; 關閉同樣明確傳 `production`. 選擇存在這支手機的原生儲存，不改伺服器頻道對應。切換不立即下載/重載：下次開啟背景下載，再下一次開啟套用；畫面會提示這件事。`Updates.channel` 在下次冷啟動後讀回選擇。關閉不使用 `null` 回到建置預設，因為 EAS preview 建置的預設也是 preview, 會與關閉狀態矛盾。preview 與 production 必須保持本機資料格式相容，避免切回後讀不到先前資料。
+開啟呼叫官方 `Updates.setUpdateRequestHeadersOverride({ 'expo-channel-name': 'preview' })`; 關閉同樣明確傳 `production`. 選擇存在這支手機的原生儲存，不改伺服器頻道對應。切換不立即下載/重載：下次開啟背景下載，再下一次開啟 (或離開 30 分鐘以上回來) 套用；畫面會提示這件事。`Updates.channel` 在下次冷啟動後讀回選擇。關閉不使用 `null` 回到建置預設，因為 EAS preview 建置的預設也是 preview, 會與關閉狀態矛盾。preview 與 production 必須保持本機資料格式相容，避免切回後讀不到先前資料。
 
 選擇存在手機上，比登入的人活得久，但開關只有管理者看得到。所以 preview 只跟著管理者：沒有人登入 (登出後)、換成別的成員登入，或伺服器回答這個人已經不是管理者時，App 自動把這支手機切回 production, 帳戶頁的檢查和開 App 時的檢查都會做。preview 手機在確認登入的是管理者之前不檢查更新；查不到身分 (離線、伺服器錯誤) 時保留選擇，這次開啟不檢查。一般 production 手機開 App 時不多發任何請求。切回後下一次開啟就從 production 檢查。若切回前這次開啟已經下載了 preview 更新，下一次開啟仍會先執行它 (官方沒有丟棄已下載更新的 API)，之後從 production 收到新的更新才換掉；所以管理者驗收完先關開關，再交出手機。
 
@@ -65,7 +65,7 @@
 
    為什麼不直接 `eas update`：它打包完立刻上傳，中間沒有機會檢查 bytecode 內容；而且 `--platform all` 在這個專案會連 web 一起打包而失敗 (eas-cli 從專案根目錄找不到放在 `node_modules/expo/node_modules` 裡的 `@expo/cli`，退回舊的 `--platform=all` 參數，web 端的 expo-sqlite wasm 解析失敗)。
 
-3. **兩個平台分別驗收**。Android 和 iOS 是各自執行的兩份更新，iOS 的讀經器等走不同的原生路徑，只看一支手機不代表另一個平台沒問題。維護者在一支 Android 和一支 iPhone 的管理區各自開啟開關，完整關閉 App 後重開，等背景下載；再完整關閉重開，驗收可見的小字變更、讀經、朗讀、登入與既有功能，確認手機所見內容和該平台的 preview update group 相符：帳戶頁最下面的版本行會多「· 更新 <日期>-<更新編號最後 6 碼>」，要和第 2 步記下的該平台 update ID 對得上。每個平台分別記下結果。
+3. **兩個平台分別驗收**。Android 和 iOS 是各自執行的兩份更新，iOS 的讀經器等走不同的原生路徑，只看一支手機不代表另一個平台沒問題。維護者在一支 Android 和一支 iPhone 的管理區各自開啟開關，完整關閉 App 後重開，等背景下載；再完整關閉重開，驗收可見的小字變更、讀經、朗讀、登入與既有功能，確認手機所見內容和該平台的 preview update group 相符：帳戶頁最下面的版本行會多「· 更新 <日期>-<更新編號最後 6 碼>」，要和第 2 步記下的該平台 update ID 對得上。每個平台分別記下結果。含「回前景自動換上」(2026-10-21) 的版本上線後，至少一次改用這條路驗：背景下載後不關 App, 放到背景 30 分鐘以上 (沒有朗讀、沒有開著的面板) 再回來，畫面重新載入約 1 秒，版本行換成新的 update ID; 朗讀中回來則不換。
 4. 哪個平台驗收通過，就只把那個平台原樣重發到 production, **不重新匯出或建置**。`<group ID>` 必須使用第 2 步保存的、那個平台自己的 ID; republish 會建立新的 group ID, 但沿用已驗收的程式/資源：
 
    ```sh
@@ -119,7 +119,7 @@ npx eas-cli@24.13.0 update:republish --group <該平台上一組已驗證可用�
 npx eas-cli@24.13.0 update:rollback <該平台目前-production-最新-group-ID> --platform <android|ios> --message "撤回問題更新" --json
 ```
 
-這些操作不會即時重啟所有手機。可正常啟動的手機要連網冷啟動下載復原，再重新開啟套用；啟動崩潰由保留的 expo-updates 復原機制處理，不保證能挽救任何任意資料遷移，因此仍須保持資料格式相容。沒有網路時繼續用現有本機版本。
+這些操作不會即時重啟所有手機。可正常啟動的手機要連網冷啟動 (或離開 30 分鐘以上回來) 下載復原，再重新開啟或下一次離開 30 分鐘回來時套用；啟動崩潰由保留的 expo-updates 復原機制處理，不保證能挽救任何任意資料遷移，因此仍須保持資料格式相容。沒有網路時繼續用現有本機版本。
 
 ## CI 隔離
 

@@ -6,6 +6,7 @@ import { runtimeConfig } from '../../config/runtime';
 import { useAuthSnapshot } from '../../services/authSession';
 import { useViewerCapabilities } from '../../services/viewerCapabilities';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../services/adminUnlockGuard';
+import { withClientHeaders } from '../../services/clientInfo';
 import { theme } from '../Theme';
 
 /**
@@ -47,7 +48,7 @@ export function BackOfficePage() {
       if (!await guard.unlock()) { if (active) setState({ status: 'locked', links: [] }); return; }
       if (active) setState({ status: 'loading', links: [] });
       try {
-        const response = await fetch(`${apiBaseUrl()}/api/admin/documents`, { headers: { authorization: `Bearer ${session.sessionToken}` } });
+        const response = await withClientHeaders(fetch)(`${apiBaseUrl()}/api/admin/documents`, { headers: { authorization: `Bearer ${session.sessionToken}` } });
         const links = response.ok ? ((await response.json()) as { links?: LinksState['links'] }).links : null;
         if (active) setState(Array.isArray(links) ? { status: 'ready', links } : { status: 'error', links: [] });
       } catch { if (active) setState({ status: 'error', links: [] }); }

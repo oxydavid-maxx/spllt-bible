@@ -1,3 +1,5 @@
+import { withClientHeaders } from './clientInfo';
+
 /**
  * 主堂週刊 (維護者 2026-10-17): the pages the church office posts to the LINE group, kept by the backend for the
  * newest 8 Sundays (server/bulletins.ts). Members only; the page images are fetched with the same bearer token.
@@ -19,7 +21,7 @@ function parseWeek(value: unknown): BulletinWeek | null {
 
 /** Newest first. An older backend without bulletins gives an empty list; null means it could not be read. */
 export async function fetchBulletins(options: BulletinClientOptions): Promise<BulletinWeek[] | null> {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl = withClientHeaders(options.fetchImpl ?? fetch);
   try {
     const response = await fetchImpl(`${options.baseUrl}/api/bulletins`, { headers: { authorization: `Bearer ${options.token}` } });
     if (response.status === 404) return [];

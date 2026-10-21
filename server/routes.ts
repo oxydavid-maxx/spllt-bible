@@ -25,6 +25,7 @@ import { DEFAULT_DEVOTION_VOICE, isDevotionVoice } from '../src/domain/devotionV
 import type { DevotionalAudio } from './devotionalAudio';
 import { createSongTitleLookup, isDevotionalDate, readDevotional, type SongTitleLookup } from './devotional';
 import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDates, setDevotion } from './devotionProgress';
+import { ensureClientInstallSchema, latestClientInstall, readClientReport, recordClientInstall } from './clientInstalls';
 import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
 import { applyRewardSheet, listRewards, readRewardSheetPush, rewardOnSide, sheetRedemptionsFor } from './rewardSheet';
 import { rewardSheetReadingStats } from './rewardSheetStats';
@@ -77,6 +78,8 @@ export interface ApiHandlerOptions {
   fixtureToken?: string;
   /** Development fixture only (authBoundary.authenticate): the member for a token-only request. */
   fixtureDefaultMemberId?: string;
+  /** Fixture backend only (server/fixtureVersionNotice.ts): the version file the CI simulator flows read. */
+  fixtureAppVersion?: Record<string, unknown>;
   productionGoogleAuth?: ProductionGoogleAuth;
   productionAppleAuth?: {
     verify: (token: string, nonce: string) => Promise<AppleIdentity>;
@@ -322,6 +325,7 @@ export function createApiHandler(options: ApiHandlerOptions) {
   ensureEventRegistrationSchema(options.db.db);
   ensureDevotionSchema(options.db.db);
   ensureCongregationSchema(options.db.db);
+  ensureClientInstallSchema(options.db.db);
   const songTitle = options.songTitle ?? createSongTitleLookup();
   if (options.scheduleDates && options.scheduleDates.length > 0) {
     // Existing tests and local deployments can narrow the aggregate period without
@@ -397,6 +401,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
         instanceId: options.instanceId ?? 'unconfigured',
         authMode: options.authMode ?? (options.productionGoogleAuth ? 'google-only' : 'fixture'),
       });
+    }
+    // The fixture backend's version file, one build ahead of the app under test; a real backend has none.
+    if (request.method === 'GET' && url.pathname === '/api/fixture/app-version.json' && options.fixtureAppVersion) {
+      return json(200, options.fixtureAppVersion);
     }
     if (request.method === 'POST' && url.pathname === '/api/device/reminders/revoke') {
       const installationId = request.headers['x-qingmu-installation-id'];
@@ -577,6 +585,10 @@ export function createApiHandler(options: ApiHandlerOptions) {
     if ('status' in auth) return isGamificationPath(url.pathname) ? gamificationError({ status: auth.status, code: auth.error }) : json(auth.status, { error: auth.error });
     if (!memberExists(options.db.db, auth.memberId)) return isGamificationPath(url.pathname) ? gamificationError({ status: 401, code: 'AUTH_INVALID' }) : json(401, { error: 'AUTH_INVALID' });
     if (!isMemberEnabled(options.db.db, auth.memberId)) return isGamificationPath(url.pathname) ? gamificationError({ status: 401, code: 'AUTH_INVALID' }) : json(401, { error: 'ACCOUNT_DISABLED' });
+    // Which version this phone runs and the day it was opened (光佑 2026-10-21, server/clientInstalls.ts). An older
+    // app sends nothing and is served as before; a failed write never fails the request.
+    const clientReport = readClientReport(request.headers);
+    if (clientReport) { try { recordClientInstall(options.db.db, auth.memberId, clientReport, taipeiDate(now())); } catch { /* best effort */ } }
     if (request.method === 'POST' && url.pathname === '/api/session/device' && options.productionGoogleAuth && options.sessionSecret) {
       return json(200, createDeviceSession(options.db.db, auth.memberId));
     }
@@ -623,8 +635,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
         if (scope !== 'friends' && scope !== 'all') return gamificationError({ status: 400, code: 'INVALID_SCOPE' });
         const people = getPeople(options.db.db, auth.memberId, scope, resolvedAdminMemberIds());
         if (!Array.isArray(people)) return gamificationError(people);
-        // 全體 (administrators only, getPeople) says where each person counts (維護者 2026-10-20); friends never see it.
-        return gamificationJson(200, { scope, people: scope === 'all' ? people.map((person) => ({ ...person, congregation: congregationOf(options.db.db, person.memberId) })) : people });
+        // 全體 (administrators only, getPeople) says where each person counts (維護者 2026-10-20) and which version
+        // their phone runs (光佑 2026-10-21); friends never see either.
+        return gamificationJson(200, { scope, people: scope === 'all' ? people.map((person) => ({ ...person, congregation: congregationOf(options.db.db, person.memberId), client: latestClientInstall(options.db.db, person.memberId) })) : people });
       }
       const scoreProfileMatch = url.pathname.match(/^\/api\/points\/profiles\/([^/]+)$/);
       if (request.method === 'GET' && scoreProfileMatch) {

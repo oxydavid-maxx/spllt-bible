@@ -31,7 +31,7 @@
 - 每個 PR 自動跑下面三個雲端驗證，三個都要綠。
 - 版本號：發版只改 `app.json` 的 `version` 和 `android.versionCode`。iOS 的 `buildNumber` 由 `app.config.js` 從 versionCode 算出來，不要在 `app.json` 另外寫（`tests/config/iosConfig.test.ts` 會擋）。
 - 0.5.35 起用官方 `expo-updates`/EAS Update 更新 JS, 文字、樣式與圖片；`runtimeVersion` 採 `appVersion`, 每次商店發版都改 version, 同 version 才可互收 OTA. 新增/改變原生套件、權限、SDK, config plugin 或原生設定一定要重新上架。OTA 不改版號；建置/發布方法見 [docs/eas-update.md](docs/eas-update.md)。
-- Android 本機 Gradle 與 iOS EAS 正式建置預設 `production`; 管理者手機用官方 request-header API 選 `preview`. 不得關防變磚保護，也不得在讀經/朗讀時自動重載。CI 專用停用檢查旗標不得帶進正式 Gradle 建置；EAS profiles 會強制保留檢查。
+- Android 本機 Gradle 與 iOS EAS 正式建置預設 `production`; 管理者手機用官方 request-header API 選 `preview`. 不得關防變磚保護。下載好的 OTA 只在冷啟動，或離開 30 分鐘以上回前景時換上 (光佑 20261021)；朗讀或播放中、輸入沒存、面板開著不換。新的輸入框、面板、播放器要告訴 `src/services/autoUpdateGuard.ts` (`useAutoUpdateHold`、`addAutoUpdateProbe`)，守衛測試 `tests/tools/autoUpdateHolds.test.ts`。CI 專用停用檢查旗標不得帶進正式 Gradle 建置；EAS profiles 會強制保留檢查。
 
 ## 雲端驗證（`.github/workflows/`）
 
@@ -67,7 +67,7 @@
 ## iOS 注意事項（都實際發生過）
 
 1. **不可** `import * as X from 'react-native'`，也**不可** `import('react-native')`。Metro 會跑過每個 getter，觸發 `PushNotificationIOS`，iOS release 版一開就閃退。守衛測試：`tests/config/noReactNativeWildcard.test.ts`。
-2. 更新提示（下載 APK）只在 Android 出現：`fetchUpdateState` 在非 Android 平台直接回傳「沒有更新」，也不發網路請求（App Store 審查 2.5.2 不允許引導去裝安裝檔）。
+2. 更新提示 (2026-10-21 改寫)：Android 照舊 (Play 或安裝檔的版本檔)。iPhone 只有從 TestFlight 裝的才提示：`src/services/iosInstallSource.ts` 看 App 資料夾旁的商店收據 (`StoreKit/receipt` 是 App Store, `StoreKit/sandboxReceipt` 是 TestFlight) 和 expo-application 的簽章種類，TestFlight 安裝讀版本檔的 `ios.testflight` ([docs/app-version.md](docs/app-version.md))，按「更新」開 TestFlight 裡竹科聖經的頁面。App Store 安裝、模擬器、開發版不問、不發請求，**絕不出現 TestFlight 連結或安裝檔** (審查 2.5.2)。`fetchUpdateState` (安裝檔) 在非 Android 照舊直接回「沒有更新」。CI 模擬器沒有收據，fixture 建置照 Maestro 啟動參數 `qingmuInstallSource` 假裝 (流程 40, 42)；TestFlight 真機的收據判斷要在發版後用真的 iPhone 驗。
 3. 模擬器建置要 ad-hoc 簽章（`scripts/ios/build-simulator.sh`），不然沒有 keychain，SecureStore 會失敗。
 4. `plugins/withGoogleSignInPods.js` 讓沒有 Google iOS 設定檔的建置也能通過 `pod install`。
 5. 會員登入後，如果讀經提醒是開的，App 會要求通知權限（兩個平台都一樣）。

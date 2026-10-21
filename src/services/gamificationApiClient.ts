@@ -1,5 +1,6 @@
 import { notifyAuthExpired } from './authState';
-import { isScoreChartRange, type MonthPoints, type PersonListItem, type ScoreChart, type ScoreChartBucket, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile, type ScoreScope, type ViewerCapabilities } from '../domain/gamificationV1';
+import { withClientHeaders } from './clientInfo';
+import { isScoreChartRange, type ClientInstallSummary, type MonthPoints, type PersonListItem, type ScoreChart, type ScoreChartBucket, type ScoreChartQuery, type ScoreChartRange, type ScoreProfile, type ScoreScope, type ViewerCapabilities } from '../domain/gamificationV1';
 
 export type { MonthPoints, PersonListItem, ScoreChart, ScoreChartBucket, ScoreChartQuery, ScoreChartRange, ScoreProfile, ScoreScope, ViewerCapabilities };
 
@@ -136,8 +137,17 @@ function parseProfile(value: unknown): ScoreProfile | null {
 }
 function parsePeople(value: unknown): PersonListItem[] | null {
   const item = object(value); if (!item || !Array.isArray(item.people)) return null;
-  const people = item.people.map((entry) => { const person = object(entry); return person && string(person.memberId) && string(person.displayName) && nonNegativeInt(person.earnedTotal) && (person.rank === undefined || person.rank === null || positiveInt(person.rank)) ? { memberId: person.memberId, displayName: person.displayName, earnedTotal: person.earnedTotal, ...(person.rank !== undefined ? { rank: person.rank as number | null } : {}), ...(person.congregation === 'youth' || person.congregation === 'main' ? { congregation: person.congregation } : {}) } : null; });
+  const people = item.people.map((entry) => { const person = object(entry); return person && string(person.memberId) && string(person.displayName) && nonNegativeInt(person.earnedTotal) && (person.rank === undefined || person.rank === null || positiveInt(person.rank)) ? { memberId: person.memberId, displayName: person.displayName, earnedTotal: person.earnedTotal, ...(person.rank !== undefined ? { rank: person.rank as number | null } : {}), ...(person.congregation === 'youth' || person.congregation === 'main' ? { congregation: person.congregation } : {}), ...parseClient(person.client) } : null; });
   return people.every(Boolean) ? people as PersonListItem[] : null;
+}
+
+/** 全體 only (2026-10-21): a malformed report is dropped, never the person; null means "never reported". */
+function parseClient(value: unknown): { client?: ClientInstallSummary | null } {
+  if (value === null) return { client: null };
+  const client = object(value);
+  if (!client || (client.platform !== 'android' && client.platform !== 'ios') || !string(client.version) || typeof client.lastSeenDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(client.lastSeenDate)) return {};
+  const optional = (field: unknown) => (typeof field === 'string' && field ? field : null);
+  return { client: { platform: client.platform, version: client.version, build: optional(client.build), updateId: optional(client.updateId), lastSeenDate: client.lastSeenDate } };
 }
 function operationId(): string {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -146,7 +156,7 @@ function operationId(): string {
 }
 
 export function createGamificationApiClient(options: GamificationApiClientOptions) {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl = withClientHeaders(options.fetchImpl ?? fetch);
   const reads = new Map<string, { controller: AbortController; promise: Promise<unknown> }>();
   const pendingClaimOperations = new Map<string, string>();
   async function performRequest(path: string, init: RequestInit = {}): Promise<unknown> {

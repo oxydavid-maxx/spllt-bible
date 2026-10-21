@@ -128,7 +128,7 @@ export default function AnnouncementsScreen() {
         <Text style={[styles.sideText, side === item.value && styles.sideTextActive]}>{item.name}</Text>
       </Pressable>)}
     </View>
-    <UpdateCard state={update} onUpdate={() => { void startAppUpdate(update, (url) => { void Linking.openURL(url).catch(() => undefined); }); }} />
+    <UpdateCard state={update} onUpdate={() => { void startAppUpdate(update, (url) => Linking.openURL(url)); }} />
     {side === 'main'
       ? <BulletinBoard
           weeks={bulletins.weeks}

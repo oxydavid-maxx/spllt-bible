@@ -4,8 +4,22 @@ import * as Updates from 'expo-updates';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuthSnapshot } from '../../services/authSession';
 import { createGamificationApiClient } from '../../services/gamificationApiClient';
+import { isAppHidden, subscribeAppHidden } from '../../services/appVisibility';
+import { autoUpdateBlockers } from '../../services/autoUpdateGuard';
 import { readViewerCapabilities, useViewerCapabilities } from '../../services/viewerCapabilities';
 import { theme } from '../Theme';
+
+/**
+ * 光佑 20261021 (「不能 default 更新嗎？對老人家很不友善」): older members almost never close the app fully, so
+ * a downloaded update no longer waits for a cold start. Back after this long away, the app reloads into it,
+ * unless something is in use (src/services/autoUpdateGuard.ts). Replaces 2026-10-19's "never reload".
+ */
+export const AUTO_APPLY_AWAY_MS = 30 * 60_000;
+// The app's own background behind the official reload screen, so the second of reloading looks like the app.
+const RELOAD_SCREEN = { backgroundColor: theme.colors.background, fade: true, spinner: { color: theme.colors.primary } };
+
+// A downloaded update (or a roll-back to the store build) is waiting for the next launch or a quiet return.
+let downloaded = false;
 
 /** Fire after rendering; a stalled/offline update service never owns the app's loading state. */
 export async function checkOtaUpdateInBackground(): Promise<void> {
@@ -14,8 +28,11 @@ export async function checkOtaUpdateInBackground(): Promise<void> {
     // not OTA manifest metadata, so a CI export can never switch off a production installation.
     if (!Updates.isEnabled || Updates.checkAutomatically !== Updates.UpdatesCheckAutomaticallyValue.ON_ERROR_RECOVERY) return;
     const result = await Updates.checkForUpdateAsync();
-    if (result.isAvailable || result.isRollBackToEmbedded) await Updates.fetchUpdateAsync();
-    // Deliberately no reloadAsync: downloaded assets apply on the next cold start, including while reading/audio plays.
+    if (result.isAvailable || result.isRollBackToEmbedded) {
+      const fetched = await Updates.fetchUpdateAsync();
+      if (fetched.isNew || fetched.isRollBackToEmbedded) downloaded = true;
+    }
+    // Downloading never reloads: reading and narration carry on. It is put in place on a quiet return (below).
   } catch {
     // The embedded/cached update remains usable; startup has already continued.
   }
@@ -26,6 +43,37 @@ function startStartupCheck(): void {
   if (startupCheckStarted) return;
   startupCheckStarted = true;
   void checkOtaUpdateInBackground();
+}
+
+let hiddenSince: number | null = null;
+let deciding = false;
+/**
+ * Back after AUTO_APPLY_AWAY_MS: reload into a downloaded update when nothing is in use; with nothing waiting,
+ * ask once more, since an app left open for days would otherwise never hear of a newer update. Only after this
+ * launch's own check was allowed (a preview phone waits for its administrator, as at startup). No timer, no
+ * polling: it runs on the return itself.
+ */
+async function applyOnReturn(awayMs: number): Promise<void> {
+  if (awayMs < AUTO_APPLY_AWAY_MS || !startupCheckStarted || deciding) return;
+  deciding = true;
+  try {
+    if (!downloaded) { await checkOtaUpdateInBackground(); return; }
+    // Narration playing, an unsaved input or an open panel: leave it for a later quiet return or the next launch.
+    if ((await autoUpdateBlockers()).length > 0 || isAppHidden()) return;
+    await Updates.reloadAsync({ reloadScreenOptions: RELOAD_SCREEN });
+  } catch {
+    // A refused reload leaves the update for the next launch.
+  } finally {
+    deciding = false;
+  }
+}
+function watchReturns(): () => void {
+  return subscribeAppHidden((hidden) => {
+    if (hidden) { if (hiddenSince === null) hiddenSince = Date.now(); return; }
+    const since = hiddenSince;
+    hiddenSince = null;
+    if (since !== null) void applyOnReturn(Date.now() - since);
+  });
 }
 
 // Updates.channel is fixed at startup. Retain a successful selection across account-route remounts;
@@ -55,6 +103,7 @@ export function OtaUpdateCheck() {
   // Same key as useViewerCapabilities, so a lookup the account page starts at the same time is one request.
   // The root layout is not a focused screen, so it uses the shared reader rather than the focus-driven hook.
   const viewerKey = session ? JSON.stringify([session.memberId, session.sessionToken, auth.epoch]) : null;
+  useEffect(() => watchReturns(), []);
   useEffect(() => {
     // Production phones (everyone but an administrator testing preview) check at once, with no extra request.
     if (!previewSelected()) { startStartupCheck(); return; }

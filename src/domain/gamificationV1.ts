@@ -42,6 +42,20 @@ export interface PersonListItem {
   rank?: number | null;
   /** Only on 全體 (administrators): the side the person counts in, 青少 or 主堂 (維護者 2026-10-20). */
   congregation?: 'youth' | 'main';
+  /**
+   * Only on 全體 (administrators, 光佑 2026-10-21): the person's most recently opened phone, or null when no app
+   * of theirs has reported yet (an app older than this feature). server/clientInstalls.ts.
+   */
+  client?: ClientInstallSummary | null;
+}
+
+export interface ClientInstallSummary {
+  platform: 'android' | 'ios';
+  version: string;
+  build: string | null;
+  updateId: string | null;
+  /** Taipei date, YYYY-MM-DD. */
+  lastSeenDate: string;
 }
 
 export interface ScoreProfile {

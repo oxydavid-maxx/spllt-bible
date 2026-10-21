@@ -9,6 +9,7 @@ const OWNERS: Record<string, readonly string[]> = {
   reward_targets: ['member_id'], redemptions: ['member_id'], friend_tokens: ['owner_member_id'],
   friendships: ['member_low', 'member_high'], mutation_receipts: ['actor_member_id'],
   journal_entries: ['member_id'], devotion_completions: ['member_id'], event_registrations: ['member_id'],
+  client_installs: ['member_id'],
 };
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 

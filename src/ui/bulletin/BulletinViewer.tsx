@@ -3,6 +3,7 @@ import { FlatList, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BulletinWeek } from '../../services/bulletinClient';
 import { theme } from '../Theme';
+import { useAutoUpdateHold } from '../useAutoUpdateHold';
 import { ZoomablePage } from './ZoomablePage';
 
 /**
@@ -32,6 +33,8 @@ export function BulletinViewer({ week, startIndex, sourceFor, previewFor, onClos
   const [current, setCurrent] = useState(startIndex);
   const [zoomed, setZoomed] = useState(false);
   const [hint, setHint] = useState(true);
+  // Full screen over the app, like a panel: a downloaded update waits until it is closed (2026-10-21).
+  useAutoUpdateHold(true, '週刊全螢幕');
   const [, month, day] = week.date.split('-').map(Number);
   return <Modal visible animationType="fade" statusBarTranslucent onRequestClose={onClose}>
     <View style={styles.screen}>

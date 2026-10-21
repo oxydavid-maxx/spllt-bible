@@ -79,7 +79,7 @@
 | 好友 | 加好友後互相看積分（看不到對方的餘額和目標） | 積分「好友」 | Android、iOS | [points.md](points.md) |
 | 好友 QR | 出示或掃描 QR 馬上互加好友 | 積分頁選單 | Android、iOS | [points.md](points.md) |
 | 好友通知 | 有人加你好友時收到通知 | 系統通知 | Android、iOS | [points.md](points.md) |
-| 全體排名 (管理) | 管理者從帳戶頁最下面進來，解鎖後看全體積分，每個人旁邊標主堂或青少 | 帳戶頁「全體 (管理) ›」 | Android、iOS | [points.md](points.md) |
+| 全體排名 (管理) | 管理者從帳戶頁最下面進來，解鎖後看全體積分，每個人旁邊標主堂或青少，第二行是他的手機用哪一版、哪天打開 | 帳戶頁「全體 (管理) ›」| Android, iOS | [points.md](points.md) |
 | 獎品與兌換 | 獎品清單和兌換紀錄在 Google 試算表；紙本兌換後同工寫一列，可兌換積分跟著扣 | 試算表；App 的積分「自己」和「我的領取紀錄」 | Android、iOS | [points.md](points.md) |
 
 ## 日記
@@ -109,8 +109,8 @@
 | 啟用碼 | 認不出 Google 帳號時，用一次性啟用碼綁定 | 登入畫面（需要時才出現） | Android、iOS | [account.md](account.md) |
 | 帳戶頁 | 回前景更新名字、歸屬和提醒；進頁重驗管理資格；看自己的名字和小組、設定提醒、登出、刪除帳號與資料、看 App 版本 | 右上角頭像 | Android、iOS | [account.md](account.md) |
 | 青少/主堂 | 新會員第一次登入一定要選青少或主堂 (沒有預設、讀不到也照樣問)；之後在帳戶頁或積分頁「我在主堂聚會 (不是青少)」旁的「改」改 | 登入後第一個畫面、帳戶頁、積分「團體」 | Android、iOS | [account.md](account.md) |
-| App 更新提示 | 有新版時提示更新：Play 裝的在 App 裡更新，側載的開安裝頁 | 開 App 或回到前景時自動出現 | 只有 Android | [account.md](account.md) |
-| JS/圖片背景更新 | 同一商店版本背景下載，下次冷啟動套用；管理者可先收 preview | 自動；帳戶頁最下面的管理區 | Android, iOS | [account.md](account.md) |
+| App 更新提示 | 有新版時提示更新：Play 裝的在 App 裡更新，側載的開安裝頁，TestFlight 裝的 iPhone 開 TestFlight | 開 App 或回到前景時自動出現 | Android, iOS (只有 TestFlight 安裝；App Store 安裝不出現) | [account.md](account.md) |
+| JS/圖片背景更新 | 同一商店版本背景下載；下次冷啟動，或離開 30 分鐘以上回來時自動換上 (朗讀中、輸入沒存、面板開著不換)；管理者可先收 preview | 自動；帳戶頁最下面的管理區 | Android, iOS | [account.md](account.md) |
 
 ## 其他文件放哪
 
