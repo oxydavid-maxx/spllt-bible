@@ -11,6 +11,8 @@
  *
  * The returned source goes inside a script's own function: it defines `ownScroll(main, top)`, called right before
  * the script scrolls `main` to `top`, and `window[flag]()`, which readerSettingsBridge.ts asks for each scroll event.
+ * `ownScroll` also tells readerSettingsBridge.ts that the next gesture needs a finger again: after the page scrolls
+ * itself, only a touch on the scripture makes scrolling collapse or reveal the tools.
  */
 export function ownScrollGuardScript(flag: '__qingmuFollowScrolling' | '__qingmuRangeScrolling'): string {
   return `
@@ -18,6 +20,8 @@ export function ownScrollGuardScript(flag: '__qingmuFollowScrolling' | '__qingmu
   function ownScroll(main, top) {
     var max = Math.max(0, main.scrollHeight - main.clientHeight);
     ownTarget = Math.min(max, Math.max(0, top));
+    // The next scroll that collapses or reveals the tools needs a finger again (readerSettingsBridge.ts).
+    if (window.__qingmuPageScrolled) window.__qingmuPageScrolled();
   }
   window.${flag} = function () {
     if (ownTarget === null) return false;

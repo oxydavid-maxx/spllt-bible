@@ -63,7 +63,7 @@
 ### 沉浸模式與工具列收合（`src/ui/FullscreenReaderLayout.tsx`、`src/ui/readerSettingsBridge.ts`、`src/ui/readerImmersionState.ts`）
 
 - 所有工具（頁首、章節籤、右下 ○▶、底部提示卡）都以浮動疊層蓋在經文上，收合或展開時經文可視區域本身大小不變（避免 WebView 重新排版跳回章首）。
-- 收合觸發：在經文區域偵測到往下捲動且移動超過門檻（WebView 內建腳本判定，`READER_CANVAS_BRIDGE`）。
+- 收合觸發：在經文區域偵測到往下捲動且移動超過門檻（WebView 內建腳本判定，`READER_CANVAS_BRIDGE`）。只算手指造成的捲動 (2026-10-21)：朗讀跟隨、看整章、換章、版面改變這些沒人碰的捲動，不會收合也不會往上展開 (到章首、章尾照常展開)，見 [narration.md](narration.md) 的決定段。
 - 展開（叫回工具列）觸發：往上捲動累積超過約 120dp、捲到章節頂端、捲到章節末尾、按硬體返回鍵，或點收合後的細條本身。點經文本身只會選取經節，不會觸發收合或展開。
 - 開啟螢幕報讀（TalkBack/VoiceOver）時工具列強制常駐展開，且此後不會再自動收合（`AccessibilityInfo.isScreenReaderEnabled` 監聽）。
 - 選到經節、或任何設定/章節/版本疊層開著時，工具列強制展開；同時底部 tab bar 與系統導覽列讓位隱藏、右下 ○▶ 暫時隱藏，讓經節動作列或疊層完整可見。
