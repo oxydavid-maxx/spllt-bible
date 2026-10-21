@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { congregationOf, type Congregation } from './congregation';
+import { applySheetAdminMarks, ensureSheetAdminSchema, readSheetAdminMarks, type SheetAdminMark } from './sheetAdmins';
 
 /**
  * 獎品與兌換 live in one Google Sheet (維護者 2026-10-17), tabs 青少獎品, 青少兌換, 主堂獎品, 主堂兌換. An Apps Script
@@ -11,11 +12,16 @@ import { congregationOf, type Congregation } from './congregation';
  *
  * Names in the 兌換 tabs come from a dropdown this module fills: one label per member, given once and kept, so a
  * second 小明 joining later becomes 「小明 (2)」 and never takes over the first one's rows.
+ *
+ * The same labels name people in the 管理者 column of the 讀經統計 tabs (光佑 2026-10-21, server/sheetAdmins.ts).
  */
 export interface RewardSheetReward { row: number; name: string; points: unknown; listed: boolean }
 export interface RewardSheetRedemption { row: number; date: string; name: string; reward: string; points: unknown }
 export interface RewardSheetSide { rewards: RewardSheetReward[]; redemptions: RewardSheetRedemption[] }
-export type RewardSheetPush = Partial<Record<Congregation, RewardSheetSide>>;
+export type RewardSheetPush = Partial<Record<Congregation, RewardSheetSide>> & {
+  /** Every name on the 讀經統計 tabs with its 管理者 check; absent from an older script, and then nothing changes. */
+  admins?: SheetAdminMark[];
+};
 export interface RewardSheetRejection { side: Congregation; tab: 'rewards' | 'redemptions'; row: number; field: 'name' | 'points' | 'date' | 'reward' | 'duplicate' }
 export interface RewardSheetResult {
   labels: Record<Congregation, string[]>;
@@ -52,6 +58,7 @@ export function ensureRewardSheetSchema(db: DatabaseSync): void {
       label TEXT NOT NULL UNIQUE
     );
   `);
+  ensureSheetAdminSchema(db);
   // A prize from the sheet belongs to one side; the ones set up in the app before have none.
   const columns = db.prepare('PRAGMA table_info(rewards)').all() as Array<{ name: string }>;
   if (columns.length && !columns.some((column) => column.name === 'congregation')) db.exec('ALTER TABLE rewards ADD COLUMN congregation TEXT');
@@ -103,6 +110,9 @@ const rowNumber = (value: unknown): number | null => (typeof value === 'number' 
 export function readRewardSheetPush(value: unknown): RewardSheetPush | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const push: RewardSheetPush = {};
+  const admins = readSheetAdminMarks((value as Record<string, unknown>).admins);
+  if (admins === null) return null;
+  if (admins) push.admins = admins;
   for (const side of SIDES) {
     const raw = (value as Record<string, unknown>)[side];
     if (raw === undefined) continue;
@@ -121,23 +131,28 @@ export function readRewardSheetPush(value: unknown): RewardSheetPush | null {
 
 const sheetRewardId = (side: Congregation, name: string) => `sheet-${side}-${createHash('sha256').update(name).digest('hex').slice(0, 16)}`;
 
-/** Gives every member a label once; returns label → member and each side's dropdown (enabled members only). */
-function sheetLabels(db: DatabaseSync): { members: Map<string, string>; lists: Record<Congregation, string[]> } {
+/**
+ * Gives every member a label once; returns label → member, each side's dropdown (enabled members only) and the labels
+ * given just now. A deleted member's label is free again, so a label given just now may still sit on the sheet as the
+ * deleted member's row: nothing on the sheet under it can be about the new owner yet.
+ */
+function sheetLabels(db: DatabaseSync): { members: Map<string, string>; lists: Record<Congregation, string[]>; created: Set<string> } {
   const everyone = db.prepare('SELECT id, display_name, disabled_at FROM members ORDER BY rowid').all() as Array<{ id: string; display_name: string; disabled_at: number | null }>;
   const given = new Map((db.prepare('SELECT member_id, label FROM member_sheet_labels').all() as Array<{ member_id: string; label: string }>).map((row) => [row.member_id, row.label]));
   const taken = new Set(given.values());
+  const created = new Set<string>();
   const insert = db.prepare('INSERT INTO member_sheet_labels(member_id, label) VALUES(?, ?)');
   for (const member of everyone) {
     if (given.has(member.id)) continue;
     const base = text(member.display_name) || '未命名';
     let label = base;
     for (let n = 2; taken.has(label); n += 1) label = `${base} (${n})`;
-    insert.run(member.id, label); given.set(member.id, label); taken.add(label);
+    insert.run(member.id, label); given.set(member.id, label); taken.add(label); created.add(label);
   }
   const lists: Record<Congregation, string[]> = { youth: [], main: [] };
   for (const member of everyone) if (!member.disabled_at) lists[congregationOf(db, member.id)].push(given.get(member.id)!);
   for (const side of SIDES) lists[side].sort((left, right) => left.localeCompare(right, 'zh-Hant'));
-  return { members: new Map([...given].map(([memberId, label]) => [label, memberId])), lists };
+  return { members: new Map([...given].map(([memberId, label]) => [label, memberId])), lists, created };
 }
 
 function applySide(db: DatabaseSync, side: Congregation, sheet: RewardSheetSide, members: Map<string, string>, nowIso: string, rejected: RewardSheetRejection[]): void {
@@ -180,17 +195,22 @@ function applySide(db: DatabaseSync, side: Congregation, sheet: RewardSheetSide,
   db.prepare('INSERT INTO reward_sheet_sync(congregation, synced_at) VALUES(?, ?) ON CONFLICT(congregation) DO UPDATE SET synced_at = excluded.synced_at').run(side, nowIso);
 }
 
-/** Applies one push atomically. A side the script did not send is left as it was. */
-export function applyRewardSheet(db: DatabaseSync, push: RewardSheetPush, nowIso: string): RewardSheetResult {
+/**
+ * Applies one push atomically. A side the script did not send is left as it was, and so are the administrators when
+ * it sent no 管理者 column. `settingsAdminIds` are the private settings' administrators, which the sheet never changes.
+ * `newLabels` (not part of the reply) are the labels given in this push: a 管理者 check under one is ignored.
+ */
+export function applyRewardSheet(db: DatabaseSync, push: RewardSheetPush, nowIso: string, settingsAdminIds: readonly string[] = []): RewardSheetResult & { newLabels: ReadonlySet<string> } {
   db.exec('BEGIN IMMEDIATE');
   try {
     const legacyRewards = (db.prepare('SELECT name, cost_points FROM rewards WHERE congregation IS NULL AND active = 1 ORDER BY cost_points, name').all() as Array<{ name: string; cost_points: number }>)
       .map((row) => ({ name: row.name, points: row.cost_points }));
-    const { members, lists } = sheetLabels(db);
+    const { members, lists, created } = sheetLabels(db);
     const rejected: RewardSheetRejection[] = [];
     for (const side of SIDES) { const sheet = push[side]; if (sheet) applySide(db, side, sheet, members, nowIso, rejected); }
+    if (push.admins) applySheetAdminMarks(db, push.admins, new Map([...members].filter(([label]) => !created.has(label))), settingsAdminIds, nowIso);
     db.exec('COMMIT');
-    return { labels: lists, rejected, legacyRewards };
+    return { labels: lists, rejected, legacyRewards, newLabels: created };
   } catch (error) {
     try { db.exec('ROLLBACK'); } catch { /* keep the original failure */ }
     throw error;

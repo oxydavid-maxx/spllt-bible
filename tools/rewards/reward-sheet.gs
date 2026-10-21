@@ -11,6 +11,10 @@
  *
  * 第一次：在雲端硬碟「青少處」資料夾建一份空白試算表，名稱「竹科聖經 獎品與兌換」；執行 setupRewardSheet()
  * 並按「允許」。之後有人改試算表就會送出，另外每 15 分鐘也送一次。
+ *
+ * 「青少讀經統計」「主堂讀經統計」由 App 每次送出後整頁重寫，只有「管理者」那一欄是人填的 (光佑 2026-10-21)：
+ * 打勾的人在 App 裡就是管理者，取消就撤銷。重寫時用名字把每個勾放回去 (列會照積分重排)，寫之前再讀一次，
+ * 所以剛剛才打的勾也不會被蓋掉，下一次送出就生效。App 後端私人設定的管理者一直打勾，在這裡取消不會撤銷。
  */
 const REWARD_ENDPOINT = 'https://api.luminexhealthbiohack.com/api/integrations/reward-sheet';
 const REWARD_SHEET_TITLE = '竹科聖經 獎品與兌換';
@@ -24,8 +28,10 @@ const REWARD_ROSTER = '名單';
 const REWARD_TAB_HEADERS = ['獎品', '分數', '上架'];
 const REDEMPTION_TAB_HEADERS = ['日期', '名字', '獎品', '分數', '照片連結 (可不填)'];
 const REDEMPTION_NOTE = '可以換的分數 ＝ 讀經得分 − 這一頁裡這個人每一列的分數。填錯就直接改或刪那一列。';
-const READING_STATS_HEADERS = ['名字', '每月讀經天數', '總積分', '可以換的分數', '最後一次讀經'];
-const READING_STATS_NOTE = '這一頁由程式每 15 分鐘自動更新，在這裡改的內容會被蓋掉。';
+const READING_STATS_HEADERS = ['名字', '每月讀經天數', '總積分', '可以換的分數', '最後一次讀經', '管理者', '手機', '版本', '最後打開'];
+const READING_STATS_NOTE = '這一頁由程式每 15 分鐘自動更新，在這裡改的內容會被蓋掉。只有「管理者」的勾會留著：打勾的人在 App 裡就是管理者，取消就撤銷。';
+const READING_STATS_ADMIN = '管理者';
+const READING_STATS_OWNER_NOTE = '這位管理者由 App 後端的私人設定指定，在這裡取消不會撤銷。';
 const REWARD_REJECTED_COLOR = '#fde7e7';
 const REWARD_REJECTION_NOTES = {
   rewards: { name: '請填獎品名稱。', points: '分數要是大於 0 的整數，這個獎品沒有放上 App。', duplicate: '這個獎品名稱重複了，App 只用第一個。' },
@@ -118,6 +124,9 @@ function syncRewardSheet() {
     const book = SpreadsheetApp.openById(id);
     const push = {};
     for (const side of REWARD_SIDES) push[side.key] = { rewards: readRewardRows(book.getSheetByName(side.rewards)), redemptions: readRedemptionRows(book.getSheetByName(side.redemptions)) };
+    // 還沒有「管理者」欄的分頁 (舊版面) 不送，後端就不改任何管理者。
+    const admins = readRewardAdminMarks(book);
+    if (admins) push.admins = admins;
     const result = postRewardSheet(push);
     writeRewardRoster(book, result.labels);
     markRewardRejections(book, result.rejected);
@@ -164,25 +173,64 @@ function postRewardSheet(push) {
   return JSON.parse(response.getContentText());
 }
 
-/** 舊後端沒有統計就跳過；有資料時整頁重寫，避免會員停用或轉堂後殘留舊列。 */
+const rewardStatsTab = (side) => `${side.name}讀經統計`;
+
+/**
+ * 兩頁「讀經統計」上每個名字和它的「管理者」勾。兩頁都還沒有這一欄 (舊版面、還沒建) 時回 null：不送，後端不改。
+ * 欄位用第 2 列的欄名找，不靠固定位置。
+ */
+function readRewardAdminMarks(book) {
+  let marks = null;
+  for (const side of REWARD_SIDES) {
+    const sheet = book.getSheetByName(rewardStatsTab(side));
+    if (!sheet || sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) continue;
+    const width = sheet.getLastColumn();
+    const headers = sheet.getRange(2, 1, 1, width).getValues()[0].map(rewardCellText);
+    const nameColumn = headers.indexOf(READING_STATS_HEADERS[0]);
+    const adminColumn = headers.indexOf(READING_STATS_ADMIN);
+    if (nameColumn < 0 || adminColumn < 0) continue;
+    marks = marks || [];
+    if (sheet.getLastRow() < 3) continue;
+    for (const cells of sheet.getRange(3, 1, sheet.getLastRow() - 2, width).getValues()) {
+      const name = rewardCellText(cells[nameColumn]);
+      if (name) marks.push({ name, admin: cells[adminColumn] === true });
+    }
+  }
+  return marks;
+}
+
+/**
+ * 舊後端沒有統計就跳過；有資料時整頁重寫，避免會員停用或轉堂後殘留舊列。「管理者」欄是人填的：寫之前再讀一次
+ * 兩頁的勾，用名字放回去 (送出之後才打的勾也留著)；表上還沒有的人用後端的答案；私人設定的管理者一直打勾。
+ */
 function writeRewardReadingStats(book, stats) {
   if (!stats) return;
+  const checks = new Map((readRewardAdminMarks(book) || []).map((mark) => [mark.name, mark.admin]));
+  const adminColumn = READING_STATS_HEADERS.indexOf(READING_STATS_ADMIN) + 1;
   for (const side of REWARD_SIDES) {
     const rows = stats[side.key];
     if (!Array.isArray(rows)) continue;
-    const name = `${side.name}讀經統計`;
+    const name = rewardStatsTab(side);
     const sheet = book.getSheetByName(name) || book.insertSheet(name);
     sheet.clearContents();
     if (sheet.getMaxRows() < rows.length + 2) sheet.insertRowsAfter(sheet.getMaxRows(), rows.length + 2 - sheet.getMaxRows());
+    // No empty checkbox or old note is left on a row that no longer has a person.
+    if (sheet.getMaxRows() > 2) sheet.getRange(3, 1, sheet.getMaxRows() - 2, READING_STATS_HEADERS.length).removeCheckboxes().clearNote();
     sheet.getRange(1, 1, 1, READING_STATS_HEADERS.length).breakApart();
     rewardTab(book, name, READING_STATS_HEADERS, READING_STATS_NOTE);
     if (!rows.length) continue;
-    // Keep labels, the compact monthly text and YYYYMMDD (weekday) as literal text.
+    // Keep labels, the compact monthly text, YYYYMMDD (weekday) and the version as literal text.
     sheet.getRange(3, 1, rows.length, 2).setNumberFormat('@');
     sheet.getRange(3, 5, rows.length, 1).setNumberFormat('@');
+    sheet.getRange(3, adminColumn + 1, rows.length, 3).setNumberFormat('@');
+    sheet.getRange(3, adminColumn, rows.length, 1).insertCheckboxes();
+    // newLabel: 後端剛把這個名字給了新的人 (例如刪除帳號的人空出來的名字)，表上同名的勾是前一個人的，不沿用。
+    const admin = (row) => (row.adminFromSettings === true ? true : checks.has(row.name) && row.newLabel !== true ? checks.get(row.name) : row.admin === true);
     sheet.getRange(3, 1, rows.length, READING_STATS_HEADERS.length).setValues(rows.map((row) => [
       row.name, row.monthlyReadingDays, row.earnedTotal, row.redeemableBalance, row.lastReadingDate,
+      admin(row), row.phone || '', row.version || '', row.lastOpened || '',
     ]));
+    rows.forEach((row, index) => { if (row.adminFromSettings === true) sheet.getRange(3 + index, adminColumn).setNote(READING_STATS_OWNER_NOTE); });
   }
 }
 

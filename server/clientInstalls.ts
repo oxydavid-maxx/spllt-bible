@@ -3,8 +3,9 @@ import type { DatabaseSync } from 'node:sqlite';
 /**
  * Which version each phone runs, and the last day it was opened (光佑 2026-10-21: 「以後能不能紀錄誰用的是什麼
  * 版本？」). The app sends five headers with every request to this server (src/services/clientInfo.ts); a
- * signed-in request carrying them updates one row per installation. Only the 全體 (管理) list reads it back
- * (server/routes.ts, administrators only); friends never see it.
+ * signed-in request carrying them updates one row per installation. Only administrators read it back: the 全體
+ * (管理) list (server/routes.ts) and, since 光佑's 2026-10-21 request, the 手機/版本/最後打開 columns of the
+ * prize sheet's 讀經統計 pages (server/rewardSheetStats.ts); friends never see it.
  *
  * Older apps send none of these headers and are served exactly as before: nothing is recorded for them.
  * A malformed header records nothing rather than half a row. The day is enough (Taipei date, no time),
