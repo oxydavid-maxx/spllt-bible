@@ -1,5 +1,6 @@
 import { notifyAuthExpired } from './authState';
 import { GamificationApiError } from './gamificationApiClient';
+import { withClientHeaders } from './clientInfo';
 
 /**
  * The 積分 page's 團體 / 個人 data and the 靈修 tab (維護者 2026-10-14). See server/devotionProgress.ts
@@ -115,7 +116,7 @@ export function parseScoreHistory(value: unknown): ScoreHistory | null {
 }
 
 export function createDevotionClient(options: DevotionClientOptions): DevotionClient {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl = withClientHeaders(options.fetchImpl ?? fetch);
   const timeoutMs = options.timeoutMs ?? 8000;
   async function request(path: string, init: RequestInit = {}): Promise<{ status: number; body: unknown }> {
     const controller = new AbortController();

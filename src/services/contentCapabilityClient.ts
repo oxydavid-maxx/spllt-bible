@@ -15,6 +15,7 @@
 // R5: no raw HTTP status or exception text reaches the product surface. Those go to `diagnostic`,
 // which the UI does not render.
 
+import { withClientHeaders } from './clientInfo';
 import {
   isRetryable,
   statusMessage,
@@ -143,7 +144,7 @@ async function requestAttempt(args: FetchArgs, deadline: number): Promise<Reques
   let removeOuterAbort: (() => void) | undefined;
   const work = (async (): Promise<RequestAttempt> => {
     try {
-      const response = await (args.fetchImpl ?? fetch)(capabilityUrl(args.baseUrl, args.identity), {
+      const response = await withClientHeaders(args.fetchImpl ?? fetch)(capabilityUrl(args.baseUrl, args.identity), {
         signal: attemptController?.signal,
         headers: authHeaders(args.session),
       });

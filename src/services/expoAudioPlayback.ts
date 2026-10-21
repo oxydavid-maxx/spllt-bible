@@ -18,6 +18,7 @@
 //     a player across chapters is how audio ends up playing the wrong thing.
 
 import type { AudioPlaybackImplementation } from './audioSession';
+import { addAutoUpdateProbe } from './autoUpdateGuard';
 
 /** The slice of expo-audio's AudioPlayer this adapter needs. Declared so it can be unit-tested. */
 export interface NativeAudioPlayerLike {
@@ -86,6 +87,11 @@ export function createChapterBoundPlayback(
   // Ownership is now explicit: whoever created the player releases it. A binding only ever DETACHES.
   const ownsPlayer = options.ownsPlayer === true;
 
+  // Chapter and devotion narration both play through a binding, so while one is playing a downloaded update
+  // waits (光佑 2026-10-21, src/services/autoUpdateGuard.ts). Read from the real player when asked: a track
+  // that ends by itself needs no event to let the update through.
+  const releaseProbe = addAutoUpdateProbe('朗讀或播放中', () => !disposed && player.playing === true);
+
   const assertLive = () => {
     if (disposed) throw new Error('AUDIO_PLAYER_DISPOSED');
   };
@@ -145,6 +151,7 @@ export function createChapterBoundPlayback(
       if (disposed) return;
       clearSleep();
       disposed = true;
+      releaseProbe();
       try {
         player.pause();
       } catch {

@@ -4,6 +4,7 @@ import type { CompletionStatus } from '../domain/types';
 import type { SyncResult } from '../storage/outbox';
 import { notifyAuthExpired } from './authState';
 import { isDeviceSessionCredential } from './authCredential';
+import { withClientHeaders } from './clientInfo';
 
 export interface ApiClientOptions {
   baseUrl: string;
@@ -134,7 +135,8 @@ function responseObject(value: unknown): Record<string, unknown> | null {
 }
 
 export function createApiClient(options: ApiClientOptions) {
-  const fetchImpl = options.fetchImpl ?? fetch;
+  // Each request also says which app version this phone runs (src/services/clientInfo.ts, 2026-10-21).
+  const fetchImpl = withClientHeaders(options.fetchImpl ?? fetch);
   // React Native uses abort-controller, whose AbortSignal has no static timeout method.
   const timedFetch = async (url: string, init: RequestInit, timeout: number) => {
     const controller = new AbortController();

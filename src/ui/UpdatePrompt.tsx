@@ -27,11 +27,12 @@ export function installedVersionCode(): number | null {
  */
 export function UpdatePrompt({
   check = () => checkAppUpdate(installedVersionCode(), Platform.OS),
-  open = (url: string) => { void Linking.openURL(url).catch(() => undefined); },
+  // Returns the promise: a TestFlight link that cannot open falls back to TestFlight's web page (startAppUpdate).
+  open = (url: string) => Linking.openURL(url),
   start,
 }: {
   check?: () => Promise<UpdateState>;
-  open?: (url: string) => void;
+  open?: (url: string) => void | Promise<unknown>;
   start?: () => Promise<boolean>;
 }) {
   const [state, setState] = useState<UpdateState>(NO_UPDATE);
@@ -61,7 +62,7 @@ export function UpdatePrompt({
       <View style={styles.card} accessibilityViewIsModal accessibilityLabel="有新版本">
         <Text accessibilityRole="header" style={styles.title}>{updateTitle(state)}</Text>
         {state.note ? <Text style={styles.note}>{state.note}</Text> : null}
-        <Text style={styles.hint}>{state.viaPlay ? '按「更新」會用 Google Play 在 App 裡更新，資料都會保留。' : '按「更新」會打開安裝頁，照步驟下載後按「更新」，資料都會保留。'}</Text>
+        <Text style={styles.hint}>{updateHint(state)}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel={updateActionLabel(state)}
           onPress={() => { void startAppUpdate(state, open, start); }} style={styles.update}>
           <Text style={styles.updateText}>更新</Text>
@@ -72,6 +73,14 @@ export function UpdatePrompt({
       </View>
     </View>
   </Modal>;
+}
+
+/** What 更新 is about to do, in the words a member sees on the next screen. */
+function updateHint(state: UpdateState): string {
+  if (state.viaPlay) return '按「更新」會用 Google Play 在 App 裡更新，資料都會保留。';
+  // 光佑 (2026-10-21): a TestFlight iPhone gets the same prompt; TestFlight's own button is also 「更新」.
+  if (state.viaTestflight) return '按「更新」會打開 TestFlight，再按一次「更新」就好，資料都會保留。';
+  return '按「更新」會打開安裝頁，照步驟下載後按「更新」，資料都會保留。';
 }
 
 const styles = StyleSheet.create({

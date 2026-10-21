@@ -17,6 +17,7 @@ import { createContext, forwardRef, useCallback, useContext, useImperativeHandle
 import { Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createSheetDrag, SHEET_CLOSE_MS } from './sheetDrag';
+import { useAutoUpdateHold } from '../useAutoUpdateHold';
 
 const OPEN_MS = 250;
 const BACKDROP_OPACITY = 0.5;
@@ -77,6 +78,8 @@ const BottomSheet = forwardRef<BottomSheetMethods, BottomSheetProps>(function Bo
   const [translateY] = useState(() => new Animated.Value(windowHeight));
   const [progress] = useState(() => new Animated.Value(0));
   const [index, setIndex] = useState<Index>(-1);
+  // An open reader sheet (settings, chapters, verse actions) holds a downloaded update back (2026-10-21).
+  useAutoUpdateHold(index === 0, '面板開著');
   const indexRef = useRef<Index>(-1);
   const targetRef = useRef<Index>(-1);
   const contentHeightRef = useRef<number | null>(null);

@@ -20,10 +20,13 @@ import { getReadingPlanId } from '../src/ui/readingSession';
 import { registerConfiguredFriendPushTask } from '../src/services/friendPush';
 import { configureChapterAudio } from '../src/services/chapterAudioStartup';
 import { OtaUpdateCheck } from '../src/ui/admin/OtaUpdates';
+import { startClientInfo } from '../src/services/clientInfoNative';
 
 // At module scope, as the meeting task once was: a push that wakes a closed app has to find the task
 // already defined. A phone without the native modules simply has no friend notifications.
 void registerConfiguredFriendPushTask().catch(() => undefined);
+// Which version this phone runs, said with every request to the app's server (光佑 2026-10-21; src/services/clientInfo.ts).
+void startClientInfo().catch(() => undefined);
 
 export default function RootLayout() {
   const authStatus = useAuthSnapshot().status;

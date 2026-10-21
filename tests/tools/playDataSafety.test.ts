@@ -19,6 +19,15 @@ describe('Play Data safety matches the privacy policy for EAS Update', () => {
     expect(ids).toContain('安裝識別碼');
     expect(ids.split('|')[5]).toContain('必要');
   });
+  // 光佑 2026-10-21: the app now tells its own server its version, build, running update, a random installation
+  // id and the day it was opened (src/services/clientInfo.ts, server/clientInstalls.ts).
+  it('declares the version log in both, and its deletion with the account', () => {
+    expect(policy).toContain('App 版本紀錄');
+    expect(policy).toMatch(/刪除[^。]*App 版本紀錄/);
+    expect(row(table, '應用程式資訊和效能 → 其他應用程式效能資料')).toContain('App 版本');
+    expect(row(table, '應用程式活動 → 應用程式互動')).toContain('最後打開');
+    expect(row(table, '裝置或其他 ID')).toContain('記錄版本');
+  });
   it('declares the startup error log as crash logs', () => {
     const crash = row(table, '應用程式資訊和效能 → 當機記錄');
     expect(crash).toContain('expo-updates');

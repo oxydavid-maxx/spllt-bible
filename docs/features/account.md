@@ -1,15 +1,16 @@
 # 帳戶、登入與 App 更新提示
 
-> 狀態：本 PR 候選，尚待正式發布｜平台：Android、iOS (差異見「平台差異」)｜2026-10-17 更新：Apple 登入、App 內刪除、iOS 返回鍵、青少/主堂｜2026-10-20 候選：青少/主堂一定要選、字用「我」、讀不到也照樣問
+> 狀態：本 PR 候選，尚待正式發布｜平台：Android, iOS (差異見「平台差異」)｜2026-10-17 更新：Apple 登入、App 內刪除、iOS 返回鍵、青少/主堂｜2026-10-20 候選：青少/主堂一定要選、字用「我」、讀不到也照樣問｜2026-10-21 候選：OTA 回前景自動換上、TestFlight 的 iPhone 也有更新提示、每支手機的版本紀錄
 
 ## 一句話
 
-用 Google 帳號或 iPhone 的 Apple 登入建立或找回身份，帳戶頁能看到自己的資料、調整讀經提醒、改青少或主堂、登出或永久刪除帳號與伺服器個資；App 開機或回到前景時會順便檢查有沒有新版本可以更新（目前只有 Android 會被提醒）。
+用 Google 帳號或 iPhone 的 Apple 登入建立或找回身份，帳戶頁能看到自己的資料、調整讀經提醒、改青少或主堂、登出或永久刪除帳號與伺服器個資；App 開機或回到前景時會順便檢查有沒有新版本可以更新 (Android 和從 TestFlight 裝的 iPhone 會被提醒)，下載好的 JS/圖片更新在離開 30 分鐘以上回來時自動換上。
 
 ## 從哪裡進
 
-- JS/圖片 OTA: 0.5.35 起隨商店建置啟用 EAS Update; 畫面掛載後背景檢查一次，下載後下一次冷啟動生效，失敗/離線不擋使用。管理者在帳戶頁管理區可切「先收到測試版更新」，說明「只給管理者：先拿到還沒發給大家的修正，驗收用。」一般成員看不到。切換只改這支手機的頻道，下次開啟下載，再下一次開啟套用；關閉回到 production. 登出、換別的成員登入，或伺服器說已不是管理者時，App 自動把這支手機切回 production. 詳見 [操作與回復](../eas-update.md)。
+- JS/圖片 OTA: 0.5.35 起隨商店建置啟用 EAS Update; 畫面掛載後背景檢查一次，背景下載，失敗/離線不擋使用。下載好的更新在兩種時候生效：下一次冷啟動，或 App 離開 30 分鐘以上後回到前景 (2026-10-21, 見下面「OTA 回前景自動換上」)。管理者在帳戶頁管理區可切「先收到測試版更新」，說明「只給管理者：先拿到還沒發給大家的修正，驗收用。」一般成員看不到。切換只改這支手機的頻道，下次開啟下載，再下一次開啟套用；關閉回到 production. 登出、換別的成員登入，或伺服器說已不是管理者時，App 自動把這支手機切回 production. 詳見 [操作與回復](../eas-update.md)。
 - 更新請求中的隨機安裝識別碼與必要更新資訊，見 [隱私權政策](../play/privacy-policy.md) 的 Expo EAS Update 說明。
+- 版本紀錄 (2026-10-21)：App 每次連後端都帶上平台、商店版本、build, 正在跑的 OTA 更新編號和隨機安裝識別碼；後端每支安裝只留最新一筆和最後打開的日期，只有「全體 (管理)」看得到 ([points.md](points.md))。
 
 - 還沒登入、或登入過期時：`app/sign-in.tsx`（`src/ui/SignInScreen.tsx`）。整個 App 在路由層就被鎖住——`src/ui/AppStack.tsx` 用 `Stack.Protected` 把 `(tabs)`、`account` 都鎖在「已登入」條件下，還原本機登入狀態時，只顯示與原生開機畫面相同的白色背景及 App 圖示，不顯示文字、分頁或登入頁。本機有有效帳號直接進 App，沒有則直接進 `sign-in`；不等待 profile 網路請求，已登入者不會閃過登入頁。
 - 已登入時：多個分頁工具列右上角的圓形帳戶圖示（`src/ui/AccountEntryButton.tsx`，例如公告分頁、讀經精讀器、日記分頁），按下進入 `app/account.tsx`（`src/ui/accountSurfaceComponent.tsx`）。
@@ -114,7 +115,24 @@
   - `UpdatePrompt`：開 App、或從背景回前景時蓋在畫面最上層的全螢幕彈窗（`Modal`），有「更新」（Play 裝的在 App 裡更新，側載的開安裝頁）與「稍後」；`mandatory` 為真的版本沒有「稍後」按鈕。第一次檢查沒抓到（例如手機剛醒來還沒連網）會在 20 秒後自動再檢查一次。
   - `UpdateCard`：公告分頁最上方的常駐卡片，只要手機還落後就一直在，不會因為使用者關掉全螢幕提示就消失（2026-09-27 的產品決定：避免使用者不小心關掉提示後找不到更新入口）。
   - `UpdateBanner`：讀經精讀器（`app/(tabs)/reader.tsx`）更多閱讀工具面板裡的一行提示，可以按「稍後」關掉本次顯示。
-- **只有 Android 會看到任何更新提示**：`checkAppUpdate` 和 `fetchUpdateState` 一開頭都檢查 `Platform.OS !== 'android'`，是的話直接回「沒有更新」，**不問 Play、不發任何網路請求**——這是為了符合 App Store 2.5.2（不能引導使用者去裝會改變功能的安裝檔）；iOS 交給 App Store 自己的自動更新。
+- **iPhone 只有從 TestFlight 裝的才會看到更新提示** (2026-10-21, `checkAppUpdate` 的 iOS 分支、`src/services/iosInstallSource.ts`)：
+- 先看是從哪裡裝的：App 自己資料夾旁的商店收據 `StoreKit/receipt` (App Store) 或 `StoreKit/sandboxReceipt` (TestFlight)，兩個都在時算 App Store; 再看 expo-application 的簽章種類，分出商店簽章 (App Store 和 TestFlight 都是) 和模擬器、開發版、ad-hoc.
+- TestFlight 安裝：讀同一個版本檔的 `ios.testflight` 區塊 (`buildNumber`、`versionName`，格式見 [../app-version.md](../app-version.md))，比較裝置上的 build number (等於 Android versionCode); 比較大才提示。提示跟 Android 同三處、同樣子，按「更新」打開 TestFlight 裡竹科聖經的頁面 (`itms-beta://beta.itunes.apple.com/v1/app/<App Store Connect app id>`，打不開時開同一頁的網址版)。全螢幕提示的說明是「按「更新」會打開 TestFlight, 再按一次「更新」就好，資料都會保留。」
+  - 商店簽章但還沒有收據：當成 TestFlight 問，但版本檔寫了 `ios.appStore` (App 也上了 App Store) 就不提示。
+  - App Store 安裝、模擬器、開發版：跟以前一樣不問、不發請求，**絕不出現 TestFlight 的連結**。
+  - CI 的模擬器沒有收據：fixture 建置照 Maestro 的啟動參數 `qingmuInstallSource` (`testflight`/`app-store`) 決定，版本檔改讀假資料後端的 `/api/fixture/app-version.json` (`server/fixtureVersionNotice.ts`，比 app.json 新一版)。正式建置不讀這兩樣。
+- Android 照舊：`fetchUpdateState` 在非 Android 平台直接回「沒有更新」，iPhone 不會被引導去裝安裝檔 (App Store 審查 2.5.2)。
+
+### OTA 回前景自動換上 (2026-10-21, `src/ui/admin/OtaUpdates.tsx`、`src/services/autoUpdateGuard.ts`)
+
+- 已經背景下載好一份更新 (或回到商店內建版本的指令) 時，App 離開 (背景或被蓋住) 超過 30 分鐘、回到前景，就呼叫官方 `Updates.reloadAsync()` 換上，畫面用 App 的底色和轉圈重新載入約 1 秒。
+- 以下時候不換，等下一次離開 30 分鐘回來或下一次冷啟動：
+  - 正在朗讀或播放：章節朗讀和靈修朗讀都經過 `createChapterBoundPlayback`，換之前直接讀真正的播放器是不是在播；裝置語音朗讀問 `Speech.isSpeakingAsync()`。
+  - 日記或其他輸入還沒存：日記用 `useJournalEntry` 的「還沒存」狀態；登入的啟用碼有字、登入進行中也算。
+  - 面板開著：所有面板共用的 `SheetBackdrop`、讀經器的底部面板 (`src/ui/sheet/bottomSheet.tsx`)、週刊全螢幕、青少/主堂選擇畫面。更新提示本身不算 (換上之後會再出現)。
+- 決定的那一刻又離開了 App.
+- 沒有下載好的更新時，離開 30 分鐘以上回來會再背景檢查一次 (同開機時的規則；preview 手機一樣要先確認是管理者)，下載好的下一次照上面規則換上。不輪詢、不用計時器，只在回前景那一刻做。
+- 守衛測試 `tests/tools/autoUpdateHolds.test.ts`：新的輸入框、面板 (`Modal`)、播放器沒有告訴 `autoUpdateGuard` 就會失敗；`reloadAsync` 只能出現在這一處。
 
 ## 可見時更新 (2026-10-19)
 
@@ -126,7 +144,10 @@
 
 - 登入只叫一次 Google 官方的登入視窗；開 App 時先顯示開機畫面再決定去哪；登入中被系統關掉重開時說清楚 (維護者 2026-10-19，起因：使用者以為被踢出來)。
 - 看過的資料要跟上：回到前景、切回頁面時重讀，不用計時器 (維護者 2026-10-19)。
-- **OTA 不重載正在使用的 App, 也不關防變磚保護** (維護者 2026-10-19)：0.5.35 起用 Expo 官方 EAS Update 傳送同 runtime 的 JS/資源修正；原生套件、權限、SDK 等改動仍上架。runtime 採 appVersion, 每次商店發版更新 version. 管理者沿用 canViewAllScores, 可在原正式 App 選 preview, 使用官方 request-header override, 保留預設 production. 開關只改本機；相容與操作流程見 [eas-update.md](../eas-update.md)。選擇存在手機上、比登入的人活得久，開關卻只有管理者看得到，所以 preview 只跟著管理者 (主管審查 2026-10-19)：沒有人登入、換成別的成員，或伺服器回答不是管理者，就自動切回 production; preview 手機確認是管理者之前不檢查更新，一般 production 手機開 App 不多發請求。
+- **OTA 離開 30 分鐘以上回來時自動換上，但不打斷正在用的** (光佑 20261021, 原話：「不能 default 更新嗎？對老人家很不友善」)：長輩很少完整關掉 App, 下載好的更新等不到冷啟動。所以離開超過 30 分鐘、回到前景、有下載好的更新時就換上 (畫面重新載入約 1 秒)；正在朗讀或播放、日記或其他輸入還沒存、面板開著時不換。30 分鐘是「人已經離開去做別的事」的界線：短暫切出去回個訊息不會被重新載入。沒有下載好的更新時，同一個回前景也再背景檢查一次，否則開著好幾天的 App 永遠不會知道有新的。取代下一條 2026-10-19 的「不重載正在使用的 App」中「下次完整關閉再打開才套用、不呼叫 `reloadAsync`、不監聽回前景」的部分；不關防變磚保護、不在讀經朗讀中重載仍然有效。
+- ~~OTA 不重載正在使用的 App~~ (已被上一條 2026-10-21 取代重載的部分)，**也不關防變磚保護** (維護者 2026-10-19)：0.5.35 起用 Expo 官方 EAS Update 傳送同 runtime 的 JS/資源修正；原生套件、權限、SDK 等改動仍上架。runtime 採 appVersion, 每次商店發版更新 version. 管理者沿用 canViewAllScores, 可在原正式 App 選 preview, 使用官方 request-header override, 保留預設 production. 開關只改本機；相容與操作流程見 [eas-update.md](../eas-update.md)。選擇存在手機上、比登入的人活得久，開關卻只有管理者看得到，所以 preview 只跟著管理者 (主管審查 2026-10-19)：沒有人登入、換成別的成員，或伺服器回答不是管理者，就自動切回 production; preview 手機確認是管理者之前不檢查更新，一般 production 手機開 App 不多發請求。
+- **TestFlight 的 iPhone 也提示新版本，按「更新」打開 TestFlight** (光佑 20261021): iPhone 版從 TestFlight 安裝，TestFlight 的自動更新要測試者自己開，傳道就因此一直沒更新。畫面沿用 Android 的「有新版本」三處。版本資訊放在同一個版本檔的 `ios` 區塊，跟著發版流程改 ([../app-version.md](../app-version.md))；舊版 App 只讀 Android 欄位，不受影響。不加原生模組 (隨 OTA 發)，所以用 App 已經看得到的商店收據和簽章種類分辨安裝來源。
+- **每支手機的版本和最後打開的日期，只給管理者看** (光佑 20261021, 原話：「以後能不能紀錄誰用的是什麼版本？」→「可以」)：App 連後端時帶上平台、商店版本、build, OTA 更新編號，加一個 App 自己隨機產生的安裝識別碼；後端每支安裝只留最新一筆，日期只到日。只出現在「全體 (管理)」；好友、自己的積分頁、個人積分頁都沒有。舊版 App 不帶這些資訊也照常使用，只是「全體」那一行寫「沒有版本紀錄」。隱私權政策、Play 資料安全表同一個 PR 更新。
 
 - 2026-10-19：Play 測試機的新 Google 身分加驗過的 token email 網域訊號，與既有 App 旗標、IP 清單任一命中即建員停用，且僅限首次建員；既有會員與 Apple 路徑不變。網域僅有社群回報，尚未在正式環境確認，因此 log 分別記錄每個訊號的狀態供下次上傳查核，不記個資或 email 本身。
 
@@ -138,7 +159,7 @@
 **刻意不做：**
 
 - **Apple 登入只在 iOS 提供**：依 2026-10-17 不公開上架決定與 M6 設計實作，Android 維持 Google；共用程式以平台分支限定原生 Apple 授權。
-- **iOS 完全不顯示 App 更新提示，也不會為了檢查版本發出任何網路請求**：Android 才需要側載安裝檔更新；引導使用者去裝安裝檔在 iOS 上會違反 App Store 審查規則 2.5.2。（來源：[../../AGENTS.md](../../AGENTS.md) iOS 注意事項第 2 點）
+- **App Store 安裝的 iPhone 不出現 TestFlight 連結，也不出現安裝檔** (光佑 20261021 取代 2026-09-29 的「iOS 完全不顯示 App 更新提示」)：App Store 會自己更新；指向測試版或安裝檔不符合審查規則 2.5.2. App Store 收據在的時候一律不提示，版本檔寫了 `ios.appStore` 後，沒有 TestFlight 收據證明的 iPhone 也不提示。模擬器、開發版同樣不問、不發請求。(來源：[../../AGENTS.md](../../AGENTS.md) iOS 注意事項第 2 點)
 - **不收集 Email、密碼，只存 Google 帳號給的識別碼**；也不收集位置、通訊錄、相片影片、廣告識別碼，沒有廣告或使用行為分析工具。（來源：[../play/privacy-policy.md](../play/privacy-policy.md)）
 
 - **Google 登入第一次找不到對應帳號時會自動建立會員**，不用先請維護者手動開帳號；但「誰是管理者」不會因為誰先登入就自動取得——管理者身分是維護者在私有部署設定裡另外指定的，不會進公開原始碼。（來源：[../design/reading-gamification-v1.md](../design/reading-gamification-v1.md) §3.4）
@@ -159,7 +180,7 @@
 
 ## 平台差異
 
-- 更新提示：iOS 完全不出現（見上），這一點有 iOS 自動化流程 `.maestro/ios/40-no-update-prompt.yaml` 專門驗證「等過 20 秒重試視窗仍然看不到『有新版本』字樣」。
+- 更新提示：Android 問 Play 或安裝檔的版本檔；iPhone 只有 TestFlight 安裝才問，看版本檔的 `ios.testflight`，按「更新」開 TestFlight (見上). iOS 流程 `.maestro/ios/40-no-update-prompt.yaml` 驗證不是 TestFlight 的模擬器即使假資料後端有較新版本也看不到「有新版本」；`.maestro/ios/42-testflight-update.yaml` 用啟動參數假裝 TestFlight 時看得到、按「更新」離開 App, 假裝 App Store 時看不到。TestFlight 真機的收據判斷由 iPhone 測試者在發版後驗收。
 - Google 登入的 iOS 設定：建置時提供 `EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME`，App 會從 Google 的 reversed client scheme 取得 iOS client ID，傳給原生登入模組；同時保留 web client 作為後端 token audience。只有 Android services 設定檔時也會獨立註冊 iOS callback，不會略過 Android Firebase。沒有 iOS 設定的 CI 假資料建置仍可編譯；`plugins/withGoogleSignInPods.js` 只補 modular headers，不能代替登入設定。TestFlight 真機的帳號登入仍屬發布驗收。
 - 通知權限：登入後如果讀經提醒是開的，App 會要求通知權限，兩個平台行為一致（`AGENTS.md`）。
 
@@ -168,7 +189,8 @@
 - 認證相關 API（`server/routes.ts`）：`POST /api/session/google`（用 Google ID token 換 session，可選 `session_type: 'device'`）、`POST /api/onboarding/claim`（用啟用碼綁定身份並換 session）、`POST /api/session/device`（把一般 session 升級成不過期的裝置 session）、`POST /api/session/revoke`（撤銷裝置 session 或標記舊版 session 撤銷）、`GET /api/me/profile`（姓名/小組/能力）。
 - 伺服器目前對 `/api/me/profile` 的 `avatarUrl` **一律回傳 `null`**（`server/routes.ts` 的 `/api/me/profile` 處理），所以帳戶頁與帳戶入口圖示的「顯示 Google 頭像圖片」那條分支目前實際上不會被觸發，畫面一定顯示姓名字首的圓形字母。
 - 向下相容：`server/authBoundary.ts` 的 `authenticateSessionOrGoogle` 同時接受三種 Bearer token 格式——新式裝置 session（`qmd_` 開頭）、舊式簽名 session（`qms_` 開頭，可能已被登出動作標記撤銷）、以及直接送 Google ID token；舊版已安裝的 App 換到新後端不會被擋。
-- App 更新檢查同時保留兩個網址：`VERSION_URL`（現在的公開安裝頁）與 `LEGACY_VERSION_URL`（0.5.4–0.5.15 讀的 GitHub 網址），兩份內容需同步發布，讓還沒更新到能讀新網址的舊版 App 也能收到更新通知。
+- App 更新檢查同時保留兩個網址：`VERSION_URL`(現在的公開安裝頁) 與 `LEGACY_VERSION_URL`(0.5.4–0.5.15 讀的 GitHub 網址)，兩份內容需同步發布，讓還沒更新到能讀新網址的舊版 App 也能收到更新通知。iOS 的 `ios` 區塊只需要在 `VERSION_URL` 那份 (讀它的 App 都是 0.5.35 以後)，格式與發版時怎麼改見 [../app-version.md](../app-version.md)。
+- 版本紀錄 (2026-10-21)：每個登入後的請求可帶 `x-qingmu-client-install`、`x-qingmu-client-platform`、`x-qingmu-client-version`、`x-qingmu-client-build`、`x-qingmu-client-update` (`src/services/clientInfo.ts`)；後端 `client_installs` 表 (`server/clientInstalls.ts`) 以安裝識別碼為主鍵、只留最新一筆和台北日期，內容沒變就不寫。`GET /api/points/people?scope=all` 的每個人多一個 `client` (最近打開的那支手機，沒有紀錄是 `null`)。刪除帳號一起刪。
 - 帳號資料表：`members`（含 `disabled_at`）、`identity_bindings`（Google subject↔會員）、`member_invites`（啟用碼）、`auth_sessions`（裝置/舊式撤銷紀錄）；schema 建立在 `server/mobileSessions.ts` 的 `ensureMobileSessionSchema`。
 - 青少/主堂：`GET /api/me/congregation` 回 `{congregation}`，值是 `youth`、`main`，還沒選是 `null`；`PUT` 同一個路徑存 `{congregation}`，其他值回 400 `INVALID_CONGREGATION`。資料表 `member_affiliations` (`server/congregation.ts`)，刪除帳號時一起刪。
 
@@ -199,9 +221,13 @@
 - `tests/ui/accountRouteSafeArea.test.ts` — 帳戶頁底部不會被系統導覽列蓋住。
 - `tests/ui/accountReminderPatch.test.ts` — 帳戶頁的提醒設定只送出真的被改動的欄位。
 - `tests/updateCheck.test.ts` — 版本比對規則、非 Android 平台完全不檢查。
-- `tests/services/appUpdate.test.ts` — 先問 Play、Play 說沒有就不看版本檔、Play 失敗才用版本檔、iOS 誰都不問；「更新」在 App 裡跑 Play 更新、開不了改開商店頁、側載的開安裝頁。
-- `tests/ui/updatePrompt.test.ts` — 全螢幕提示的開啟/稍後/回前景重問、以及公告卡片的顯示條件。
-- `.maestro/ios/40-no-update-prompt.yaml` — 真機層級驗證 iOS 完全看不到更新視窗。
+- `tests/services/appUpdate.test.ts` — 先問 Play, Play 說沒有就不看版本檔、Play 失敗才用版本檔、iPhone 不問 Play 也不看 Android 欄位；「更新」在 App 裡跑 Play 更新、開不了改開商店頁、側載的開安裝頁。
+- `tests/services/iosTestflightUpdate.test.ts`、`tests/services/iosInstallSource.test.ts` — `ios` 區塊的讀法、舊版 Android 讀到的不變；TestFlight 較新的 build 才提示、按了開 TestFlight, 開不了改開網頁；App Store, 模擬器、開發版不問也不出現 TestFlight; 收據與簽章種類的判斷，fixture 啟動參數只在 fixture 建置有效。
+- `tests/ui/updatePrompt.test.ts` — 全螢幕提示的開啟/稍後/回前景重問、TestFlight 的說明與連結、以及公告卡片的顯示條件。
+- `tests/ui/otaAutoApply.test.ts`、`tests/tools/autoUpdateHolds.test.ts` — 離開 30 分鐘以上回來才換、不到 30 分鐘不換、朗讀中/未存輸入/面板開著不換、決定時又離開不換、沒下載好時回前景再檢查；每個輸入框、面板、播放器都告訴守衛，`reloadAsync` 只有一處。
+- `tests/services/clientInfo.test.ts`、`tests/server/clientInstalls.test.ts` — 每個連後端的請求都帶版本資訊、安裝識別碼只產生一次；後端每支安裝一筆、日期往前推、舊版不帶照常、格式錯不記、只有管理者的全體看得到、刪帳號一起刪。
+- `.maestro/ios/40-no-update-prompt.yaml` — 不是 TestFlight 的 iPhone 看不到更新視窗 (假資料後端有較新版本也一樣)。
+- `.maestro/ios/42-testflight-update.yaml` — 假裝 TestFlight 時出現「有新版本」、按「更新」離開 App; 假裝 App Store 時不出現。
 
 ## 相關文件
 

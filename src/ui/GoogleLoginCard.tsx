@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { theme } from './Theme';
+import { useAutoUpdateHold } from './useAutoUpdateHold';
 import { createApiClient, type SessionResult } from '../services/apiClient';
 import { establishGoogleSession } from '../services/googleSession';
 import { beginGoogleLogin, finishGoogleLogin, obtainGoogleIdToken, iosClientIdFromUrlScheme, type NativeGoogleModule, type NativeGoogleResult } from '../services/googleNative';
@@ -33,6 +34,8 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant, onSignI
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState('');
+  // A sign-in under way or an activation code being typed must not be reloaded away (2026-10-21).
+  useAutoUpdateHold(inviteCode.length > 0 || state === 'exchanging' || state === 'needs-invite' || state === 'claiming-invite', '登入中');
   const nativeWait = useRef<NativeLoginWait | null>(null);
   const starting = useRef<AuthSessionAttempt | null>(null);
   const mounted = useRef(true);
