@@ -192,6 +192,10 @@ describe('injected canvas gesture bridge', () => {
     const messages = () => postMessage.mock.calls.map(([raw]) => JSON.parse(raw)).filter(m => m.type !== 'qingmu.reader.canvas.edge');
     const down = (deltaY: number) => ({ type: 'qingmu.reader.canvas.scroll', data: { direction: 'down', deltaY } });
 
+    // Nobody's finger on the scripture yet: scrolling is not a gesture (2026-10-21, iOS flow 21).
+    scrollBy(200);
+    expect(messages()).toEqual([]);
+    dispatch('touchstart', { target: container });
     scrollBy(200); scrollBy(100); scrollBy(100);
     expect(messages()).toEqual([down(200)]);
     // Native revealed on its own (Back or the collapsed bar); the next gesture after a pause collapses again.

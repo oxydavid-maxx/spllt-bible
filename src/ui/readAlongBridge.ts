@@ -19,6 +19,8 @@
  * No timers run while idle: it wakes on attribute changes, new chapter content, touches and scrolls.
  */
 
+import { ownScrollGuardScript } from './ownScrollGuard';
+
 export const READ_ALONG_RELEASE_MESSAGE = 'qingmu.reader.follow.release';
 export const READ_ALONG_POSITION_MESSAGE = 'qingmu.reader.follow.position';
 /** The narration highlight colour, the one the SDK extension used (PLAYING_VERSE_HIGHLIGHT_COLOR). */
@@ -81,9 +83,9 @@ export function readAlongScript(insets: { top: number; bottom: number }): string
     var bandTop = box.top + TOP, bandBottom = box.top + main.clientHeight - BOTTOM;
     return { top: bandTop, height: Math.max(1, bandBottom - bandTop) };
   }
-  // The immersion bridge reads this so a scroll made here never collapses or reveals the toolbar.
-  var ownScrollUntil = 0;
-  window.__qingmuFollowScrolling = function () { return Date.now() < ownScrollUntil; };
+  // The immersion bridge reads this so a scroll made here never collapses or reveals the toolbar, however
+  // late its events come (src/ui/ownScrollGuard.ts).
+${ownScrollGuardScript('__qingmuFollowScrolling')}
   function scrollToNarration(list, main, always) {
     var at = extent(list), b = band(main);
     if (!always && at.top >= b.top && at.bottom <= b.top + b.height * FOLLOW_AT) return;
@@ -91,7 +93,7 @@ export function readAlongScript(insets: { top: number; bottom: number }): string
     var delta = at.top - target;
     if (Math.abs(delta) < 2) return;
     var smooth = attr('reduce-motion') !== '1';
-    ownScrollUntil = Date.now() + (smooth ? 1500 : 400);
+    ownScroll(main, main.scrollTop + delta);
     main.scrollTo({ top: main.scrollTop + delta, behavior: smooth ? 'smooth' : 'auto' });
   }
   var lastRequest, lastPosition = null;

@@ -1,3 +1,5 @@
+import { ownScrollGuardScript } from './ownScrollGuard';
+
 /** Restrict the SDK's transformed verse units. No second scripture renderer and no idle polling. */
 export function partialChapterScript(): string {
   return `
@@ -6,8 +8,8 @@ export function partialChapterScript(): string {
   window.__qingmuPartialChapter = true;
   var root = document.documentElement, key = null, expanded = false, firstUnit = null, lastRange = null;
   var hidden = [], head = null, tail = null, audio = null;
-  var ownScrollUntil = 0;
-  window.__qingmuRangeScrolling = function () { return Date.now() < ownScrollUntil; };
+  // Its own scrolls never collapse or reveal the reading tools, however late their events come (src/ui/ownScrollGuard.ts).
+${ownScrollGuardScript('__qingmuRangeScrolling')}
   var style = document.createElement('style');
   style.textContent = '[data-qingmu-range-hidden]{display:none!important}'
     + '[data-qingmu-range-head],[data-qingmu-range-tail],[data-qingmu-range-audio]{color:#4c5f57;background:#fff;font:14px/1.6 system-ui,sans-serif;}'
@@ -49,9 +51,13 @@ export function partialChapterScript(): string {
       for (var i = 0; i < units.length; i++) {
         if (units[i].getClientRects().length && units[i].getBoundingClientRect().bottom >= (main ? main.getBoundingClientRect().top : 0)) { anchor = units[i]; offset = anchor.getBoundingClientRect().top; break; }
       }
-      ownScrollUntil = Date.now() + 400;
       expanded = true; clear();
-      if (anchor && main) main.scrollTop += anchor.getBoundingClientRect().top - offset;
+      if (main) {
+        // The chapter grew above the anchor; this scroll puts it back where it was (also what scroll anchoring may do).
+        var keep = anchor ? main.scrollTop + anchor.getBoundingClientRect().top - offset : main.scrollTop;
+        ownScroll(main, keep);
+        if (anchor) main.scrollTop = keep;
+      }
       if (window.__qingmuReportEdge) window.__qingmuReportEdge();
     });
     return el;
@@ -108,7 +114,7 @@ export function partialChapterScript(): string {
     // Filtering collapses preceding paragraphs: the assigned first verse is at the start, with its
     // range hint visible. Re-run when async SDK content arrives, never on ordinary scrolling.
     var main = document.querySelector('[data-yv-sdk] > main');
-    if (main && changedContent) { ownScrollUntil = Date.now() + 400; main.scrollTop = 0; }
+    if (main && changedContent) { ownScroll(main, 0); main.scrollTop = 0; }
     if (window.__qingmuReportEdge) window.__qingmuReportEdge();
   }
   var scheduled = false;
