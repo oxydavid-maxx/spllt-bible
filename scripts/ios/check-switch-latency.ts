@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 export const SWITCH_LIMIT_MS = 100;
 
-interface Probe { label: string; surface: string; key: string; ms: number; commitMs?: number; renderMs?: number; layoutMs?: number; marks?: Record<string, number>; at: string }
+interface Probe { label: string; surface: string; key: string; ms: number; commitMs?: number; renderMs?: number; layoutMs?: number; marks?: Record<string, number>; renders?: Record<string, number>; gc?: { count: number; ms: number }; at: string }
 export interface SwitchExpectation { flow: string; label: string; name: string; taps: string[] }
 
 // In the order the flows tap. Keep in step with .maestro/ios/14-reader-instant.yaml and 44-points-instant.yaml.
@@ -70,6 +70,6 @@ if (process.argv[1]?.endsWith('check-switch-latency.ts')) {
   writeFileSync(outPath, JSON.stringify({ limitMs: SWITCH_LIMIT_MS, rows, records: recordsByFlow }, null, 2));
   for (const row of rows) console.log(`${row.result} ${row.name} ${row.tap}: ${row.ms === null ? '沒量到' : `${row.ms} ms`}`);
   // Where each switch's time went (render, layout, effects, frame), for the report.
-  for (const [flow, records] of Object.entries(recordsByFlow)) for (const record of records) console.log(`  ${flow} ${record.label} ${record.key}: render ${record.renderMs ?? '-'} / layout ${record.layoutMs ?? '-'} / commit ${record.commitMs ?? '-'} / frame ${record.ms} ms${record.marks ? ` / ${Object.entries(record.marks).map(([name, ms]) => `${name} ${ms}`).join(', ')}` : ''}`);
+  for (const [flow, records] of Object.entries(recordsByFlow)) for (const record of records) console.log(`  ${flow} ${record.label} ${record.key}: render ${record.renderMs ?? '-'} / layout ${record.layoutMs ?? '-'} / commit ${record.commitMs ?? '-'} / frame ${record.ms} ms${record.marks ? ` / ${Object.entries(record.marks).map(([name, ms]) => `${name} ${ms}`).join(', ')}` : ''}${record.renders ? ` / renders ${Object.entries(record.renders).map(([name, count]) => `${name}×${count}`).join(', ')}` : ''}${record.gc ? ` / gc ${record.gc.count}× ${record.gc.ms} ms` : ''}`);
   process.exit(rows.some((row) => row.result === 'FAIL') ? 1 : 0);
 }

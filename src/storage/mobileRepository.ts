@@ -75,11 +75,22 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
     database.execSync('ALTER TABLE qingmu_completions ADD COLUMN pending_status TEXT');
   }
 
+  // Read for every day of the month each time the 積分 page draws, and again by the reader on every ‹ › (光佑 2026-10-23:
+  // switches within 100 ms): each read was a synchronous SQLite query on the JS thread. A read is kept until the next
+  // write through this repository, the only writer of these tables (mobileDatabase.ts opens one connection).
+  const kept = new Map<string, CompletionRecord | undefined>();
+  const write = {
+    execSync: (source: string): void => { kept.clear(); database.execSync(source); },
+    runSync: (source: string, ...params: unknown[]): unknown => { kept.clear(); return database.runSync(source, ...params); },
+  };
+
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach(listener => listener());
 
   function get(record: Pick<CompletionRecord, 'memberId' | 'planId' | 'taskDate'>): CompletionRecord | undefined {
-    return toRecord(
+    const id = key(record);
+    if (kept.has(id)) return kept.get(id);
+    const found = toRecord(
       database.getFirstSync<StoredCompletion>(
         'SELECT member_id, plan_id, task_date, status, revision, sync_status, pending_status, last_operation_id FROM qingmu_completions WHERE member_id = ? AND plan_id = ? AND task_date = ?',
         record.memberId,
@@ -87,6 +98,8 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
         record.taskDate,
       ),
     );
+    kept.set(id, found);
+    return found;
   }
 
   function hasPendingCompletion(identity: Pick<CompletionRecord, 'memberId' | 'planId' | 'taskDate'>): boolean {
@@ -117,9 +130,9 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
     const transition = applyCompletion(command, current);
     if (transition.outcome === 'CONFLICT') return { ...current, syncStatus: 'SAVE_FAILED' };
     const record = { ...transition.record, syncStatus: 'PENDING_SAVE' as const, pendingStatus: command.desiredStatus };
-    database.execSync('BEGIN IMMEDIATE');
+    write.execSync('BEGIN IMMEDIATE');
     try {
-      database.runSync(
+      write.runSync(
         `INSERT INTO qingmu_completions (member_id, plan_id, task_date, status, revision, sync_status, pending_status, last_operation_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(member_id, plan_id, task_date) DO UPDATE SET status=excluded.status, revision=excluded.revision, sync_status=excluded.sync_status, pending_status=excluded.pending_status, last_operation_id=excluded.last_operation_id`,
@@ -132,15 +145,15 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
         record.pendingStatus ?? null,
         record.lastOperationId ?? null,
       );
-      database.runSync(
+      write.runSync(
         'INSERT OR REPLACE INTO qingmu_outbox (operation_id, command_json, created_at) VALUES (?, ?, ?)',
         command.operationId,
         JSON.stringify(command),
         new Date().toISOString(),
       );
-      database.execSync('COMMIT');
+      write.execSync('COMMIT');
     } catch (error) {
-      database.execSync('ROLLBACK');
+      write.execSync('ROLLBACK');
       throw error;
     }
     notify();
@@ -205,11 +218,11 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
 
   function rejectTerminal(command: MobileQueuedCommand): void {
     const current = get(command);
-    database.execSync('BEGIN IMMEDIATE');
+    write.execSync('BEGIN IMMEDIATE');
     try {
-      database.runSync('DELETE FROM qingmu_outbox WHERE operation_id = ?', command.operationId);
+      write.runSync('DELETE FROM qingmu_outbox WHERE operation_id = ?', command.operationId);
       if (current?.lastOperationId === command.operationId) {
-        database.runSync(
+        write.runSync(
           'UPDATE qingmu_completions SET sync_status = ?, pending_status = ? WHERE member_id = ? AND plan_id = ? AND task_date = ?',
           'SAVE_FAILED',
           command.desiredStatus,
@@ -218,19 +231,19 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
           command.taskDate,
         );
       }
-      database.execSync('COMMIT');
+      write.execSync('COMMIT');
     } catch (error) {
-      database.execSync('ROLLBACK');
+      write.execSync('ROLLBACK');
       throw error;
     }
   }
 
   function confirmAuthoritative(command: MobileQueuedCommand, revision: number, status: CompletionRecord['status']): void {
     const current = get(command);
-    database.execSync('BEGIN IMMEDIATE');
+    write.execSync('BEGIN IMMEDIATE');
     try {
       if (current?.lastOperationId && current.lastOperationId !== command.operationId) {
-        database.runSync(
+        write.runSync(
           'UPDATE qingmu_completions SET revision = ?, sync_status = ? WHERE member_id = ? AND plan_id = ? AND task_date = ?',
           revision,
           'PENDING_SAVE',
@@ -239,7 +252,7 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
           command.taskDate,
         );
       } else {
-        database.runSync(
+        write.runSync(
           'UPDATE qingmu_completions SET revision = ?, status = ?, sync_status = ?, pending_status = ?, last_operation_id = ? WHERE member_id = ? AND plan_id = ? AND task_date = ?',
           revision,
           status,
@@ -251,10 +264,10 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
           command.taskDate,
         );
       }
-      database.runSync('DELETE FROM qingmu_outbox WHERE operation_id = ?', command.operationId);
-      database.execSync('COMMIT');
+      write.runSync('DELETE FROM qingmu_outbox WHERE operation_id = ?', command.operationId);
+      write.execSync('COMMIT');
     } catch (error) {
-      database.execSync('ROLLBACK');
+      write.execSync('ROLLBACK');
       throw error;
     }
   }
@@ -269,7 +282,7 @@ export function createMobileRepository(database: MobileDatabase, _options: Mobil
     const current = get(record);
     // Recheck at commit time: a read can arrive after a local tap or a newer sync.
     if (current && (current.syncStatus !== 'CONFIRMED' || hasPendingCompletion(record) || current.revision > record.revision)) return current;
-    database.runSync(
+    write.runSync(
       `INSERT INTO qingmu_completions (member_id, plan_id, task_date, status, revision, sync_status, pending_status, last_operation_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(member_id, plan_id, task_date) DO UPDATE SET status=excluded.status, revision=excluded.revision, sync_status=excluded.sync_status, pending_status=excluded.pending_status, last_operation_id=excluded.last_operation_id`,

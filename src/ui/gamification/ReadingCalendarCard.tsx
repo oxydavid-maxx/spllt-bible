@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../Theme';
+import { markSwitch } from '../../services/switchLatencyProbe';
 import { dayState, monthCells, type CalendarDays, type DayState } from './readingCalendarModel';
 
 /**
@@ -35,6 +36,7 @@ function monthLabel(month: string): string {
 }
 
 export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, onOpenReadingPlan, onExportReadingCard, devotionDates }: ReadingCalendarCardProps) {
+  markSwitch('ReadingCalendarCard');
   return <View style={styles.card}>
     <View style={styles.periodNav}>
       <Pressable accessibilityRole="button" accessibilityLabel="上個月" accessibilityState={{ disabled: !onPreviousMonth }} disabled={!onPreviousMonth} onPress={onPreviousMonth} style={styles.navButton}><Text style={styles.navText}>‹</Text></Pressable>

@@ -1,5 +1,5 @@
 import { AppState, Pressable, StyleSheet, Text, View, type ScrollView } from 'react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { runtimeConfig } from '../../src/config/runtime';
 import { getAuthSnapshot, isCurrentAuthSession, registerAuthLifecycleListener, useAuthSnapshot } from '../../src/services/authSession';
@@ -40,14 +40,20 @@ import { loadReadingCardSnapshot } from '../../src/services/readingCardSnapshot'
 import { shareReadingCard } from '../../src/ui/readingCardShare';
 import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
 import { consumeOpenFriendsList, subscribeFriendAdded, subscribeOpenFriendsList, type FriendAddedEvent } from '../../src/services/friendPush';
-import { switchStarted, useSwitchShown } from '../../src/services/switchLatencyProbe';
+import { markSwitch, switchStarted, useSwitchShown } from '../../src/services/switchLatencyProbe';
 import { afterNextFrame, ASK_AGAIN, devotionDatesKey, invalidateReadingDaysInViewCache, markDevotionInViewCache, useViewCache, viewCache, viewCacheKey, type ViewCacheRequest } from '../../src/services/viewCache';
 import type { ReadingDaySnapshot } from '../../src/services/apiClient';
 
 // Prizes and redemptions are kept in the Google Sheet (維護者 2026-10-17): no 管理獎品 or 現場兌換 here.
 type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'redemptions' | null;
 
+// The chart and the goal do not change with a month or a day picked above them: not drawn again for those taps
+// (光佑 2026-10-23: switches within 100 ms). Their handlers stay the same function from one render to the next.
+const HistoryCard = memo(ScoreHistoryCard);
+const NO_REWARDS: never[] = [];
+
 export default function ProgressScreen() {
+  markSwitch('ProgressScreen');
   const congregation = useCongregation();
   // Where the member counts (青少/主堂). The 團體 card and the prize picker can look at the other side; each
   // opening starts on this one (維護者 2026-10-20). Null while unknown: the first-run choice is then on screen.
@@ -570,7 +576,7 @@ export default function ProgressScreen() {
     ahead: [rewardsRequest(otherSide(ownSide ?? 'youth')), redemptionsRequest(), friendsRequest()].filter((item): item is ViewCacheRequest<any> => item !== null),
   });
   // A list that never came shows as empty, as before; a kept one stays when a later ask fails (no network).
-  const shelfRewards = shelf.value ?? (shelf.failed ? [] : null);
+  const shelfRewards = shelf.value ?? (shelf.failed ? NO_REWARDS : null);
   const rewards = shelf.value ?? null;
   const viewedRewards = useViewCache(rewardSide ? rewardsRequest(rewardSide) : null, { active: Boolean(session && focused && rewardSide), freshSince: visitStartedAt, retry: rewardRetry });
   const otherRewards = viewedRewards.value ?? null;
@@ -748,6 +754,11 @@ export default function ProgressScreen() {
   useSwitchShown('calendar', keptMonth || schedule.ranges.some((range) => range.from <= calendarRange.from && range.to >= calendarRange.to) ? calendarMonth : null);
   useSwitchShown('scope', scope === 'me' ? (session && profile?.memberId === session.memberId ? 'me' : null) : (!busy && !selected ? scope : null));
   useSwitchShown('redemptions', sheet === 'redemptions' ? 'open' : null);
+  const goalHandlers = useRef({ setTarget, loadRewards });
+  goalHandlers.current = { setTarget, loadRewards };
+  const chooseTarget = useCallback((rewardId: string) => { void goalHandlers.current.setTarget(rewardId); }, []);
+  const chooseReward = useCallback(() => { void goalHandlers.current.loadRewards(); }, []);
+  markSwitch('ProgressScreen:end');
   if (!session) return <View style={styles.screen}><Text style={styles.title}>積分</Text><Text style={styles.note}>請先登入以查看積分。</Text></View>;
   const ownProfile = profile?.memberId === session.memberId ? profile : null;
   const showingProfile = scope !== 'me' && selected && profile;
@@ -823,10 +834,10 @@ export default function ProgressScreen() {
       </>}
       rewards={shelfRewards ?? undefined}
       handedOutBy={congregation.value === 'main' ? '同工' : '輔導'}
-      chart={scoreHistory ? <ScoreHistoryCard history={scoreHistory} /> : scoreHistoryMissing ? undefined : null}
-      onChooseTarget={(rewardId) => { void setTarget(rewardId); }}
+      chart={scoreHistory ? <HistoryCard history={scoreHistory} /> : scoreHistoryMissing ? undefined : null}
+      onChooseTarget={chooseTarget}
       onChartChange={loadProfileChart}
-      onChooseReward={() => void loadRewards()}
+      onChooseReward={chooseReward}
     /> : null}
     <CompletionAwardFeedback event={completionAward} onFinished={(operationId) => setCompletionAward((current) => current?.operationId === operationId ? null : current)} />
     <ReadingCardExportSheet visible={exportOpen} today={today} busy={exportBusy} error={exportError} onExport={period => { void exportReadingCard(period); }} onClose={closeExport} />

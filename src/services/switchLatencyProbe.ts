@@ -19,9 +19,21 @@ const now = (): number => globalThis.performance?.now?.() ?? Date.now();
  * native tree committed and laid out), `commitMs` its passive effect, `ms` the next frame. Where the time goes when `ms`
  * is over the limit: rendering, layout, effects, or other work holding the frame back.
  */
-export interface SwitchRecord { label: string; surface: string; key: string; ms: number; commitMs: number; renderMs?: number; layoutMs?: number; marks?: Record<string, number>; at: string }
+export interface SwitchRecord { label: string; surface: string; key: string; ms: number; commitMs: number; renderMs?: number; layoutMs?: number; marks?: Record<string, number>; renders?: Record<string, number>; gc?: { count: number; ms: number }; at: string }
 
-const pending = new Map<string, { expected: string; label: string; startedAt: number; renderAt?: number; layoutAt?: number; marks?: Record<string, number> }>();
+interface Started { expected: string; label: string; startedAt: number; renderAt?: number; layoutAt?: number; marks?: Record<string, number>; renders?: Record<string, number>; gcAt?: GcStats }
+const pending = new Map<string, Started>();
+
+/**
+ * Hermes' own garbage collection counters, when the engine offers them: a switch over the limit then shows whether a
+ * collection paused the JS thread in it (`gc` in its record).
+ */
+interface GcStats { count: number; ms: number }
+function gcStats(): GcStats | undefined {
+  const stats = (globalThis as { HermesInternal?: { getInstrumentedStats?: () => Record<string, number> } }).HermesInternal?.getInstrumentedStats?.();
+  if (!stats || typeof stats.js_numGCs !== 'number') return undefined;
+  return { count: stats.js_numGCs, ms: typeof stats.js_gcTime === 'number' ? stats.js_gcTime * 1000 : NaN };
+}
 
 /**
  * Notes, for every switch on its way, when a part of the screen first renders after the tap (`marks` in its record):
@@ -30,11 +42,11 @@ const pending = new Map<string, { expected: string; label: string; startedAt: nu
 export function markSwitch(name: string): void {
   if (!enabled || (pending.size === 0 && settling.size === 0)) return;
   const at = now();
-  for (const started of pending.values()) { started.marks ??= {}; if (started.marks[name] === undefined) started.marks[name] = Math.round(at - started.startedAt); }
+  for (const started of pending.values()) { started.marks ??= {}; if (started.marks[name] === undefined) started.marks[name] = Math.round(at - started.startedAt); started.renders ??= {}; started.renders[name] = (started.renders[name] ?? 0) + 1; }
   // Shown but its frame not drawn yet: a render now is work after the commit holding that frame back (`name+`).
-  for (const started of settling) { started.marks ??= {}; if (started.marks[`${name}+`] === undefined) started.marks[`${name}+`] = Math.round(at - started.startedAt); }
+  for (const started of settling) { started.marks ??= {}; if (started.marks[`${name}+`] === undefined) started.marks[`${name}+`] = Math.round(at - started.startedAt); started.renders ??= {}; started.renders[`${name}+`] = (started.renders[`${name}+`] ?? 0) + 1; }
 }
-const settling = new Set<{ startedAt: number; marks?: Record<string, number> }>();
+const settling = new Set<Started>();
 
 /** One moment outside any switch (e.g. when an answer asked ahead came back), as ms since the app's JS started. */
 export function noteMoment(label: string, key: string): void {
@@ -47,7 +59,7 @@ let writing: Promise<void> = Promise.resolve();
 
 export function switchStarted(surface: string, expected: string, label: string): void {
   if (!enabled) return;
-  pending.set(surface, { expected, label, startedAt: now() });
+  pending.set(surface, { expected, label, startedAt: now(), gcAt: gcStats() });
 }
 
 function matching(surface: string, shown: string | null) {
@@ -67,7 +79,10 @@ export function switchShown(surface: string, shown: string | null): void {
   const frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (run: () => void) => setTimeout(run, 0);
   frame(() => {
     settling.delete(started);
-    records.push({ label: started.label, surface, key: shown, ms: Math.round(now() - started.startedAt), commitMs: Math.round(committedAt - started.startedAt), renderMs: since(started.renderAt), layoutMs: since(started.layoutAt), marks: started.marks, at: new Date().toISOString() });
+    const ms = Math.round(now() - started.startedAt);
+    const gcNow = gcStats();
+    const gc = started.gcAt && gcNow ? { count: gcNow.count - started.gcAt.count, ms: Math.round(gcNow.ms - started.gcAt.ms) } : undefined;
+    records.push({ label: started.label, surface, key: shown, ms, commitMs: Math.round(committedAt - started.startedAt), renderMs: since(started.renderAt), layoutMs: since(started.layoutAt), marks: started.marks, renders: started.renders, gc, at: new Date().toISOString() });
     const text = JSON.stringify(records);
     writing = writing.then(async () => {
       const fs = await import('expo-file-system/legacy');

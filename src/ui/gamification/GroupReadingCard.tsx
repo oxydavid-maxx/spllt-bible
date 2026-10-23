@@ -6,7 +6,7 @@ import { monthName, monthSummary, myPrizeLine, prizeProgress, prizeRule, readers
 import { theme } from '../Theme';
 import { GROUP_NAME, whereSentence } from '../congregation/congregationCopy';
 import { SideSwitch } from '../congregation/SideSwitch';
-import { useSwitchShown } from '../../services/switchLatencyProbe';
+import { markSwitch, useSwitchShown } from '../../services/switchLatencyProbe';
 
 /**
  * 團體 on the 積分 page (維護者 2026-10-14): how many youth read each day, and the prizes the church
@@ -63,6 +63,7 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onVi
   // Looking at the other side (維護者 2026-10-20): say so in the member's own words, and leave out the
   // 「算你一份」 line, which is about a side they do not count in.
   const onlyLooking = own != null && own !== view.scope;
+  markSwitch('GroupReadingCard:end');
   return <View style={styles.card} accessibilityLabel={title}>
     <View style={styles.titleRow}>
       <Text accessibilityRole="header" style={styles.title}>{title}</Text>

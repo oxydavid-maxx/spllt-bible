@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { Congregation, GroupReading, createDevotionClient } from '../../services/devotionClient';
-import { switchStarted } from '../../services/switchLatencyProbe';
+import { markSwitch, switchStarted } from '../../services/switchLatencyProbe';
 import { useViewCache, viewCacheKey, type ViewCacheRequest } from '../../services/viewCache';
 import { CongregationLine } from '../congregation/CongregationLine';
 import { theme } from '../Theme';
@@ -38,6 +38,7 @@ export interface GroupSectionProps {
 export interface GroupSectionMemory { side: Congregation | null; month: string | null; reset: number }
 
 function GroupSectionView({ memberId, sessionToken, client, ownSide, active, freshSince, resetSignal, today, firstMonth, memory }: GroupSectionProps) {
+  markSwitch('GroupSection');
   const [groupSide, setGroupSide] = useState<Congregation | null>(() => memory.reset === resetSignal ? memory.side : null);
   const [groupMonth, setGroupMonth] = useState(() => memory.month ?? today.slice(0, 7));
   const [groupRetry, setGroupRetry] = useState(0);

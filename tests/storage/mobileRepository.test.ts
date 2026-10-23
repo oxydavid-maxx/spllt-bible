@@ -241,3 +241,25 @@ describe('durable mobile completion repository', () => {
     node.close();
   });
 });
+
+// 光佑 2026-10-23:「速度要完全無感非常的快」: the 積分 page reads a record for every day of the month each time it draws,
+// and every read was a synchronous SQLite query on the JS thread.
+describe('a record read again is kept until the next write', () => {
+  it('asks SQLite once for the same day, and again after a write changed it', () => {
+    const { mobile } = nodeDatabase();
+    const getFirst = vi.spyOn(mobile, 'getFirstSync');
+    const repository = createMobileRepository(mobile);
+    const day = { memberId: 'google:self', planId: 'church-2026-10', taskDate: '2026-10-23' };
+    const reads = () => getFirst.mock.calls.filter(([source]) => String(source).includes('FROM qingmu_completions')).length;
+    expect(repository.get(day)).toBeUndefined();
+    expect(repository.get(day)).toBeUndefined();
+    expect(reads()).toBe(1);
+    repository.saveCompletion({ ...day, desiredStatus: 'COMPLETED', operationId: 'op-kept', expectedRevision: 0, syncStatus: 'PENDING_SAVE' });
+    const before = reads();
+    expect(repository.get(day)).toMatchObject({ status: 'COMPLETED', syncStatus: 'PENDING_SAVE' });
+    expect(repository.get(day)).toMatchObject({ status: 'COMPLETED', syncStatus: 'PENDING_SAVE' });
+    expect(reads()).toBe(before + 1);
+    repository.mergeRemote({ ...day, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' });
+    expect(repository.get(day)).toMatchObject({ status: 'COMPLETED', syncStatus: 'PENDING_SAVE' });
+  });
+});

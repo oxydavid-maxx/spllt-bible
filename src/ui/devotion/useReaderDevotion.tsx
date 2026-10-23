@@ -14,7 +14,7 @@ import { DevotionalView, type DevotionalState } from './DevotionalView';
 import { useReaderRetrySignal } from '../readerRetrySignal';
 import { devotionBanner } from './devotionFabModel';
 import { switchStarted, useSwitchShown } from '../../services/switchLatencyProbe';
-import { ASK_AGAIN, devotionDatesKey, markDevotionInViewCache, viewCache, viewCacheKey } from '../../services/viewCache';
+import { afterNextFrame, ASK_AGAIN, devotionDatesKey, markDevotionInViewCache, viewCache, viewCacheKey } from '../../services/viewCache';
 import { readingDaysRange, shiftMonth } from '../gamification/readingCalendarModel';
 
 /**
@@ -143,24 +143,31 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
     const month = date.slice(0, 7);
     const monthDates = (value: string) => { const range = readingDaysRange(value, today); return { key: devotionDatesKey(session, range.from, range.to), load: () => client.getDevotionDates(range.from, range.to) }; };
     const day = Number(date.slice(8, 10));
-    for (const ahead of [day <= 7 ? shiftMonth(month, -1) : null, day >= 22 ? shiftMonth(month, 1) : null]) {
-      if (ahead) { const request = monthDates(ahead); viewCache.prefetch(request.key, request.load, visitStartedAt); }
-    }
+    // Asked ahead once the new day is drawn: a request started in the same turn holds back that frame.
+    const later = afterNextFrame(() => {
+      for (const ahead of [day <= 7 ? shiftMonth(month, -1) : null, day >= 22 ? shiftMonth(month, 1) : null]) {
+        if (ahead) { const request = monthDates(ahead); viewCache.prefetch(request.key, request.load, visitStartedAt); }
+      }
+    });
     const request = monthDates(month);
     void viewCache.read(request.key, request.load, visitStartedAt).then((dates) => {
       // The month already drawn from the store (keptMonth below) is this answer: nothing to draw again.
       if (!active || revision !== markRevision.current || drawnMonth.current === dates) return;
       setMarked({ date, done: dates.includes(date) });
     }).catch(() => undefined);
-    return () => { active = false; };
+    return () => { active = false; later.cancel(); };
   }, [client, date, visitStartedAt, signalComing]);
   // A day the reader has not asked about yet is asked for as it shows, so 靈修 opens on it at once. A day already kept is
   // shown from the store when 靈修 opens and asked again then (load below), as every look always did; one question at a time.
   useEffect(() => {
     if (!client || !session || !focused || signalComing) return;
     const key = viewCacheKey(session, 'devotional', date);
-    if (viewCache.peek(key) !== undefined || viewCache.failed(key)) return;
-    viewCache.prefetch(key, () => client.getDevotional(date), visitStartedAt, { joinAnyInflight: true });
+    // Once the day is drawn (a request started in the same turn holds back the frame that shows it).
+    const later = afterNextFrame(() => {
+      if (viewCache.peek(key) !== undefined || viewCache.failed(key)) return;
+      viewCache.prefetch(key, () => client.getDevotional(date), visitStartedAt, { joinAnyInflight: true });
+    });
+    return later.cancel;
   }, [client, date, focused, visitStartedAt, signalComing]);
 
   // `quiet` keeps 還沒有上傳 on screen while asking again, and a failed quiet ask leaves it there.

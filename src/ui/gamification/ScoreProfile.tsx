@@ -1,9 +1,15 @@
-import type { ReactNode, Ref } from 'react';
+import { memo, type ReactNode, type Ref } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { Reward, ScoreChartQuery, ScoreProfile as ScoreProfileData } from '../../services/gamificationApiClient';
 import { theme } from '../Theme';
 import { RewardGoalCard } from './RewardGoalCard';
 import { ScoreProfileChart } from './ScoreProfileChart';
+import { markSwitch } from '../../services/switchLatencyProbe';
+
+// The own page draws again for every switch in the cards at its top (a month, a day): the goal and the chart below
+// them do not change with those, so they are not drawn again (光佑 2026-10-23: switches within 100 ms).
+const GoalCard = memo(RewardGoalCard);
+const RangeChart = memo(ScoreProfileChart);
 
 export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget, onChartChange, today, lead, community, showChartViewToggle, chart, handedOutBy, scrollRef }: {
   handedOutBy?: '輔導' | '同工';
@@ -38,17 +44,18 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
    */
   chart?: ReactNode;
 }) {
+  markSwitch('ScoreProfile');
   const privateData = profile.private;
   return <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
     {lead}
-    {privateData ? <RewardGoalCard handedOutBy={handedOutBy} target={privateData.targetReward} redeemableBalance={privateData.redeemableBalance} earnedTotal={profile.earnedTotal} rewards={rewards} canEditTarget={profile.permissions.canEditTarget} onChooseTarget={onChooseTarget} onOpenPicker={onChooseReward} displayName={profile.displayName} band={profile.band} /> : <View style={styles.header}>
+    {privateData ? <GoalCard handedOutBy={handedOutBy} target={privateData.targetReward} redeemableBalance={privateData.redeemableBalance} earnedTotal={profile.earnedTotal} rewards={rewards} canEditTarget={profile.permissions.canEditTarget} onChooseTarget={onChooseTarget} onOpenPicker={onChooseReward} displayName={profile.displayName} band={profile.band} /> : <View style={styles.header}>
       <Text style={styles.name}>{profile.displayName}</Text>
       <Text style={styles.total}>{profile.earnedTotal}</Text>
       <Text style={styles.totalLabel}>總積分</Text>
       {profile.band == null ? <Text style={styles.bandPending}>滿 10 人開始分梯隊</Text> : <Text style={styles.band}>{`第 ${profile.band} 梯隊`}</Text>}
     </View>}
     
-    {chart !== undefined ? chart : <ScoreProfileChart chart={profile.chart} fallbackMonths={profile.months} onChartChange={onChartChange} today={today} showViewToggle={showChartViewToggle} />}
+    {chart !== undefined ? chart : <RangeChart chart={profile.chart} fallbackMonths={profile.months} onChartChange={onChartChange} today={today} showViewToggle={showChartViewToggle} />}
     {community}
   </ScrollView>;
 }
