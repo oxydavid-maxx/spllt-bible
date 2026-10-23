@@ -19,9 +19,28 @@ const now = (): number => globalThis.performance?.now?.() ?? Date.now();
  * native tree committed and laid out), `commitMs` its passive effect, `ms` the next frame. Where the time goes when `ms`
  * is over the limit: rendering, layout, effects, or other work holding the frame back.
  */
-export interface SwitchRecord { label: string; surface: string; key: string; ms: number; commitMs: number; renderMs?: number; layoutMs?: number; at: string }
+export interface SwitchRecord { label: string; surface: string; key: string; ms: number; commitMs: number; renderMs?: number; layoutMs?: number; marks?: Record<string, number>; at: string }
 
-const pending = new Map<string, { expected: string; label: string; startedAt: number; renderAt?: number; layoutAt?: number }>();
+const pending = new Map<string, { expected: string; label: string; startedAt: number; renderAt?: number; layoutAt?: number; marks?: Record<string, number> }>();
+
+/**
+ * Notes, for every switch on its way, when a part of the screen first renders after the tap (`marks` in its record):
+ * a switch over the limit then shows which part's render took the time.
+ */
+export function markSwitch(name: string): void {
+  if (!enabled || (pending.size === 0 && settling.size === 0)) return;
+  const at = now();
+  for (const started of pending.values()) { started.marks ??= {}; if (started.marks[name] === undefined) started.marks[name] = Math.round(at - started.startedAt); }
+  // Shown but its frame not drawn yet: a render now is work after the commit holding that frame back (`name+`).
+  for (const started of settling) { started.marks ??= {}; if (started.marks[`${name}+`] === undefined) started.marks[`${name}+`] = Math.round(at - started.startedAt); }
+}
+const settling = new Set<{ startedAt: number; marks?: Record<string, number> }>();
+
+/** One moment outside any switch (e.g. when an answer asked ahead came back), as ms since the app's JS started. */
+export function noteMoment(label: string, key: string): void {
+  if (!enabled) return;
+  records.push({ label, surface: 'note', key, ms: Math.round(now()), commitMs: 0, at: new Date().toISOString() });
+}
 const records: SwitchRecord[] = [];
 const fileName = `switch-latency-${Date.now()}.json`;
 let writing: Promise<void> = Promise.resolve();
@@ -43,10 +62,12 @@ export function switchShown(surface: string, shown: string | null): void {
   pending.delete(surface);
   const committedAt = now();
   const since = (at: number | undefined) => at === undefined ? undefined : Math.round(at - started.startedAt);
+  settling.add(started);
   // The content is committed; the next frame is the one that draws it.
   const frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (run: () => void) => setTimeout(run, 0);
   frame(() => {
-    records.push({ label: started.label, surface, key: shown, ms: Math.round(now() - started.startedAt), commitMs: Math.round(committedAt - started.startedAt), renderMs: since(started.renderAt), layoutMs: since(started.layoutAt), at: new Date().toISOString() });
+    settling.delete(started);
+    records.push({ label: started.label, surface, key: shown, ms: Math.round(now() - started.startedAt), commitMs: Math.round(committedAt - started.startedAt), renderMs: since(started.renderAt), layoutMs: since(started.layoutAt), marks: started.marks, at: new Date().toISOString() });
     const text = JSON.stringify(records);
     writing = writing.then(async () => {
       const fs = await import('expo-file-system/legacy');

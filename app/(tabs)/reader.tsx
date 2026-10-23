@@ -30,11 +30,12 @@ import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
 import { useReaderRetrySignal } from '../../src/ui/readerRetrySignal';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { useReaderDevotion } from '../../src/ui/devotion/useReaderDevotion';
-import { switchStarted } from '../../src/services/switchLatencyProbe';
+import { markSwitch, switchStarted } from '../../src/services/switchLatencyProbe';
 
 let handledTodayReaderTabPressRevision = 0;
 
 export default function ReaderScreen() {
+  markSwitch('ReaderScreen');
   const chrome = useReaderChrome();
   const [planOpen, setPlanOpen] = useState(false);
   useEffect(() => { if (!chrome.focused) setPlanOpen(false); }, [chrome.focused]);
