@@ -20,6 +20,7 @@ appId: org.qingmu.youth
     timeout: 15000
 - waitForAnimationToEnd:
     timeout: 3000
+- takeScreenshot: 14-reader-instant-devotional
 - tapOn:
     text: ".*今日第1段.*"
     retryTapIfNoChange: false
@@ -32,6 +33,7 @@ appId: org.qingmu.youth
     retryTapIfNoChange: false
 - waitForAnimationToEnd:
     timeout: 3000
+- takeScreenshot: 14-reader-instant-next-day
 - tapOn:
     text: "上一個排定讀經日"
     retryTapIfNoChange: false

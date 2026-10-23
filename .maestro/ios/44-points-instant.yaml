@@ -83,6 +83,8 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "全教會一起讀經"
     timeout: 15000
+# For the report: the card on 全教會 after the switch (taken between taps; the probe times each tap on its own).
+- takeScreenshot: 44-points-instant-group-main
 - tapOn:
     text: "青少"
     rightOf: "全教會"
