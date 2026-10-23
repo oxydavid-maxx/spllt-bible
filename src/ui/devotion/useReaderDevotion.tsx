@@ -117,12 +117,19 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   useEffect(() => { speech.setVolume(devotionVolume(voice, bibleVersionId)); }, [speech, voice, bibleVersionId]);
   // A new day, or another member: back to the chapter, nothing read aloud from the old one.
   const shownDay = useRef<string | null>(null);
+  // The month of 靈修 marks the last render drew the leaf from.
+  const drawnMonth = useRef<readonly string[] | undefined>(undefined);
   useEffect(() => {
     // The question still out for the day left is dropped with it, in the shared store too: its answer is not kept.
     if (shownDay.current && session) viewCache.dropInflight(viewCacheKey(session, 'devotional', shownDay.current));
     shownDay.current = date;
   }, [date, memberId, session?.sessionToken]);
-  useEffect(() => { setSelected(false); setAtEnd(false); speakWhenReady.current = false; asking.current = null; dropRetry(); speech.stop(); setPost(null); setMarked(null); markRevision.current++; markPendingRef.current = false; setMarkPending(false); setCompletionEvent(null); }, [date, memberId, session?.sessionToken, baseUrl, speech, dropRetry]);
+  // What the screen shows goes back in the same render as the new day (2026-10-23, switches within 100 ms): reset in an
+  // effect, it drew the whole reader a second time right after ‹ ›. What is not on screen is let go in the effect.
+  const shownFor = `${date}|${memberId ?? ''}|${session?.sessionToken ?? ''}|${baseUrl}`;
+  const [resetFor, setResetFor] = useState(shownFor);
+  if (resetFor !== shownFor) { setResetFor(shownFor); setSelected(false); setAtEnd(false); setPost(null); setMarked(null); setMarkPending(false); setCompletionEvent(null); }
+  useEffect(() => { speakWhenReady.current = false; asking.current = null; dropRetry(); speech.stop(); markRevision.current++; markPendingRef.current = false; }, [date, memberId, session?.sessionToken, baseUrl, speech, dropRetry]);
   useEffect(() => () => speech.stop(), [speech]);
   useEffect(() => dropRetry, [dropRetry]);
   // The leaf's mark comes from the whole month's 靈修 days, the same ranges the 積分 calendar asks for, so the next or
@@ -140,7 +147,11 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
       if (ahead) { const request = monthDates(ahead); viewCache.prefetch(request.key, request.load, visitStartedAt); }
     }
     const request = monthDates(month);
-    void viewCache.read(request.key, request.load, visitStartedAt).then((dates) => { if (active && revision === markRevision.current) setMarked({ date, done: dates.includes(date) }); }).catch(() => undefined);
+    void viewCache.read(request.key, request.load, visitStartedAt).then((dates) => {
+      // The month already drawn from the store (keptMonth below) is this answer: nothing to draw again.
+      if (!active || revision !== markRevision.current || drawnMonth.current === dates) return;
+      setMarked({ date, done: dates.includes(date) });
+    }).catch(() => undefined);
     return () => { active = false; };
   }, [client, date, visitStartedAt, signalComing]);
   // A day the reader has not asked about yet is asked for as it shows, so 靈修 opens on it at once. A day already kept is
@@ -254,6 +265,7 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   // A day just shown takes its mark from the month kept in the store in this same render (no second render of the
   // reader for it); the read below confirms it. A mark set here on the phone (`marked`) wins.
   const keptMonth = session ? (() => { const range = readingDaysRange(date.slice(0, 7), today); return viewCache.peek<string[]>(devotionDatesKey(session, range.from, range.to)); })() : undefined;
+  drawnMonth.current = keptMonth;
   const markKnown = marked?.date === date || keptMonth !== undefined;
   const done = marked?.date === date ? marked.done : Boolean(keptMonth?.includes(date));
   const speaking = spoken.status === 'speaking' && spoken.date === date;
