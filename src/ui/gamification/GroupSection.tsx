@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { Congregation, GroupReading, createDevotionClient } from '../../services/devotionClient';
 import { switchStarted } from '../../services/switchLatencyProbe';
@@ -29,15 +29,22 @@ export interface GroupSectionProps {
   today: string;
   /** The first month the arrows can reach. */
   firstMonth: string;
+  /**
+   * Where the card was, held by the page across 自己｜好友 (the card is not drawn on 好友, so it is mounted again on
+   * 自己): the side and month stay as they were, as they did when the page held them.
+   */
+  memory: GroupSectionMemory;
 }
+export interface GroupSectionMemory { side: Congregation | null; month: string | null; reset: number }
 
-function GroupSectionView({ memberId, sessionToken, client, ownSide, active, freshSince, resetSignal, today, firstMonth }: GroupSectionProps) {
-  const [groupSide, setGroupSide] = useState<Congregation | null>(null);
-  const [groupMonth, setGroupMonth] = useState(() => today.slice(0, 7));
+function GroupSectionView({ memberId, sessionToken, client, ownSide, active, freshSince, resetSignal, today, firstMonth, memory }: GroupSectionProps) {
+  const [groupSide, setGroupSide] = useState<Congregation | null>(() => memory.reset === resetSignal ? memory.side : null);
+  const [groupMonth, setGroupMonth] = useState(() => memory.month ?? today.slice(0, 7));
   const [groupRetry, setGroupRetry] = useState(0);
   // Each opening starts on the member's own side (維護者 2026-10-20), set in the same render as the signal.
   const [seenReset, setSeenReset] = useState(resetSignal);
   if (seenReset !== resetSignal) { setSeenReset(resetSignal); setGroupSide(null); }
+  useEffect(() => { memory.side = groupSide; memory.month = groupMonth; memory.reset = seenReset; }, [memory, groupSide, groupMonth, seenReset]);
   const session = { memberId, sessionToken };
   const accountKey = JSON.stringify([memberId, sessionToken]);
   const otherSide = (side: Congregation): Congregation => side === 'main' ? 'youth' : 'main';

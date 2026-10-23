@@ -11,7 +11,7 @@ import { ActionSheet } from '../../src/ui/gamification/ActionSheet';
 import { FriendQrPanel } from '../../src/ui/gamification/FriendQrPanel';
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
 import { RedemptionList } from '../../src/ui/gamification/RedemptionList';
-import { GroupSection } from '../../src/ui/gamification/GroupSection';
+import { GroupSection, type GroupSectionMemory } from '../../src/ui/gamification/GroupSection';
 import { ScoreHistoryCard } from '../../src/ui/gamification/ScoreHistoryCard';
 import { DevotionTodayButton } from '../../src/ui/gamification/DevotionTodayButton';
 import { createDevotionClient, type Congregation, type ScoreHistory } from '../../src/services/devotionClient';
@@ -54,6 +54,7 @@ export default function ProgressScreen() {
   const ownSide = congregation.value;
   // Each opening of 團體 starts on the member's own side: a new number here (src/ui/gamification/GroupSection.tsx).
   const [groupReset, setGroupReset] = useState(0);
+  const groupMemory = useRef<GroupSectionMemory>({ side: null, month: null, reset: 0 }).current;
   const [rewardSide, setRewardSide] = useState<Congregation | null>(null);
   const [rewardRetry, setRewardRetry] = useState(0);
   // When this visit began (focus or return to the app). Switches use what was asked since then without asking
@@ -804,6 +805,7 @@ export default function ProgressScreen() {
           resetSignal={groupReset}
           today={today}
           firstMonth={groupFirstMonth}
+          memory={groupMemory}
         />
         <ReadingCalendarCard
           month={calendarMonth}

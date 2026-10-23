@@ -125,6 +125,17 @@ describe('積分頁: switches show what was asked ahead, at once', () => {
     expect(renders.dayCard).toBe(drawn);
   });
 
+  it('團體 keeps its side and month across 自己｜好友, as it did when the page held them', async () => {
+    const tree = await screen();
+    const month = taipeiDate().slice(0, 7);
+    await tap(pressables(tree, '青少', 'tab')[0]);
+    await tap(pressables(tree, '上個月')[0]);
+    await tap(pressables(tree, '好友', 'tab')[0]);
+    await tap(pressables(tree, '自己', 'tab')[0]);
+    await settle();
+    expect(groupCard(tree).props.view).toMatchObject({ scope: 'youth', month: shiftMonth(month, -1) });
+  });
+
   it('主堂獎品｜青少獎品: the other side is asked once and shown at once', async () => {
     const tree = await screen();
     await act(async () => { tree.root.findByType('ScoreProfile' as any).props.onChooseReward(); });
