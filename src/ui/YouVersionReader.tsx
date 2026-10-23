@@ -8,7 +8,8 @@ import { theme } from './Theme';
 import { formatReferenceListZhTw, formatReferenceZhTw } from '../domain/scriptureReference';
 import { buildYouVersionReaderConfig, resolveReaderContentApiHost } from './youVersionReaderConfig';
 import { getYouVersionContentMetadata } from '../config/youVersionContent';
-import { buildReaderDomBridge, readReaderUiMessage, readReaderCanvasScrollEvent, readReaderCanvasRevealEvent, readReaderCanvasEdgeEvent, READER_SETTINGS_MESSAGE, READER_CANVAS_SCROLL_MESSAGE, READER_CANVAS_REVEAL_MESSAGE, READER_CANVAS_EDGE_MESSAGE, type ReaderCanvasInsets, type ReaderRevealReason } from './readerSettingsBridge';
+import { buildReaderDomBridge, readReaderUiMessage, readReaderCanvasScrollEvent, readReaderCanvasRevealEvent, readReaderCanvasEdgeEvent, READER_SETTINGS_MESSAGE, READER_CANVAS_SCROLL_MESSAGE, READER_CANVAS_REVEAL_MESSAGE, READER_CANVAS_EDGE_MESSAGE, READER_RENDERED_MESSAGE, type ReaderCanvasInsets, type ReaderRevealReason } from './readerSettingsBridge';
+import { switchShown } from '../services/switchLatencyProbe';
 import { useReaderPreferencesBinding, type ReaderPreferencesBinding } from './useReaderPreferencesBinding';
 import { readReadAlongMessage, type ReadAlongPosition } from './readAlongBridge';
 import { BibleContentPreloadHost } from './BibleContentPreloadHost';
@@ -260,9 +261,11 @@ export function YouVersionReader({ date, references, assignedReading = true, app
   }), [ready]);
   const insetTop = canvasInsets?.top, insetBottom = canvasInsets?.bottom;
   const readerDom = useMemo(() => ({
-    injectedJavaScript: buildReaderDomBridge(fullscreen, hasVersionMetadata, insetTop === undefined || insetBottom === undefined ? undefined : { top: insetTop, bottom: insetBottom }),
+    injectedJavaScript: buildReaderDomBridge(fullscreen, hasVersionMetadata, insetTop === undefined || insetBottom === undefined ? undefined : { top: insetTop, bottom: insetBottom }, process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true'),
     onMessage: (event: { nativeEvent: { data: string } }) => {
       const data = event.nativeEvent.data;
+      // CI fixture build only: the official reader's text changed (the switch latency check times ‹ › to it).
+      if (data.includes(READER_RENDERED_MESSAGE)) { switchShown('yv-text', 'changed'); return; }
       const readAlongMessage = readReadAlongMessage(data);
       if (readAlongMessage) {
         if (readAlongMessage.kind === 'release') onFollowRelease?.();

@@ -405,7 +405,7 @@ export default function ReaderScreen() {
           selectedDate={selectedDate}
           previousDate={previousDate}
           nextDate={nextDate}
-          onSelectDate={(date) => { switchStarted('devotion-mark', date, 'reader-date'); setSelectedReadingDate(date); }}
+          onSelectDate={(date) => { switchStarted('devotion-mark', date, 'reader-date'); switchStarted('yv-text', 'changed', 'reader-date-text'); setSelectedReadingDate(date); }}
           onOpenReadingPlan={() => { chrome.showTools(); setPlanOpen(true); }}
           completed={completed}
           completionDisabled={completionDisabled}

@@ -204,7 +204,6 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   };
   // The CI latency check (src/services/switchLatencyProbe.ts): the 靈修 tab's post, and the leaf's mark for the day.
   useSwitchShown('devotional', selected && current && current.kind !== 'loading' ? date : null);
-  useSwitchShown('devotion-mark', marked?.date === date ? date : null);
   const devotion: ReaderDevotion | undefined = client ? {
     selected,
     atEnd,
@@ -225,6 +224,7 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
       speaking={speaking}
     />,
     completed: done,
+    markKnown: marked?.date === date,
     disabled: markPending || date > today || !isWithinCompletionWindow(date, today),
     onToggle: toggle,
     speaking,

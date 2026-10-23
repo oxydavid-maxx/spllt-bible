@@ -1,10 +1,11 @@
-# .maestro/ios/15-points-instant.yaml — 光佑 2026-10-23: every switch on 公告 and 積分 shows its content within 100 ms,
+# .maestro/ios/44-points-instant.yaml — 光佑 2026-10-23: every switch on 公告 and 積分 shows its content within 100 ms,
 # the first tap after the page opens, a switch back, and a change of month alike.
 # run-flows.sh puts a 400 ms phone network delay on the fixture backend for this flow (count-proxy.ts). The app's
 # own probe (src/services/switchLatencyProbe.ts, CI fixture build only) times each tap to the frame that shows its
 # content; scripts/ios/check-switch-latency.ts reads those times from the simulator and fails a switch over 100 ms
 # or one it cannot find. This flow drives the taps and waits for each content. Taps are never retried: a second
-# tap on a month arrow would move two months. Runs before 46-apple-login, which signs out.
+# tap on a month arrow would move two months. Runs after 44-bulletin (which must see the 週刊 list ask for its
+# phone copies itself; this flow opens 主堂 too, and the pictures stay cached) and before 46-apple-login, which signs out.
 appId: org.qingmu.youth
 ---
 - launchApp
@@ -82,6 +83,8 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "全教會一起讀經"
     timeout: 15000
+# For the report: the card on 全教會 after the switch (taken between taps; the probe times each tap on its own).
+- takeScreenshot: 44-points-instant-group-main
 - tapOn:
     text: "青少"
     rightOf: "全教會"
