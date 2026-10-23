@@ -14,7 +14,8 @@ import { useEffect } from 'react';
 const enabled = process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true';
 const now = (): number => globalThis.performance?.now?.() ?? Date.now();
 
-export interface SwitchRecord { label: string; surface: string; key: string; ms: number; at: string }
+/** `commitMs`: from the tap to the commit that shows the content (the rest of `ms` is waiting for the frame). */
+export interface SwitchRecord { label: string; surface: string; key: string; ms: number; commitMs: number; at: string }
 
 const pending = new Map<string, { expected: string; label: string; startedAt: number }>();
 const records: SwitchRecord[] = [];
@@ -31,10 +32,11 @@ export function switchShown(surface: string, shown: string | null): void {
   const started = pending.get(surface);
   if (!started || started.expected !== shown) return;
   pending.delete(surface);
+  const committedAt = now();
   // The content is committed; the next frame is the one that draws it.
   const frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (run: () => void) => setTimeout(run, 0);
   frame(() => {
-    records.push({ label: started.label, surface, key: shown, ms: Math.round(now() - started.startedAt), at: new Date().toISOString() });
+    records.push({ label: started.label, surface, key: shown, ms: Math.round(now() - started.startedAt), commitMs: Math.round(committedAt - started.startedAt), at: new Date().toISOString() });
     const text = JSON.stringify(records);
     writing = writing.then(async () => {
       const fs = await import('expo-file-system/legacy');

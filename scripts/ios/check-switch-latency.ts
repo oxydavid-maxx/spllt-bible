@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 export const SWITCH_LIMIT_MS = 100;
 
-interface Probe { label: string; surface: string; key: string; ms: number; at: string }
+interface Probe { label: string; surface: string; key: string; ms: number; commitMs?: number; at: string }
 export interface SwitchExpectation { flow: string; label: string; name: string; taps: string[] }
 
 // In the order the flows tap. Keep in step with .maestro/ios/14-reader-instant.yaml and 44-points-instant.yaml.
