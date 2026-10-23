@@ -26,9 +26,9 @@ else if (flows['10-reader-open'] === 'PASS') rows.push(['R2 讀經器量測', fa
 // R3 on the reader and 積分 pages too (2026-10-23): the same 350 MB as 首頁.
 if (reader) rows.push(['R3 讀經頁記憶體 ≤ 350 MB', reader.footprintMB > 0 && within(reader.footprintMB, 350), `${reader.footprintMB} MB`]);
 if (progress) rows.push(['R3 積分頁記憶體 ≤ 350 MB', progress.footprintMB > 0 && within(progress.footprintMB, 350), `${progress.footprintMB} MB`]);
-else if ('15-points-instant' in flows) rows.push(['R3 積分頁記憶體', false, '沒有產生 runtime-progress.json']);
+else if ('44-points-instant' in flows) rows.push(['R3 積分頁記憶體', false, '沒有產生 runtime-progress.json']);
 if (latency) for (const row of latency.rows) rows.push([`R6 切換 ≤ ${latency.limitMs} ms：${row.name} ${row.tap}`, row.result === 'SKIP' ? null : row.result === 'PASS', row.ms === null ? '沒量到' : `${row.ms} ms`]);
-else if ('15-points-instant' in flows) rows.push(['R6 切換延遲', false, '沒有產生 switch-latency.json']);
+else if ('44-points-instant' in flows) rows.push(['R6 切換延遲', false, '沒有產生 switch-latency.json']);
 console.log(rows.map(([name, ok, note]) => `| ${name} | ${ok === null ? '略過' : ok ? 'PASS' : 'FAIL'} | ${note} |`).join('\n'));
 const failed = rows.filter(([, ok]) => ok === false).map(([name]) => name);
 const summary = { appBytes: guards.appBytes, footprintMB: home?.footprintMB ?? null, footprintReaderMB: reader?.footprintMB ?? null, footprintProgressMB: progress?.footprintMB ?? null, guards: guards.guards, flows, runtime: { home, reader, progress }, switchLatency: latency?.rows ?? null, failed };

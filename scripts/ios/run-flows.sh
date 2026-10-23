@@ -73,16 +73,16 @@ run_flow() {
 }
 # Switch latency (光佑 2026-10-23, scripts/ios/check-switch-latency.ts): these flows run over a 400 ms phone network
 # delay (count-proxy.ts reads $OUT/proxy-delay-ms), each from an empty probe folder; their records are copied out after.
-latency_flow() { [[ "$1" =~ ^(14-reader-instant|15-points-instant)$ ]]; }
+latency_flow() { [[ "$1" =~ ^(14-reader-instant|44-points-instant)$ ]]; }
 mkdir -p "$OUT/switch-latency"
 for flow in .maestro/ios/*.yaml; do
   # Where this flow's requests start in the log, for checks that read only what the flow caused.
   FROM=$(wc -l < "$OUT/requests.log")
   NAME=$(basename "$flow" .yaml)
-  # 選擇目標獎品 opens only with prizes on the shelf, and the fixture has none: before 15-points-instant the prize sheet
+  # 選擇目標獎品 opens only with prizes on the shelf, and the fixture has none: before 44-points-instant the prize sheet
   # (the same push the owner's Google Sheet makes) lists one prize per side. Later flows see them too; none of them
   # looks at prizes.
-  if [ "$NAME" = 15-points-instant ]; then
+  if [ "$NAME" = 44-points-instant ]; then
     curl -sf -X POST -H 'content-type: application/json' -H 'x-qingmu-registration-key: ci-fixture-sheet'       --data '{"youth":{"rewards":[{"row":2,"name":"測試獎品甲","points":50,"listed":true}],"redemptions":[]},"main":{"rewards":[{"row":2,"name":"測試主堂獎品","points":80,"listed":true}],"redemptions":[]}}'       http://127.0.0.1:8787/api/integrations/reward-sheet > "$OUT/fixture-reward-sheet.json" || echo 'fixture prize sheet was not accepted'
   fi
   if latency_flow "$NAME"; then
@@ -101,7 +101,7 @@ for flow in .maestro/ios/*.yaml; do
     00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home > "$OUT/maestro/measure-home.txt" 2>&1; maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/hierarchy-home.json" 2>/dev/null || true ;;
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
     # The flow ends on 積分 after every switch: its memory with whatever the switches kept (R3, 2026-10-23).
-    15-points-instant) bash scripts/ios/measure-footprint.sh "$UDID" progress > "$OUT/maestro/measure-progress.txt" 2>&1 ;;
+    44-points-instant) bash scripts/ios/measure-footprint.sh "$UDID" progress > "$OUT/maestro/measure-progress.txt" 2>&1 ;;
     # Narration must keep playing while the app is in the background: park it behind Settings for 20 s.
     20-audio-start) xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null ;;
     # The flow passes only if every 週刊 page was asked for with the member's token and answered 200 (a page without it

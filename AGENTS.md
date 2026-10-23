@@ -39,7 +39,7 @@
 |---|---|---|
 | `unit` | vitest 全套（ubuntu）。兩個真瀏覽器測試用 chrome-headless-shell | `unit-summary`：`vitest-summary.json`，每個失敗附一行原因 |
 | `android` | prebuild；原生設定和 main 差幾行；debug 簽章的 release APK；APK 守門（兩個 ARM 架構、沒有 .map、大小上限）；大小和 main 比 | `android-summary`：`android-summary.json`、`native-diff.txt` |
-| `ios` | `macos-26`＋Xcode 26.4.1；模擬器 Release 建置（ad-hoc 簽章）；守門（沒有 reanimated/worklets、Info.plist、沒有 .map）；Maestro 流程 `.maestro/ios/*.yaml`（假資料後端）；首頁閒置的 CPU、記憶體、網路請求；讀經頁、積分頁記憶體；每個切換的延遲 (`14-reader-instant`、`15-points-instant`，見下面「切換延遲怎麼量」) | `ios-summary`：`flows.json`、`ios-summary.json`、`switch-latency.json`、`maestro/<流程>-junit.txt`、`-screen.txt`、`-system.txt`、`-maestro-debug.txt`、`-backend.txt`、截圖 |
+| `ios` | `macos-26`＋Xcode 26.4.1；模擬器 Release 建置（ad-hoc 簽章）；守門（沒有 reanimated/worklets、Info.plist、沒有 .map）；Maestro 流程 `.maestro/ios/*.yaml`（假資料後端）；首頁閒置的 CPU、記憶體、網路請求；讀經頁、積分頁記憶體；每個切換的延遲 (`14-reader-instant`、`44-points-instant`，見下面「切換延遲怎麼量」) | `ios-summary`：`flows.json`、`ios-summary.json`、`switch-latency.json`、`maestro/<流程>-junit.txt`、`-screen.txt`、`-system.txt`、`-maestro-debug.txt`、`-backend.txt`、截圖 |
 
 - iOS 一輪大約 35–40 分鐘。本機能重現的先在本機重現；多個修正攢成一批再推。
 - 寫或修 Maestro 流程前，先讀 `<流程>-screen.txt`（失敗當下畫面上每個元素的標籤和位置），不要猜標籤。

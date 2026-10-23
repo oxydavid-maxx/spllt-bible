@@ -12,17 +12,17 @@ export const SWITCH_LIMIT_MS = 100;
 interface Probe { label: string; surface: string; key: string; ms: number; at: string }
 export interface SwitchExpectation { flow: string; label: string; name: string; taps: string[] }
 
-// In the order the flows tap. Keep in step with .maestro/ios/14-reader-instant.yaml and 15-points-instant.yaml.
+// In the order the flows tap. Keep in step with .maestro/ios/14-reader-instant.yaml and 44-points-instant.yaml.
 export const EXPECTED: SwitchExpectation[] = [
   { flow: '14-reader-instant', label: 'devotional-tab', name: '讀經 靈修分頁', taps: ['讀經頁打開後第一次點'] },
   { flow: '14-reader-instant', label: 'reader-date', name: '讀經 換日 (靈修打勾狀態)', taps: ['下一個排定讀經日', '上一個排定讀經日 (換回)'] },
-  { flow: '15-points-instant', label: 'announcement-side', name: '公告 青少｜主堂', taps: ['主堂 (打開後第一次)', '青少 (切回)', '主堂 (再切)'] },
-  { flow: '15-points-instant', label: 'group-side', name: '積分 團體 全教會｜青少', taps: ['全教會 (打開後第一次)', '青少 (切回)', '全教會 (再切)', '青少 (切回)'] },
-  { flow: '15-points-instant', label: 'group-month', name: '積分 團體月曆換月', taps: ['上個月', '下個月 (換回)'] },
-  { flow: '15-points-instant', label: 'calendar-month', name: '積分 個人月曆換月', taps: ['上個月', '下個月 (換回)'] },
-  { flow: '15-points-instant', label: 'reward-side', name: '積分 主堂獎品｜青少獎品', taps: ['主堂獎品 (打開後第一次)', '青少獎品 (切回)', '主堂獎品 (再切)'] },
-  { flow: '15-points-instant', label: 'scope', name: '積分 自己｜好友', taps: ['好友 (打開後第一次)', '自己 (切回)', '好友 (再切)', '自己 (切回)'] },
-  { flow: '15-points-instant', label: 'redemptions', name: '積分 我的領取紀錄', taps: ['打開後第一次'] },
+  { flow: '44-points-instant', label: 'announcement-side', name: '公告 青少｜主堂', taps: ['主堂 (打開後第一次)', '青少 (切回)', '主堂 (再切)'] },
+  { flow: '44-points-instant', label: 'group-side', name: '積分 團體 全教會｜青少', taps: ['全教會 (打開後第一次)', '青少 (切回)', '全教會 (再切)', '青少 (切回)'] },
+  { flow: '44-points-instant', label: 'group-month', name: '積分 團體月曆換月', taps: ['上個月', '下個月 (換回)'] },
+  { flow: '44-points-instant', label: 'calendar-month', name: '積分 個人月曆換月', taps: ['上個月', '下個月 (換回)'] },
+  { flow: '44-points-instant', label: 'reward-side', name: '積分 主堂獎品｜青少獎品', taps: ['主堂獎品 (打開後第一次)', '青少獎品 (切回)', '主堂獎品 (再切)'] },
+  { flow: '44-points-instant', label: 'scope', name: '積分 自己｜好友', taps: ['好友 (打開後第一次)', '自己 (切回)', '好友 (再切)', '自己 (切回)'] },
+  { flow: '44-points-instant', label: 'redemptions', name: '積分 我的領取紀錄', taps: ['打開後第一次'] },
 ];
 
 export interface SwitchRow { flow: string; name: string; tap: string; ms: number | null; result: 'PASS' | 'FAIL' | 'SKIP' }
