@@ -72,7 +72,8 @@ jobs:
         if: always()
         run: npx tsx scripts/ios/summary.ts >> "$GITHUB_STEP_SUMMARY"
       - name: size and memory vs main
-        if: github.event_name == 'pull_request'
+        # Also when an earlier check failed: the memory comparison is still worth reading (2026-10-23).
+        if: always() && github.event_name == 'pull_request' && hashFiles('ci-out/ios-summary.json') != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
