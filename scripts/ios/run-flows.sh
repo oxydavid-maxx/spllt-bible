@@ -5,7 +5,7 @@ OUT=${OUT:-ci-out}; mkdir -p "$OUT/maestro"; : > "$OUT/requests.log"
 # One synthetic 週刊 for flow 44-bulletin (two A4 pages at 2481 × 3509, drawn for the run; no picture is kept in the repo),
 # with its phone copies made now, while the runner is idle (bulletin-fixture.json: KB per page and per copy).
 rm -rf "$OUT/bulletins"; npx tsx scripts/ios/make-bulletin-fixture.ts "$OUT/bulletins" "$OUT/bulletin-fixture.json" > "$OUT/bulletin-fixture.txt" 2>&1 || { echo 'fixture 週刊 could not be made'; cat "$OUT/bulletin-fixture.txt"; exit 1; }
-QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_ADMIN_MEMBER_IDS=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 QINGMU_BULLETIN_DIR="$OUT/bulletins" \
+QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_ADMIN_MEMBER_IDS=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 QINGMU_BULLETIN_DIR="$OUT/bulletins" QINGMU_FORM_REGISTRATION_KEY=ci-fixture-sheet \
   npx tsx server/http.ts > "$OUT/server.log" 2>&1 &
 # The app talks to the backend over HTTPS, as in production: the reader takes its Bible content host only
 # from an https API base. A throwaway CA, trusted only inside this simulator, signs a loopback certificate.
@@ -79,6 +79,12 @@ for flow in .maestro/ios/*.yaml; do
   # Where this flow's requests start in the log, for checks that read only what the flow caused.
   FROM=$(wc -l < "$OUT/requests.log")
   NAME=$(basename "$flow" .yaml)
+  # 選擇目標獎品 opens only with prizes on the shelf, and the fixture has none: before 15-points-instant the prize sheet
+  # (the same push the owner's Google Sheet makes) lists one prize per side. Later flows see them too; none of them
+  # looks at prizes.
+  if [ "$NAME" = 15-points-instant ]; then
+    curl -sf -X POST -H 'content-type: application/json' -H 'x-qingmu-registration-key: ci-fixture-sheet'       --data '{"youth":{"rewards":[{"row":2,"name":"測試獎品甲","points":50,"listed":true}],"redemptions":[]},"main":{"rewards":[{"row":2,"name":"測試主堂獎品","points":80,"listed":true}],"redemptions":[]}}'       http://127.0.0.1:8787/api/integrations/reward-sheet > "$OUT/fixture-reward-sheet.json" || echo 'fixture prize sheet was not accepted'
+  fi
   if latency_flow "$NAME"; then
     DOCS="$(xcrun simctl get_app_container "$UDID" org.qingmu.youth data 2>/dev/null)/Documents"
     rm -f "$DOCS"/switch-latency-*.json
