@@ -5,6 +5,7 @@ import { theme } from '../Theme';
 import { SIDE_NAME, whereSentence } from '../congregation/congregationCopy';
 import { SideSwitch } from '../congregation/SideSwitch';
 import { RewardControls } from './RewardControls';
+import { useSwitchShown } from '../../services/switchLatencyProbe';
 
 const PRIZE_TAB: Record<Congregation, string> = { youth: '青少獎品', main: '主堂獎品' };
 
@@ -30,6 +31,7 @@ export function RewardPicker({ own, viewing, ownRewards, otherRewards, otherFail
   onSelect: (rewardId: string) => void;
 }) {
   const other = otherRewards?.filter((reward) => reward.active) ?? null;
+  useSwitchShown('rewards', viewing === own || other !== null ? viewing : null);
   return <View style={styles.container}>
     <SideSwitch labels={PRIZE_TAB} selected={viewing} onSelect={onView} />
     {viewing === own

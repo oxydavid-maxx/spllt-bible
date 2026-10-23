@@ -30,6 +30,7 @@ import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
 import { useReaderRetrySignal } from '../../src/ui/readerRetrySignal';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { useReaderDevotion } from '../../src/ui/devotion/useReaderDevotion';
+import { switchStarted } from '../../src/services/switchLatencyProbe';
 
 let handledTodayReaderTabPressRevision = 0;
 
@@ -404,7 +405,7 @@ export default function ReaderScreen() {
           selectedDate={selectedDate}
           previousDate={previousDate}
           nextDate={nextDate}
-          onSelectDate={setSelectedReadingDate}
+          onSelectDate={(date) => { switchStarted('devotion-mark', date, 'reader-date'); setSelectedReadingDate(date); }}
           onOpenReadingPlan={() => { chrome.showTools(); setPlanOpen(true); }}
           completed={completed}
           completionDisabled={completionDisabled}

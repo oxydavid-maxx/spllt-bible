@@ -13,6 +13,7 @@ import type { ReaderDevotion } from '../FullscreenReaderLayout';
 import { DevotionalView, type DevotionalState } from './DevotionalView';
 import { useReaderRetrySignal } from '../readerRetrySignal';
 import { devotionBanner } from './devotionFabModel';
+import { switchStarted, useSwitchShown } from '../../services/switchLatencyProbe';
 
 /**
  * Everything the reader needs for the 靈修 tab (維護者 2026-10-14). The post is fetched only when the
@@ -201,12 +202,15 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
       .catch(() => { if (isCurrent()) setMarked((value) => value?.date === date ? { date, done: !next } : value); })
       .finally(() => { if (isCurrent()) { markPendingRef.current = false; setMarkPending(false); } });
   };
+  // The CI latency check (src/services/switchLatencyProbe.ts): the 靈修 tab's post, and the leaf's mark for the day.
+  useSwitchShown('devotional', selected && current && current.kind !== 'loading' ? date : null);
+  useSwitchShown('devotion-mark', marked?.date === date ? date : null);
   const devotion: ReaderDevotion | undefined = client ? {
     selected,
     atEnd,
     available: current?.kind === 'ready',
     prepare: ensureLoaded,
-    onSelect: () => open(false),
+    onSelect: () => { if (!selected) switchStarted('devotional', date, 'devotional-tab'); open(false); },
     renderView: (insets) => <DevotionalView
       state={current ?? { kind: 'loading' }}
       activeIndex={spoken.date === date ? spoken.index : -1}

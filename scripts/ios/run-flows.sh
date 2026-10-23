@@ -71,14 +71,31 @@ run_flow() {
   record "$name" FAIL
   bash scripts/ios/collect-failure.sh "$UDID" "$name"
 }
+# Switch latency (光佑 2026-10-23, scripts/ios/check-switch-latency.ts): these flows run over a 400 ms phone network
+# delay (count-proxy.ts reads $OUT/proxy-delay-ms), each from an empty probe folder; their records are copied out after.
+latency_flow() { [[ "$1" =~ ^(14-reader-instant|15-points-instant)$ ]]; }
+mkdir -p "$OUT/switch-latency"
 for flow in .maestro/ios/*.yaml; do
   # Where this flow's requests start in the log, for checks that read only what the flow caused.
   FROM=$(wc -l < "$OUT/requests.log")
+  NAME=$(basename "$flow" .yaml)
+  if latency_flow "$NAME"; then
+    DOCS="$(xcrun simctl get_app_container "$UDID" org.qingmu.youth data 2>/dev/null)/Documents"
+    rm -f "$DOCS"/switch-latency-*.json
+    echo 400 > "$OUT/proxy-delay-ms"
+  fi
   run_flow "$flow"
+  if latency_flow "$NAME"; then
+    rm -f "$OUT/proxy-delay-ms"
+    mkdir -p "$OUT/switch-latency/$NAME"
+    cp "$DOCS"/switch-latency-*.json "$OUT/switch-latency/$NAME/" 2>/dev/null || echo "no switch-latency records from $NAME"
+  fi
   case "$(basename "$flow" .yaml)" in
     # The smoke flow ends on the 讀經 tab; its accessibility tree is what the reader flows are written against.
     00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home > "$OUT/maestro/measure-home.txt" 2>&1; maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/hierarchy-home.json" 2>/dev/null || true ;;
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
+    # The flow ends on 積分 after every switch: its memory with whatever the switches kept (R3, 2026-10-23).
+    15-points-instant) bash scripts/ios/measure-footprint.sh "$UDID" progress > "$OUT/maestro/measure-progress.txt" 2>&1 ;;
     # Narration must keep playing while the app is in the background: park it behind Settings for 20 s.
     20-audio-start) xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null ;;
     # The flow passes only if every 週刊 page was asked for with the member's token and answered 200 (a page without it
@@ -95,6 +112,7 @@ for flow in .maestro/ios/*.yaml; do
     30-friend-push-open) npx tsx scripts/ios/make-friend-apns.ts "$OUT/friend.apns" && xcrun simctl push "$UDID" org.qingmu.youth "$OUT/friend.apns" ;;
   esac
 done
+npx tsx scripts/ios/check-switch-latency.ts "$OUT/switch-latency" "$OUT/flows.json" "$OUT/switch-latency.json" > "$OUT/maestro/switch-latency.txt" 2>&1 || true
 # Maestro writes takeScreenshot files under its own test output folder, not where the flow names them;
 # collect every PNG the flows produced so the artifact carries them.
 find . "$HOME/.maestro" -name '*.png' -newer "$OUT/.flows-start" -not -path './node_modules/*' -not -path "./$OUT/maestro/*" -exec cp {} "$OUT/maestro/" \; 2>/dev/null || true

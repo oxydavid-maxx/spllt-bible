@@ -1,0 +1,182 @@
+# .maestro/ios/15-points-instant.yaml — 光佑 2026-10-23: every switch on 公告 and 積分 shows its content within 100 ms,
+# the first tap after the page opens, a switch back, and a change of month alike.
+# run-flows.sh puts a 400 ms phone network delay on the fixture backend for this flow (count-proxy.ts). The app's
+# own probe (src/services/switchLatencyProbe.ts, CI fixture build only) times each tap to the frame that shows its
+# content; scripts/ios/check-switch-latency.ts reads those times from the simulator and fails a switch over 100 ms
+# or one it cannot find. This flow drives the taps and waits for each content. Taps are never retried: a second
+# tap on a month arrow would move two months. Runs before 46-apple-login, which signs out.
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 90000
+# 公告: 主堂 (the first tap after opening), 青少 (back), 主堂 (again).
+- repeat:
+    times: 3
+    while:
+      notVisible: "主堂"
+    commands:
+      - tapOn:
+          text: "公告"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "主堂"
+    timeout: 15000
+- tapOn:
+    text: "主堂"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "8/30 .日. 週刊"
+    timeout: 20000
+- tapOn:
+    text: "青少"
+    leftOf: "主堂"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible: "8/30 .日. 週刊"
+    timeout: 20000
+- tapOn:
+    text: "主堂"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "8/30 .日. 週刊"
+    timeout: 20000
+# 積分 › 團體: 全教會 (first tap), 青少 (back), 全教會, 青少. The tab screens stay mounted, so 青少 is told apart by its
+# neighbour: right of 全教會 here, left of 主堂 on 公告.
+- repeat:
+    times: 3
+    while:
+      notVisible: "開啟積分操作"
+    commands:
+      - tapOn:
+          text: "積分"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "開啟積分操作"
+    timeout: 30000
+- scrollUntilVisible:
+    element: "青少一起讀經"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    text: "全教會"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "全教會一起讀經"
+    timeout: 15000
+- tapOn:
+    text: "青少"
+    rightOf: "全教會"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "青少一起讀經"
+    timeout: 15000
+- tapOn:
+    text: "全教會"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "全教會一起讀經"
+    timeout: 15000
+- tapOn:
+    text: "青少"
+    rightOf: "全教會"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "青少一起讀經"
+    timeout: 15000
+# 團體 month: the group card's arrows come first on the page (index 0); back again with 下個月.
+- tapOn:
+    text: "上個月"
+    index: 0
+    retryTapIfNoChange: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    text: "下個月"
+    index: 0
+    retryTapIfNoChange: false
+- waitForAnimationToEnd:
+    timeout: 3000
+# 個人 calendar month: the arrows under the 個人 header.
+- scrollUntilVisible:
+    element: "整份計畫"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    text: "上個月"
+    below: "個人"
+    retryTapIfNoChange: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    text: "下個月"
+    below: "個人"
+    retryTapIfNoChange: false
+- waitForAnimationToEnd:
+    timeout: 3000
+# 選擇目標獎品: 主堂獎品 (first tap), 青少獎品 (back), 主堂獎品.
+- scrollUntilVisible:
+    element: "選擇目標獎品|目標獎品：.*開啟獎品選擇"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "選擇目標獎品|目標獎品：.*開啟獎品選擇"
+- extendedWaitUntil:
+    visible: "主堂獎品"
+    timeout: 15000
+- tapOn:
+    text: "主堂獎品"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "主堂的獎品還沒上架.*|.*分，不能選"
+    timeout: 15000
+- tapOn:
+    text: "青少獎品"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible: "主堂的獎品還沒上架.*|.*分，不能選"
+    timeout: 15000
+- tapOn:
+    text: "主堂獎品"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "主堂的獎品還沒上架.*|.*分，不能選"
+    timeout: 15000
+- tapOn: "關閉選擇目標獎品"
+# 自己｜好友: 好友 (first tap), 自己 (back), 好友, 自己.
+- tapOn:
+    text: "好友"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible: "載入中…"
+    timeout: 15000
+- tapOn:
+    text: "自己"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "團體"
+    timeout: 15000
+- tapOn:
+    text: "好友"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible: "載入中…"
+    timeout: 15000
+- tapOn:
+    text: "自己"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "團體"
+    timeout: 15000
+# ⋯ › 我的領取紀錄.
+- tapOn: "開啟積分操作"
+- tapOn:
+    text: "我的領取紀錄"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "領取紀錄"
+    timeout: 15000
+- tapOn: "關閉領取紀錄"
+- extendedWaitUntil:
+    visible: "團體"
+    timeout: 15000

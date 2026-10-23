@@ -41,6 +41,7 @@ import { loadReadingCardSnapshot } from '../../src/services/readingCardSnapshot'
 import { shareReadingCard } from '../../src/ui/readingCardShare';
 import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
 import { consumeOpenFriendsList, subscribeFriendAdded, subscribeOpenFriendsList, type FriendAddedEvent } from '../../src/services/friendPush';
+import { switchStarted, useSwitchShown } from '../../src/services/switchLatencyProbe';
 
 // Prizes and redemptions are kept in the Google Sheet (維護者 2026-10-17): no 管理獎品 or 現場兌換 here.
 type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'redemptions' | null;
@@ -366,6 +367,7 @@ export default function ProgressScreen() {
 
   const chooseScope = async (nextScope: ScoreScope) => {
     if (!client || !session || !focusedRef.current || !appActive.current || (nextScope === scope && !(nextScope !== 'me' && selected))) return;
+    switchStarted('scope', nextScope, 'scope');
     if (nextScope === 'all') {
       if (!capabilities?.canViewAllScores) { setError('此功能僅限管理者。'); return; }
       const generation = ++requestGeneration.current; const expectedScope = activeScope.current;
@@ -408,6 +410,7 @@ export default function ProgressScreen() {
   const pickerOwn: Congregation = ownSide ?? 'youth';
   // 「主堂獎品｜青少獎品」: the other side's list is read when asked for and shown without any way to pick from it.
   const viewRewards = async (side: Congregation) => {
+    switchStarted('rewards', side, 'reward-side');
     if (side === pickerOwn) { setRewardSide(null); return; }
     if (!client || !session) return;
     const generation = requestGeneration.current; const expectedScope = activeScope.current; const origin = sheetVersion.current;
@@ -498,7 +501,9 @@ export default function ProgressScreen() {
     }).catch(() => { if (active && isViewLive(generation) && asked) setGroupFailed(asked); });
     return () => { active = false; };
   }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, groupMonth, groupSide, isViewLive]);
-  const viewGroup = (side: Congregation) => { setGroupFailed(null); setGroupSide(side === ownSide ? null : side); };
+  const viewGroup = (side: Congregation) => { switchStarted('group', `${side}:${groupMonth}`, 'group-side'); setGroupFailed(null); setGroupSide(side === ownSide ? null : side); };
+  const stepGroupMonth = (step: number) => { const month = shiftMonth(groupMonth, step); switchStarted('group', `${groupSide ?? ownSide ?? groupReading?.scope ?? 'youth'}:${month}`, 'group-month'); setGroupMonth(month); };
+  const stepCalendarMonth = (step: number) => { const month = shiftMonth(calendarMonth, step); switchStarted('calendar', month, 'calendar-month'); setCalendarMonth(month); };
   // After a change of side (here, on 我的帳戶, or on another phone) the page reads everything again for the new
   // side: its group numbers, its prizes, and the profile, whose target from the side left behind is gone.
   const seenOwnSide = useRef<Congregation | null>(null);
@@ -647,6 +652,11 @@ export default function ProgressScreen() {
       if (owns()) { exportRequest.current = null; setExportBusy(false); }
     }
   };
+  // The CI latency check (src/services/switchLatencyProbe.ts): what each switch's content shows now.
+  const calendarRange = readingDaysRange(calendarMonth, today);
+  useSwitchShown('calendar', schedule.ranges.some((range) => range.from <= calendarRange.from && range.to >= calendarRange.to) ? calendarMonth : null);
+  useSwitchShown('scope', scope === 'me' ? (session && profile?.memberId === session.memberId ? 'me' : null) : (!busy && !selected ? scope : null));
+  useSwitchShown('redemptions', sheet === 'redemptions' ? 'open' : null);
   if (!session) return <View style={styles.screen}><Text style={styles.title}>積分</Text><Text style={styles.note}>請先登入以查看積分。</Text></View>;
   const ownProfile = profile?.memberId === session.memberId ? profile : null;
   const showingProfile = scope !== 'me' && selected && profile;
@@ -702,8 +712,8 @@ export default function ProgressScreen() {
             own={ownSide}
             onView={ownSide ? viewGroup : undefined}
             failedSide={groupFailed}
-            onPreviousMonth={groupMonth > groupFirstMonth ? () => setGroupMonth(shiftMonth(groupMonth, -1)) : undefined}
-            onNextMonth={groupMonth < today.slice(0, 7) ? () => setGroupMonth(shiftMonth(groupMonth, 1)) : undefined}
+            onPreviousMonth={groupMonth > groupFirstMonth ? () => stepGroupMonth(-1) : undefined}
+            onNextMonth={groupMonth < today.slice(0, 7) ? () => stepGroupMonth(1) : undefined}
           /> : null}
           <SectionHeader title="個人" />
         </> : null}
@@ -716,8 +726,8 @@ export default function ProgressScreen() {
           onSelect={(date) => withPick(() => { setSelectedDate(date); pageScroll.current?.scrollTo({ y: 0, animated: true }); })}
           onOpenReadingPlan={() => setPlanOpen(true)}
           onExportReadingCard={() => { setExportError(null); setExportOpen(true); }}
-          onPreviousMonth={planSpan && calendarMonth > planSpan.first.slice(0, 7) ? () => setCalendarMonth(shiftMonth(calendarMonth, -1)) : undefined}
-          onNextMonth={calendarMonth < lastMonth ? () => setCalendarMonth(shiftMonth(calendarMonth, 1)) : undefined}
+          onPreviousMonth={planSpan && calendarMonth > planSpan.first.slice(0, 7) ? () => stepCalendarMonth(-1) : undefined}
+          onNextMonth={calendarMonth < lastMonth ? () => stepCalendarMonth(1) : undefined}
           devotionDates={devotionDates}
         />
       </>}
@@ -731,7 +741,7 @@ export default function ProgressScreen() {
     <CompletionAwardFeedback event={completionAward} onFinished={(operationId) => setCompletionAward((current) => current?.operationId === operationId ? null : current)} />
     <ReadingCardExportSheet visible={exportOpen} today={today} busy={exportBusy} error={exportError} onExport={period => { void exportReadingCard(period); }} onClose={closeExport} />
     <ReadingPlanSheet visible={planOpen} onClose={() => setPlanOpen(false)} onSelectDate={date => { setSelectedReadingDate(date); router.replace('/reader'); }} />
-    <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: openQrSheet }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { void loadRedemptions(); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : [])]} />
+    <ActionSheet visible={sheet === 'menu'} title="積分操作" dismissOnOutsideTap onClose={() => setSheet(null)} actions={[{ label: '我的好友 QR', onPress: openQrSheet }, { label: '掃描好友 QR', onPress: () => setSheet('scan') }, { label: '我的領取紀錄', onPress: () => { switchStarted('redemptions', 'open', 'redemptions'); void loadRedemptions(); } }, ...(scope === 'friends' && selected ? [{ label: '移除好友', destructive: true, onPress: () => { void removeSelectedFriend(); } }] : [])]} />
     <ActionSheet visible={sheet === 'qr'} title="我的好友 QR" dismissOnOutsideTap onClose={closeQrSheet}>
       {friendNotice ? <View accessible accessibilityLabel={`✓ ${friendNotice} 已加你為好友`} accessibilityLiveRegion="polite" style={styles.friendNotice}>
         <View style={styles.friendTick}><Text style={styles.friendTickText}>✓</Text></View>

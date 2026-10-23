@@ -8,13 +8,28 @@
 // says only whether the request carried a bearer token, never which one, and bytes= how much body came back: flow
 // 44-bulletin needs every 週刊 page asked for with the token, and the list's phone copy smaller than the original
 // (scripts/ios/check-bulletin-requests.ts).
-import { appendFileSync, readFileSync } from 'node:fs';
+// Phone network delay: while <log-dir>/proxy-delay-ms exists (run-flows.sh writes it around the switch-latency flows),
+// every /api/ request waits that many milliseconds before it is forwarded, as over a phone's network. On loopback an
+// answer takes a few milliseconds, so a switch that waits for the network would pass the 100 ms check without it.
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { createServer, request, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createServer as createTlsServer } from 'node:https';
 import { redactEvidence } from './sanitize-evidence';
 
 const [listen, target, log, certFile, keyFile] = process.argv.slice(2);
+const delayFile = join(dirname(log), 'proxy-delay-ms');
+const networkDelayMs = (path: string): number => {
+  if (!path.startsWith('/api/') || !existsSync(delayFile)) return 0;
+  const value = Number(readFileSync(delayFile, 'utf8').trim());
+  return Number.isFinite(value) && value > 0 ? value : 0;
+};
 const forward = (incoming: IncomingMessage, outgoing: ServerResponse) => {
+  const delay = networkDelayMs(incoming.url ?? '');
+  if (delay > 0) { setTimeout(() => forwardNow(incoming, outgoing), delay); return; }
+  forwardNow(incoming, outgoing);
+};
+const forwardNow = (incoming: IncomingMessage, outgoing: ServerResponse) => {
   const safePath = redactEvidence(incoming.url ?? '', [process.env.EXPO_PUBLIC_YOUVERSION_APP_KEY ?? '']);
   const bearer = /^bearer\s+\S/i.test(String(incoming.headers.authorization ?? '')) ? 'yes' : 'no';
   appendFileSync(log, `${Date.now()} ${incoming.method} ${safePath} bearer=${bearer}\n`);

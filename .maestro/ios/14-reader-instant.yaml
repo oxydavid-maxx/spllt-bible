@@ -1,0 +1,40 @@
+# .maestro/ios/14-reader-instant.yaml — 光佑 2026-10-23: the reader's switches that wait on our backend show their
+# content within 100 ms: the 靈修 tab right after the reader opens, and the leaf's 靈修 mark when the day changes.
+# Same measurement as 15-points-instant.yaml: a 400 ms phone network delay on the fixture backend, the app's own probe
+# (src/services/switchLatencyProbe.ts), scripts/ios/check-switch-latency.ts. Taps are never retried.
+appId: org.qingmu.youth
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "積分"
+    timeout: 90000
+- tapOn: "讀經入口"
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 30000
+- tapOn:
+    text: "靈修，傳道的每日靈修"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "朗讀靈修"
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    text: ".*今日第1段.*"
+    retryTapIfNoChange: false
+- extendedWaitUntil:
+    notVisible: "朗讀靈修"
+    timeout: 15000
+# The next scheduled day, then back.
+- tapOn:
+    text: "下一個排定讀經日"
+    retryTapIfNoChange: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    text: "上一個排定讀經日"
+    retryTapIfNoChange: false
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertVisible: "更多閱讀工具"

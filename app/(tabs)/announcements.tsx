@@ -18,6 +18,7 @@ import { theme } from '../../src/ui/Theme';
 import { useCongregation } from '../../src/ui/congregation/congregationStore';
 import { BulletinBoard } from '../../src/ui/bulletin/BulletinBoard';
 import { bulletinPageSource, fetchBulletins, type BulletinWeek } from '../../src/services/bulletinClient';
+import { switchStarted, useSwitchShown } from '../../src/services/switchLatencyProbe';
 
 /**
  * The one tab that does not need the backend.
@@ -110,6 +111,7 @@ export default function AnnouncementsScreen() {
     return () => { active = false; };
   }, [side, apiBaseUrl, session?.sessionToken, session?.memberId, bulletinRetry]);
   useFocusEffect(loadBulletins);
+  useSwitchShown('announcement-side', side === 'main' ? (bulletins.status === 'ready' ? 'main' : null) : (announcement ? 'youth' : null));
 
   return <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
     <View style={styles.toolbar}>
@@ -122,7 +124,7 @@ export default function AnnouncementsScreen() {
         accessibilityRole="tab"
         accessibilityLabel={item.name}
         accessibilityState={{ selected: side === item.value }}
-        onPress={() => setPicked(item.value)}
+        onPress={() => { if (item.value !== side) switchStarted('announcement-side', item.value, 'announcement-side'); setPicked(item.value); }}
         style={[styles.side, side === item.value && styles.sideActive]}
       >
         <Text style={[styles.sideText, side === item.value && styles.sideTextActive]}>{item.name}</Text>

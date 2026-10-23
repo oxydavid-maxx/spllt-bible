@@ -6,6 +6,7 @@ import { monthName, monthSummary, myPrizeLine, prizeProgress, prizeRule, readers
 import { theme } from '../Theme';
 import { GROUP_NAME, whereSentence } from '../congregation/congregationCopy';
 import { SideSwitch } from '../congregation/SideSwitch';
+import { useSwitchShown } from '../../services/switchLatencyProbe';
 
 /**
  * 團體 on the 積分 page (維護者 2026-10-14): how many youth read each day, and the prizes the church
@@ -51,6 +52,7 @@ function Count({ label, readers }: { label: string; readers: number | null }) {
 }
 
 export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onView, failedSide }: GroupReadingCardProps) {
+  useSwitchShown('group', `${view.scope}:${view.month}`);
   const readers = new Map(view.days.map((day) => [day.date, day.readers]));
   const busiest = view.busiest?.readers ?? 0;
   const summary = monthSummary(view);
