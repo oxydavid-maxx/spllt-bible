@@ -251,7 +251,11 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   }, [speech]);
 
   const today = taipeiDate();
-  const done = marked?.date === date && marked.done;
+  // A day just shown takes its mark from the month kept in the store in this same render (no second render of the
+  // reader for it); the read below confirms it. A mark set here on the phone (`marked`) wins.
+  const keptMonth = session ? (() => { const range = readingDaysRange(date.slice(0, 7), today); return viewCache.peek<string[]>(devotionDatesKey(session, range.from, range.to)); })() : undefined;
+  const markKnown = marked?.date === date || keptMonth !== undefined;
+  const done = marked?.date === date ? marked.done : Boolean(keptMonth?.includes(date));
   const speaking = spoken.status === 'speaking' && spoken.date === date;
   const toggle = () => {
     if (!client || markPendingRef.current) return;
@@ -270,7 +274,7 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
   };
   // The CI latency check (src/services/switchLatencyProbe.ts): the 靈修 tab's post, and the leaf's mark for the day.
   useSwitchShown('devotional', selected && current && current.kind !== 'loading' ? date : null);
-  useSwitchShown('devotion-mark', marked?.date === date ? date : null);
+  useSwitchShown('devotion-mark', markKnown ? date : null);
   const devotion: ReaderDevotion | undefined = client ? {
     selected,
     atEnd,
