@@ -48,6 +48,12 @@ vi.mock('../../src/ui/gamification/PeopleList', () => ({ PeopleList: (props: any
 vi.mock('../../src/ui/gamification/ScoreProfile', () => ({ ScoreProfile: (props: any) => React.createElement('ScoreProfile', props, props.lead) }));
 vi.mock('../../src/ui/gamification/ActionSheet', () => ({ ActionSheet: (props: any) => props.visible ? React.createElement('ActionSheet', props, props.children, ...(props.actions ?? []).map((action: any) => React.createElement('Pressable', { key: action.label, accessibilityLabel: action.label, disabled: action.disabled, onPress: action.onPress }))) : null }));
 vi.mock('../../src/ui/gamification/FriendQrPanel', () => ({ FriendQrPanel: (props: any) => React.createElement('FriendQrPanel', props) }));
+// Counts how often the rest of the page draws: the day card at its top stands for it.
+const renders = vi.hoisted(() => ({ dayCard: 0 }));
+vi.mock('../../src/ui/gamification/SelectedDayCard', async () => {
+  const actual = await vi.importActual<typeof import('../../src/ui/gamification/SelectedDayCard')>('../../src/ui/gamification/SelectedDayCard');
+  return { ...actual, SelectedDayCard: (props: any) => { renders.dayCard += 1; return React.createElement(actual.SelectedDayCard, props); } };
+});
 
 import ProgressScreen from '../../app/(tabs)/progress';
 import { resetCongregationStore } from '../../src/ui/congregation/congregationStore';
@@ -55,6 +61,7 @@ import { viewCache } from '../../src/services/viewCache';
 import { taipeiDate } from '../../src/domain/gamificationV1';
 import { shiftMonth } from '../../src/ui/gamification/readingCalendarModel';
 import { GroupReadingCard } from '../../src/ui/gamification/GroupReadingCard';
+import { requestOpenAllScores } from '../../src/services/allScoresRequest';
 
 const mounted: TestRenderer.ReactTestRenderer[] = [];
 afterEach(async () => { await act(async () => { for (const tree of mounted.splice(0)) tree.unmount(); }); });
@@ -107,6 +114,17 @@ describe('積分頁: switches show what was asked ahead, at once', () => {
     expect(groupCalls(undefined, month)).toBe(1);
   });
 
+  it('a tap on 全教會｜青少 or on a month redraws the 團體 card only, never the rest of the page', async () => {
+    const tree = await screen();
+    const drawn = renders.dayCard;
+    await tap(pressables(tree, '青少', 'tab')[0]);
+    expect(texts(tree)).toContain('青少一起讀經');
+    await tap(pressables(tree, '上個月')[0]);
+    await tap(pressables(tree, '全教會', 'tab')[0]);
+    expect(texts(tree)).toContain('全教會一起讀經');
+    expect(renders.dayCard).toBe(drawn);
+  });
+
   it('主堂獎品｜青少獎品: the other side is asked once and shown at once', async () => {
     const tree = await screen();
     await act(async () => { tree.root.findByType('ScoreProfile' as any).props.onChooseReward(); });
@@ -134,6 +152,30 @@ describe('積分頁: switches show what was asked ahead, at once', () => {
     await tap(pressables(tree, '我的領取紀錄')[0]);
     expect(tree.root.findAll((node) => String(node.type) === 'ActionSheet' && node.props.title === '領取紀錄')).toHaveLength(1);
     expect(api.getMyRedemptions).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('積分頁 全體 (管理): asked right after the unlock', () => {
+  it('opens every name at once from the points asked ahead after the unlock', async () => {
+    const people = api.getPeople.getMockImplementation()!;
+    const profile = api.getProfile.getMockImplementation()!;
+    try {
+      auth.epoch = 77; // A fresh capabilities read (they are kept per member, session and epoch).
+      api.getCapabilities.mockResolvedValueOnce({ canViewAllScores: true, canManageRewards: false, canRedeemRewards: false });
+      api.getPeople.mockImplementation(async (scope?: string) => scope === 'all' ? [{ memberId: 'm1', displayName: '甲', earnedTotal: 9 }, { memberId: 'm2', displayName: '乙', earnedTotal: 5 }] : [{ memberId: 'friend-1', displayName: '好友一', earnedTotal: 3 }]);
+      const tree = await screen();
+      await act(async () => { requestOpenAllScores(); await Promise.resolve(); });
+      await settle();
+      expect(tree.root.findByType('PeopleList' as any).props.people).toHaveLength(2);
+      expect((api.getProfile.mock.calls as unknown[][]).filter((call) => call[1] === 'all').map((call) => call[0])).toEqual(['m1', 'm2']);
+      api.getProfile.mockImplementation(() => new Promise<never>(() => undefined)); // From here on, no answer comes.
+      await act(async () => { tree.root.findByType('PeopleList' as any).props.onSelect({ memberId: 'm2', displayName: '乙', earnedTotal: 5 }); });
+      expect(tree.root.findAll((node) => String(node.type) === 'ScoreProfile' && node.props.profile?.memberId === 'm2')).toHaveLength(1);
+      expect(texts(tree)).not.toContain('載入中…');
+    } finally {
+      api.getPeople.mockImplementation(people);
+      api.getProfile.mockImplementation(profile);
+    }
   });
 });
 

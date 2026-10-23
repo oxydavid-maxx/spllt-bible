@@ -101,7 +101,11 @@ const isCompletionButton = (node: TestRenderer.ReactTestInstance) => (node.type 
 const buttons = () => renderer!.root.findAll(isCompletionButton);
 const lastOptions = () => completion.options[completion.options.length - 1];
 const byName = (name: string) => renderer!.root.findAll((node) => (node.type as { name?: string }).name === name);
-const scrollOrder = () => (renderer!.root.findByType('ScrollView' as never).children as TestRenderer.ReactTestInstance[]).map((child) => (child.type as { name?: string }).name ?? String(child.type));
+const nameOf = (node: TestRenderer.ReactTestInstance) => (node.type as { name?: string }).name ?? String(node.type);
+// 團體 is its own component (GroupSection, so its switches redraw that card only): the page reads through it.
+const scrollItems = () => (renderer!.root.findByType('ScrollView' as never).children as TestRenderer.ReactTestInstance[])
+  .flatMap((child) => typeof child !== 'string' && nameOf(child) === 'GroupSectionView' ? child.children as TestRenderer.ReactTestInstance[] : [child]);
+const scrollOrder = () => scrollItems().map(nameOf);
 
 describe('the 積分 page opens on its calendar', () => {
   it('opens the shared plan from any calendar day and switches to the chosen reading date', async () => {
@@ -121,7 +125,7 @@ describe('the 積分 page opens on its calendar', () => {
     const scroll = renderer!.root.findByType('ScrollView' as never);
     const order = scrollOrder();
     expect(order.slice(0, 7)).toEqual(['SelectedDayCard', 'SectionHeader', 'GroupReadingCard', 'SectionHeader', 'ReadingCalendarCard', 'RewardGoalCard', 'ScoreHistoryCard']);
-    expect(scroll.children.filter((child) => typeof child !== 'string' && (child.type as { name?: string }).name === 'SectionHeader').map((child) => (child as TestRenderer.ReactTestInstance).props.title)).toEqual(['團體', '個人']);
+    expect(scrollItems().filter((child) => typeof child !== 'string' && nameOf(child) === 'SectionHeader').map((child) => child.props.title)).toEqual(['團體', '個人']);
     // 一起走過 is gone, and 全體 is not a tab any more: only 自己 and 好友.
     expect(order).not.toContain('CommunityProgress');
     const tabs = renderer!.root.findAll((node) => (node.type as unknown) === 'Pressable' && node.props.accessibilityRole === 'tab').map((node) => node.props.accessibilityLabel);

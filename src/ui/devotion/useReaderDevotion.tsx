@@ -272,9 +272,9 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
       .catch(() => { keep(!next); if (isCurrent()) setMarked((value) => value?.date === date ? { date, done: !next } : value); })
       .finally(() => { if (isCurrent()) { markPendingRef.current = false; setMarkPending(false); } });
   };
-  // The CI latency check (src/services/switchLatencyProbe.ts): the 靈修 tab's post, and the leaf's mark for the day.
+  // The CI latency check (src/services/switchLatencyProbe.ts): the 靈修 tab's post. The leaf's mark for the day is
+  // reported by the page that draws it (FullscreenReaderLayout, from `markKnown`).
   useSwitchShown('devotional', selected && current && current.kind !== 'loading' ? date : null);
-  useSwitchShown('devotion-mark', markKnown ? date : null);
   const devotion: ReaderDevotion | undefined = client ? {
     selected,
     atEnd,
@@ -295,6 +295,7 @@ export function useReaderDevotion({ session, baseUrl, date, showTools, textSetti
       speaking={speaking}
     />,
     completed: done,
+    markKnown,
     disabled: markPending || date > today || !isWithinCompletionWindow(date, today),
     onToggle: toggle,
     speaking,

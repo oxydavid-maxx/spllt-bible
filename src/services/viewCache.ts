@@ -149,6 +149,18 @@ export function viewCacheKey(session: Pick<AuthSession, 'memberId' | 'sessionTok
 export interface ViewCacheRequest<T> { key: string; load: () => Promise<T> }
 
 /**
+ * Runs `run` once the next frame has been drawn. Questions asked ahead start here: a request started in the same turn
+ * as a switch would hold back the frame that shows it. Without frames (node tests) it runs at once.
+ */
+export function afterNextFrame(run: () => void): { cancel(): void } {
+  if (typeof requestAnimationFrame !== 'function') { run(); return { cancel: () => undefined }; }
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const frame = requestAnimationFrame(() => { timer = setTimeout(() => { timer = null; if (!cancelled) run(); }, 0); });
+  return { cancel: () => { cancelled = true; cancelAnimationFrame?.(frame); if (timer !== null) clearTimeout(timer); } };
+}
+
+/**
  * What `key` shows now, straight from the store in the same render as the tap. While `active`, asks for `key` and the
  * `ahead` keys once per visit (`freshSince`); `retry` asks again for a failed key.
  */
@@ -167,7 +179,10 @@ export function useViewCache<T>(request: ViewCacheRequest<T> | null, options: { 
     if (!options.active) return;
     const current = latest.current;
     if (current.request) void cache.read(current.request.key, current.request.load, options.freshSince).catch(() => undefined);
-    for (const item of current.ahead ?? []) cache.prefetch(item.key, item.load, options.freshSince);
+    const ahead = current.ahead ?? [];
+    if (!ahead.length) return;
+    const later = afterNextFrame(() => { for (const item of ahead) cache.prefetch(item.key, item.load, options.freshSince); });
+    return later.cancel;
   }, [cache, key, aheadKeys, options.active, options.freshSince, options.retry]);
   return { value, failed };
 }

@@ -46,11 +46,12 @@ export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect
     </View>
     <View style={styles.grid}>
       {monthCells(month).map((date, index) => {
-        if (!date) return <View key={`b${index}`} style={styles.slot}><View style={styles.cellBlank} /></View>;
+        // Keyed by place in the grid, not by date: 上個月/下個月 then updates the same 42 cells instead of replacing them.
+        if (!date) return <View key={index} style={styles.slot}><View style={styles.cellBlank} /></View>;
         const state = dayState(date, today, days.get(date));
         const selected = date === selectedDate;
         const devoted = devotionDates?.has(date) ?? false;
-        return <View key={date} style={styles.slot}><Pressable
+        return <View key={index} style={styles.slot}><Pressable
           accessibilityRole="button"
           accessibilityLabel={`${date} ${STATE_LABEL[state]}${devoted ? ' 也讀了靈修' : ''}${date === today ? ' 今天' : ''}`}
           accessibilityState={{ selected }}

@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 export const SWITCH_LIMIT_MS = 100;
 
-interface Probe { label: string; surface: string; key: string; ms: number; commitMs?: number; at: string }
+interface Probe { label: string; surface: string; key: string; ms: number; commitMs?: number; renderMs?: number; layoutMs?: number; at: string }
 export interface SwitchExpectation { flow: string; label: string; name: string; taps: string[] }
 
 // In the order the flows tap. Keep in step with .maestro/ios/14-reader-instant.yaml and 44-points-instant.yaml.
@@ -25,7 +25,13 @@ export const EXPECTED: SwitchExpectation[] = [
   { flow: '44-points-instant', label: 'redemptions', name: '積分 我的領取紀錄', taps: ['打開後第一次'] },
 ];
 
-export interface SwitchRow { flow: string; name: string; tap: string; ms: number | null; result: 'PASS' | 'FAIL' | 'SKIP' }
+// Measured and reported, never judged: the official YouVersion reader showing the next day's text after ‹ ›. It is
+// the SDK's own page and its own fetch (the app cannot keep it); the app's part of the same tap is reader-date above.
+export const REPORTED: SwitchExpectation[] = [
+  { flow: '14-reader-instant', label: 'reader-date-text', name: '讀經 換日 YouVersion 經文出現 (外部元件，只記錄)', taps: ['下一個排定讀經日', '上一個排定讀經日 (換回)'] },
+];
+
+export interface SwitchRow { flow: string; name: string; tap: string; ms: number | null; result: 'PASS' | 'FAIL' | 'SKIP' | 'INFO' }
 
 export function checkSwitchLatency(recordsByFlow: Record<string, Probe[]>, flows: Record<string, string>): SwitchRow[] {
   const rows: SwitchRow[] = [];
@@ -37,6 +43,13 @@ export function checkSwitchLatency(recordsByFlow: Record<string, Probe[]>, flows
       const ms = records[index]?.ms;
       const measured = typeof ms === 'number' && Number.isFinite(ms) && ms >= 0;
       rows.push({ flow: expectation.flow, name: expectation.name, tap, ms: measured ? ms : null, result: measured && ms <= SWITCH_LIMIT_MS ? 'PASS' : 'FAIL' });
+    });
+  }
+  for (const expectation of REPORTED) {
+    const records = (recordsByFlow[expectation.flow] ?? []).filter((record) => record.label === expectation.label);
+    expectation.taps.forEach((tap, index) => {
+      const ms = records[index]?.ms;
+      rows.push({ flow: expectation.flow, name: expectation.name, tap, ms: typeof ms === 'number' && Number.isFinite(ms) ? ms : null, result: flows[expectation.flow] === 'SKIP' ? 'SKIP' : 'INFO' });
     });
   }
   return rows;
@@ -56,5 +69,7 @@ if (process.argv[1]?.endsWith('check-switch-latency.ts')) {
   const rows = checkSwitchLatency(recordsByFlow, flows);
   writeFileSync(outPath, JSON.stringify({ limitMs: SWITCH_LIMIT_MS, rows, records: recordsByFlow }, null, 2));
   for (const row of rows) console.log(`${row.result} ${row.name} ${row.tap}: ${row.ms === null ? '沒量到' : `${row.ms} ms`}`);
+  // Where each switch's time went (render, layout, effects, frame), for the report.
+  for (const [flow, records] of Object.entries(recordsByFlow)) for (const record of records) console.log(`  ${flow} ${record.label} ${record.key}: render ${record.renderMs ?? '-'} / layout ${record.layoutMs ?? '-'} / commit ${record.commitMs ?? '-'} / frame ${record.ms} ms`);
   process.exit(rows.some((row) => row.result === 'FAIL') ? 1 : 0);
 }

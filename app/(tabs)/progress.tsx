@@ -11,15 +11,14 @@ import { ActionSheet } from '../../src/ui/gamification/ActionSheet';
 import { FriendQrPanel } from '../../src/ui/gamification/FriendQrPanel';
 import { PeopleList } from '../../src/ui/gamification/PeopleList';
 import { RedemptionList } from '../../src/ui/gamification/RedemptionList';
-import { GroupReadingCard } from '../../src/ui/gamification/GroupReadingCard';
+import { GroupSection } from '../../src/ui/gamification/GroupSection';
 import { ScoreHistoryCard } from '../../src/ui/gamification/ScoreHistoryCard';
 import { DevotionTodayButton } from '../../src/ui/gamification/DevotionTodayButton';
-import { createDevotionClient, type Congregation, type GroupReading, type ScoreHistory } from '../../src/services/devotionClient';
+import { createDevotionClient, type Congregation, type ScoreHistory } from '../../src/services/devotionClient';
 import { consumeOpenAllScores, subscribeOpenAllScores } from '../../src/services/allScoresRequest';
 import { ScoreProfile } from '../../src/ui/gamification/ScoreProfile';
 import { RewardPicker } from '../../src/ui/gamification/RewardPicker';
 import { useCongregation } from '../../src/ui/congregation/congregationStore';
-import { CongregationLineView } from '../../src/ui/congregation/CongregationLine';
 import { theme } from '../../src/ui/Theme';
 import { createApiClient } from '../../src/services/apiClient';
 import { readReadingDays } from '../../src/services/readingDaysRead';
@@ -42,7 +41,8 @@ import { shareReadingCard } from '../../src/ui/readingCardShare';
 import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
 import { consumeOpenFriendsList, subscribeFriendAdded, subscribeOpenFriendsList, type FriendAddedEvent } from '../../src/services/friendPush';
 import { switchStarted, useSwitchShown } from '../../src/services/switchLatencyProbe';
-import { ASK_AGAIN, devotionDatesKey, invalidateReadingDaysInViewCache, markDevotionInViewCache, useViewCache, viewCache, viewCacheKey, type ViewCacheRequest } from '../../src/services/viewCache';
+import { afterNextFrame, ASK_AGAIN, devotionDatesKey, invalidateReadingDaysInViewCache, markDevotionInViewCache, useViewCache, viewCache, viewCacheKey, type ViewCacheRequest } from '../../src/services/viewCache';
+import type { ReadingDaySnapshot } from '../../src/services/apiClient';
 
 // Prizes and redemptions are kept in the Google Sheet (維護者 2026-10-17): no 管理獎品 or 現場兌換 here.
 type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'redemptions' | null;
@@ -52,8 +52,8 @@ export default function ProgressScreen() {
   // Where the member counts (青少/主堂). The 團體 card and the prize picker can look at the other side; each
   // opening starts on this one (維護者 2026-10-20). Null while unknown: the first-run choice is then on screen.
   const ownSide = congregation.value;
-  const [groupSide, setGroupSide] = useState<Congregation | null>(null);
-  const [groupRetry, setGroupRetry] = useState(0);
+  // Each opening of 團體 starts on the member's own side: a new number here (src/ui/gamification/GroupSection.tsx).
+  const [groupReset, setGroupReset] = useState(0);
   const [rewardSide, setRewardSide] = useState<Congregation | null>(null);
   const [rewardRetry, setRewardRetry] = useState(0);
   // When this visit began (focus or return to the app). Switches use what was asked since then without asking
@@ -136,6 +136,9 @@ export default function ProgressScreen() {
   const scannerActivityRequest = useRef<object | null>(null);
   const resumeScannerAfterActivity = useRef(false);
   const chartCache = useRef(new Map<string, NonNullable<ScoreProfileData['chart']>>());
+  // 全體 (管理): everyone's points, asked right after the device unlock so a tap on a name opens at once (光佑
+  // 2026-10-23). Held only while unlocked: leaving 全體, the background or another account empties it with the unlock.
+  const allProfiles = useRef(new Map<string, ScoreProfileData>());
   const chartKey = (memberId: string, nextScope: ScoreScope, query: ScoreChartQuery) => JSON.stringify([memberId, nextScope, query.range, query.anchor ?? '']);
   const rememberChart = (memberId: string, nextScope: ScoreScope, query: ScoreChartQuery | undefined, chart: ScoreProfileData['chart']) => {
     if (!chart) return;
@@ -144,39 +147,57 @@ export default function ProgressScreen() {
   };
   const accountKey = session ? JSON.stringify([session.memberId, session.sessionToken]) : null;
   const [secondaryRefresh, setSecondaryRefresh] = useState(0);
+  // What each calendar range last put on screen. The same answer again (a month switched back to, a visit that found
+  // nothing new) changes nothing: no re-render, and the reading tab's plan is left alone (2026-10-23).
+  const appliedReadingDays = useRef(new Map<string, ReadingDaysAnswer>());
+  const appliedDevotionDates = useRef(new Map<string, readonly string[]>());
   useEffect(() => {
     let active = true;
     const expectedAuthEpoch = auth.epoch;
     if (!completionClient || !session || !focused || !appForeground) return () => { active = false; };
+    const live = () => isCurrentAuthSession(session) && getAuthSnapshot().epoch === expectedAuthEpoch;
     const range = readingDaysRange(calendarMonth, today);
     const readingDays = (from: string, to: string) => ({ key: viewCacheKey(session, 'reading-days', from, to), load: async () => {
       const value = await readReadingDays(session, from, to, () => completionClient.getReadingDays(from, to));
       if (!value) throw new Error('READING_DAYS_UNAVAILABLE');
       return value;
     } });
-    // The months either side are asked ahead: 上個月/下個月 then shows its marks at once (2026-10-23).
-    for (const month of adjacentCalendarMonths(calendarMonth, today)) { const ahead = readingDaysRange(month, today); const request = readingDays(ahead.from, ahead.to); viewCache.prefetch(request.key, request.load, visitStartedAt); }
+    const apply = (applied: { from: string; to: string }, response: ReadingDaysAnswer) => {
+      const rangeKey = `${applied.from}:${applied.to}`;
+      if (appliedReadingDays.current.get(rangeKey) === response) return;
+      appliedReadingDays.current.set(rangeKey, response);
+      replaceReadingDaysRange(applied.from, applied.to, response.days);
+      completion.reconcileRemoteDays?.(response.days);
+      setConfirmedDays(current => Object.fromEntries(Object.entries(current).filter(([date]) => date < applied.from || date > applied.to)));
+      const fetched = calendarDaysOf(response);
+      setSchedule((current) => {
+        const days = new Map([...current.days].filter(([date]) => date < applied.from || date > applied.to));
+        for (const [date, day] of fetched) days.set(date, day);
+        return { days, ranges: [...current.ranges.filter((item) => item.from !== applied.from || item.to !== applied.to), applied] };
+      });
+    };
+    // The months either side are asked ahead, after the frame that shows this one, and taken in as they come:
+    // 上個月/下個月 then shows them from the store in its own render with nothing left to apply (2026-10-23).
+    const ahead = afterNextFrame(() => {
+      for (const month of adjacentCalendarMonths(calendarMonth, today)) {
+        const aheadRange = readingDaysRange(month, today); const request = readingDays(aheadRange.from, aheadRange.to);
+        void viewCache.read(request.key, request.load, visitStartedAt).then((response) => { if (live()) apply(aheadRange, response); }).catch(() => undefined);
+      }
+    });
     const request = readingDays(range.from, range.to);
     void viewCache.read(request.key, request.load, visitStartedAt).then((response) => {
-      if (!active || !response || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
-      replaceReadingDaysRange(range.from, range.to, response.days);
-      completion.reconcileRemoteDays?.(response.days);
-      setConfirmedDays(current => Object.fromEntries(Object.entries(current).filter(([date]) => date < range.from || date > range.to)));
-      const fetched = new Map(response.days.map((day) => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', revision: day.revision, canComplete: day.canComplete }] as const));
-      setSchedule((current) => {
-        const days = new Map([...current.days].filter(([date]) => date < range.from || date > range.to));
-        for (const [date, day] of fetched) days.set(date, day);
-        return { days, ranges: [...current.ranges.filter((item) => item.from !== range.from || item.to !== range.to), range] };
-      });
-      if (!pickedDate.current && calendarMonth === today.slice(0, 7)) setSelectedDate(defaultSelectedDate(today, fetched));
+      if (!active || !response || !live()) return;
+      apply(range, response);
+      if (!pickedDate.current && calendarMonth === today.slice(0, 7)) setSelectedDate(defaultSelectedDate(today, calendarDaysOf(response)));
     }).catch(() => undefined);
-    return () => { active = false; };
+    return () => { active = false; ahead.cancel(); };
   }, [completionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh, focused, appForeground, visitStartedAt]);
   const loadedDevotionRanges = useRef<Array<{ from: string; to: string }>>([]);
   useEffect(() => {
     let active = true;
     setSchedule({ days: new Map(), ranges: [] }); setConfirmedDays({});
     setDevotionDates(new Set()); loadedDevotionRanges.current = [];
+    appliedReadingDays.current.clear(); appliedDevotionDates.current.clear();
     if (session) void import('../../src/services/readingProgressCache').then(async ({ readingProgressCache }) => {
       const cached = await readingProgressCache.read(session.memberId);
       if (!active || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== auth.epoch) return;
@@ -198,16 +219,25 @@ export default function ProgressScreen() {
     let active = true;
     const expectedAuthEpoch = auth.epoch;
     if (!devotionClient || !session || !focused || !appForeground) return () => { active = false; };
+    const live = () => isCurrentAuthSession(session) && getAuthSnapshot().epoch === expectedAuthEpoch;
     const range = readingDaysRange(calendarMonth, today);
     const devotionDatesRequest = (from: string, to: string) => ({ key: devotionDatesKey(session, from, to), load: () => devotionClient.getDevotionDates(from, to) });
-    for (const month of adjacentCalendarMonths(calendarMonth, today)) { const ahead = readingDaysRange(month, today); const request = devotionDatesRequest(ahead.from, ahead.to); viewCache.prefetch(request.key, request.load, visitStartedAt); }
+    const apply = (applied: { from: string; to: string }, dates: readonly string[]) => {
+      const rangeKey = `${applied.from}:${applied.to}`;
+      if (appliedDevotionDates.current.get(rangeKey) === dates) return;
+      appliedDevotionDates.current.set(rangeKey, dates);
+      loadedDevotionRanges.current.push(applied);
+      setDevotionDates((current) => new Set([...[...current].filter((date) => date < applied.from || date > applied.to), ...dates]));
+    };
+    const ahead = afterNextFrame(() => {
+      for (const month of adjacentCalendarMonths(calendarMonth, today)) {
+        const aheadRange = readingDaysRange(month, today); const request = devotionDatesRequest(aheadRange.from, aheadRange.to);
+        void viewCache.read(request.key, request.load, visitStartedAt).then((dates) => { if (live()) apply(aheadRange, dates); }).catch(() => undefined);
+      }
+    });
     const request = devotionDatesRequest(range.from, range.to);
-    void viewCache.read(request.key, request.load, visitStartedAt).then((dates) => {
-      if (!active || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
-      loadedDevotionRanges.current.push(range);
-      setDevotionDates((current) => new Set([...[...current].filter((date) => date < range.from || date > range.to), ...dates]));
-    }).catch(() => undefined);
-    return () => { active = false; };
+    void viewCache.read(request.key, request.load, visitStartedAt).then((dates) => { if (active && live()) apply(range, dates); }).catch(() => undefined);
+    return () => { active = false; ahead.cancel(); };
   }, [devotionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh, focused, appForeground, visitStartedAt]);
   const isLive = useCallback((generation: number, expectedScope: ScoreScope, expectedMember?: string | null, requiresUnlock = false) => Boolean(focusedRef.current && appActive.current && requestGeneration.current === generation && activeScope.current === expectedScope && (expectedMember === undefined || expectedMember === activeMember.current) && session && isCurrentAuthSession(session) && (!requiresUnlock || guard.current.state === 'unlocked')), [session]);
   // Account-wide secondary content is independent of the selected chart range/member.
@@ -225,7 +255,7 @@ export default function ProgressScreen() {
     const currentProfile = profileRef.current;
     const ownProfile = preserveOwnProfile && session && isCurrentAuthSession(session) && currentProfile?.memberId === session.memberId && currentProfile.private ? currentProfile : null;
     const preserveView = Boolean(preserveOwnView && ownProfile && activeScope.current === 'me' && activeMember.current === session?.memberId);
-    activeScope.current = 'me'; activeMember.current = preserveView ? session?.memberId ?? null : null; guard.current.clear(); chartCache.current.clear();
+    activeScope.current = 'me'; activeMember.current = preserveView ? session?.memberId ?? null : null; guard.current.clear(); chartCache.current.clear(); allProfiles.current.clear();
     setScope('me'); setPeople([]); setSelected(null); setProfile(ownProfile); setBusy(false); setError(null);
     setSheet(preserveScanner ? 'scan' : null);
     if (!preserveView) {
@@ -275,13 +305,14 @@ export default function ProgressScreen() {
       } catch { if (!owns()) return; }
     }
   }, [client, isLive]);
-  const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope, chartQuery?: ScoreChartQuery, attempt = 0): Promise<void> => {
+  const loadProfile = useCallback(async (memberId: string, nextScope: ScoreScope, chartQuery?: ScoreChartQuery, attempt = 0, shown?: ScoreProfileData): Promise<void> => {
     if (!client || !session || !isLive(requestGeneration.current, nextScope, memberId, nextScope === 'all')) return;
     const generation = requestGeneration.current;
     const requestId = ++profileRequest.current;
     const owns = () => requestId === profileRequest.current && isLive(generation, nextScope, memberId, nextScope === 'all');
     const currentProfile = profileRef.current;
-    const keepVisibleProfile = nextScope === 'me' && memberId === session.memberId && currentProfile?.memberId === memberId && Boolean(currentProfile.private);
+    // `shown`: a profile already on screen for this person (全體's, asked after the unlock) stays while it is asked again.
+    const keepVisibleProfile = shown?.memberId === memberId || (nextScope === 'me' && memberId === session.memberId && currentProfile?.memberId === memberId && Boolean(currentProfile.private));
     stopPrefetch(); setBusy(!keepVisibleProfile); setError(null);
     let remoteSettled = false;
     let retrying = false;
@@ -340,7 +371,10 @@ export default function ProgressScreen() {
     setBusy(!kept); setError(null);
     try {
       const value = request ? await viewCache.read(request.key, request.load, fresh ? ASK_AGAIN : visitStartedRef.current) : await client.getPeople(nextScope);
-      if (owns()) { setPeople(value); if (!kept) { setSelected(null); setProfile(null); } }
+      if (owns()) {
+        setPeople(value); if (!kept) { setSelected(null); setProfile(null); }
+        if (nextScope === 'all') prefetchAllProfiles(value, generation);
+      }
     }
     catch (reason) { if (owns() && !kept) setError(messageFor(reason)); }
     finally { if (owns()) setBusy(false); }
@@ -377,7 +411,7 @@ export default function ProgressScreen() {
   refreshOnForeground.current = refreshOwnProfile;
   useFocusEffect(useCallback(() => {
     // Each visit starts on this month and lets the page choose the day again, with 團體 on the member's own side.
-    pickedDate.current = false; setCalendarMonth(taipeiDate().slice(0, 7)); setGroupSide(null);
+    pickedDate.current = false; setCalendarMonth(taipeiDate().slice(0, 7)); setGroupReset((value) => value + 1);
     focusedRef.current = true; setFocused(true); refreshOwnProfile(); openRequestedFriends.current(); openRequestedAll.current();
     return () => { focusedRef.current = false; setFocused(false); clearProtectedState(false, true, true); };
   }, [clearProtectedState, refreshOwnProfile]));
@@ -405,17 +439,33 @@ export default function ProgressScreen() {
       } catch (reason) { if (owns()) setError(messageFor(reason)); else return; }
       finally { if (owns()) setBusy(false); }
       if (!owns() || attempt.state !== 'unlocked') return;
-    } else if (scope === 'all') guard.current.clear();
+    } else if (scope === 'all') { guard.current.clear(); allProfiles.current.clear(); }
     requestGeneration.current += 1; stopPrefetch();
     activeScope.current = nextScope; activeMember.current = nextScope === 'me' ? session.memberId : null;
     setScope(nextScope); setSheet(null); setSelected(null); setProfile(null); setProfileStale(false);
     if (nextScope !== 'me') void loadPeople(nextScope);
     else void loadProfile(session.memberId, 'me');
   };
+  // After the unlock and the list: each person's points, one at a time after the frame, while 全體 stays unlocked.
+  const prefetchAllProfiles = (people: PersonListItem[], generation: number) => {
+    if (!client) return;
+    const owns = () => isLive(generation, 'all', undefined, true);
+    afterNextFrame(() => {
+      void (async () => {
+        for (const person of people.slice(0, ALL_PROFILES_AHEAD)) {
+          if (!owns()) return;
+          if (allProfiles.current.has(person.memberId)) continue;
+          try { const value = await client.getProfile(person.memberId, 'all', monthNow()); if (owns()) allProfiles.current.set(person.memberId, value); }
+          catch { if (!owns()) return; }
+        }
+      })();
+    });
+  };
   const openProfile = (person: PersonListItem) => {
     if (!isLive(requestGeneration.current, scope, undefined, scope === 'all')) return;
     requestGeneration.current += 1; stopPrefetch(); activeMember.current = person.memberId;
-    setSelected(person); setProfile(null); void loadProfile(person.memberId, scope);
+    const kept = scope === 'all' ? allProfiles.current.get(person.memberId) : undefined;
+    setSelected(person); setProfile(kept ?? null); void loadProfile(person.memberId, scope, undefined, 0, kept);
   };
   const loadRewards = async () => {
     if (!client || !session) return;
@@ -498,8 +548,6 @@ export default function ProgressScreen() {
     try { await client.setRewardTarget(rewardId); if (!owns()) return; if (sheetVersion.current === origin) setSheet(null); await loadProfile(session.memberId, 'me'); }
     catch (reason) { if (owns()) setError(messageFor(reason)); }
   };
-  // 團體 (維護者 2026-10-14): replaces 一起走過. Absent on a backend that predates it; the section then hides.
-  const [groupMonth, setGroupMonth] = useState(() => today.slice(0, 7));
   const [scoreHistory, setScoreHistory] = useState<ScoreHistory | null>(null);
   const [scoreHistoryMissing, setScoreHistoryMissing] = useState(false);
   // A 靈修 tap redraws only the chart's gold line: it is not in the group's numbers or the points.
@@ -508,14 +556,12 @@ export default function ProgressScreen() {
   // Everything a tap on this page can reach is read through the shared store (src/services/viewCache.ts, 光佑
   // 2026-10-23): the shown content comes straight from it in the tap's own render, and the page asks ahead for the
   // other side, the months either side, 好友 and 我的領取紀錄 as soon as the member's own points have settled.
-  // The member's own side asks without naming it, as before (and as an older server understands).
+  // 團體 is its own component (GroupSection), so its switches redraw that card only.
   const otherSide = (side: Congregation): Congregation => side === 'main' ? 'youth' : 'main';
   const rewardsRequest = (side: Congregation | null): ViewCacheRequest<Reward[]> | null => client && session && typeof client.getRewards === 'function'
     ? { key: viewCacheKey(session, 'rewards', side ?? `own:${ownSide ?? ''}`), load: () => side ? client.getRewards(side) : client.getRewards() } : null;
   const redemptionsRequest = (): ViewCacheRequest<typeof redemptions> | null => client && session && typeof client.getMyRedemptions === 'function'
     ? { key: viewCacheKey(session, 'redemptions'), load: () => client.getMyRedemptions() } : null;
-  const groupRequest = (side: Congregation | null, month: string): ViewCacheRequest<GroupReading> | null => devotionClient && session
-    ? { key: viewCacheKey(session, 'group', side ?? `own:${ownSide ?? ''}`, month), load: () => side ? devotionClient.getGroupReading(month, side) : devotionClient.getGroupReading(month) } : null;
   const ownView = Boolean(session && focused && primaryReady && scope === 'me');
   const shelf = useViewCache(rewardsRequest(null), {
     active: ownView && hasOwnPrivateProfile,
@@ -528,22 +574,6 @@ export default function ProgressScreen() {
   const viewedRewards = useViewCache(rewardSide ? rewardsRequest(rewardSide) : null, { active: Boolean(session && focused && rewardSide), freshSince: visitStartedAt, retry: rewardRetry });
   const otherRewards = viewedRewards.value ?? null;
   const otherRewardsFailed = viewedRewards.failed;
-  const firstPlanMonth = getReadingPlanSpan()?.first.slice(0, 7) ?? today.slice(0, 7);
-  const shownSide = groupSide ?? ownSide;
-  const groupAhead = [
-    shownSide ? groupRequest(otherSide(shownSide) === ownSide ? null : otherSide(shownSide), groupMonth) : null,
-    groupMonth > firstPlanMonth ? groupRequest(groupSide, shiftMonth(groupMonth, -1)) : null,
-    groupMonth < today.slice(0, 7) ? groupRequest(groupSide, shiftMonth(groupMonth, 1)) : null,
-  ].filter((item): item is ViewCacheRequest<GroupReading> => item !== null);
-  const group = useViewCache(groupRequest(groupSide, groupMonth), { active: Boolean(devotionClient) && ownView, freshSince: visitStartedAt, ahead: groupAhead, retry: groupRetry });
-  // While a side or month not asked yet is on its way, the card keeps what it showed — never another member's.
-  const shownGroup = useRef<{ owner: string | null; view: GroupReading } | null>(null);
-  if (group.value) shownGroup.current = { owner: accountKey, view: group.value };
-  const groupReading = group.value ?? (shownGroup.current?.owner === accountKey ? shownGroup.current.view : null);
-  // A side that could not be read (or an older server that answered with the member's own side) says so on the card.
-  const groupFailed = groupSide && ((group.failed && !group.value) || (group.value && group.value.scope !== groupSide)) ? groupSide : null;
-  const viewGroup = (side: Congregation) => { switchStarted('group', `${side}:${groupMonth}`, 'group-side'); setGroupRetry((value) => value + 1); setGroupSide(side === ownSide ? null : side); };
-  const stepGroupMonth = (step: number) => { const month = shiftMonth(groupMonth, step); switchStarted('group', `${groupSide ?? ownSide ?? groupReading?.scope ?? 'youth'}:${month}`, 'group-month'); setGroupMonth(month); };
   const stepCalendarMonth = (step: number) => { const month = shiftMonth(calendarMonth, step); switchStarted('calendar', month, 'calendar-month'); setCalendarMonth(month); };
   // After a change of side (here, on 我的帳戶, or on another phone) the page reads everything again for the new
   // side: its group numbers, its prizes, and the profile, whose target from the side left behind is gone.
@@ -552,7 +582,7 @@ export default function ProgressScreen() {
     const previous = seenOwnSide.current;
     if (ownSide) seenOwnSide.current = ownSide;
     if (!previous || !ownSide || previous === ownSide) return;
-    setGroupSide(null); setRewardSide(null);
+    setGroupReset((value) => value + 1); setRewardSide(null);
     refreshOwnProfile();
   }, [ownSide, refreshOwnProfile]);
   useEffect(() => {
@@ -603,7 +633,17 @@ export default function ProgressScreen() {
   };
   // What the calendar knows about a day: the schedule's answer once that range has loaded (a date
   // it did not return has no reading), the reading tab's plan until then.
+  // The month on screen comes straight from the store, in the same render as 上個月/下個月; the effects above put the
+  // same answer into the schedule (asked ahead, it already is).
+  const calendarRange = readingDaysRange(calendarMonth, today);
+  const keptMonth = session ? viewCache.peek<ReadingDaysAnswer>(viewCacheKey(session, 'reading-days', calendarRange.from, calendarRange.to)) : undefined;
+  const keptMonthDays = useMemo(() => keptMonth ? calendarDaysOf(keptMonth) : null, [keptMonth]);
+  const keptDevotion = session ? viewCache.peek<string[]>(devotionDatesKey(session, calendarRange.from, calendarRange.to)) : undefined;
+  const shownDevotionDates = useMemo<ReadonlySet<string>>(() => keptDevotion
+    ? new Set([...[...devotionDates].filter((date) => date < calendarRange.from || date > calendarRange.to), ...keptDevotion])
+    : devotionDates, [devotionDates, keptDevotion, calendarRange.from, calendarRange.to]);
   const scheduledDay = (date: string): CalendarDay | undefined => {
+    if (keptMonthDays && date >= calendarRange.from && date <= calendarRange.to) return keptMonthDays.get(date);
     if (schedule.ranges.some((range) => date >= range.from && date <= range.to)) return schedule.days.get(date);
     const local = getScheduledReading(date);
     return local ? { ...local, completed: false, canComplete: isWithinCompletionWindow(date, today) } : undefined;
@@ -704,8 +744,7 @@ export default function ProgressScreen() {
     }
   };
   // The CI latency check (src/services/switchLatencyProbe.ts): what each switch's content shows now.
-  const calendarRange = readingDaysRange(calendarMonth, today);
-  useSwitchShown('calendar', schedule.ranges.some((range) => range.from <= calendarRange.from && range.to >= calendarRange.to) ? calendarMonth : null);
+  useSwitchShown('calendar', keptMonth || schedule.ranges.some((range) => range.from <= calendarRange.from && range.to >= calendarRange.to) ? calendarMonth : null);
   useSwitchShown('scope', scope === 'me' ? (session && profile?.memberId === session.memberId ? 'me' : null) : (!busy && !selected ? scope : null));
   useSwitchShown('redemptions', sheet === 'redemptions' ? 'open' : null);
   if (!session) return <View style={styles.screen}><Text style={styles.title}>積分</Text><Text style={styles.note}>請先登入以查看積分。</Text></View>;
@@ -735,7 +774,7 @@ export default function ProgressScreen() {
             <DevotionTodayButton
               date={selectedDate}
               today={today}
-              completed={devotionDates.has(selectedDate)}
+              completed={shownDevotionDates.has(selectedDate)}
               pending={devotionPending === selectedDate}
               canMark={selectedDate <= today && isWithinCompletionWindow(selectedDate, today)}
               onToggle={(completed) => withPick(() => toggleDevotion(selectedDate, completed))}
@@ -754,20 +793,18 @@ export default function ProgressScreen() {
             {completion.syncError ? <Text accessibilityRole="alert" style={styles.stale}>{completion.record.syncStatus === 'SAVE_FAILED' && !completion.retryable ? '完成記錄無法同步，本機完成狀態仍保留。' : '同步遇到問題，完成狀態已保留，連線後會重試。'}</Text> : null}
           </View>}
         />
-        {groupReading || ownSide ? <>
-          <SectionHeader title="團體" />
-          {/* Where I count, said once with its own 改 (維護者 2026-10-20): a wrong side shows up here, in the numbers. */}
-          {ownSide ? <CongregationLineView variant="points" congregation={congregation} /> : null}
-          {groupReading ? <GroupReadingCard
-            view={groupReading}
-            own={ownSide}
-            onView={ownSide ? viewGroup : undefined}
-            failedSide={groupFailed}
-            onPreviousMonth={groupMonth > groupFirstMonth ? () => stepGroupMonth(-1) : undefined}
-            onNextMonth={groupMonth < today.slice(0, 7) ? () => stepGroupMonth(1) : undefined}
-          /> : null}
-          <SectionHeader title="個人" />
-        </> : null}
+        {/* 團體 (維護者 2026-10-14): replaces 一起走過. Absent on a backend that predates it; the section then hides. */}
+        <GroupSection
+          memberId={session.memberId}
+          sessionToken={session.sessionToken}
+          client={devotionClient}
+          ownSide={ownSide}
+          active={ownView}
+          freshSince={visitStartedAt}
+          resetSignal={groupReset}
+          today={today}
+          firstMonth={groupFirstMonth}
+        />
         <ReadingCalendarCard
           month={calendarMonth}
           today={today}
@@ -779,7 +816,7 @@ export default function ProgressScreen() {
           onExportReadingCard={() => { setExportError(null); setExportOpen(true); }}
           onPreviousMonth={planSpan && calendarMonth > planSpan.first.slice(0, 7) ? () => stepCalendarMonth(-1) : undefined}
           onNextMonth={calendarMonth < lastMonth ? () => stepCalendarMonth(1) : undefined}
-          devotionDates={devotionDates}
+          devotionDates={shownDevotionDates}
         />
       </>}
       rewards={shelfRewards ?? undefined}
@@ -814,17 +851,20 @@ function adjacentCalendarMonths(month: string, today: string): string[] {
   const last = span && span.last.slice(0, 7) > today.slice(0, 7) ? span.last.slice(0, 7) : today.slice(0, 7);
   return [span && month > span.first.slice(0, 7) ? shiftMonth(month, -1) : null, month < last ? shiftMonth(month, 1) : null].filter((value): value is string => value !== null);
 }
+type ReadingDaysAnswer = { today: string; timezone: string; days: ReadingDaySnapshot[] };
+function calendarDaysOf(response: ReadingDaysAnswer): Map<string, CalendarDay> {
+  return new Map(response.days.map((day) => [day.taskDate, { planId: day.planId, references: day.references, completed: day.status === 'COMPLETED', revision: day.revision, canComplete: day.canComplete }] as const));
+}
 function monthNow(): string { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).formatToParts(new Date()); const year = parts.find((part) => part.type === 'year')?.value ?? '1970'; const month = parts.find((part) => part.type === 'month')?.value ?? '01'; return `${year}-${month}`; }
 function monthlyPlanId(date: string): string { return `church-${date.slice(0, 7)}`; }
 function messageFor(reason: unknown): string { return reason instanceof GamificationApiError ? reason.userMessage : '目前無法載入積分，請稍後再試。'; }
 // Waits before the second and third profile tries. Bounded, so a backend that is really off still ends
 // on the error (after about 31 s of 載入中… when every try times out) instead of retrying forever.
 const PROFILE_RETRY_DELAYS_MS = [2000, 5000];
+// 全體 (管理) asks ahead for this many people's points after the unlock, in list order (the church is well under it).
+const ALL_PROFILES_AHEAD = 200;
 // Timeouts, unreachable networks and 5xx can answer differently next time; a refusal or a malformed
 // answer will not. A cancelled read belongs to a view that is already gone.
 function isRetryableRead(reason: unknown): boolean { return reason instanceof GamificationApiError && reason.retryable && reason.code !== 'REQUEST_CANCELLED'; }
-function SectionHeader({ title }: { title: string }) {
-  return <View style={styles.section}><Text accessibilityRole="header" style={styles.sectionTitle}>{title}</Text><View style={styles.sectionRule} /></View>;
-}
 
 const styles = StyleSheet.create({ section: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingTop: theme.spacing.xs, paddingHorizontal: theme.spacing.xxs }, sectionTitle: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, sectionRule: { flex: 1, height: 2, borderRadius: 1, backgroundColor: theme.colors.primary }, dayActions: { flexDirection: 'row', gap: theme.spacing.sm }, screen: { flex: 1, backgroundColor: theme.colors.background, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md }, inactiveCover: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: theme.colors.background }, title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' }, scopeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, marginBottom: theme.spacing.md }, menu: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' }, menuText: { color: theme.colors.ink, fontSize: 26 }, scopes: { flex: 1, flexDirection: 'row', gap: theme.spacing.xs }, scope: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface }, scopeActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }, scopeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, scopeTextActive: { color: theme.colors.white }, note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line }, noteBox: { padding: theme.spacing.lg, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface }, completionAction: { gap: theme.spacing.xs }, listSurface: { flex: 1 }, hiddenList: { display: 'none' }, error: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, marginBottom: theme.spacing.sm }, stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginBottom: theme.spacing.sm }, back: { minHeight: theme.control.tap, justifyContent: 'center' }, backText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNotice: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.sm, borderRadius: theme.radius.card, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.primarySoft }, friendTick: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary }, friendTickText: { color: theme.colors.white, fontSize: theme.type.caption.size, fontWeight: '900' }, friendNoticeText: { flexShrink: 1, color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' }, friendNoticeHint: { textAlign: 'center' } });

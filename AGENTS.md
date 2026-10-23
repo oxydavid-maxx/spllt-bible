@@ -52,7 +52,7 @@
 |---|---|
 | 首頁閒置 CPU | ≤ 3% |
 | 讀經器閒置 CPU | ≤ 5% |
-| 記憶體 (首頁、讀經頁、積分頁) | ≤ 350 MB；首頁另外不超過 main 的 1.10 倍 |
+| 記憶體 (首頁、讀經頁、積分頁) | ≤ 350 MB，而且不超過 main 的 1.10 倍 (`scripts/ios/compare-footprints.ts`：main 量過那一頁、量之前跑的流程一樣才比) |
 | 切換延遲 (點下到內容出現，400ms 手機網路延遲下) | ≤ 100ms，量不到判 FAIL |
 | 閒置時的網路請求 | 0 |
 | iOS `.app` 大小 | 不超過 main 的 1.05 倍 |
@@ -61,7 +61,9 @@
 ### 切換延遲怎麼量 (光佑 2026-10-23)
 
 - 會等網路的切換 (全教會｜青少、換月、主堂獎品｜青少獎品、自己｜好友、領取紀錄、公告的主堂、讀經頁的靈修和換日) 一律走共用暫存 `src/services/viewCache.ts`：打開頁面先抓好、點了先顯示暫存、背景再更新。新增這類切換也要走它，並在兩個流程和 `scripts/ios/check-switch-latency.ts` 的 `EXPECTED` 加一項。
-- 量法：App 自己記 (只有 CI 假資料建置，`src/services/switchLatencyProbe.ts`)，從點下到畫出內容的那一幀，寫進 App 的 Documents；`run-flows.sh` 在這兩個流程期間讓 count-proxy 給 `/api/` 加 400ms 延遲 (`$OUT/proxy-delay-ms`)，流程跑完把紀錄拷出來。少一筆就是量不到，判 FAIL。
+- 量法：App 自己記 (只有 CI 假資料建置，`src/services/switchLatencyProbe.ts`)，從點下到畫出內容的那一幀，寫進 App 的 Documents；`run-flows.sh` 在這兩個流程期間讓 count-proxy 給 `/api/` 加 400ms 延遲 (`$OUT/proxy-delay-ms`)，流程跑完把紀錄拷出來。少一筆就是量不到，判 FAIL。每筆另外記 render、layout、commit 各花多久 (`maestro/switch-latency.txt`)，超過時先看時間花在哪一段。
+- 暫存讓網路不用等之後，剩下的是畫面重畫：一個切換只重畫它自己那張卡 (例：團體卡是 `src/ui/gamification/GroupSection.tsx`，自己拿著「全教會｜青少」和月份)，不要讓整頁跟著重畫；月曆格子用位置當 key，換月是更新同一批格子；同樣的資料再來一次不要 setState、不要通知別的頁 (`replaceReadingDaysRange` 資料一樣就不動)。
+- 讀經頁換日不重建讀經器 (2026-10-23 起，`app/(tabs)/reader.tsx` 的 `YouVersionReader` 不用日期當 key)：App 自己的部分 (日期、葉子圈) 要 ≤ 100ms；YouVersion 官方元件載入新一天經文的時間另外記一列「只記錄」(`REPORTED`)，不判 PASS/FAIL。
 
 ### iOS 流程能穩定跑的前提
 

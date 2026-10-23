@@ -10,11 +10,14 @@ import { fixtureProfile } from '../../src/ui/fixtureProfile';
 import { getReadingSessionSnapshot, preserveReadingDateOnReturn, requestTodayReaderTabPress, setJournalEntryDate } from '../../src/ui/readingSession';
 import { useReaderImmersionSnapshot } from '../../src/ui/readerImmersionState';
 import { getReaderAudioSnapshot } from '../../src/services/readerAudioBridge';
+import { useDevotionalAhead } from '../../src/ui/devotion/devotionalAhead';
 
 export default function TabsLayout() {
   const readerImmersed = useReaderImmersionSnapshot();
   const auth = useAuthSnapshot();
   const memberId = auth.session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
+  // Today's 靈修 post is in hand before the reader opens, so its 靈修 tab shows at once (2026-10-23).
+  useDevotionalAhead(auth.status === 'signed-in' ? auth.session ?? null : null, taipeiDate());
   const pathname = usePathname();
   // Reader is a hidden sibling route; keep its visible reading entry selected for users and screen readers.
   const readerRouteSelected = pathname === '/reader';
