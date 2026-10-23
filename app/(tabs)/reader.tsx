@@ -30,16 +30,34 @@ import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
 import { useReaderRetrySignal } from '../../src/ui/readerRetrySignal';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { useReaderDevotion } from '../../src/ui/devotion/useReaderDevotion';
+import { markSwitch, switchStarted } from '../../src/services/switchLatencyProbe';
 
 let handledTodayReaderTabPressRevision = 0;
 
+/**
+ * The day rolls over at midnight unless a chapter or the 靈修 is still being read aloud. The chapter audio's state
+ * changes several times on every chapter and every ‹ › (loading, its answer, playing): only this watcher draws again
+ * for it, not the whole reader (光佑 2026-10-23, switches within 100 ms).
+ */
+function ReadingDateRolloverWatch({ visible, devotionPlaying, devotionFinished }: { visible: boolean; devotionPlaying: boolean; devotionFinished: boolean }) {
+  const audio = useReaderAudioSnapshot();
+  useReadingDateRollover({
+    visible,
+    playing: audio.state === 'playing',
+    finished: audio.finished || audio.state === 'inactive' || audio.state === 'retry' || audio.state === 'unavailable',
+    devotionPlaying,
+    devotionFinished,
+  });
+  return null;
+}
+
 export default function ReaderScreen() {
+  markSwitch('ReaderScreen');
   const chrome = useReaderChrome();
   const [planOpen, setPlanOpen] = useState(false);
   useEffect(() => { if (!chrome.focused) setPlanOpen(false); }, [chrome.focused]);
   // A chapter that failed to load while this tab was out of sight retries when it comes back.
   const retrySignal = useReaderRetrySignal(chrome.focused);
-  const audio = useReaderAudioSnapshot();
   const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession();
   const auth = useAuthSnapshot();
   const session = auth.session;
@@ -216,24 +234,56 @@ export default function ReaderScreen() {
     focused: chrome.focused,
     bibleVersionId: selectedVersionId,
   });
-  useReadingDateRollover({
-    visible: chrome.focused,
-    playing: audio.state === 'playing',
-    finished: audio.finished || audio.state === 'inactive' || audio.state === 'retry' || audio.state === 'unavailable',
-    devotionPlaying: Boolean(readerDevotion.devotion?.speaking),
-    devotionFinished: !readerDevotion.narrationActive,
-  });
+  const rollover = <ReadingDateRolloverWatch visible={chrome.focused} devotionPlaying={Boolean(readerDevotion.devotion?.speaking)} devotionFinished={!readerDevotion.narrationActive} />;
   const syncError = completion.syncError;
+  const externalTodayResetPending = todayReaderTabPressRevision > handledTodayReaderTabPressRevision
+    && todayReaderTabPressResetToAssignedStart
+    && todayReaderTabPressTargetDate === selectedDate
+    && todayReaderTabPressMemberId === memberId
+    && todayReaderTabPressAuthEpoch === (auth.epoch ?? 0)
+    && auth.status !== 'hydrating'
+    && Boolean(day && references.length > 0);
+  // Where a day opens: its saved place, or the start of its passages.
+  const savedSelection = (): { position: ReaderPosition | null; free: { book: string; chapter: string } | null; selection: ReaderSelection } => {
+    if (!memberId) return { position: null, free: null, selection: initialSelection() };
+    const store = positionStoreRef.current ?? openQingmuReaderPositionStore();
+    positionStoreRef.current = store;
+    const saved = store.get(memberId, planId, selectedDate);
+    const hasSavedFreePosition = saved?.mode === 'FREE_BROWSE'
+      && typeof saved.book === 'string' && saved.book.trim().length > 0
+      && typeof saved.chapter === 'string' && saved.chapter.trim().length > 0;
+    const savedAssignedIndex = saved?.mode === 'ASSIGNED'
+      ? references.findIndex(reference => reference === saved.reference)
+      : -1;
+    return {
+      position: saved ?? null,
+      free: hasSavedFreePosition ? { book: saved.book, chapter: saved.chapter } : null,
+      selection: savedAssignedIndex >= 0
+        ? { source: 'ASSIGNED', index: savedAssignedIndex }
+        : hasSavedFreePosition
+          ? { source: 'FREE', book: saved.book, chapter: saved.chapter }
+          : initialSelection(),
+    };
+  };
+  // ‹ › to another day of the same member shows that day at once (光佑 2026-10-23, switches within 100 ms): its place is
+  // worked out in this render, as the effect below does, instead of first drawing 「正在載入閱讀設定…」 and then the day.
+  const settledInRender = useRef<typeof owner | null>(null);
+  const shownOwner = selectionOwner.current;
+  if (shownOwner !== owner && shownOwner.memberId === owner.memberId && shownOwner.epoch === owner.epoch && !externalTodayResetPending) {
+    const next = savedSelection();
+    selectionOwner.current = owner;
+    settledInRender.current = owner;
+    freePositionRef.current = next.free;
+    setReaderPosition(next.position);
+    setSelection(next.selection);
+  }
   useEffect(() => {
     if (!ownsReader()) return;
+    // Set in the render that showed this day: nothing to set again (a second render would only redraw the reader).
+    const settled = settledInRender.current === owner;
+    settledInRender.current = null;
+    if (settled && !externalTodayResetPending) return;
     selectionOwner.current = owner;
-    const externalTodayResetPending = todayReaderTabPressRevision > handledTodayReaderTabPressRevision
-      && todayReaderTabPressResetToAssignedStart
-      && todayReaderTabPressTargetDate === selectedDate
-      && todayReaderTabPressMemberId === memberId
-      && todayReaderTabPressAuthEpoch === (auth.epoch ?? 0)
-      && auth.status !== 'hydrating'
-      && Boolean(day && references.length > 0);
     if (externalTodayResetPending) {
       if (memberId) {
         const store = positionStoreRef.current ?? openQingmuReaderPositionStore();
@@ -248,25 +298,10 @@ export default function ReaderScreen() {
       handledTodayReaderTabPressRevision = todayReaderTabPressRevision;
       return;
     }
-    if (!memberId) { setReaderPosition(null); freePositionRef.current = null; setSelection(initialSelection()); return; }
-    const store = positionStoreRef.current ?? openQingmuReaderPositionStore();
-    positionStoreRef.current = store;
-    const saved = store.get(memberId, planId, selectedDate);
-    setReaderPosition(saved ?? null);
-    const hasSavedFreePosition = saved?.mode === 'FREE_BROWSE'
-      && typeof saved.book === 'string' && saved.book.trim().length > 0
-      && typeof saved.chapter === 'string' && saved.chapter.trim().length > 0;
-    const savedAssignedIndex = saved?.mode === 'ASSIGNED'
-      ? references.findIndex(reference => reference === saved.reference)
-      : -1;
-    freePositionRef.current = hasSavedFreePosition
-      ? { book: saved.book, chapter: saved.chapter }
-      : null;
-    setSelection(savedAssignedIndex >= 0
-      ? { source: 'ASSIGNED', index: savedAssignedIndex }
-      : hasSavedFreePosition
-        ? { source: 'FREE', book: saved.book, chapter: saved.chapter }
-        : initialSelection());
+    const next = savedSelection();
+    setReaderPosition(next.position);
+    freePositionRef.current = next.free;
+    setSelection(next.selection);
   }, [memberId, planId, selectedDate, owner, references.join('|'), todayReaderTabPressRevision, todayReaderTabPressResetToAssignedStart, todayReaderTabPressTargetDate, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, auth.status, auth.epoch, day?.date]);
   const selectAssigned = (index: number) => {
     if (!ownsReader()) return;
@@ -342,11 +377,14 @@ export default function ReaderScreen() {
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#fff', paddingHorizontal: 16 }}>
       <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}><AccountEntryButton /></View>
       <Text accessibilityLiveRegion="polite">正在載入閱讀設定…</Text>
+      {rollover}
     </SafeAreaView>
   );
   return (<>
+    {rollover}
+    {/* Not keyed by the date (光佑 2026-10-23, switches within 100 ms): ‹ › keeps this reader and its page, and only the
+        chapter changes, as a chapter tab does. A new key rebuilt the whole page and the official reader for every day. */}
     <YouVersionReader
-      key={selectedDate}
       references={references}
       date={selectedDate}
       appKey={process.env.EXPO_PUBLIC_YOUVERSION_APP_KEY ?? null}
@@ -404,7 +442,7 @@ export default function ReaderScreen() {
           selectedDate={selectedDate}
           previousDate={previousDate}
           nextDate={nextDate}
-          onSelectDate={setSelectedReadingDate}
+          onSelectDate={(date) => { switchStarted('devotion-mark', date, 'reader-date'); switchStarted('yv-text', 'changed', 'reader-date-text'); setSelectedReadingDate(date); }}
           onOpenReadingPlan={() => { chrome.showTools(); setPlanOpen(true); }}
           completed={completed}
           completionDisabled={completionDisabled}

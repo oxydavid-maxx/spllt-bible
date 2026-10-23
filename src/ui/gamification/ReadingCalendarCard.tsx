@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../Theme';
+import { markSwitch } from '../../services/switchLatencyProbe';
 import { dayState, monthCells, type CalendarDays, type DayState } from './readingCalendarModel';
 
 /**
@@ -35,6 +36,7 @@ function monthLabel(month: string): string {
 }
 
 export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, onOpenReadingPlan, onExportReadingCard, devotionDates }: ReadingCalendarCardProps) {
+  markSwitch('ReadingCalendarCard');
   return <View style={styles.card}>
     <View style={styles.periodNav}>
       <Pressable accessibilityRole="button" accessibilityLabel="上個月" accessibilityState={{ disabled: !onPreviousMonth }} disabled={!onPreviousMonth} onPress={onPreviousMonth} style={styles.navButton}><Text style={styles.navText}>‹</Text></Pressable>
@@ -46,11 +48,12 @@ export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect
     </View>
     <View style={styles.grid}>
       {monthCells(month).map((date, index) => {
-        if (!date) return <View key={`b${index}`} style={styles.slot}><View style={styles.cellBlank} /></View>;
+        // Keyed by place in the grid, not by date: 上個月/下個月 then updates the same 42 cells instead of replacing them.
+        if (!date) return <View key={index} style={styles.slot}><View style={styles.cellBlank} /></View>;
         const state = dayState(date, today, days.get(date));
         const selected = date === selectedDate;
         const devoted = devotionDates?.has(date) ?? false;
-        return <View key={date} style={styles.slot}><Pressable
+        return <View key={index} style={styles.slot}><Pressable
           accessibilityRole="button"
           accessibilityLabel={`${date} ${STATE_LABEL[state]}${devoted ? ' 也讀了靈修' : ''}${date === today ? ' 今天' : ''}`}
           accessibilityState={{ selected }}

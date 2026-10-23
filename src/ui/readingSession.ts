@@ -10,8 +10,11 @@ export interface ReadingPlanSnapshot extends ReadingPlan {
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
+// One formatter, reused (see taipeiDate in src/domain/gamificationV1.ts).
+let taipeiFormatter: Intl.DateTimeFormat | null = null;
 function todayInTaipei(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
+  taipeiFormatter ??= new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' });
+  return taipeiFormatter.format(new Date());
 }
 
 function initialDate(): string {
@@ -144,11 +147,18 @@ export function setReadingPlan(plan: ReadingPlanSnapshot): void {
 export function replaceReadingDaysRange(from: string, to: string, days: ReadingDaySnapshot[]): void {
   // A known month remains a query scope even when its authoritative answer is empty.
   // Otherwise deleting its last day would prevent this app from ever seeing restored dates.
+  let newMonth = false;
   for (let month = from.slice(0, 7); month <= to.slice(0, 7);) {
-    knownPlanMonths.add(month);
+    if (!knownPlanMonths.has(month)) { knownPlanMonths.add(month); newMonth = true; }
     const next = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1));
     month = next.toISOString().slice(0, 7);
   }
+  // The same schedule as the plan already has (the usual answer) changes nothing: every reader of the plan, the
+  // mounted reading tab first, would otherwise draw again for it (2026-10-23, switches within 100 ms).
+  const inRange = (date: string) => date >= from && date <= to;
+  const shape = (items: Array<{ date: string; planId?: string | null; references: readonly string[]; revision?: number | null }>) => JSON.stringify(items
+    .filter(item => inRange(item.date)).sort((a, b) => a.date.localeCompare(b.date)).map(item => [item.date, item.planId ?? null, item.references, item.revision ?? null]));
+  if (!newMonth && shape(activePlan.days) === shape(days.map(day => ({ date: day.taskDate, planId: day.planId, references: day.references, revision: day.sourceRevision })))) return;
   const previous = new Map(activePlan.days.map(day => [day.date, day]));
   const byDate = new Map(activePlan.days.filter(day => day.date < from || day.date > to).map(day => [day.date, day]));
   for (const day of days) {

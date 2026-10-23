@@ -34,6 +34,9 @@ vi.mock('../../src/ui/gamification/FriendQrPanel', () => ({ FriendQrPanel: (prop
 
 import { consumeOpenAllScores } from '../../src/services/allScoresRequest';
 import ProgressScreen from '../../app/(tabs)/progress';
+import { viewCache } from '../../src/services/viewCache';
+// The shared store outlives a screen; each test starts without another test's answers (2026-10-23).
+beforeEach(() => { viewCache.clear(); });
 
 // 全體 is asked for from 我的帳戶 and heard by every mounted 積分 screen, so each test unmounts its own.
 const mountedScreens: TestRenderer.ReactTestRenderer[] = [];
@@ -77,7 +80,8 @@ describe('target reward picker refresh', () => {
     expect(text(screen)).toContain(rewardB.name);
     expect(text(screen)).not.toContain(rewardA.name);
     // One page load and exactly one fresh read for each opening.
-    expect(api.getRewards).toHaveBeenCalledTimes(3);
+    // The shelf, the first opening, the reopening; the other side's list asked ahead (2026-10-23) is not counted.
+    expect(api.getRewards.mock.calls.filter((call: unknown[]) => call[0] === undefined)).toHaveLength(3);
   });
 
   it.each(['NETWORK_ERROR', 'READ_TIMEOUT'])('keeps A visible without an error when refresh fails with %s', async code => {

@@ -45,6 +45,7 @@ vi.mock('../../src/services/authSession', () => ({ useAuthSnapshot: () => ({ sta
 vi.mock('../../src/ui/congregation/congregationStore', () => ({ useCongregation: () => state.congregation }));
 vi.mock('../../src/services/bulletinClient', async (original) => ({ ...(await original<typeof import('../../src/services/bulletinClient')>()), fetchBulletins: state.fetchBulletins }));
 import AnnouncementsScreen from '../../app/(tabs)/announcements';
+import { viewCache } from '../../src/services/viewCache';
 import { BulletinBoard } from '../../src/ui/bulletin/BulletinBoard';
 import { bulletinHeading, bulletinPageSource } from '../../src/services/bulletinClient';
 import { BULLETIN_LIST_WIDTHS, bulletinListWidth } from '../../src/domain/bulletinWidths';
@@ -69,6 +70,7 @@ const modal = () => tree!.root.findAll((node) => String(node.type) === 'Modal')[
 
 beforeEach(() => {
   state.fetchBulletins.mockReset().mockResolvedValue(WEEKS);
+  viewCache.clear();
   state.congregation = { status: 'ready', value: null };
   state.insets = { top: 0, bottom: 0, left: 0, right: 0 };
   state.mounts.clear();
@@ -93,10 +95,11 @@ describe('the 公告 tabs', () => {
   it('opens on 青少 for everyone else, and either side can be chosen', async () => {
     await act(async () => { tree = TestRenderer.create(React.createElement(AnnouncementsScreen)); });
     expect(byLabel('青少').props.accessibilityState).toEqual({ selected: true });
-    expect(state.fetchBulletins).not.toHaveBeenCalled();
-    await act(async () => { byLabel('主堂').props.onPress(); });
+    // 主堂's list is asked for as the tab opens (2026-10-23), so the tap shows it without asking again.
     expect(state.fetchBulletins).toHaveBeenCalledTimes(1);
+    act(() => { byLabel('主堂').props.onPress(); });
     expect(texts()).toContain('10/18 (日) 週刊');
+    expect(state.fetchBulletins).toHaveBeenCalledTimes(1);
     await act(async () => { byLabel('青少').props.onPress(); });
     expect(texts()).not.toContain('10/18 (日) 週刊');
   });

@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaProvider: (props: any) => props.children, SafeAreaView: (props: any) => props.children }));
 
 const { primitive, api, auth } = vi.hoisted(() => ({
@@ -32,6 +32,9 @@ vi.mock('../../src/ui/gamification/ActionSheet', () => ({ ActionSheet: (props: a
 vi.mock('../../src/ui/gamification/FriendQrPanel', () => ({ FriendQrPanel: (props: any) => React.createElement('FriendQrPanel', props) }));
 
 import ProgressScreen from '../../app/(tabs)/progress';
+import { viewCache } from '../../src/services/viewCache';
+// The shared store outlives a screen; each test starts without another test's answers (2026-10-23).
+beforeEach(() => { viewCache.clear(); });
 import { consumeOpenFriendsList, publishFriendAdded, requestOpenFriendsList } from '../../src/services/friendPush';
 
 let renderer: TestRenderer.ReactTestRenderer | null = null;
@@ -86,9 +89,11 @@ describe('a new friend shows up on the 積分 screen as it happens', () => {
   it('refreshes your own page when you are on 自己', async () => {
     await mount();
     const before = api.getProfile.mock.calls.filter((call) => call[0] === 'self').length;
+    const peopleBefore = api.getPeople.mock.calls.length;
     await friendAdded('小明');
     expect(api.getProfile.mock.calls.filter((call) => call[0] === 'self').length).toBe(before + 1);
-    expect(api.getPeople).not.toHaveBeenCalled();
+    // 自己 stays on screen; the 好友 list asked ahead (2026-10-23) is asked again quietly so the tab shows 小明.
+    expect(api.getPeople.mock.calls.slice(peopleBefore)).toEqual([['friends']]);
   });
 
   it('refreshes the scanner’s own friends list after a successful claim', async () => {

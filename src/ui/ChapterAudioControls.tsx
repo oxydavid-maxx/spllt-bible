@@ -23,6 +23,7 @@ import { createContext, forwardRef, useContext, useEffect, useImperativeHandle, 
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAudioPlayer, type AudioLockScreenOptions, type AudioMetadata, type AudioStatus } from 'expo-audio';
+import { markSwitch } from '../services/switchLatencyProbe';
 import { theme } from './Theme';
 import { SettingSwitchRow } from './SettingSwitchRow';
 import { isAuthorizedAudioEnabled, isQaTestAudioEnabled, resolveChapterAudioSession, verseAtPosition } from '../services/audioChapterResolver';
@@ -201,6 +202,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
   onPlaybackEnded,
   onPlaybackError,
 }, ref) {
+  markSwitch('ChapterAudioControls');
   const visibleRevision = useReaderRetrySignal(visible);
   const autoplay = useChapterAudioAutoplay();
   const autoplayRef = useRef(autoplay);

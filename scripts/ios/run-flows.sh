@@ -5,7 +5,7 @@ OUT=${OUT:-ci-out}; mkdir -p "$OUT/maestro"; : > "$OUT/requests.log"
 # One synthetic 週刊 for flow 44-bulletin (two A4 pages at 2481 × 3509, drawn for the run; no picture is kept in the repo),
 # with its phone copies made now, while the runner is idle (bulletin-fixture.json: KB per page and per copy).
 rm -rf "$OUT/bulletins"; npx tsx scripts/ios/make-bulletin-fixture.ts "$OUT/bulletins" "$OUT/bulletin-fixture.json" > "$OUT/bulletin-fixture.txt" 2>&1 || { echo 'fixture 週刊 could not be made'; cat "$OUT/bulletin-fixture.txt"; exit 1; }
-QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_ADMIN_MEMBER_IDS=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 QINGMU_BULLETIN_DIR="$OUT/bulletins" \
+QINGMU_DEV_TOKEN=ci-fixture-token QINGMU_FIXTURE_ROSTER=two-member-week QINGMU_FIXTURE_DEFAULT_MEMBER=fixture:self QINGMU_ADMIN_MEMBER_IDS=fixture:self QINGMU_DB_PATH=:memory: QINGMU_SERVER_PORT=8787 QINGMU_BULLETIN_DIR="$OUT/bulletins" QINGMU_FORM_REGISTRATION_KEY=ci-fixture-sheet \
   npx tsx server/http.ts > "$OUT/server.log" 2>&1 &
 # The app talks to the backend over HTTPS, as in production: the reader takes its Bible content host only
 # from an https API base. A throwaway CA, trusted only inside this simulator, signs a loopback certificate.
@@ -71,14 +71,37 @@ run_flow() {
   record "$name" FAIL
   bash scripts/ios/collect-failure.sh "$UDID" "$name"
 }
+# Switch latency (光佑 2026-10-23, scripts/ios/check-switch-latency.ts): these flows run over a 400 ms phone network
+# delay (count-proxy.ts reads $OUT/proxy-delay-ms), each from an empty probe folder; their records are copied out after.
+latency_flow() { [[ "$1" =~ ^(14-reader-instant|44-points-instant)$ ]]; }
+mkdir -p "$OUT/switch-latency"
 for flow in .maestro/ios/*.yaml; do
   # Where this flow's requests start in the log, for checks that read only what the flow caused.
   FROM=$(wc -l < "$OUT/requests.log")
+  NAME=$(basename "$flow" .yaml)
+  # 選擇目標獎品 opens only with prizes on the shelf, and the fixture has none: before 44-points-instant the prize sheet
+  # (the same push the owner's Google Sheet makes) lists one prize per side. Later flows see them too; none of them
+  # looks at prizes.
+  if [ "$NAME" = 44-points-instant ]; then
+    curl -sf -X POST -H 'content-type: application/json' -H 'x-qingmu-registration-key: ci-fixture-sheet'       --data '{"youth":{"rewards":[{"row":2,"name":"測試獎品甲","points":50,"listed":true}],"redemptions":[]},"main":{"rewards":[{"row":2,"name":"測試主堂獎品","points":80,"listed":true}],"redemptions":[]}}'       http://127.0.0.1:8787/api/integrations/reward-sheet > "$OUT/fixture-reward-sheet.json" || echo 'fixture prize sheet was not accepted'
+  fi
+  if latency_flow "$NAME"; then
+    DOCS="$(xcrun simctl get_app_container "$UDID" org.qingmu.youth data 2>/dev/null)/Documents"
+    rm -f "$DOCS"/switch-latency-*.json
+    echo 400 > "$OUT/proxy-delay-ms"
+  fi
   run_flow "$flow"
+  if latency_flow "$NAME"; then
+    rm -f "$OUT/proxy-delay-ms"
+    mkdir -p "$OUT/switch-latency/$NAME"
+    cp "$DOCS"/switch-latency-*.json "$OUT/switch-latency/$NAME/" 2>/dev/null || echo "no switch-latency records from $NAME"
+  fi
   case "$(basename "$flow" .yaml)" in
     # The smoke flow ends on the 讀經 tab; its accessibility tree is what the reader flows are written against.
     00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home > "$OUT/maestro/measure-home.txt" 2>&1; maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/hierarchy-home.json" 2>/dev/null || true ;;
     10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
+    # The flow ends on 積分 after every switch: its memory with whatever the switches kept (R3, 2026-10-23).
+    44-points-instant) bash scripts/ios/measure-footprint.sh "$UDID" progress > "$OUT/maestro/measure-progress.txt" 2>&1 ;;
     # Narration must keep playing while the app is in the background: park it behind Settings for 20 s.
     20-audio-start) xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null ;;
     # The flow passes only if every 週刊 page was asked for with the member's token and answered 200 (a page without it
@@ -95,6 +118,7 @@ for flow in .maestro/ios/*.yaml; do
     30-friend-push-open) npx tsx scripts/ios/make-friend-apns.ts "$OUT/friend.apns" && xcrun simctl push "$UDID" org.qingmu.youth "$OUT/friend.apns" ;;
   esac
 done
+npx tsx scripts/ios/check-switch-latency.ts "$OUT/switch-latency" "$OUT/flows.json" "$OUT/switch-latency.json" > "$OUT/maestro/switch-latency.txt" 2>&1 || true
 # Maestro writes takeScreenshot files under its own test output folder, not where the flow names them;
 # collect every PNG the flows produced so the artifact carries them.
 find . "$HOME/.maestro" -name '*.png' -newer "$OUT/.flows-start" -not -path './node_modules/*' -not -path "./$OUT/maestro/*" -exec cp {} "$OUT/maestro/" \; 2>/dev/null || true

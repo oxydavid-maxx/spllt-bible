@@ -22,6 +22,7 @@ import { initialReadAlong, readAlong, showReturnToNarration } from './readAlongF
 import { useReduceMotion } from './useReduceMotion';
 import { READER_SPEEDS } from '../services/readerSpeedPreference';
 import { taipeiDate } from '../domain/gamificationV1';
+import { markSwitch, useSwitchShown } from '../services/switchLatencyProbe';
 
 // Layout A (docs/design/reader-page.md §5, §5.1), in dp. Every tool floats over the scripture, so the
 // reader never changes size between normal and collapsed; the canvas keeps room under the tools.
@@ -114,7 +115,14 @@ export function useReaderChrome() {
     if (direction === 'down') hideTools();
     else showTools();
   }, [hideTools, showTools]);
-  const handleCanvasEdge = useCallback(({ atEnd }: { atEnd: boolean }) => setAtChapterEnd(atEnd), []);
+  // Every new chapter reports 「not at the end」: when that is already so, nothing is set and nothing draws again.
+  const atChapterEndNow = useRef(atChapterEnd);
+  atChapterEndNow.current = atChapterEnd;
+  const handleCanvasEdge = useCallback(({ atEnd }: { atEnd: boolean }) => {
+    if (atChapterEndNow.current === atEnd) return;
+    atChapterEndNow.current = atEnd;
+    setAtChapterEnd(atEnd);
+  }, []);
   // Read-along (2026-09-29): the page follows the narrated verse until a finger drag or a verse
   // selection lets go; only 回到朗讀處 follows again. See readAlongFollow.ts.
   const [readAlongState, dispatchReadAlong] = useReducer(readAlong, initialReadAlong);
@@ -123,7 +131,14 @@ export function useReaderChrome() {
   const handleFollowRelease = useCallback(() => dispatchReadAlong({ type: 'release' }), []);
   const handleFollowPosition = useCallback((position: ReadAlongPosition) => dispatchReadAlong({ type: 'position', position }), []);
   const returnToNarration = useCallback(() => dispatchReadAlong({ type: 'request' }), []);
-  const handleReadAlongChapter = useCallback(() => dispatchReadAlong({ type: 'chapter' }), []);
+  // A new chapter while already following from the start changes nothing: no dispatch, so the reader is not drawn again
+  // (the reducer would return the same state, but only after drawing the screen that holds it).
+  const readAlongNow = useRef(readAlongState);
+  readAlongNow.current = readAlongState;
+  const handleReadAlongChapter = useCallback(() => {
+    if (readAlongNow.current.following && readAlongNow.current.position === null) return;
+    dispatchReadAlong({ type: 'chapter' });
+  }, []);
   const handleVerseSelection = useCallback((selected: boolean) => {
     setVerseSelected(selected);
     if (selected) dispatchReadAlong({ type: 'select' });
@@ -165,6 +180,8 @@ export interface ReaderDevotion {
   available: boolean;
   prepare: () => void;
   completed: boolean;
+  /** `completed` is the day's own answer (kept or confirmed), not a guess while it is asked. */
+  markKnown?: boolean;
   /** Marking cannot be saved for this day (outside the 7-day window). */
   disabled: boolean;
   onToggle: () => void;
@@ -246,6 +263,8 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   };
   const chapterTitle = formatChapterTitleZhTw(chapterUsfm) || '選擇章節';
   const selectedDateHeader = formatReadingDateHeader(selectedDate, taipeiDate());
+  // The CI latency check (src/services/switchLatencyProbe.ts): ‹ › shows the new day here, with its leaf's 靈修 mark.
+  useSwitchShown('devotion-mark', devotion?.markKnown ? selectedDate : null);
   const widestAdjacentDate = Math.max(formatReadingDateLabel(previousDate ?? '').length, formatReadingDateLabel(nextDate ?? '').length);
   const adjacentDateTextWidth = widestAdjacentDate * theme.type.caption.size * fontScale * 0.56;
   const nextDateControlWidth = Math.max(theme.control.tap, adjacentDateTextWidth + 18 + theme.spacing.xxs * 2);
@@ -291,6 +310,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
     if (!devotion.speaking) void audioControlRef.current?.pause().catch(() => undefined);
     devotion.onPlayPause();
   };
+  markSwitch('FullscreenReaderLayout:end');
   const feedback = isValidElement<{ bottomOffset?: number }>(completionFeedback) ? cloneElement(completionFeedback, { bottomOffset: aboveActions }) : completionFeedback;
   return (
     <View style={styles.root}>

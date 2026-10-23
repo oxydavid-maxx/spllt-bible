@@ -34,6 +34,9 @@ vi.mock('../../src/ui/gamification/RewardControls', () => ({ RewardControls: (pr
 
 import { consumeOpenAllScores, requestOpenAllScores } from '../../src/services/allScoresRequest';
 import ProgressScreen from '../../app/(tabs)/progress';
+import { viewCache } from '../../src/services/viewCache';
+// The shared store outlives a screen; each test starts without another test's answers (2026-10-23).
+beforeEach(() => { viewCache.clear(); });
 
 // 全體 is asked for from 我的帳戶 and heard by every mounted 積分 screen, so each test unmounts its own.
 const mountedScreens: TestRenderer.ReactTestRenderer[] = [];
@@ -63,7 +66,8 @@ describe('progress gamification route', () => {
     const current = { rewardId: 'reward-1', name: '飲料', costPoints: 2, active: true, revision: 1 };
     const alternative = { rewardId: 'reward-2', name: '電影票', costPoints: 5, active: true, revision: 1 };
     api.getProfile.mockResolvedValueOnce({ memberId: 'self', displayName: '自己', earnedTotal: 4, band: 2, months: [], private: { redeemableBalance: 3, targetReward: current }, permissions: { canEditTarget: true, canRedeem: false } } as any);
-    api.getRewards.mockResolvedValueOnce([current, alternative]).mockResolvedValueOnce([current, alternative]);
+    // The shelf, the other side asked ahead (2026-10-23), then the picker's own fresh ask.
+    api.getRewards.mockResolvedValueOnce([current, alternative]).mockResolvedValueOnce([]).mockResolvedValueOnce([current, alternative]);
     api.setRewardTarget.mockClear();
     let renderer!: TestRenderer.ReactTestRenderer;
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); });
