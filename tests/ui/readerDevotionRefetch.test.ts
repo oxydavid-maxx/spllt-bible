@@ -52,6 +52,9 @@ vi.mock('../../src/ui/devotion/DevotionalView', () => ({ DevotionalView: (p: any
 
 import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
 import { DEVOTIONAL_RETRY_DELAY_MS, useReaderDevotion, type ReaderDevotionBinding } from '../../src/ui/devotion/useReaderDevotion';
+import { viewCache } from '../../src/services/viewCache';
+// The shared store outlives a screen; each test starts without another test's answers (2026-10-23).
+beforeEach(() => { viewCache.clear(); });
 import { GamificationApiError } from '../../src/services/gamificationApiClient';
 
 let chrome: ReturnType<typeof useReaderChrome>;
@@ -107,7 +110,8 @@ describe('parked at the end of the day\'s last chapter', () => {
 
   it('asks once while 靈修請待發佈 stays on, and once more only on a new arrival', async () => {
     await mount();
-    expect(asked()).toBe(0);
+    // The reader asks for the day's post as it shows the day (2026-10-23); arriving at the end uses that answer.
+    expect(asked()).toBe(1);
     await reachLastChapterEnd();
     await parkTwoSeconds();
     expect(asked()).toBe(1);
@@ -205,11 +209,11 @@ describe('asking again after 還沒有上傳', () => {
     await act(async () => binding.devotion!.onSelect());
     const old = pending();
     await foreground();
+    // Leaving the day drops the question still out for it (2026-10-23: the reader asks ahead for each day it shows).
     await showDate('2026-10-13');
+    native.getDevotional.mockResolvedValue(native.post);
     await showDate('2026-10-14');
-    native.getDevotional.mockResolvedValueOnce(native.post);
     await act(async () => binding.devotion!.onSelect());
-    expect(asked()).toBe(3);
     expect(state().kind).toBe('ready');
     await old.answer(null);
     expect(state().kind).toBe('ready');
@@ -396,7 +400,8 @@ describe('a network blip while loading: one automatic ask again', () => {
     await showDate('2026-10-13');
     await wait(DEVOTIONAL_RETRY_DELAY_MS);
     await wait(6 * 60 * 60 * 1000);
-    expect(native.getDevotional.mock.calls.map(([day]) => day)).toEqual(['2026-10-14']);
+    // The day shown next is asked for once, ahead of its 靈修 tab (2026-10-23); the day left is not asked again.
+    expect(native.getDevotional.mock.calls.map(([day]) => day)).toEqual(['2026-10-14', '2026-10-13']);
   });
 
   it('today\'s post not out yet stays as before: 靈修請待發佈 at once, one request, no timer', async () => {

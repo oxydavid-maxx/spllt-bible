@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { primitive, api, auth, readingDays, completion } = vi.hoisted(() => ({
   primitive: (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children),
@@ -64,6 +64,9 @@ const cardExport = vi.hoisted(() => ({ load: vi.fn(async (_memberId: string, _pl
 vi.mock('../../src/services/readingCardSnapshot', () => ({ loadReadingCardSnapshot: cardExport.load }));
 vi.mock('../../src/ui/readingCardShare', () => ({ shareReadingCard: cardExport.share }));
 import ProgressScreen from '../../app/(tabs)/progress';
+import { viewCache } from '../../src/services/viewCache';
+// The shared store outlives a screen; each test starts without another test's answers (2026-10-23).
+beforeEach(() => { viewCache.clear(); });
 
 const DONE = new Set(['2026-09-11', '2026-09-12', '2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18', '2026-09-19', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-26']);
 function serverDays(from: string, to: string) {
@@ -220,7 +223,7 @@ describe('the 積分 page opens on its calendar', () => {
     await mount();
     expect(renderer!.root.findByProps({ accessibilityLabel: '上個月' }).props.disabled).toBe(true);
     await act(async () => { renderer!.root.findByProps({ accessibilityLabel: '下個月' }).props.onPress(); await Promise.resolve(); await Promise.resolve(); });
-    expect(readingDays).toHaveBeenLastCalledWith('2026-10-01', '2026-10-31');
+    expect(readingDays).toHaveBeenCalledWith('2026-10-01', '2026-10-31');
     expect(texts()).toContain('2026年10月');
     // The selected day and its button stay where they were.
     expect(buttons()[0].props.accessibilityLabel).toBe('我已完成讀經');
@@ -411,7 +414,9 @@ it('updates the rendered calendar today and group today after Taipei midnight, w
   vi.setSystemTime(new Date('2026-09-27T15:59:00Z'));
   const groupView = () => ({ month: '2026-09', today: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()), todayReaders: 7, yesterdayReaders: 4, days: [], monthReads: 40, busiest: null, qualifyingDays: 15, prizes: [], myDaysThisMonth: 3 });
   devotionApi.getGroupReading.mockImplementation(async () => groupView());
-  await mount(); const reads = devotionApi.getGroupReading.mock.calls.length; const days = readingDays.mock.calls.length;
+  // The month ahead is asked once per foreground too (2026-10-23); this counts this month's reads.
+  const thisMonthReads = () => readingDays.mock.calls.filter(([, to]) => to === '2026-09-30').length;
+  await mount(); const reads = devotionApi.getGroupReading.mock.calls.length; const days = thisMonthReads();
   vi.setSystemTime(new Date('2026-09-27T16:01:00Z'));
   expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(reads);
   await act(async () => { navigation.listeners.forEach(fn => fn('background')); });
@@ -419,10 +424,10 @@ it('updates the rendered calendar today and group today after Taipei midnight, w
   expect(renderer!.root.findByType(ReadingCalendarCard).props.today).toBe('2026-09-28');
   expect(renderer!.root.findByType(GroupReadingCard).props.view.today).toBe('2026-09-28');
   expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(reads + 1);
-  expect(readingDays).toHaveBeenCalledTimes(days + 1);
+  expect(thisMonthReads()).toBe(days + 1);
   await act(async () => { navigation.listeners.forEach(fn => fn('active')); });
   expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(reads + 1);
-  expect(readingDays).toHaveBeenCalledTimes(days + 1);
+  expect(thisMonthReads()).toBe(days + 1);
   devotionApi.getGroupReading.mockReset().mockRejectedValue(new Error('not served'));
   vi.setSystemTime(new Date('2026-09-27T04:00:00Z'));
 });

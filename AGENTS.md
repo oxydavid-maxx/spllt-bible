@@ -39,7 +39,7 @@
 |---|---|---|
 | `unit` | vitest 全套（ubuntu）。兩個真瀏覽器測試用 chrome-headless-shell | `unit-summary`：`vitest-summary.json`，每個失敗附一行原因 |
 | `android` | prebuild；原生設定和 main 差幾行；debug 簽章的 release APK；APK 守門（兩個 ARM 架構、沒有 .map、大小上限）；大小和 main 比 | `android-summary`：`android-summary.json`、`native-diff.txt` |
-| `ios` | `macos-26`＋Xcode 26.4.1；模擬器 Release 建置（ad-hoc 簽章）；守門（沒有 reanimated/worklets、Info.plist、沒有 .map）；Maestro 流程 `.maestro/ios/*.yaml`（假資料後端）；首頁閒置的 CPU、記憶體、網路請求 | `ios-summary`：`flows.json`、`ios-summary.json`、`maestro/<流程>-junit.txt`、`-screen.txt`、`-system.txt`、`-maestro-debug.txt`、`-backend.txt`、截圖 |
+| `ios` | `macos-26`＋Xcode 26.4.1；模擬器 Release 建置（ad-hoc 簽章）；守門（沒有 reanimated/worklets、Info.plist、沒有 .map）；Maestro 流程 `.maestro/ios/*.yaml`（假資料後端）；首頁閒置的 CPU、記憶體、網路請求；讀經頁、積分頁記憶體；每個切換的延遲 (`14-reader-instant`、`15-points-instant`，見下面「切換延遲怎麼量」) | `ios-summary`：`flows.json`、`ios-summary.json`、`switch-latency.json`、`maestro/<流程>-junit.txt`、`-screen.txt`、`-system.txt`、`-maestro-debug.txt`、`-backend.txt`、截圖 |
 
 - iOS 一輪大約 35–40 分鐘。本機能重現的先在本機重現；多個修正攢成一批再推。
 - 寫或修 Maestro 流程前，先讀 `<流程>-screen.txt`（失敗當下畫面上每個元素的標籤和位置），不要猜標籤。
@@ -52,10 +52,16 @@
 |---|---|
 | 首頁閒置 CPU | ≤ 3% |
 | 讀經器閒置 CPU | ≤ 5% |
-| 記憶體 | ≤ 350 MB，而且不超過 main 的 1.10 倍 |
+| 記憶體 (首頁、讀經頁、積分頁) | ≤ 350 MB；首頁另外不超過 main 的 1.10 倍 |
+| 切換延遲 (點下到內容出現，400ms 手機網路延遲下) | ≤ 100ms，量不到判 FAIL |
 | 閒置時的網路請求 | 0 |
 | iOS `.app` 大小 | 不超過 main 的 1.05 倍 |
 | Android APK 大小 | 不超過 main 的 1.002 倍 |
+
+### 切換延遲怎麼量 (光佑 2026-10-23)
+
+- 會等網路的切換 (全教會｜青少、換月、主堂獎品｜青少獎品、自己｜好友、領取紀錄、公告的主堂、讀經頁的靈修和換日) 一律走共用暫存 `src/services/viewCache.ts`：打開頁面先抓好、點了先顯示暫存、背景再更新。新增這類切換也要走它，並在兩個流程和 `scripts/ios/check-switch-latency.ts` 的 `EXPECTED` 加一項。
+- 量法：App 自己記 (只有 CI 假資料建置，`src/services/switchLatencyProbe.ts`)，從點下到畫出內容的那一幀，寫進 App 的 Documents；`run-flows.sh` 在這兩個流程期間讓 count-proxy 給 `/api/` 加 400ms 延遲 (`$OUT/proxy-delay-ms`)，流程跑完把紀錄拷出來。少一筆就是量不到，判 FAIL。
 
 ### iOS 流程能穩定跑的前提
 

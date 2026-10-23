@@ -48,6 +48,9 @@ vi.mock('../../src/ui/gamification/ActionSheet', () => ({ ActionSheet: (props: a
 vi.mock('../../src/ui/gamification/FriendQrPanel', () => ({ FriendQrPanel: (props: any) => React.createElement('FriendQrPanel', props) }));
 
 import ProgressScreen from '../../app/(tabs)/progress';
+import { viewCache } from '../../src/services/viewCache';
+// The shared store outlives a screen; each test starts without another test's answers (2026-10-23).
+beforeEach(() => { viewCache.clear(); });
 import { resetCongregationStore } from '../../src/ui/congregation/congregationStore';
 
 const mounted: TestRenderer.ReactTestRenderer[] = [];
@@ -80,12 +83,12 @@ describe('積分頁: where I meet', () => {
 
   it('opens the group card on my own side and lets me look at the other one', async () => {
     const tree = await screen();
-    expect(devotionApi.getGroupReading.mock.calls.at(-1)).toHaveLength(1);
+    // The own side is asked without naming it; the other side is asked by name, ahead of the tap (2026-10-23).
+    expect(devotionApi.getGroupReading.mock.calls.some((call) => call.length === 1)).toBe(true);
+    expect(devotionApi.getGroupReading.mock.calls.some((call) => call[1] === 'youth')).toBe(true);
     await press(pressable(tree, '青少', 'tab'));
-    expect(devotionApi.getGroupReading.mock.calls.at(-1)?.[1]).toBe('youth');
     expect(texts(tree)).toEqual(expect.arrayContaining(['青少一起讀經', '我在主堂聚會 (不是青少)，這裡只是看看青少。']));
     await press(pressable(tree, '全教會', 'tab'));
-    expect(devotionApi.getGroupReading.mock.calls.at(-1)).toHaveLength(1);
     expect(texts(tree)).toContain('全教會一起讀經');
     expect(texts(tree).join('')).not.toContain('只是看看');
     expect(devotionApi.setCongregation).not.toHaveBeenCalled();

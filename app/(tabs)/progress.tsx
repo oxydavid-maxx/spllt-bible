@@ -42,6 +42,7 @@ import { shareReadingCard } from '../../src/ui/readingCardShare';
 import { dayState, defaultSelectedDate, monthCells, readingDaysRange, shiftMonth, type CalendarDay } from '../../src/ui/gamification/readingCalendarModel';
 import { consumeOpenFriendsList, subscribeFriendAdded, subscribeOpenFriendsList, type FriendAddedEvent } from '../../src/services/friendPush';
 import { switchStarted, useSwitchShown } from '../../src/services/switchLatencyProbe';
+import { ASK_AGAIN, devotionDatesKey, invalidateReadingDaysInViewCache, markDevotionInViewCache, useViewCache, viewCache, viewCacheKey, type ViewCacheRequest } from '../../src/services/viewCache';
 
 // Prizes and redemptions are kept in the Google Sheet (維護者 2026-10-17): no 管理獎品 or 現場兌換 here.
 type Sheet = 'menu' | 'qr' | 'scan' | 'rewards' | 'redemptions' | null;
@@ -52,10 +53,13 @@ export default function ProgressScreen() {
   // opening starts on this one (維護者 2026-10-20). Null while unknown: the first-run choice is then on screen.
   const ownSide = congregation.value;
   const [groupSide, setGroupSide] = useState<Congregation | null>(null);
-  const [groupFailed, setGroupFailed] = useState<Congregation | null>(null);
+  const [groupRetry, setGroupRetry] = useState(0);
   const [rewardSide, setRewardSide] = useState<Congregation | null>(null);
-  const [otherRewards, setOtherRewards] = useState<Reward[] | null>(null);
-  const [otherRewardsFailed, setOtherRewardsFailed] = useState(false);
+  const [rewardRetry, setRewardRetry] = useState(0);
+  // When this visit began (focus or return to the app). Switches use what was asked since then without asking
+  // again; anything older is shown and asked afresh (src/services/viewCache.ts, 光佑 2026-10-23).
+  const [visitStartedAt, setVisitStartedAt] = useState(() => viewCache.beginVisit());
+  const visitStartedRef = useRef(visitStartedAt);
   const [planOpen, setPlanOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
@@ -101,7 +105,6 @@ export default function ProgressScreen() {
   const [profile, setProfile] = useState<Awaited<ReturnType<NonNullable<typeof client>['getProfile']>> | null>(null);
   const profileRef = useRef(profile);
   profileRef.current = profile;
-  const [rewards, setRewards] = useState<Reward[] | null>(null);
   const [redemptions, setRedemptions] = useState<Awaited<ReturnType<NonNullable<typeof client>['getMyRedemptions']>>>([]);
   const [sheet, updateSheet] = useState<Sheet>(null);
   const sheetVersion = useRef(0);
@@ -146,7 +149,15 @@ export default function ProgressScreen() {
     const expectedAuthEpoch = auth.epoch;
     if (!completionClient || !session || !focused || !appForeground) return () => { active = false; };
     const range = readingDaysRange(calendarMonth, today);
-    void readReadingDays(session, range.from, range.to, () => completionClient.getReadingDays(range.from, range.to)).then((response) => {
+    const readingDays = (from: string, to: string) => ({ key: viewCacheKey(session, 'reading-days', from, to), load: async () => {
+      const value = await readReadingDays(session, from, to, () => completionClient.getReadingDays(from, to));
+      if (!value) throw new Error('READING_DAYS_UNAVAILABLE');
+      return value;
+    } });
+    // The months either side are asked ahead: 上個月/下個月 then shows its marks at once (2026-10-23).
+    for (const month of adjacentCalendarMonths(calendarMonth, today)) { const ahead = readingDaysRange(month, today); const request = readingDays(ahead.from, ahead.to); viewCache.prefetch(request.key, request.load, visitStartedAt); }
+    const request = readingDays(range.from, range.to);
+    void viewCache.read(request.key, request.load, visitStartedAt).then((response) => {
       if (!active || !response || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
       replaceReadingDaysRange(range.from, range.to, response.days);
       completion.reconcileRemoteDays?.(response.days);
@@ -160,7 +171,7 @@ export default function ProgressScreen() {
       if (!pickedDate.current && calendarMonth === today.slice(0, 7)) setSelectedDate(defaultSelectedDate(today, fetched));
     }).catch(() => undefined);
     return () => { active = false; };
-  }, [completionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh, focused, appForeground]);
+  }, [completionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh, focused, appForeground, visitStartedAt]);
   const loadedDevotionRanges = useRef<Array<{ from: string; to: string }>>([]);
   useEffect(() => {
     let active = true;
@@ -188,13 +199,16 @@ export default function ProgressScreen() {
     const expectedAuthEpoch = auth.epoch;
     if (!devotionClient || !session || !focused || !appForeground) return () => { active = false; };
     const range = readingDaysRange(calendarMonth, today);
-    void devotionClient.getDevotionDates(range.from, range.to).then((dates) => {
+    const devotionDatesRequest = (from: string, to: string) => ({ key: devotionDatesKey(session, from, to), load: () => devotionClient.getDevotionDates(from, to) });
+    for (const month of adjacentCalendarMonths(calendarMonth, today)) { const ahead = readingDaysRange(month, today); const request = devotionDatesRequest(ahead.from, ahead.to); viewCache.prefetch(request.key, request.load, visitStartedAt); }
+    const request = devotionDatesRequest(range.from, range.to);
+    void viewCache.read(request.key, request.load, visitStartedAt).then((dates) => {
       if (!active || !isCurrentAuthSession(session) || getAuthSnapshot().epoch !== expectedAuthEpoch) return;
       loadedDevotionRanges.current.push(range);
       setDevotionDates((current) => new Set([...[...current].filter((date) => date < range.from || date > range.to), ...dates]));
     }).catch(() => undefined);
     return () => { active = false; };
-  }, [devotionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh, focused, appForeground]);
+  }, [devotionClient, session?.memberId, session?.sessionToken, calendarMonth, today, auth.epoch, secondaryRefresh, focused, appForeground, visitStartedAt]);
   const isLive = useCallback((generation: number, expectedScope: ScoreScope, expectedMember?: string | null, requiresUnlock = false) => Boolean(focusedRef.current && appActive.current && requestGeneration.current === generation && activeScope.current === expectedScope && (expectedMember === undefined || expectedMember === activeMember.current) && session && isCurrentAuthSession(session) && (!requiresUnlock || guard.current.state === 'unlocked')), [session]);
   // Account-wide secondary content is independent of the selected chart range/member.
   const isViewLive = useCallback((generation: number) => Boolean(focusedRef.current && appActive.current && viewGeneration.current === generation && session && isCurrentAuthSession(session)), [session]);
@@ -215,8 +229,8 @@ export default function ProgressScreen() {
     setScope('me'); setPeople([]); setSelected(null); setProfile(ownProfile); setBusy(false); setError(null);
     setSheet(preserveScanner ? 'scan' : null);
     if (!preserveView) {
-      setProfileStale(Boolean(ownProfile)); setRewards(null); setRedemptions([]); setPrimaryReady(Boolean(ownProfile));
-      setShelfRewards(null); setGroupReading(null); setScoreHistory(null);
+      setProfileStale(Boolean(ownProfile)); setRedemptions([]); setPrimaryReady(Boolean(ownProfile));
+      setScoreHistory(null);
     }
     if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
   }, [client, session, stopPrefetch]);
@@ -314,26 +328,35 @@ export default function ProgressScreen() {
       if (owns() && !retrying) { setBusy(false); setPrimaryReady(true); }
     }
   }, [client, session, isLive, profileCache, prefetchCharts, stopPrefetch]);
-  const loadPeople = useCallback(async (nextScope: Exclude<ScoreScope, 'me'>) => {
+  const friendsRequest = useCallback((): ViewCacheRequest<PersonListItem[]> | null => client && session && typeof client.getPeople === 'function' ? { key: viewCacheKey(session, 'people', 'friends'), load: () => client.getPeople('friends') } : null, [client, session]);
+  const loadPeople = useCallback(async (nextScope: Exclude<ScoreScope, 'me'>, fresh = false) => {
     if (!client || !session || !isLive(requestGeneration.current, nextScope, undefined, nextScope === 'all')) return;
     const generation = requestGeneration.current;
     const owns = () => isLive(generation, nextScope, undefined, nextScope === 'all');
-    setBusy(true); setError(null);
-    try { const value = await client.getPeople(nextScope); if (owns()) { setPeople(value); setSelected(null); setProfile(null); } }
-    catch (reason) { if (owns()) setError(messageFor(reason)); }
+    // 好友 opens on the list asked ahead when the page opened; 全體 (管理) still asks after its unlock.
+    const request = nextScope === 'friends' ? friendsRequest() : null;
+    const kept = request && !fresh ? viewCache.peek<PersonListItem[]>(request.key) : undefined;
+    if (kept) setPeople(kept);
+    setBusy(!kept); setError(null);
+    try {
+      const value = request ? await viewCache.read(request.key, request.load, fresh ? ASK_AGAIN : visitStartedRef.current) : await client.getPeople(nextScope);
+      if (owns()) { setPeople(value); if (!kept) { setSelected(null); setProfile(null); } }
+    }
+    catch (reason) { if (owns() && !kept) setError(messageFor(reason)); }
     finally { if (owns()) setBusy(false); }
-  }, [client, session, isLive]);
+  }, [client, session, isLive, friendsRequest]);
   // The friends list re-read in place: no spinner, and an open friend profile stays open. Used when a
   // push says somebody added you, when the QR sheet closes, and after this phone's own scan.
   const refreshFriends = useCallback(async () => {
     if (!client || !session || typeof client.getPeople !== 'function') return;
     const generation = viewGeneration.current;
+    const request = friendsRequest();
     try {
-      const value = await client.getPeople('friends');
+      const value = request ? await viewCache.read(request.key, request.load, ASK_AGAIN) : await client.getPeople('friends');
       if (!isViewLive(generation) || activeScope.current !== 'friends') return;
       setPeople(value);
     } catch { /* The next focus reloads the list. */ }
-  }, [client, session, isViewLive]);
+  }, [client, session, isViewLive, friendsRequest]);
   const loadProfileChart = useCallback((chartQuery: ScoreChartQuery) => {
     if (!client || !session || !focusedRef.current || !appActive.current) return;
     const memberId = activeMember.current;
@@ -347,13 +370,14 @@ export default function ProgressScreen() {
   const refreshOwnProfile = useCallback((preserveScanner = false) => {
     if (!client || !session || !focusedRef.current || !appActive.current) return;
     setSecondaryRefresh((current) => current + 1);
+    const visit = viewCache.beginVisit(); visitStartedRef.current = visit; setVisitStartedAt(visit);
     clearProtectedState(preserveScanner, true, true); activeMember.current = session.memberId;
     void loadProfile(session.memberId, 'me');
   }, [client, session, clearProtectedState, loadProfile]);
   refreshOnForeground.current = refreshOwnProfile;
   useFocusEffect(useCallback(() => {
     // Each visit starts on this month and lets the page choose the day again, with 團體 on the member's own side.
-    pickedDate.current = false; setCalendarMonth(taipeiDate().slice(0, 7)); setGroupSide(null); setGroupFailed(null);
+    pickedDate.current = false; setCalendarMonth(taipeiDate().slice(0, 7)); setGroupSide(null);
     focusedRef.current = true; setFocused(true); refreshOwnProfile(); openRequestedFriends.current(); openRequestedAll.current();
     return () => { focusedRef.current = false; setFocused(false); clearProtectedState(false, true, true); };
   }, [clearProtectedState, refreshOwnProfile]));
@@ -398,26 +422,22 @@ export default function ProgressScreen() {
     const generation = requestGeneration.current; const expectedScope = activeScope.current;
     if (!isLive(generation, expectedScope, undefined, expectedScope === 'all')) return;
     // Open with the last known list; slow/offline refreshes must not hide the picker. Always on the member's own side.
-    setRewardSide(null); setOtherRewards(null); setOtherRewardsFailed(false);
+    setRewardSide(null);
     setSheet('rewards');
-    const origin = sheetVersion.current;
-    const owns = () => sheetVersion.current === origin && isLive(generation, expectedScope, undefined, expectedScope === 'all');
-    // Replace an in-flight shelf/previous picker read so every opening asks afresh.
+    // Every opening asks afresh (a newer ask replaces one still on its way); the list on screen changes only if it differs.
+    // The client shares a read already on its way to the same path, so that one is dropped first (the other side's
+    // list has its own path and stays).
     client.cancelReads?.('/api/rewards');
-    try { const value = await client.getRewards(); if (owns()) setRewards(value); }
-    catch { /* Keep the existing list silently; the next opening retries. */ }
+    const request = rewardsRequest(null);
+    if (request) await viewCache.read(request.key, request.load, ASK_AGAIN).catch(() => undefined);
   };
   const pickerOwn: Congregation = ownSide ?? 'youth';
   // 「主堂獎品｜青少獎品」: the other side's list is read when asked for and shown without any way to pick from it.
-  const viewRewards = async (side: Congregation) => {
+  // Asked ahead when the page opens (see the shelf below), so the first tap shows it at once.
+  const viewRewards = (side: Congregation) => {
     switchStarted('rewards', side, 'reward-side');
     if (side === pickerOwn) { setRewardSide(null); return; }
-    if (!client || !session) return;
-    const generation = requestGeneration.current; const expectedScope = activeScope.current; const origin = sheetVersion.current;
-    const owns = () => sheetVersion.current === origin && isLive(generation, expectedScope, undefined, expectedScope === 'all');
-    setRewardSide(side); setOtherRewards(null); setOtherRewardsFailed(false);
-    try { const value = await client.getRewards(side); if (owns()) setOtherRewards(value); }
-    catch { if (owns()) setOtherRewardsFailed(true); }
+    setRewardSide(side); setRewardRetry((value) => value + 1);
   };
   const loadRedemptions = async () => {
     if (!client || !session) return;
@@ -425,14 +445,23 @@ export default function ProgressScreen() {
     const origin = sheetVersion.current;
     const owns = () => sheetVersion.current === origin && isLive(generation, expectedScope, undefined, expectedScope === 'all');
     if (!owns()) return;
-    try { const value = await client.getMyRedemptions(); if (owns()) { setRedemptions(value); setSheet('redemptions'); } }
-    catch (reason) { if (owns()) setError(messageFor(reason)); }
+    // Asked ahead when the page opened: the sheet opens on that list at once and takes a newer one if it differs.
+    const request = redemptionsRequest();
+    const kept = request ? viewCache.peek<typeof redemptions>(request.key) : undefined;
+    if (kept) { setRedemptions(kept); setSheet('redemptions'); }
+    const shown = sheetVersion.current;
+    try {
+      const value = request ? await viewCache.read(request.key, request.load, visitStartedRef.current) : await client.getMyRedemptions();
+      if (!kept && owns()) { setRedemptions(value); setSheet('redemptions'); }
+      else if (kept && sheetVersion.current === shown && activeSheet.current === 'redemptions' && isLive(generation, expectedScope, undefined, expectedScope === 'all')) setRedemptions(value);
+    }
+    catch (reason) { if (!kept && owns()) setError(messageFor(reason)); }
   };
   const removeSelectedFriend = async () => {
     if (!client || !selected || scope !== 'friends') return;
     const generation = requestGeneration.current; const memberId = selected.memberId;
     const owns = () => isLive(generation, 'friends', memberId);
-    try { await client.removeFriend(memberId); if (!owns()) return; setSheet(null); setSelected(null); setProfile(null); activeMember.current = null; await loadPeople('friends'); }
+    try { await client.removeFriend(memberId); if (!owns()) return; setSheet(null); setSelected(null); setProfile(null); activeMember.current = null; await loadPeople('friends', true); }
     catch (reason) { if (owns()) setError(messageFor(reason)); }
   };
   const scannerViewGeneration = viewGeneration.current;
@@ -469,39 +498,51 @@ export default function ProgressScreen() {
     try { await client.setRewardTarget(rewardId); if (!owns()) return; if (sheetVersion.current === origin) setSheet(null); await loadProfile(session.memberId, 'me'); }
     catch (reason) { if (owns()) setError(messageFor(reason)); }
   };
-  const [shelfRewards, setShelfRewards] = useState<Reward[] | null>(null);
   // 團體 (維護者 2026-10-14): replaces 一起走過. Absent on a backend that predates it; the section then hides.
   const [groupMonth, setGroupMonth] = useState(() => today.slice(0, 7));
-  const [groupReading, setGroupReading] = useState<GroupReading | null>(null);
   const [scoreHistory, setScoreHistory] = useState<ScoreHistory | null>(null);
   const [scoreHistoryMissing, setScoreHistoryMissing] = useState(false);
   // A 靈修 tap redraws only the chart's gold line: it is not in the group's numbers or the points.
   const [historyRefresh, setHistoryRefresh] = useState(0);
-  const shelfRewardsRef = useRef(shelfRewards); shelfRewardsRef.current = shelfRewards;
   const hasOwnPrivateProfile = Boolean(session && profile?.memberId === session.memberId && profile.private);
-  useEffect(() => {
-    if (!client || !session || !focused || !primaryReady || scope !== 'me' || !hasOwnPrivateProfile || typeof client.getRewards !== 'function') return;
-    let active = true; const generation = viewGeneration.current;
-    void client.getRewards().then((value) => { if (active && isViewLive(generation)) setShelfRewards(value); }).catch((reason) => {
-      if (!active || !isViewLive(generation) || (reason instanceof GamificationApiError && reason.code === 'REQUEST_CANCELLED')) return;
-      if (shelfRewardsRef.current === null) setShelfRewards([]);
-      else setError(messageFor(reason));
-    });
-    return () => { active = false; };
-  }, [client, session, scope, hasOwnPrivateProfile, focused, primaryReady, secondaryRefresh, isViewLive]);
-
-  useEffect(() => {
-    if (!devotionClient || !session || !focused || !primaryReady || scope !== 'me') return;
-    let active = true; const generation = viewGeneration.current;
-    // The member's own side asks without naming it, as before (and as an older server understands).
-    const asked = groupSide;
-    void (asked ? devotionClient.getGroupReading(groupMonth, asked) : devotionClient.getGroupReading(groupMonth)).then((value) => {
-      if (!active || !isViewLive(generation)) return;
-      setGroupReading(value); setGroupFailed(asked && value.scope !== asked ? asked : null);
-    }).catch(() => { if (active && isViewLive(generation) && asked) setGroupFailed(asked); });
-    return () => { active = false; };
-  }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, groupMonth, groupSide, isViewLive]);
-  const viewGroup = (side: Congregation) => { switchStarted('group', `${side}:${groupMonth}`, 'group-side'); setGroupFailed(null); setGroupSide(side === ownSide ? null : side); };
+  // Everything a tap on this page can reach is read through the shared store (src/services/viewCache.ts, 光佑
+  // 2026-10-23): the shown content comes straight from it in the tap's own render, and the page asks ahead for the
+  // other side, the months either side, 好友 and 我的領取紀錄 as soon as the member's own points have settled.
+  // The member's own side asks without naming it, as before (and as an older server understands).
+  const otherSide = (side: Congregation): Congregation => side === 'main' ? 'youth' : 'main';
+  const rewardsRequest = (side: Congregation | null): ViewCacheRequest<Reward[]> | null => client && session && typeof client.getRewards === 'function'
+    ? { key: viewCacheKey(session, 'rewards', side ?? `own:${ownSide ?? ''}`), load: () => side ? client.getRewards(side) : client.getRewards() } : null;
+  const redemptionsRequest = (): ViewCacheRequest<typeof redemptions> | null => client && session && typeof client.getMyRedemptions === 'function'
+    ? { key: viewCacheKey(session, 'redemptions'), load: () => client.getMyRedemptions() } : null;
+  const groupRequest = (side: Congregation | null, month: string): ViewCacheRequest<GroupReading> | null => devotionClient && session
+    ? { key: viewCacheKey(session, 'group', side ?? `own:${ownSide ?? ''}`, month), load: () => side ? devotionClient.getGroupReading(month, side) : devotionClient.getGroupReading(month) } : null;
+  const ownView = Boolean(session && focused && primaryReady && scope === 'me');
+  const shelf = useViewCache(rewardsRequest(null), {
+    active: ownView && hasOwnPrivateProfile,
+    freshSince: visitStartedAt,
+    ahead: [rewardsRequest(otherSide(ownSide ?? 'youth')), redemptionsRequest(), friendsRequest()].filter((item): item is ViewCacheRequest<any> => item !== null),
+  });
+  // A list that never came shows as empty, as before; a kept one stays when a later ask fails (no network).
+  const shelfRewards = shelf.value ?? (shelf.failed ? [] : null);
+  const rewards = shelf.value ?? null;
+  const viewedRewards = useViewCache(rewardSide ? rewardsRequest(rewardSide) : null, { active: Boolean(session && focused && rewardSide), freshSince: visitStartedAt, retry: rewardRetry });
+  const otherRewards = viewedRewards.value ?? null;
+  const otherRewardsFailed = viewedRewards.failed;
+  const firstPlanMonth = getReadingPlanSpan()?.first.slice(0, 7) ?? today.slice(0, 7);
+  const shownSide = groupSide ?? ownSide;
+  const groupAhead = [
+    shownSide ? groupRequest(otherSide(shownSide) === ownSide ? null : otherSide(shownSide), groupMonth) : null,
+    groupMonth > firstPlanMonth ? groupRequest(groupSide, shiftMonth(groupMonth, -1)) : null,
+    groupMonth < today.slice(0, 7) ? groupRequest(groupSide, shiftMonth(groupMonth, 1)) : null,
+  ].filter((item): item is ViewCacheRequest<GroupReading> => item !== null);
+  const group = useViewCache(groupRequest(groupSide, groupMonth), { active: Boolean(devotionClient) && ownView, freshSince: visitStartedAt, ahead: groupAhead, retry: groupRetry });
+  // While a side or month not asked yet is on its way, the card keeps what it showed — never another member's.
+  const shownGroup = useRef<{ owner: string | null; view: GroupReading } | null>(null);
+  if (group.value) shownGroup.current = { owner: accountKey, view: group.value };
+  const groupReading = group.value ?? (shownGroup.current?.owner === accountKey ? shownGroup.current.view : null);
+  // A side that could not be read (or an older server that answered with the member's own side) says so on the card.
+  const groupFailed = groupSide && ((group.failed && !group.value) || (group.value && group.value.scope !== groupSide)) ? groupSide : null;
+  const viewGroup = (side: Congregation) => { switchStarted('group', `${side}:${groupMonth}`, 'group-side'); setGroupRetry((value) => value + 1); setGroupSide(side === ownSide ? null : side); };
   const stepGroupMonth = (step: number) => { const month = shiftMonth(groupMonth, step); switchStarted('group', `${groupSide ?? ownSide ?? groupReading?.scope ?? 'youth'}:${month}`, 'group-month'); setGroupMonth(month); };
   const stepCalendarMonth = (step: number) => { const month = shiftMonth(calendarMonth, step); switchStarted('calendar', month, 'calendar-month'); setCalendarMonth(month); };
   // After a change of side (here, on 我的帳戶, or on another phone) the page reads everything again for the new
@@ -511,7 +552,7 @@ export default function ProgressScreen() {
     const previous = seenOwnSide.current;
     if (ownSide) seenOwnSide.current = ownSide;
     if (!previous || !ownSide || previous === ownSide) return;
-    setGroupSide(null); setGroupFailed(null); setRewardSide(null);
+    setGroupSide(null); setRewardSide(null);
     refreshOwnProfile();
   }, [ownSide, refreshOwnProfile]);
   useEffect(() => {
@@ -534,7 +575,12 @@ export default function ProgressScreen() {
     if (!session || !focusedRef.current || !appActive.current) return;
     if (activeSheet.current === 'qr') setFriendNotice(event.friendName);
     if (activeScope.current === 'friends') void refreshFriends();
-    else if (activeScope.current === 'me') void loadProfile(session.memberId, 'me');
+    else if (activeScope.current === 'me') {
+      void loadProfile(session.memberId, 'me');
+      // The 好友 list asked ahead no longer has everyone: ask again now, so the tab opens on the new friend too.
+      const request = friendsRequest();
+      if (request) viewCache.prefetch(request.key, request.load, ASK_AGAIN);
+    }
   };
   useEffect(() => subscribeFriendAdded((event) => onFriendAdded.current(event)), []);
   const openRequestedFriends = useRef<() => void>(() => undefined);
@@ -577,15 +623,17 @@ export default function ProgressScreen() {
     awardRefreshRef.current(event.memberId);
   }, [session?.memberId]);
   const onCompletionAward = useCallback((event: CompletionAwardEvent) => {
+    if (session && event.memberId === session.memberId) invalidateReadingDaysInViewCache(session, event.taskDate);
     setCompletionAward(event);
     if (event.memberId === session?.memberId) setConfirmedDays((current) => ({ ...current, [event.taskDate]: true }));
     refreshCompletionProfile(event);
-  }, [refreshCompletionProfile, session?.memberId]);
+  }, [refreshCompletionProfile, session]);
   const onCompletionConfirmed = useCallback((event: CompletionSyncEvent) => {
     // The event carries its original taskDate; a cross-month backfill still refreshes this member's profile.
+    if (session && event.memberId === session.memberId) invalidateReadingDaysInViewCache(session, event.taskDate);
     if (event.memberId === session?.memberId) setConfirmedDays((current) => ({ ...current, [event.taskDate]: event.status === 'COMPLETED' }));
     refreshCompletionProfile(event);
-  }, [refreshCompletionProfile, session?.memberId]);
+  }, [refreshCompletionProfile, session]);
   // The same shared controller the reading tab uses, pointed at whichever day the calendar selected.
   const completion = useCompletionController({ planId: selectedPlanId, taskDate: selectedDate, canComplete: selectedCanComplete, refreshRemote: false, onAward: onCompletionAward, onConfirmed: onCompletionConfirmed });
   // The selected day's own record is the freshest word on it (it flips the moment the button is
@@ -614,7 +662,10 @@ export default function ProgressScreen() {
   const withPick = (run: () => void) => { pickedDate.current = true; run(); };
   const toggleDevotion = (date: string, completed: boolean) => {
     if (!devotionClient || devotionPending) return;
-    const apply = (value: boolean) => setDevotionDates((current) => { const next = new Set(current); if (value) next.add(date); else next.delete(date); return next; });
+    const apply = (value: boolean) => {
+      if (session) markDevotionInViewCache(session, date, value);
+      setDevotionDates((current) => { const next = new Set(current); if (value) next.add(date); else next.delete(date); return next; });
+    };
     loadedDevotionRanges.current.push({ from: date, to: date });
     apply(completed); setDevotionPending(date);
     void devotionClient.setDevotion(date, completed)
@@ -757,6 +808,12 @@ export default function ProgressScreen() {
   </View>;
 }
 
+/** The calendar months a tap on 上個月/下個月 can reach from `month`, inside the plan (or up to this month). */
+function adjacentCalendarMonths(month: string, today: string): string[] {
+  const span = getReadingPlanSpan();
+  const last = span && span.last.slice(0, 7) > today.slice(0, 7) ? span.last.slice(0, 7) : today.slice(0, 7);
+  return [span && month > span.first.slice(0, 7) ? shiftMonth(month, -1) : null, month < last ? shiftMonth(month, 1) : null].filter((value): value is string => value !== null);
+}
 function monthNow(): string { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).formatToParts(new Date()); const year = parts.find((part) => part.type === 'year')?.value ?? '1970'; const month = parts.find((part) => part.type === 'month')?.value ?? '01'; return `${year}-${month}`; }
 function monthlyPlanId(date: string): string { return `church-${date.slice(0, 7)}`; }
 function messageFor(reason: unknown): string { return reason instanceof GamificationApiError ? reason.userMessage : '目前無法載入積分，請稍後再試。'; }

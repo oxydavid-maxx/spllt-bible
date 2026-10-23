@@ -19,6 +19,7 @@ import { useCongregation } from '../../src/ui/congregation/congregationStore';
 import { BulletinBoard } from '../../src/ui/bulletin/BulletinBoard';
 import { bulletinPageSource, fetchBulletins, type BulletinWeek } from '../../src/services/bulletinClient';
 import { switchStarted, useSwitchShown } from '../../src/services/switchLatencyProbe';
+import { useViewCache, viewCache, viewCacheKey } from '../../src/services/viewCache';
 
 /**
  * The one tab that does not need the backend.
@@ -100,18 +101,20 @@ export default function AnnouncementsScreen() {
   const [picked, setPicked] = useState<Side | null>(null);
   const side: Side = picked ?? (congregation.value === 'main' ? 'main' : 'youth');
   const apiBaseUrl = runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl;
-  const [bulletins, setBulletins] = useState<{ status: 'loading' | 'ready' | 'error'; weeks: BulletinWeek[] }>({ status: 'loading', weeks: [] });
+  // 主堂's 週刊 list is asked for when the tab opens, whichever side shows, so 主堂 opens on it at once (光佑 2026-10-23,
+  // src/services/viewCache.ts). Each opening of the tab asks again; a list kept from before stays up meanwhile and when
+  // the backend cannot be reached. The pictures still load as each page is shown.
   const [bulletinRetry, setBulletinRetry] = useState(0);
-  const loadBulletins = useCallback(() => {
-    if (side !== 'main' || !session) return;
-    let active = true;
-    void fetchBulletins({ baseUrl: apiBaseUrl, token: session.sessionToken, memberId: session.memberId }).then((weeks) => {
-      if (active) setBulletins((now) => (weeks ? { status: 'ready', weeks } : { status: 'error', weeks: now.weeks }));
-    });
-    return () => { active = false; };
-  }, [side, apiBaseUrl, session?.sessionToken, session?.memberId, bulletinRetry]);
-  useFocusEffect(loadBulletins);
-  useSwitchShown('announcement-side', side === 'main' ? (bulletins.status === 'ready' ? 'main' : null) : (announcement ? 'youth' : null));
+  const [visit, setVisit] = useState<{ focused: boolean; startedAt: number }>(() => ({ focused: false, startedAt: 0 }));
+  useFocusEffect(useCallback(() => { setVisit({ focused: true, startedAt: viewCache.beginVisit() }); return () => setVisit((now) => ({ ...now, focused: false })); }, []));
+  const bulletinList = useViewCache<BulletinWeek[]>(session ? { key: viewCacheKey(session, 'bulletins'), load: async () => {
+    const weeks = await fetchBulletins({ baseUrl: apiBaseUrl, token: session.sessionToken, memberId: session.memberId });
+    if (!weeks) throw new Error('BULLETINS_UNAVAILABLE');
+    return weeks;
+  } } : null, { active: visit.focused, freshSince: visit.startedAt, retry: bulletinRetry });
+  const bulletins: { status: 'loading' | 'ready' | 'error'; weeks: BulletinWeek[] } = bulletinList.value
+    ? { status: 'ready', weeks: bulletinList.value } : { status: bulletinList.failed ? 'error' : 'loading', weeks: [] };
+  useSwitchShown('announcement-side', side === 'main' ? (bulletins.status === 'ready' ? 'main' : null) : (announcement || loaded ? 'youth' : null));
 
   return <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
     <View style={styles.toolbar}>
@@ -136,7 +139,7 @@ export default function AnnouncementsScreen() {
           weeks={bulletins.weeks}
           status={bulletins.status}
           sourceFor={(date, index, width) => bulletinPageSource(apiBaseUrl, session?.sessionToken ?? '', date, index, width)}
-          onRetry={() => { setBulletins((now) => ({ ...now, status: 'loading' })); setBulletinRetry((count) => count + 1); }}
+          onRetry={() => setBulletinRetry((count) => count + 1)}
         />
       : announcement
       ? <AnnouncementBoard
