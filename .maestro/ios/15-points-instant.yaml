@@ -55,10 +55,14 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "開啟積分操作"
     timeout: 30000
-- scrollUntilVisible:
-    element: "青少一起讀經"
-    direction: DOWN
-    timeout: 30000
+# The card sits right under the day card: wait for it rather than scroll for it. On a slow runner it arrived after a
+# scroll had already gone past it (run 39924623977).
+- extendedWaitUntil:
+    visible: "團體"
+    timeout: 45000
+- extendedWaitUntil:
+    visible: "青少一起讀經"
+    timeout: 45000
 - tapOn:
     text: "全教會"
     retryTapIfNoChange: false
