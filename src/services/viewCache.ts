@@ -53,7 +53,6 @@ export interface ViewCache {
   /** Starts a visit: answers from before it are shown but asked again. */
   beginVisit(): number;
   subscribe(listener: () => void): () => void;
-  version(): number;
 }
 
 function partsOf(key: string): unknown[] { try { const parts = JSON.parse(key); return Array.isArray(parts) ? parts : []; } catch { return []; } }
@@ -66,9 +65,8 @@ export function createViewCache(options: { maxEntries?: number } = {}): ViewCach
   const entries = new Map<string, Entry>();
   const listeners = new Set<() => void>();
   let generation = 0;
-  let revision = 0;
   let owner: string | null = null;
-  const publish = () => { revision += 1; for (const listener of [...listeners]) listener(); };
+  const publish = () => { for (const listener of [...listeners]) listener(); };
   const touch = (key: string, entry: Entry) => {
     entries.delete(key); entries.set(key, entry);
     while (entries.size > maxEntries) {
@@ -129,7 +127,6 @@ export function createViewCache(options: { maxEntries?: number } = {}): ViewCach
       return visits;
     },
     subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    version: () => revision,
   };
 }
 
@@ -157,10 +154,14 @@ export interface ViewCacheRequest<T> { key: string; load: () => Promise<T> }
  */
 export function useViewCache<T>(request: ViewCacheRequest<T> | null, options: { active: boolean; freshSince: number; ahead?: Array<ViewCacheRequest<unknown>>; retry?: number; cache?: ViewCache }): { value: T | undefined; failed: boolean } {
   const cache = options.cache ?? viewCache;
-  useSyncExternalStore(cache.subscribe, cache.version, cache.version);
+  const key = request?.key ?? null;
+  // Only this key's answer re-renders the screen; answers for other screens' keys do not.
+  const peek = () => key ? cache.peek<T>(key) : undefined;
+  const hasFailed = () => key ? cache.failed(key) : false;
+  const value = useSyncExternalStore(cache.subscribe, peek, peek);
+  const failed = useSyncExternalStore(cache.subscribe, hasFailed, hasFailed);
   const latest = useRef({ request, ahead: options.ahead });
   latest.current = { request, ahead: options.ahead };
-  const key = request?.key ?? null;
   const aheadKeys = (options.ahead ?? []).map((item) => item.key).join('\n');
   useEffect(() => {
     if (!options.active) return;
@@ -168,7 +169,7 @@ export function useViewCache<T>(request: ViewCacheRequest<T> | null, options: { 
     if (current.request) void cache.read(current.request.key, current.request.load, options.freshSince).catch(() => undefined);
     for (const item of current.ahead ?? []) cache.prefetch(item.key, item.load, options.freshSince);
   }, [cache, key, aheadKeys, options.active, options.freshSince, options.retry]);
-  return { value: key ? cache.peek<T>(key) : undefined, failed: key ? cache.failed(key) : false };
+  return { value, failed };
 }
 
 /** 靈修 marks for one calendar range. The 積分 calendar and the reader ask with the same ranges, so they share them. */
