@@ -164,6 +164,20 @@ describe('積分頁: switches show what was asked ahead, at once', () => {
     expect(tree.root.findAll((node) => String(node.type) === 'ActionSheet' && node.props.title === '領取紀錄')).toHaveLength(1);
     expect(api.getMyRedemptions).toHaveBeenCalledTimes(1);
   });
+
+  it('自己 shows the own page from this visit at once, and asks for it again behind it', async () => {
+    const tree = await screen();
+    await tap(pressables(tree, '好友', 'tab')[0]);
+    const profile = api.getProfile.getMockImplementation()!;
+    try {
+      api.getProfile.mockImplementation(() => new Promise<never>(() => undefined)); // From here on the backend never answers.
+      await tap(pressables(tree, '自己', 'tab')[0]);
+      expect(tree.root.findAll((node) => String(node.type) === 'ScoreProfile')).toHaveLength(1);
+      expect(texts(tree)).not.toContain('正在載入你的積分。');
+      expect(texts(tree)).not.toContain('載入中…');
+      expect(api.getProfile).toHaveBeenLastCalledWith('self', 'me', expect.any(String));
+    } finally { api.getProfile.mockImplementation(profile); }
+  });
 });
 
 describe('積分頁 全體 (管理): asked right after the unlock', () => {

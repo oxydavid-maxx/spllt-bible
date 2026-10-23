@@ -112,6 +112,11 @@ export default function ProgressScreen() {
   const [profile, setProfile] = useState<Awaited<ReturnType<NonNullable<typeof client>['getProfile']>> | null>(null);
   const profileRef = useRef(profile);
   profileRef.current = profile;
+  // The member's own page as last shown in memory (光佑 2026-10-23: switches within 100 ms): 自己 shows it in the tap's
+  // own render and asks the backend behind it, instead of first an empty page and the phone's copy a moment later.
+  // Only for the member it belongs to; another member or a sign-out never sees it.
+  const lastOwnProfile = useRef<ScoreProfileData | null>(null);
+  if (scope === 'me' && session && profile?.memberId === session.memberId) lastOwnProfile.current = profile;
   const [redemptions, setRedemptions] = useState<Awaited<ReturnType<NonNullable<typeof client>['getMyRedemptions']>>>([]);
   const [sheet, updateSheet] = useState<Sheet>(null);
   const sheetVersion = useRef(0);
@@ -449,9 +454,10 @@ export default function ProgressScreen() {
     } else if (scope === 'all') { guard.current.clear(); allProfiles.current.clear(); }
     requestGeneration.current += 1; stopPrefetch();
     activeScope.current = nextScope; activeMember.current = nextScope === 'me' ? session.memberId : null;
-    setScope(nextScope); setSheet(null); setSelected(null); setProfile(null); setProfileStale(false);
+    const ownKept = nextScope === 'me' && lastOwnProfile.current?.memberId === session.memberId ? lastOwnProfile.current : null;
+    setScope(nextScope); setSheet(null); setSelected(null); setProfile(ownKept); setProfileStale(false);
     if (nextScope !== 'me') void loadPeople(nextScope);
-    else void loadProfile(session.memberId, 'me');
+    else void loadProfile(session.memberId, 'me', undefined, 0, ownKept ?? undefined);
   };
   // After the unlock and the list: each person's points, one at a time after the frame, while 全體 stays unlocked.
   const prefetchAllProfiles = (people: PersonListItem[], generation: number) => {

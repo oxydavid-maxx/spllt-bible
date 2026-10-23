@@ -64,6 +64,8 @@
 - 量法：App 自己記 (只有 CI 假資料建置，`src/services/switchLatencyProbe.ts`)，從點下到畫出內容的那一幀，寫進 App 的 Documents；`run-flows.sh` 在這兩個流程期間讓 count-proxy 給 `/api/` 加 400ms 延遲 (`$OUT/proxy-delay-ms`)，流程跑完把紀錄拷出來。少一筆就是量不到，判 FAIL。每筆另外記 render、layout、commit 各花多久 (`maestro/switch-latency.txt`)，超過時先看時間花在哪一段。
 - 暫存讓網路不用等之後，剩下的是畫面重畫：一個切換只重畫它自己那張卡 (例：團體卡是 `src/ui/gamification/GroupSection.tsx`，自己拿著「全教會｜青少」和月份)，不要讓整頁跟著重畫；月曆格子用位置當 key，換月是更新同一批格子；同樣的資料再來一次不要 setState、不要通知別的頁 (`replaceReadingDaysRange` 資料一樣就不動)。
 - 讀經頁換日不重建讀經器 (2026-10-23 起，`app/(tabs)/reader.tsx` 的 `YouVersionReader` 不用日期當 key)：App 自己的部分 (日期、葉子圈) 要 ≤ 100ms；YouVersion 官方元件載入新一天經文的時間另外記一列「只記錄」(`REPORTED`)，不判 PASS/FAIL。
+- 畫面 render 時不同步查 SQLite：積分頁每畫一次就為月曆每一天讀一次完成紀錄，`expo-sqlite` 的 `getFirstSync` 每次都卡住 JS 執行緒。完成紀錄由 `src/storage/mobileRepository.ts` 留在記憶體，寫入時才清掉；新的 render 路徑要讀資料庫，比照這個做。
+- 一個切換只 commit 一次：effect 裡設回一樣的值也會讓整個元件再畫一次 (React 只有在元件沒有待處理更新時才跳過)，所以換日、換月後的 effect 先比對，沒變就不 setState；常常變的狀態 (朗讀進度、播放狀態) 由用到它的小元件訂閱，不放在整頁的元件 (`app/(tabs)/reader.tsx` 的 `ReadingDateRolloverWatch`)。點下後才要的請求 (先抓隔壁月份、預載經文) 用 `afterNextFrame` 等這一幀畫完再送。探針的 `renders` 記每個元件在一次切換裡畫了幾次，`gc` 記 Hermes 的回收次數和時間。
 
 ### iOS 流程能穩定跑的前提
 
