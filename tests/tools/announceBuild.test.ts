@@ -154,6 +154,49 @@ describe('speakers attached to history', () => {
   });
 });
 
+// 光佑 2026-10-28：「下周的青崇內容，為什麼沒有自動顯示」. Nobody filed a 20261025 folder, so the
+// newest folder stayed 20261018 and the 10/25 gathering was still shown as next on 10/28.
+describe('the next gathering follows the calendar, not the newest folder', () => {
+  function prepareSchedule(folderNames: string[]): void {
+    announceIo.fetchFolderHtml.mockReset();
+    announceIo.fetchWorkbook.mockReset();
+    announceIo.xlsxSheetRows.mockReset();
+    announceIo.fetchSlidesText.mockReset();
+    announceIo.fetchFolderHtml
+      .mockResolvedValueOnce(folderHtml(folderNames.map((name) => ({ id: 'folder-' + name, name }))))
+      .mockResolvedValue(folderHtml([]));
+    announceIo.fetchWorkbook.mockResolvedValue(Buffer.from('workbook'));
+    announceIo.xlsxSheetRows.mockImplementation((_workbook: Buffer, tab: string) => tab === '中亮第一三周信息排班'
+      ? [
+          ['日期', '主題', '負責人', '備註'],
+          [String(excelSerial('2026-09-20')), '九月二十日', '甲', ''],
+          [String(excelSerial('2026-09-27')), '九月二十七日', '乙', ''],
+          [String(excelSerial('2026-10-04')), '十月四日', '丙', ''],
+        ]
+      : []);
+  }
+
+  it('moves past a Sunday that has no folder once that Sunday is over', async () => {
+    prepareSchedule(['20260920']);
+    const result = await buildAnnouncement({ today: '2026-09-30' });
+    expect(result.announcement?.week).toBe('2026-09-20');
+    expect(result.announcement?.next).toMatchObject({ date: '10/4', topic: '十月四日' });
+  });
+
+  it('still shows that Sunday on the day itself while its folder has not appeared', async () => {
+    prepareSchedule(['20260920']);
+    const result = await buildAnnouncement({ today: '2026-09-27' });
+    expect(result.announcement?.next).toMatchObject({ date: '9/27', topic: '九月二十七日' });
+  });
+
+  it('moves on to the following Sunday once that Sunday has its folder', async () => {
+    prepareSchedule(['20260920', '20260927']);
+    const result = await buildAnnouncement({ today: '2026-09-27' });
+    expect(result.announcement?.week).toBe('2026-09-27');
+    expect(result.announcement?.next).toMatchObject({ date: '10/4', topic: '十月四日' });
+  });
+});
+
 describe('what a week folder yields', () => {
   it('picks the recording, the deck and the transcript out of everything else', () => {
     const files = readWeekFiles(WEEK);

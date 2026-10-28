@@ -312,7 +312,10 @@ export async function buildAnnouncement(options: BuildOptions): Promise<{ announ
   }
 
   const thisWeekSermon = rowFor(sermonRows, week);
-  const upcoming = nextAfter([...gatheringRows, ...sermonRows], week);
+  // The next gathering is whatever comes after the newer of the published week and yesterday. A
+  // Sunday nobody filed a folder for (10/25) must not stay "next" for the rest of the week.
+  const yesterday = new Date(Date.parse(`${options.today}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+  const upcoming = nextAfter([...gatheringRows, ...sermonRows], week > yesterday ? week : yesterday);
   const sessions = upcoming ? sessionsOn(program, upcoming.date) : [];
   // Older phones show only topic and owner: they carry the first session, or else the second.
   const headlineSession = sessions[0] ?? { title: SECOND_SESSION_TITLE, owner: null };
