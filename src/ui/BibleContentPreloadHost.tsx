@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { useYouVersion } from '@youversion/platform-react-native-expo-core';
 import { createBibleContentPreloader } from '../services/bibleContentPreload';
-import { afterNextFrame } from '../services/afterNextFrame';
 
 /**
  * Mount inside the SDK's YouVersionProvider. The owner should render this only after
@@ -30,9 +29,8 @@ export function BibleContentPreloadHost({
   useEffect(() => {
     if (!enabled || versionId === null || references.length === 0) return undefined;
     const preloader = createBibleContentPreloader(fetchBibleContent, { maxConcurrent: 2 });
-    // Once the new day is drawn (光佑 2026-10-23, ‹ › within 100 ms): requests started in the same turn hold back that frame.
-    const later = afterNextFrame(() => { void preloader.enqueue({ versionId, references, activeReferenceIndex }); });
-    return () => { later.cancel(); preloader.cancel(); };
+    void preloader.enqueue({ versionId, references, activeReferenceIndex });
+    return () => preloader.cancel();
   }, [activeReferenceIndex, enabled, fetchBibleContent, generationKey, referencesKey, versionId]);
 
   return null;

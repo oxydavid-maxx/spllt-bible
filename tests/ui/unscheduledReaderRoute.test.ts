@@ -29,9 +29,6 @@ vi.mock('react-native', () => ({
   AccessibilityInfo: { addEventListener: () => ({ remove() {} }), isScreenReaderEnabled: async () => false },
 }));
 vi.mock('react-native-svg', () => { const el = (name: string) => (props: { children?: unknown }) => require('react').createElement(name, props, props.children); return { default: el('Svg'), Circle: el('Circle'), Polyline: el('Polyline'), Path: el('Path'), Rect: el('Rect'), G: el('G'), Line: el('Line'), Text: el('SvgText') }; });
-// Each part of the reader notes its render (the CI latency probe's marks): how often ‹ › draws the official reader.
-const drawn = vi.hoisted(() => new Map<string, number>());
-vi.mock('../../src/services/switchLatencyProbe', () => ({ markSwitch: (name: string) => { drawn.set(name, (drawn.get(name) ?? 0) + 1); }, switchStarted: () => undefined, switchShown: () => undefined, useSwitchShown: () => undefined, noteMoment: () => undefined }));
 vi.mock('../../src/ui/devotion/useReaderDevotion', () => ({ useReaderDevotion: () => ({ devotion: undefined, onLastChapterNarrated: () => undefined, leave: () => undefined }) }));
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 24, left: 0, right: 0 }) }));
@@ -254,19 +251,5 @@ describe('‹ › to another day keeps the reader (光佑 2026-10-23: switches w
     await act(async () => { layout().props.onSelectDate('2026-09-13'); });
     expect(reader().props).toMatchObject({ book: 'JHN', chapter: '1' });
     expect(boundary.sdkLoads).toBe(1);
-  });
-  it('draws the official reader once for ‹ ›: the chapter audio answer and state redraw only the audio controls', async () => {
-    await mount();
-    for (let settle = 0; settle < 3; settle++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-    const next = layout().props.nextDate as string;
-    for (const day of [next, '2026-09-13']) {
-      drawn.clear();
-      await act(async () => { layout().props.onSelectDate(day); });
-      for (let settle = 0; settle < 3; settle++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
-      expect(layout().props.selectedDate).toBe(day);
-      // Before: the whole reader was drawn three times (the audio's state, its answer, the day's record each redrew it).
-      expect(drawn.get('YouVersionReader'), day).toBe(1);
-      expect(drawn.get('ChapterAudioControls'), day).toBeGreaterThan(1);
-    }
   });
 });

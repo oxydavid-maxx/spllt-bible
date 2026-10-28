@@ -1,5 +1,4 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { afterNextFrame } from './afterNextFrame';
 import * as authSession from './authSession';
 import type { AuthSession } from './authSession';
 
@@ -149,7 +148,17 @@ export function viewCacheKey(session: Pick<AuthSession, 'memberId' | 'sessionTok
 
 export interface ViewCacheRequest<T> { key: string; load: () => Promise<T> }
 
-export { afterNextFrame };
+/**
+ * Runs `run` once the next frame has been drawn. Questions asked ahead start here: a request started in the same turn
+ * as a switch would hold back the frame that shows it. Without frames (node tests) it runs at once.
+ */
+export function afterNextFrame(run: () => void): { cancel(): void } {
+  if (typeof requestAnimationFrame !== 'function') { run(); return { cancel: () => undefined }; }
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const frame = requestAnimationFrame(() => { timer = setTimeout(() => { timer = null; if (!cancelled) run(); }, 0); });
+  return { cancel: () => { cancelled = true; cancelAnimationFrame?.(frame); if (timer !== null) clearTimeout(timer); } };
+}
 
 /**
  * What `key` shows now, straight from the store in the same render as the tap. While `active`, asks for `key` and the

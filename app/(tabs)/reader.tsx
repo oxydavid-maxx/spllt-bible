@@ -34,23 +34,6 @@ import { markSwitch, switchStarted } from '../../src/services/switchLatencyProbe
 
 let handledTodayReaderTabPressRevision = 0;
 
-/**
- * The day rolls over at midnight unless a chapter or the 靈修 is still being read aloud. The chapter audio's state
- * changes several times on every chapter and every ‹ › (loading, its answer, playing): only this watcher draws again
- * for it, not the whole reader (光佑 2026-10-23, switches within 100 ms).
- */
-function ReadingDateRolloverWatch({ visible, devotionPlaying, devotionFinished }: { visible: boolean; devotionPlaying: boolean; devotionFinished: boolean }) {
-  const audio = useReaderAudioSnapshot();
-  useReadingDateRollover({
-    visible,
-    playing: audio.state === 'playing',
-    finished: audio.finished || audio.state === 'inactive' || audio.state === 'retry' || audio.state === 'unavailable',
-    devotionPlaying,
-    devotionFinished,
-  });
-  return null;
-}
-
 export default function ReaderScreen() {
   markSwitch('ReaderScreen');
   const chrome = useReaderChrome();
@@ -58,6 +41,7 @@ export default function ReaderScreen() {
   useEffect(() => { if (!chrome.focused) setPlanOpen(false); }, [chrome.focused]);
   // A chapter that failed to load while this tab was out of sight retries when it comes back.
   const retrySignal = useReaderRetrySignal(chrome.focused);
+  const audio = useReaderAudioSnapshot();
   const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession();
   const auth = useAuthSnapshot();
   const session = auth.session;
@@ -234,7 +218,13 @@ export default function ReaderScreen() {
     focused: chrome.focused,
     bibleVersionId: selectedVersionId,
   });
-  const rollover = <ReadingDateRolloverWatch visible={chrome.focused} devotionPlaying={Boolean(readerDevotion.devotion?.speaking)} devotionFinished={!readerDevotion.narrationActive} />;
+  useReadingDateRollover({
+    visible: chrome.focused,
+    playing: audio.state === 'playing',
+    finished: audio.finished || audio.state === 'inactive' || audio.state === 'retry' || audio.state === 'unavailable',
+    devotionPlaying: Boolean(readerDevotion.devotion?.speaking),
+    devotionFinished: !readerDevotion.narrationActive,
+  });
   const syncError = completion.syncError;
   const externalTodayResetPending = todayReaderTabPressRevision > handledTodayReaderTabPressRevision
     && todayReaderTabPressResetToAssignedStart
@@ -377,11 +367,9 @@ export default function ReaderScreen() {
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#fff', paddingHorizontal: 16 }}>
       <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}><AccountEntryButton /></View>
       <Text accessibilityLiveRegion="polite">正在載入閱讀設定…</Text>
-      {rollover}
     </SafeAreaView>
   );
   return (<>
-    {rollover}
     {/* Not keyed by the date (光佑 2026-10-23, switches within 100 ms): ‹ › keeps this reader and its page, and only the
         chapter changes, as a chapter tab does. A new key rebuilt the whole page and the official reader for every day. */}
     <YouVersionReader

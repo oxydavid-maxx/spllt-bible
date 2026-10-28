@@ -115,14 +115,7 @@ export function useReaderChrome() {
     if (direction === 'down') hideTools();
     else showTools();
   }, [hideTools, showTools]);
-  // Every new chapter reports 「not at the end」: when that is already so, nothing is set and nothing draws again.
-  const atChapterEndNow = useRef(atChapterEnd);
-  atChapterEndNow.current = atChapterEnd;
-  const handleCanvasEdge = useCallback(({ atEnd }: { atEnd: boolean }) => {
-    if (atChapterEndNow.current === atEnd) return;
-    atChapterEndNow.current = atEnd;
-    setAtChapterEnd(atEnd);
-  }, []);
+  const handleCanvasEdge = useCallback(({ atEnd }: { atEnd: boolean }) => setAtChapterEnd(atEnd), []);
   // Read-along (2026-09-29): the page follows the narrated verse until a finger drag or a verse
   // selection lets go; only 回到朗讀處 follows again. See readAlongFollow.ts.
   const [readAlongState, dispatchReadAlong] = useReducer(readAlong, initialReadAlong);
@@ -131,14 +124,7 @@ export function useReaderChrome() {
   const handleFollowRelease = useCallback(() => dispatchReadAlong({ type: 'release' }), []);
   const handleFollowPosition = useCallback((position: ReadAlongPosition) => dispatchReadAlong({ type: 'position', position }), []);
   const returnToNarration = useCallback(() => dispatchReadAlong({ type: 'request' }), []);
-  // A new chapter while already following from the start changes nothing: no dispatch, so the reader is not drawn again
-  // (the reducer would return the same state, but only after drawing the screen that holds it).
-  const readAlongNow = useRef(readAlongState);
-  readAlongNow.current = readAlongState;
-  const handleReadAlongChapter = useCallback(() => {
-    if (readAlongNow.current.following && readAlongNow.current.position === null) return;
-    dispatchReadAlong({ type: 'chapter' });
-  }, []);
+  const handleReadAlongChapter = useCallback(() => dispatchReadAlong({ type: 'chapter' }), []);
   const handleVerseSelection = useCallback((selected: boolean) => {
     setVerseSelected(selected);
     if (selected) dispatchReadAlong({ type: 'select' });

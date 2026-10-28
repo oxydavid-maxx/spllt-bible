@@ -75,17 +75,8 @@ export function YouVersionReader({ date, references, assignedReading = true, app
     automaticPlaybackRef.current = null;
     currentPlaybackRef.current = null;
   }, []);
-  const autoplayShown = useRef({ autoplayIntent, autoplayNotice });
-  autoplayShown.current = { autoplayIntent, autoplayNotice };
   useEffect(() => {
-    // Any route identity change invalidates the old player's EOF handoff. With no intent or notice on screen there is
-    // nothing to clear, so the reader is not drawn again for ‹ › (光佑 2026-10-23, switches within 100 ms).
-    if (autoplayShown.current.autoplayIntent === null && autoplayShown.current.autoplayNotice === null) {
-      autoplayControllerRef.current.cancel();
-      automaticPlaybackRef.current = null;
-      currentPlaybackRef.current = null;
-      return;
-    }
+    // Any route identity change invalidates the old player's EOF handoff.
     cancelAutoplay();
     setAutoplayNotice(null);
   }, [cancelAutoplay, date, versionId, references.join('|'), readerPreferences?.ownerId]);
@@ -102,15 +93,8 @@ export function YouVersionReader({ date, references, assignedReading = true, app
   const passageKey = `${date}::${versionId}::${displayedChapter}::${assignedReading ? references[activeReferenceIndex] ?? '' : 'free'}`;
   const sdkPassageRange = useMemo(() => passageRange ? { ...passageRange, key: passageKey } : null, [passageRange, passageKey]);
   const [rangeAudioNotice, setRangeAudioNotice] = useState<{ key: string; text: string | null } | null>(null);
-  const rangeAudioNoticeNow = useRef(rangeAudioNotice);
-  rangeAudioNoticeNow.current = rangeAudioNotice;
   const handleRangeAudioNotice = useCallback((key: string, text: string | null) => {
-    // The same notice, or no notice for another passage either: nothing changes on screen, so nothing is set and the
-    // reader is not drawn again (a new day's ‹ ›, 光佑 2026-10-23: switches within 100 ms).
-    const previous = rangeAudioNoticeNow.current;
-    if ((previous?.key === key && previous.text === text) || (text === null && !previous?.text)) return;
-    rangeAudioNoticeNow.current = { key, text };
-    setRangeAudioNotice({ key, text });
+    setRangeAudioNotice(previous => previous?.key === key && previous.text === text ? previous : { key, text });
   }, []);
   const passageAudioNotice = rangeAudioNotice?.key === passageKey ? rangeAudioNotice.text : null;
   const setActiveReferenceIndex = (index: number, automatic = false): void => {

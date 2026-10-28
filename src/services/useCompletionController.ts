@@ -53,12 +53,6 @@ function blankRecord(memberId: string, planId: string, taskDate: string): Comple
   return { memberId, planId, taskDate, status: 'UNREPORTED', revision: 0, syncStatus: 'CONFIRMED' };
 }
 
-/** The same record field for field: kept as it is, so nothing on screen draws again for it. */
-function sameRecord(left: CompletionRecord, right: CompletionRecord): boolean {
-  const keys = new Set([...Object.keys(left), ...Object.keys(right)]) as Set<keyof CompletionRecord>;
-  return [...keys].every((name) => left[name] === right[name]);
-}
-
 function sameOwner(left: Owner | null, right: Owner): boolean {
   return Boolean(left && left.memberId === right.memberId && left.sessionToken === right.sessionToken
     && left.planId === right.planId && left.taskDate === right.taskDate && left.authEpoch === right.authEpoch);
@@ -77,25 +71,18 @@ export function useCompletionController(options: UseCompletionControllerOptions)
 
   const repositoryRef = useRef<ReturnType<typeof openQingmuRepository> | null>(null);
   const clientRef = useRef<ReturnType<typeof createApiClient> | null>(null);
-  const readRecord = (): CompletionRecord => {
+  const [record, setRecord] = useState<CompletionRecord>(() => {
     if (!memberId) return blankRecord('signed-out', options.planId, options.taskDate);
     try {
-      const repository = repositoryRef.current ?? openQingmuRepository();
+      const repository = openQingmuRepository();
       repositoryRef.current = repository;
       return repository.get({ memberId, planId: options.planId, taskDate: options.taskDate })
         ?? blankRecord(memberId, options.planId, options.taskDate);
     } catch {
       return blankRecord(memberId, options.planId, options.taskDate);
     }
-  };
-  const [record, setRecord] = useState<CompletionRecord>(readRecord);
+  });
   const [syncError, setSyncError] = useState(false);
-  // Another day (‹ ›, a calendar tap) shows its own record in the same render (光佑 2026-10-23, switches within 100 ms).
-  // Set by the effect below a frame later, it drew the whole reader a second time; that effect now finds it in place.
-  const [recordOwner, setRecordOwner] = useState(owner);
-  if (recordOwner !== owner) { setRecordOwner(owner); setRecord(readRecord()); setSyncError(false); }
-  const shownRecord = useRef({ record, syncError });
-  shownRecord.current = { record, syncError };
   const [reminderScheduler] = useState(() => createReminderScheduler());
   const focusedRef = useRef(false);
   const awardCallbackRef = useRef(options.onAward);
@@ -137,10 +124,9 @@ export function useCompletionController(options: UseCompletionControllerOptions)
         memberId,
       })
       : null;
-    const current = repository?.get(identity) ?? blankRecord(identity.memberId, identity.planId, identity.taskDate);
-    // Usually already in place (set in the render that showed this day): nothing is set, nothing draws again.
-    if (!sameRecord(shownRecord.current.record, current)) setRecord(current);
-    if (shownRecord.current.syncError) setSyncError(false);
+    const current = repository?.get(identity);
+    setRecord(current ?? blankRecord(identity.memberId, identity.planId, identity.taskDate));
+    setSyncError(false);
     // The identity includes auth epoch so a same-member sign-out/sign-in cannot reuse a prior callback.
   }, [memberId, sessionToken, auth.epoch, options.planId, options.taskDate]);
 
