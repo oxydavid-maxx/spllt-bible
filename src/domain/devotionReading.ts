@@ -31,6 +31,13 @@ const chapter = (id: string, n: string) => `${ZH_TW_BOOK_NAMES[id]}第${chineseN
  */
 const SPOKEN_AS: ReadonlyArray<readonly [RegExp, string]> = [[/祢/gu, '你'], [/祂/gu, '他'], [/神啊/gu, '神哪'], [/得著/gu, '得着']];
 
+/**
+ * In the book title 使徒行傳, 傳 is zhuàn (賺), but Azure says chuán (船) (維護者 2026-10-23, the fix approved by ear
+ * 2026-10-28). It is said as the same-sounding 撰. This swap runs last, after citations such as 徒1:8 have been
+ * spelled out with the book's name and after the book names have been matched; 傳記 and 自傳 are read right already.
+ */
+const said = (text: string) => text.replace(/行傳/gu, '行撰');
+
 function clean(text: string): string {
   return SPOKEN_AS.reduce((spoken, [word, said]) => spoken.replace(word, said), text)
     .replace(/(?:https?:\/\/|www\.)[^\s，。！？；、<>「」]+/giu, '')
@@ -43,12 +50,12 @@ function clean(text: string): string {
 function reader() {
   const announced = new Set<string>();
   function prose(text: string): string {
-    return clean(text)
+    return said(clean(text)
       .replace(new RegExp(reference, 'gu'), (_all, book: string | undefined, ch: string, verses: string) =>
         `${book ? ZH_TW_BOOK_NAMES[books[book]] : ''}${chineseNumber(ch)}${book && books[book] === 'PSA' ? '篇' : '章'}${spokenVerses(verses)}節`)
       .replace(new RegExp(`(${names})\\s*(\\d{1,3})(?![\\d:：])`, 'gu'), (_all, book: string, ch: string) => {
         const id = books[book]; announced.add(id); return chapter(id, ch);
-      });
+      }));
   }
   return {
     prose,
@@ -58,7 +65,7 @@ function reader() {
       const id = match[1] ? books[match[1]] : undefined;
       const intro = id && !announced.has(id) ? `${chapter(id, match[2])}。` : '';
       if (id) announced.add(id);
-      return `${intro}${prose(clean(text).slice(match[0].length)).trim()}`;
+      return said(`${intro}${prose(clean(text).slice(match[0].length)).trim()}`);
     },
   };
 }
