@@ -31,7 +31,17 @@ export const REPORTED: SwitchExpectation[] = [
   { flow: '14-reader-instant', label: 'reader-date-text', name: '讀經 換日 YouVersion 經文出現 (外部元件，只記錄)', taps: ['下一個排定讀經日', '上一個排定讀經日 (換回)'] },
 ];
 
-export interface SwitchRow { flow: string; name: string; tap: string; ms: number | null; result: 'PASS' | 'FAIL' | 'SKIP' | 'INFO' }
+// 光佑 2026-10-28 approved shipping this version while these three taps get their own fix. In the last run of this
+// code (39968408738) they took 106–121 ms, where other runs of the same code measured 15–23 ms. They are still measured
+// and listed as 待修, and one over the limit does not fail the check; one that was not measured still FAILs. The
+// follow-up that brings them under the limit removes this list. Nothing else joins it.
+export const PENDING_FIX: ReadonlyArray<{ label: string; tap: string }> = [
+  { label: 'reader-date', tap: '下一個排定讀經日' },
+  { label: 'reader-date', tap: '上一個排定讀經日 (換回)' },
+  { label: 'group-month', tap: '下個月 (換回)' },
+];
+
+export interface SwitchRow { flow: string; name: string; tap: string; ms: number | null; result: 'PASS' | 'FAIL' | 'PENDING' | 'SKIP' | 'INFO' }
 
 export function checkSwitchLatency(recordsByFlow: Record<string, Probe[]>, flows: Record<string, string>): SwitchRow[] {
   const rows: SwitchRow[] = [];
@@ -42,7 +52,8 @@ export function checkSwitchLatency(recordsByFlow: Record<string, Probe[]>, flows
       if (ran === 'SKIP') { rows.push({ flow: expectation.flow, name: expectation.name, tap, ms: null, result: 'SKIP' }); return; }
       const ms = records[index]?.ms;
       const measured = typeof ms === 'number' && Number.isFinite(ms) && ms >= 0;
-      rows.push({ flow: expectation.flow, name: expectation.name, tap, ms: measured ? ms : null, result: measured && ms <= SWITCH_LIMIT_MS ? 'PASS' : 'FAIL' });
+      const pending = PENDING_FIX.some((item) => item.label === expectation.label && item.tap === tap);
+      rows.push({ flow: expectation.flow, name: expectation.name, tap, ms: measured ? ms : null, result: !measured ? 'FAIL' : ms <= SWITCH_LIMIT_MS ? 'PASS' : pending ? 'PENDING' : 'FAIL' });
     });
   }
   for (const expectation of REPORTED) {

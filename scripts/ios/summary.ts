@@ -11,7 +11,7 @@ const home = read('runtime-home.json', null as null | Runtime);
 const reader = read('runtime-reader.json', null as null | Runtime);
 const progress = read('runtime-progress.json', null as null | { footprintMB: number });
 // R6 (光佑 2026-10-23): each switch's tap-to-content time, from scripts/ios/check-switch-latency.ts.
-const latency = read('switch-latency.json', null as null | { limitMs: number; rows: Array<{ flow: string; name: string; tap: string; ms: number | null; result: 'PASS' | 'FAIL' | 'SKIP' | 'INFO' }> });
+const latency = read('switch-latency.json', null as null | { limitMs: number; rows: Array<{ flow: string; name: string; tap: string; ms: number | null; result: 'PASS' | 'FAIL' | 'PENDING' | 'SKIP' | 'INFO' }> });
 // A value that could not be read is a FAIL, never a pass: in JS `null <= 3` is true, and 0 MB means vmmap gave nothing.
 const within = (value: number | null | undefined, limit: number) => typeof value === 'number' && value <= limit;
 const rows: Array<[string, boolean | null, string]> = [];
@@ -30,10 +30,12 @@ else if ('44-points-instant' in flows) rows.push(['R3 積分頁記憶體', false
 if (latency) for (const row of latency.rows) {
   // INFO: measured and reported only (the official YouVersion reader's own text), never a PASS or a FAIL.
   if (row.result === 'INFO') { rows.push([`R6 記錄：${row.name} ${row.tap}`, null, row.ms === null ? '沒量到' : `${row.ms} ms`]); continue; }
+  // PENDING: one of the three taps scripts/ios/check-switch-latency.ts lists as 待修 (光佑 2026-10-28), over the limit.
+  if (row.result === 'PENDING') { rows.push([`R6 待修 (另案修到 ≤ ${latency.limitMs} ms)：${row.name} ${row.tap}`, null, `${row.ms} ms，超過也不擋`]); continue; }
   rows.push([`R6 切換 ≤ ${latency.limitMs} ms：${row.name} ${row.tap}`, row.result === 'SKIP' ? null : row.result === 'PASS', row.ms === null ? '沒量到' : `${row.ms} ms`]);
 }
 else if ('44-points-instant' in flows) rows.push(['R6 切換延遲', false, '沒有產生 switch-latency.json']);
-console.log(rows.map(([name, ok, note]) => `| ${name} | ${ok === null ? '略過' : ok ? 'PASS' : 'FAIL'} | ${note} |`).join('\n'));
+console.log(rows.map(([name, ok, note]) => `| ${name} | ${ok === null ? name.startsWith('R6 待修') ? '待修' : '略過' : ok ? 'PASS' : 'FAIL'} | ${note} |`).join('\n'));
 const failed = rows.filter(([, ok]) => ok === false).map(([name]) => name);
 const summary = { appBytes: guards.appBytes, footprintMB: home?.footprintMB ?? null, footprintReaderMB: reader?.footprintMB ?? null, footprintProgressMB: progress?.footprintMB ?? null, guards: guards.guards, flows, runtime: { home, reader, progress }, switchLatency: latency?.rows ?? null, failed };
 writeFileSync(join(out, 'ios-summary.json'), JSON.stringify(summary));

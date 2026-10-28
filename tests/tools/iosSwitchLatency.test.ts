@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { checkSwitchLatency, EXPECTED, REPORTED, SWITCH_LIMIT_MS } from '../../scripts/ios/check-switch-latency';
+import { checkSwitchLatency, EXPECTED, PENDING_FIX, REPORTED, SWITCH_LIMIT_MS } from '../../scripts/ios/check-switch-latency';
 
 // 光佑 2026-10-23: every switch shows its content within 100 ms on the iOS simulator; one that is not measured fails.
 const record = (label: string, ms: number) => ({ label, surface: label, key: 'k', ms, at: new Date().toISOString() });
@@ -21,6 +21,25 @@ describe('iOS switch latency check', () => {
     expect(rows.filter((row) => row.result === 'FAIL')).toHaveLength(2);
     expect(rows.find((row) => row.result === 'FAIL' && row.ms === null)).toBeDefined();
     expect(checkSwitchLatency({}, ran).filter((row) => row.result !== 'INFO').every((row) => row.result === 'FAIL')).toBe(true);
+  });
+
+  // 光佑 2026-10-28: ship this version while three taps get their own fix. Only those three may be over, and only
+  // when measured; every other tap still fails over the limit.
+  it('lists the three 待修 taps as PENDING when over, still fails them unmeasured, and fails any other slow tap', () => {
+    expect(PENDING_FIX).toHaveLength(3);
+    const records = allPass();
+    records['14-reader-instant'] = records['14-reader-instant'].map((item) => item.label === 'reader-date' ? record('reader-date', 121) : item);
+    const rows = checkSwitchLatency(records, ran);
+    expect(rows.filter((row) => row.result === 'PENDING').map((row) => row.tap)).toEqual(['下一個排定讀經日', '上一個排定讀經日 (換回)']);
+    expect(rows.some((row) => row.result === 'FAIL')).toBe(false);
+
+    records['44-points-instant'] = records['44-points-instant'].map((item) => item.label === 'group-month' ? record('group-month', 106) : item);
+    const both = checkSwitchLatency(records, ran).filter((row) => row.name === '積分 團體月曆換月');
+    expect(both.map((row) => row.result)).toEqual(['FAIL', 'PENDING']);
+
+    const unmeasured = allPass();
+    unmeasured['14-reader-instant'] = unmeasured['14-reader-instant'].filter((item) => item.label !== 'reader-date');
+    expect(checkSwitchLatency(unmeasured, ran).filter((row) => row.name.startsWith('讀經 換日 (')).every((row) => row.result === 'FAIL')).toBe(true);
   });
 
   it("reports the official reader's own text time without judging it", () => {
