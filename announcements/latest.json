@@ -1,6 +1,6 @@
 {
   "week": "2026-10-18",
-  "generatedAt": "2026-10-22T01:04:21.396Z",
+  "generatedAt": "2026-10-29T13:26:34.415Z",
   "sermon": {
     "label": "第一堂",
     "title": "洪水，挪亞方舟",
@@ -71,48 +71,52 @@
     }
   ],
   "next": {
-    "date": "10/25",
-    "topic": "信心：怎麼得著信心？",
-    "owner": "中亮/大專",
+    "date": "11/1",
+    "topic": "巴別塔",
+    "owner": "惠雯",
     "signup": null,
     "sessions": [
       {
         "label": "第一堂",
-        "kind": "青年啟發",
-        "title": "信心：怎麼得著信心？",
-        "owner": "中亮/大專"
+        "kind": "信息",
+        "title": "巴別塔",
+        "owner": "惠雯"
       },
       {
         "label": "第二堂",
         "kind": null,
-        "title": "吃喝玩樂躺平系列: 青年館電影院",
-        "owner": "正慧姐"
+        "title": "創世記6~8章",
+        "owner": "分組進行"
       }
     ],
     "roles": [
       {
         "label": "講員",
-        "value": "中亮"
+        "value": "惠雯"
       },
       {
         "label": "敬拜團+詩歌",
-        "value": "大專團"
+        "value": "青少團"
       },
       {
         "label": "主領(報告)",
-        "value": "中亮"
+        "value": "德馨"
       },
       {
         "label": "招待",
-        "value": "正慧/悅心"
+        "value": "心予/心閔"
       },
       {
         "label": "影音(投影/音控)",
-        "value": "欣儀＆柏羽"
+        "value": "柏睿＆采人"
+      },
+      {
+        "label": "聖餐",
+        "value": "軍廷傳道/全體"
       },
       {
         "label": "愛筵",
-        "value": "淑君及大廚們"
+        "value": "豐盛小組"
       },
       {
         "label": "清潔",
