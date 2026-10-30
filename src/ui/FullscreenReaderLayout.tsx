@@ -22,6 +22,7 @@ import { initialReadAlong, readAlong, showReturnToNarration } from './readAlongF
 import { useReduceMotion } from './useReduceMotion';
 import { READER_SPEEDS } from '../services/readerSpeedPreference';
 import { taipeiDate } from '../domain/gamificationV1';
+import { markSwitch, useSwitchShown } from '../services/switchLatencyProbe';
 
 // Layout A (docs/design/reader-page.md §5, §5.1), in dp. Every tool floats over the scripture, so the
 // reader never changes size between normal and collapsed; the canvas keeps room under the tools.
@@ -165,6 +166,8 @@ export interface ReaderDevotion {
   available: boolean;
   prepare: () => void;
   completed: boolean;
+  /** `completed` is the day's own answer (kept or confirmed), not a guess while it is asked. */
+  markKnown?: boolean;
   /** Marking cannot be saved for this day (outside the 7-day window). */
   disabled: boolean;
   onToggle: () => void;
@@ -246,6 +249,8 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   };
   const chapterTitle = formatChapterTitleZhTw(chapterUsfm) || '選擇章節';
   const selectedDateHeader = formatReadingDateHeader(selectedDate, taipeiDate());
+  // The CI latency check (src/services/switchLatencyProbe.ts): ‹ › shows the new day here, with its leaf's 靈修 mark.
+  useSwitchShown('devotion-mark', devotion?.markKnown ? selectedDate : null);
   const widestAdjacentDate = Math.max(formatReadingDateLabel(previousDate ?? '').length, formatReadingDateLabel(nextDate ?? '').length);
   const adjacentDateTextWidth = widestAdjacentDate * theme.type.caption.size * fontScale * 0.56;
   const nextDateControlWidth = Math.max(theme.control.tap, adjacentDateTextWidth + 18 + theme.spacing.xxs * 2);
@@ -291,6 +296,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
     if (!devotion.speaking) void audioControlRef.current?.pause().catch(() => undefined);
     devotion.onPlayPause();
   };
+  markSwitch('FullscreenReaderLayout:end');
   const feedback = isValidElement<{ bottomOffset?: number }>(completionFeedback) ? cloneElement(completionFeedback, { bottomOffset: aboveActions }) : completionFeedback;
   return (
     <View style={styles.root}>

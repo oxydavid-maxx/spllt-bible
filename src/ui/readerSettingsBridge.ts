@@ -166,7 +166,30 @@ true;
 `;
 }
 
-export function buildReaderDomBridge(fullscreen: boolean, hasVersionMetadata = false, insets?: ReaderCanvasInsets): string {
+export const READER_RENDERED_MESSAGE = 'qingmu.reader.rendered';
+// CI fixture build only (the switch latency check, 2026-10-23): says when the chapter's verses on the page change, so
+// the time the official reader takes to show the next day's text is measured apart from the app's own page.
+const READER_RENDERED_PROBE = `
+(function () {
+  if (window.__qingmuRenderedProbe || !window.ReactNativeWebView) return;
+  window.__qingmuRenderedProbe = true;
+  var last = null, waiting = false;
+  function check() {
+    waiting = false;
+    var verses = document.querySelectorAll('.yv-v[v]');
+    if (!verses.length) return;
+    var sig = (verses[0].textContent || '').slice(0, 60) + '|' + verses.length;
+    if (sig === last) return;
+    last = sig;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'qingmu.reader.rendered', data: null }));
+  }
+  new MutationObserver(function () { if (!waiting) { waiting = true; setTimeout(check, 0); } }).observe(document.body || document.documentElement, { childList: true, subtree: true, characterData: true });
+  check();
+})();
+true;
+`;
+
+export function buildReaderDomBridge(fullscreen: boolean, hasVersionMetadata = false, insets?: ReaderCanvasInsets, reportRendered = false): string {
   // Read-along paints the narrated verse in both layouts; only the fullscreen one has the button.
   if (!fullscreen) return READER_SETTINGS_BRIDGE + partialChapterScript() + readAlongScript({ top: 0, bottom: 0 });
   // The native SDK also injects an unlayered !important padding-bottom rule.
@@ -180,7 +203,7 @@ export function buildReaderDomBridge(fullscreen: boolean, hasVersionMetadata = f
     + `${renderer} .s, ${renderer} .s1 { font-weight: 600 !important; }`
     + (hasVersionMetadata ? `${scope} > footer { display: none !important; }` : '');
   // Canvas listeners first so the edge reporter exists when the layout pass runs.
-  return READER_SETTINGS_BRIDGE + partialChapterScript() + readAlongScript({ top, bottom }) + READER_CANVAS_BRIDGE + readerLayoutScript(css);
+  return READER_SETTINGS_BRIDGE + partialChapterScript() + readAlongScript({ top, bottom }) + READER_CANVAS_BRIDGE + readerLayoutScript(css) + (reportRendered ? READER_RENDERED_PROBE : '');
 }
 
 export function readReaderUiMessage(data: string): string | null {

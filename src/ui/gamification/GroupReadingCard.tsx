@@ -6,6 +6,7 @@ import { monthName, monthSummary, myPrizeLine, prizeProgress, prizeRule, readers
 import { theme } from '../Theme';
 import { GROUP_NAME, whereSentence } from '../congregation/congregationCopy';
 import { SideSwitch } from '../congregation/SideSwitch';
+import { useSwitchShown } from '../../services/switchLatencyProbe';
 
 /**
  * 團體 on the 積分 page (維護者 2026-10-14): how many youth read each day, and the prizes the church
@@ -51,6 +52,7 @@ function Count({ label, readers }: { label: string; readers: number | null }) {
 }
 
 export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onView, failedSide }: GroupReadingCardProps) {
+  useSwitchShown('group', `${view.scope}:${view.month}`);
   const readers = new Map(view.days.map((day) => [day.date, day.readers]));
   const busiest = view.busiest?.readers ?? 0;
   const summary = monthSummary(view);
@@ -83,12 +85,13 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onVi
       <View style={styles.grid}>{WEEKDAYS.map((label) => <View key={label} style={styles.slot}><Text style={styles.weekday}>{label}</Text></View>)}</View>
       <View style={styles.grid}>
         {monthCells(view.month).map((date, index) => {
-          if (!date) return <View key={`b${index}`} style={styles.slot} />;
+          // Keyed by place in the grid, not by date: a change of month updates the same cells instead of replacing them.
+          if (!date) return <View key={index} style={styles.slot} />;
           const day = Number(date.slice(8, 10));
-          if (date > view.today || !readers.has(date)) return <View key={date} style={styles.slot}><View style={[styles.cell, styles.cellFuture]}><Text style={styles.futureText}>{day}</Text></View></View>;
+          if (date > view.today || !readers.has(date)) return <View key={index} style={styles.slot}><View style={[styles.cell, styles.cellFuture]}><Text style={styles.futureText}>{day}</Text></View></View>;
           const count = readers.get(date) ?? null;
           const level = readersLevel(count, busiest);
-          return <View key={date} style={styles.slot}><View accessible accessibilityLabel={count === null ? `${date} 不到 2 人` : `${date} ${count} 人`} style={[styles.cell, LEVEL_STYLE[level], date === view.today && styles.cellToday]}>
+          return <View key={index} style={styles.slot}><View accessible accessibilityLabel={count === null ? `${date} 不到 2 人` : `${date} ${count} 人`} style={[styles.cell, LEVEL_STYLE[level], date === view.today && styles.cellToday]}>
             <Text style={[styles.cellDay, level === 3 && styles.cellDayDark]}>{day}</Text>
             {count !== null ? <Text style={[styles.cellCount, level === 3 && styles.cellCountDark]}>{count}</Text> : null}
           </View></View>;

@@ -108,13 +108,17 @@ export function isWithinCompletionWindow(taskDate: string, taipeiToday: string):
   return age >= 0 && age < COMPLETION_WINDOW_DAYS;
 }
 
+// Built once and reused: taipeiDate runs in every render of the reader and the 積分 page, and building a formatter
+// costs far more than using one (2026-10-23, switches within 100 ms).
+let taipeiFormatter: Intl.DateTimeFormat | null = null;
 export function taipeiDate(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
+  taipeiFormatter ??= new Intl.DateTimeFormat('en-CA', {
     timeZone: GAMIFICATION_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(now);
+  });
+  return taipeiFormatter.format(now);
 }
 
 export function calculateBand(total: number, totals: readonly number[]): number | null {

@@ -192,7 +192,9 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
               }
             : {}),
         }
-      : { ...(fixtureRoster ? { productionAppleAuth: { verify: async () => { throw new Error('FIXTURE_APPLE_IDENTITY_REFUSED'); } } } : {}), fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token', ...(process.env.QINGMU_FIXTURE_DEFAULT_MEMBER?.trim() ? { fixtureDefaultMemberId: process.env.QINGMU_FIXTURE_DEFAULT_MEMBER.trim() } : {}) }),
+      // A fixture backend takes the prize sheet only when CI names a key (scripts/ios/run-flows.sh, 2026-10-23: 選擇目標獎品
+      // opens only with prizes on the shelf).
+      : { ...(fixtureRoster ? { productionAppleAuth: { verify: async () => { throw new Error('FIXTURE_APPLE_IDENTITY_REFUSED'); } } } : {}), fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token', ...(process.env.QINGMU_FIXTURE_DEFAULT_MEMBER?.trim() ? { fixtureDefaultMemberId: process.env.QINGMU_FIXTURE_DEFAULT_MEMBER.trim() } : {}), ...(process.env.QINGMU_FORM_REGISTRATION_KEY?.trim() ? { formRegistrationKey: process.env.QINGMU_FORM_REGISTRATION_KEY.trim() } : {}) }),
   });
   const officialBible = createOfficialBibleAdapter();
   const lineChannelSecret = readLineChannelSecret(process.env.QINGMU_LINE_SECRET_FILE);

@@ -8,7 +8,8 @@ import { theme } from './Theme';
 import { formatReferenceListZhTw, formatReferenceZhTw } from '../domain/scriptureReference';
 import { buildYouVersionReaderConfig, resolveReaderContentApiHost } from './youVersionReaderConfig';
 import { getYouVersionContentMetadata } from '../config/youVersionContent';
-import { buildReaderDomBridge, readReaderUiMessage, readReaderCanvasScrollEvent, readReaderCanvasRevealEvent, readReaderCanvasEdgeEvent, READER_SETTINGS_MESSAGE, READER_CANVAS_SCROLL_MESSAGE, READER_CANVAS_REVEAL_MESSAGE, READER_CANVAS_EDGE_MESSAGE, type ReaderCanvasInsets, type ReaderRevealReason } from './readerSettingsBridge';
+import { buildReaderDomBridge, readReaderUiMessage, readReaderCanvasScrollEvent, readReaderCanvasRevealEvent, readReaderCanvasEdgeEvent, READER_SETTINGS_MESSAGE, READER_CANVAS_SCROLL_MESSAGE, READER_CANVAS_REVEAL_MESSAGE, READER_CANVAS_EDGE_MESSAGE, READER_RENDERED_MESSAGE, type ReaderCanvasInsets, type ReaderRevealReason } from './readerSettingsBridge';
+import { markSwitch, switchShown } from '../services/switchLatencyProbe';
 import { useReaderPreferencesBinding, type ReaderPreferencesBinding } from './useReaderPreferencesBinding';
 import { readReadAlongMessage, type ReadAlongPosition } from './readAlongBridge';
 import { BibleContentPreloadHost } from './BibleContentPreloadHost';
@@ -35,6 +36,7 @@ function chapterForReference(reference: string): string | null {
 }
 
 export function YouVersionReader({ date, references, assignedReading = true, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasReveal, onCanvasScroll, onCanvasEdge, canvasInsets, onVerseSelectionChange, onSheetOpenChange, followNarration = false, followRequest = 0, reduceMotion = false, onNarrationChange, onFollowRelease, onFollowPosition, clearVerseSelectionSignal = 0, retrySignal = 0, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied, narrationSpeed = 1, onLastChapterNarrated }: { date: string; references: string[]; assignedReading?: boolean; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasReveal?: (reason: ReaderRevealReason) => void; onCanvasScroll?: (event: { direction: 'up' | 'down'; deltaY: number }) => void; onCanvasEdge?: (event: { atEnd: boolean }) => void; canvasInsets?: ReaderCanvasInsets; onVerseSelectionChange?: (selected: boolean) => void; onSheetOpenChange?: (open: boolean) => void; followNarration?: boolean; followRequest?: number; reduceMotion?: boolean; onNarrationChange?: (verse: number | null) => void; onFollowRelease?: () => void; onFollowPosition?: (position: ReadAlongPosition) => void; clearVerseSelectionSignal?: number; retrySignal?: number; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void; narrationSpeed?: number; onLastChapterNarrated?: () => void }) {
+  markSwitch('YouVersionReader');
   const [readerModule, setReaderModule] = useState<YouVersionReaderUiModule | null>(null);
   const preferencesBinding = useReaderPreferencesBinding(readerModule, readerPreferences);
   const [error, setError] = useState<string | null>(null);
@@ -260,9 +262,11 @@ export function YouVersionReader({ date, references, assignedReading = true, app
   }), [ready]);
   const insetTop = canvasInsets?.top, insetBottom = canvasInsets?.bottom;
   const readerDom = useMemo(() => ({
-    injectedJavaScript: buildReaderDomBridge(fullscreen, hasVersionMetadata, insetTop === undefined || insetBottom === undefined ? undefined : { top: insetTop, bottom: insetBottom }),
+    injectedJavaScript: buildReaderDomBridge(fullscreen, hasVersionMetadata, insetTop === undefined || insetBottom === undefined ? undefined : { top: insetTop, bottom: insetBottom }, process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true'),
     onMessage: (event: { nativeEvent: { data: string } }) => {
       const data = event.nativeEvent.data;
+      // CI fixture build only: the official reader's text changed (the switch latency check times ‹ › to it).
+      if (data.includes(READER_RENDERED_MESSAGE)) { switchShown('yv-text', 'changed'); return; }
       const readAlongMessage = readReadAlongMessage(data);
       if (readAlongMessage) {
         if (readAlongMessage.kind === 'release') onFollowRelease?.();

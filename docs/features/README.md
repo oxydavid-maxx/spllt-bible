@@ -25,7 +25,7 @@
 | 報名狀況 | 已有幾人報名、有哪些朋友報名 | 公告的下次聚會卡片 | Android、iOS | [announcements.md](announcements.md) |
 | 講道紀錄 | 一個主日一張卡，最新的一週標「上週」；每堂列名稱、講員和資料連結，同類兩份檔案編成 1、2；沒有內容的堂次收成一行 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 離線提示 | 抓不到最新公告時，小字註明目前顯示哪一週 | 公告分頁底部 | Android、iOS | [announcements.md](announcements.md) |
-| 青少｜主堂 | 公告最上面兩個分頁，預設打開自己那一邊 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
+| 青少｜主堂 | 公告最上面兩個分頁，預設打開自己那一邊；主堂週刊打開公告就先抓好 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 主堂週刊 | 教會在 LINE 公布欄貼的週刊原圖，最新在上、留 8 週，點了全螢幕放大 | 公告「主堂」 | Android、iOS | [announcements.md](announcements.md) |
 
 ## 讀經
@@ -40,7 +40,7 @@
 | 字體設定 | 字級、字型、行距 | 更多閱讀工具 → 調整字體 | Android、iOS | [reader.md](reader.md) |
 | 經節複製 | 選經文後複製到剪貼簿 | 在經文上選取 | Android、iOS | [reader.md](reader.md) |
 | 沉浸模式 | 往下捲收起工具列，專心讀經；往上捲一段、捲到章首或章尾、按返回鍵、點收合的細條會叫回來 | 讀經頁捲動經文 | Android、iOS | [reader.md](reader.md) |
-| 預先載入 | 背景先抓今天的經文，換章不用等 | 自動 | Android、iOS | [reader.md](reader.md) |
+| 預先載入 | 背景先抓今天的經文，換章不用等；靈修文和整個月的靈修打勾也先抓好 | 自動 | Android、iOS | [reader.md](reader.md) |
 | 閱讀位置記憶 | 記住每個帳號每一天讀到哪裡，回來接著讀 | 自動 | Android、iOS | [reader.md](reader.md) |
 | 載入失敗與重試 | 失敗時顯示說明和「重試」，回到前景自動再試 | 讀經頁載入經文時 | Android、iOS | [reader.md](reader.md) |
 | 在 YouVersion 開啟、版本資訊 | 用 YouVersion 開同一章；看譯本的出版和版權資訊 | 更多閱讀工具 | Android、iOS | [reader.md](reader.md) |

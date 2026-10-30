@@ -62,6 +62,13 @@ vi.mock('../../src/ui/gamification/RewardControls', () => ({ RewardControls: (pr
 
 import { consumeOpenAllScores, requestOpenAllScores } from '../../src/services/allScoresRequest';
 import ProgressScreen from '../../app/(tabs)/progress';
+import { viewCache } from '../../src/services/viewCache';
+// The other side's prizes are asked ahead as well (2026-10-23); these count the member's own list.
+const ownRewardCalls = () => api.getRewards.mock.calls.filter((call: unknown[]) => call[0] === undefined).length;
+// …and the months either side of the group card's month; this counts the card's own month on the member's own side.
+const ownGroupCalls = () => devotionApi.getGroupReading.mock.calls.filter((call: unknown[]) => call[1] === undefined && call[0] === new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()).slice(0, 7)).length;
+// The shared store outlives a screen; each test starts without another test's answers (2026-10-23).
+beforeEach(() => { viewCache.clear(); });
 import { GroupReadingCard } from '../../src/ui/gamification/GroupReadingCard';
 
 // 全體 is asked for from 我的帳戶 and heard by every mounted 積分 screen, so each test unmounts its own.
@@ -152,7 +159,7 @@ describe('progress protected response lifecycle', () => {
     };
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'self', earnedTotal: 1 });
     expectSecondary('電影票', 3);
-    const initialCalls = { rewards: api.getRewards.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
+    const initialCalls = { rewards: ownRewardCalls(), group: ownGroupCalls() };
     api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewards = resolve; }));
     devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((resolve) => { resolveGroup = resolve; }));
 
@@ -163,8 +170,8 @@ describe('progress protected response lifecycle', () => {
       await Promise.resolve();
     });
     expect(api.getProfile).toHaveBeenCalledTimes(2);
-    expect(api.getRewards).toHaveBeenCalledTimes(initialCalls.rewards + 1);
-    expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(initialCalls.group + 1);
+    expect(ownRewardCalls()).toBe(initialCalls.rewards + 1);
+    expect(ownGroupCalls()).toBe(initialCalls.group + 1);
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'self', earnedTotal: 1 });
     expectSecondary('電影票', 3);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '載入中…')).toHaveLength(0);
@@ -181,7 +188,7 @@ describe('progress protected response lifecycle', () => {
     expectSecondary('新獎品', 5);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
 
-    const refreshedCalls = { rewards: api.getRewards.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
+    const refreshedCalls = { rewards: ownRewardCalls(), group: ownGroupCalls() };
     api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewards = resolve; }));
     devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((resolve) => { resolveGroup = resolve; }));
     await act(async () => { appListeners.at(-1)?.('background'); await Promise.resolve(); });
@@ -190,8 +197,8 @@ describe('progress protected response lifecycle', () => {
     expect(renderer.root.findByProps({ testID: 'progress-inactive-cover' })).toBeDefined();
     await act(async () => { appListeners.at(-1)?.('active'); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledTimes(3);
-    expect(api.getRewards).toHaveBeenCalledTimes(refreshedCalls.rewards + 1);
-    expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(refreshedCalls.group + 1);
+    expect(ownRewardCalls()).toBe(refreshedCalls.rewards + 1);
+    expect(ownGroupCalls()).toBe(refreshedCalls.group + 1);
     expectSecondary('新獎品', 5);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
     await act(async () => {
@@ -203,13 +210,13 @@ describe('progress protected response lifecycle', () => {
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile.earnedTotal).toBe(3);
     expectSecondary('前景獎品', 8);
 
-    const foregroundCalls = { rewards: api.getRewards.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
+    const foregroundCalls = { rewards: ownRewardCalls(), group: ownGroupCalls() };
     api.getRewards.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRewards = reject; }));
     devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectGroup = reject; }));
     await act(async () => { focusCallbacks.at(-1)?.(); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledTimes(4);
-    expect(api.getRewards).toHaveBeenCalledTimes(foregroundCalls.rewards + 1);
-    expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(foregroundCalls.group + 1);
+    expect(ownRewardCalls()).toBe(foregroundCalls.rewards + 1);
+    expect(ownGroupCalls()).toBe(foregroundCalls.group + 1);
     expectSecondary('前景獎品', 8);
     expect(renderer.root.findAll((node) => String(node.type) === 'Text' && node.props.children === '目前顯示上次的積分，還沒連上更新')).toHaveLength(0);
     await act(async () => { rejectRewards(new Error('offline')); rejectGroup(new Error('offline')); rejectRefresh(new Error('offline')); await Promise.resolve(); });
@@ -229,7 +236,7 @@ describe('progress protected response lifecycle', () => {
     await act(async () => { renderer = TestRenderer.create(React.createElement(ProgressScreen)); await Promise.resolve(); await Promise.resolve(); });
     expect(api.getProfile).toHaveBeenCalledWith('member-a', 'me', expect.any(String));
     expect(renderer.root.findByType('ScoreProfile' as any).props.profile).toMatchObject({ memberId: 'member-a', earnedTotal: 1 });
-    const initialSecondaryCalls = { rewards: api.getRewards.mock.calls.length, group: devotionApi.getGroupReading.mock.calls.length };
+    const initialSecondaryCalls = { rewards: ownRewardCalls(), group: ownGroupCalls() };
     api.getRewards.mockImplementationOnce(() => new Promise((resolve) => { resolveRewardsA = resolve; }));
     devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((resolve) => { resolveGroupA = resolve; }));
     await act(async () => {
@@ -239,8 +246,8 @@ describe('progress protected response lifecycle', () => {
       await Promise.resolve();
     });
     expect(api.getProfile).toHaveBeenCalledTimes(2);
-    expect(api.getRewards).toHaveBeenCalledTimes(initialSecondaryCalls.rewards + 1);
-    expect(devotionApi.getGroupReading).toHaveBeenCalledTimes(initialSecondaryCalls.group + 1);
+    expect(ownRewardCalls()).toBe(initialSecondaryCalls.rewards + 1);
+    expect(ownGroupCalls()).toBe(initialSecondaryCalls.group + 1);
 
     auth.status = 'signed-out'; auth.session = null;
     await act(async () => { authListeners.at(-1)?.({ current: null }); });

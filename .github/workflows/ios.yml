@@ -72,7 +72,8 @@ jobs:
         if: always()
         run: npx tsx scripts/ios/summary.ts >> "$GITHUB_STEP_SUMMARY"
       - name: size and memory vs main
-        if: github.event_name == 'pull_request'
+        # Also when an earlier check failed: the memory comparison is still worth reading (2026-10-23).
+        if: always() && github.event_name == 'pull_request' && hashFiles('ci-out/ios-summary.json') != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -82,7 +83,8 @@ jobs:
           mkdir -p ci-out/base
           if [ -n "$SHA" ]; then { git cat-file -e "$SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$SHA"; } && git show "$SHA:package.json" > ci-out/base/package.json || rm -f ci-out/base/package.json; fi
           npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json appBytes 1.05 "R5 .app 大小" - scripts/ci/eas-update-size-baseline.json ci-out/base/package.json >> "$GITHUB_STEP_SUMMARY"
-          npx tsx scripts/ci/compare-baseline.ts ci-out/ios-summary.json ci-out/base/ios-summary.json footprintMB 1.10 "R3 記憶體 vs main" same-flows >> "$GITHUB_STEP_SUMMARY"
+          # R3 vs main for 首頁, 讀經頁 and 積分頁 (2026-10-23): each compared when the flows before its measuring point match main's.
+          npx tsx scripts/ios/compare-footprints.ts ci-out/ios-summary.json ci-out/base/ios-summary.json >> "$GITHUB_STEP_SUMMARY"
       - name: sanitize evidence before upload
         id: sanitize_evidence
         if: always()

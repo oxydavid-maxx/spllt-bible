@@ -232,3 +232,24 @@ describe('real unscheduled-day route initializes a free Bible reader', () => {
     expect(button('已完成，可撤銷完成確認')).toBeDefined();
   });
 });
+
+describe('‹ › to another day keeps the reader (光佑 2026-10-23: switches within 100 ms)', () => {
+  it('shows the next day in place: no 正在載入閱讀設定, the official reader is not opened again, and it is on that day\'s chapter', async () => {
+    await mount();
+    expect(boundary.sdkLoads).toBe(1);
+    const next = layout().props.nextDate as string;
+    const day = getReadingDay(canonicalSeptemberPlan, next);
+    expect(day?.references.length).toBeGreaterThan(0);
+    await act(async () => { layout().props.onSelectDate(next); });
+    expect(layout().props.selectedDate).toBe(next);
+    expect(all('Text').filter(node => node.props.children === '正在載入閱讀設定…')).toHaveLength(0);
+    const [book, chapter] = day!.references[0].split('.');
+    expect(reader().props).toMatchObject({ book, chapter });
+    expect(audio().props.chapterUsfm).toBe(`${book}.${chapter}`);
+    expect(boundary.sdkLoads).toBe(1);
+    // And back: still the same reader, on the free chapter of the day without a reading.
+    await act(async () => { layout().props.onSelectDate('2026-09-13'); });
+    expect(reader().props).toMatchObject({ book: 'JHN', chapter: '1' });
+    expect(boundary.sdkLoads).toBe(1);
+  });
+});
