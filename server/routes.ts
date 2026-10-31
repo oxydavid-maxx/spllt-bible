@@ -25,7 +25,7 @@ import { DEFAULT_DEVOTION_VOICE, isDevotionVoice } from '../src/domain/devotionV
 import type { DevotionalAudio } from './devotionalAudio';
 import { createSongTitleLookup, isDevotionalDate, readDevotional, type SongTitleLookup } from './devotional';
 import { ensureDevotionSchema, getGroupReading, getScoreHistory, listDevotionDates, setDevotion } from './devotionProgress';
-import { ensureClientInstallSchema, latestClientInstall, readClientReport, recordClientInstall } from './clientInstalls';
+import { ensureClientInstallSchema, latestClientInstall, legacyPlatform, readClientReport, recordClientInstall, recordLegacyClientInstall } from './clientInstalls';
 import { chosenCongregation, congregationOf, ensureCongregationSchema, isCongregation, setCongregation } from './congregation';
 import { applyRewardSheet, listRewards, readRewardSheetPush, rewardOnSide, sheetRedemptionsFor } from './rewardSheet';
 import { rewardSheetReadingStats } from './rewardSheetStats';
@@ -379,6 +379,9 @@ export function createApiHandler(options: ApiHandlerOptions) {
     scheduleNextDay();
   }
   const appleChallenges = new Map<string, number>();
+  // A signed-in phone without a version report whose platform cannot be told: logged once a day per member, so a gap
+  // in the 回報表 shows up in the log instead of nowhere (維護者 2026-10-31).
+  const unknownPlatformLogged = new Set<string>();
   const sessions = { resolveDevice: (token: string) => resolveDeviceSession(options.db.db, token), isLegacyRevoked: (token: string) => isLegacySessionRevoked(options.db.db, token) };
   const remoteStatus = options.remoteReminderStatus ?? 'REMOTE_PENDING';
   const policy = options.pointPolicy ?? DEFAULT_POLICY;
@@ -592,9 +595,20 @@ export function createApiHandler(options: ApiHandlerOptions) {
     if (!memberExists(options.db.db, auth.memberId)) return isGamificationPath(url.pathname) ? gamificationError({ status: 401, code: 'AUTH_INVALID' }) : json(401, { error: 'AUTH_INVALID' });
     if (!isMemberEnabled(options.db.db, auth.memberId)) return isGamificationPath(url.pathname) ? gamificationError({ status: 401, code: 'AUTH_INVALID' }) : json(401, { error: 'ACCOUNT_DISABLED' });
     // Which version this phone runs and the day it was opened (光佑 2026-10-21, server/clientInstalls.ts). An older
-    // app sends nothing and is served as before; a failed write never fails the request.
+    // app sends nothing and is served as before, recorded as 「舊版」 (維護者 2026-10-31); a failed write never fails the request.
     const clientReport = readClientReport(request.headers);
-    if (clientReport) { try { recordClientInstall(options.db.db, auth.memberId, clientReport, taipeiDate(now())); } catch { /* best effort */ } }
+    try {
+      if (clientReport) recordClientInstall(options.db.db, auth.memberId, clientReport, taipeiDate(now()));
+      else {
+        const platform = legacyPlatform(options.db.db, auth.memberId, request.headers);
+        const day = taipeiDate(now());
+        if (platform) recordLegacyClientInstall(options.db.db, auth.memberId, platform, day);
+        else if (!unknownPlatformLogged.has(`${auth.memberId}:${day}`)) {
+          unknownPlatformLogged.add(`${auth.memberId}:${day}`);
+          console.log(`CLIENT_INSTALL_PLATFORM_UNKNOWN member=${auth.memberId} agent=${(request.headers['user-agent'] ?? '').slice(0, 40).replace(/\s+/g, '_')}`);
+        }
+      }
+    } catch { /* best effort */ }
     if (request.method === 'POST' && url.pathname === '/api/session/device' && options.productionGoogleAuth && options.sessionSecret) {
       return json(200, createDeviceSession(options.db.db, auth.memberId));
     }
