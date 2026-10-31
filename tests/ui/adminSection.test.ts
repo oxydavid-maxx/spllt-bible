@@ -14,7 +14,8 @@ vi.mock('react-native', () => ({ StyleSheet: { create: (s: unknown) => s, hairli
 vi.mock('../../src/services/viewerCapabilities', () => ({ useViewerCapabilities: () => state.capabilities }));
 vi.mock('../../src/ui/AdminAllScoresEntry', () => ({ AdminAllScoresEntry: primitive('AllScoresRow') }));
 vi.mock('../../src/ui/admin/BackOffice', () => ({ BackOfficeEntry: primitive('BackOfficeRow') }));
-vi.mock('../../src/ui/admin/OtaUpdates', () => ({ AdminOtaUpdatesEntry: primitive('OtaRow') }));
+const endPreview = vi.hoisted(() => vi.fn());
+vi.mock('../../src/ui/admin/OtaUpdates', () => ({ AdminOtaUpdatesEntry: primitive('OtaRow'), useEndPreviewForNonAdministrator: endPreview }));
 import { AdminSection } from '../../src/ui/admin/AdminSection';
 
 let tree: TestRenderer.ReactTestRenderer | null = null;
@@ -29,6 +30,8 @@ describe('the 管理者 card on 我的帳戶', () => {
     state.capabilities = { canViewAllScores: false };
     await render();
     expect(tree!.toJSON()).toBeNull();
+    // Drawing nothing still hands the definite 'not an administrator' to the preview switch, which leaves preview.
+    expect(endPreview).toHaveBeenLastCalledWith({ canViewAllScores: false });
   });
 
   it('says 管理者 once and lists 全體, 後台規則與文件 and 先收到測試版更新 in one card, in that order', async () => {

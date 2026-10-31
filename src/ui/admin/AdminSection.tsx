@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useViewerCapabilities } from '../../services/viewerCapabilities';
 import { AdminAllScoresEntry } from '../AdminAllScoresEntry';
 import { BackOfficeEntry } from './BackOffice';
-import { AdminOtaUpdatesEntry } from './OtaUpdates';
+import { AdminOtaUpdatesEntry, useEndPreviewForNonAdministrator } from './OtaUpdates';
 import { theme } from '../Theme';
 
 /**
@@ -12,7 +12,10 @@ import { theme } from '../Theme';
  * it, once, over one card of three rows. Everyone else sees nothing; the rows share one capabilities lookup.
  */
 export function AdminSection() {
-  if (!useViewerCapabilities()?.canViewAllScores) return null;
+  const capabilities = useViewerCapabilities();
+  // Before drawing nothing: a role removed during this sign-in still takes the phone off preview (Codex review).
+  useEndPreviewForNonAdministrator(capabilities);
+  if (!capabilities?.canViewAllScores) return null;
   return <View style={styles.section}>
     <Text accessibilityRole="header" style={styles.heading}>管理者 · 只有你看得到</Text>
     <View style={styles.card}>

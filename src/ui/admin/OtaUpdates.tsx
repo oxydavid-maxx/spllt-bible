@@ -123,13 +123,20 @@ export function OtaUpdateCheck() {
   return null;
 }
 
+/**
+ * A definite "not an administrator" (role removed, another member) ends preview on this phone. The account page's
+ * 管理者 section calls it before deciding to draw nothing, so a removed role still leaves preview there (2026-10-31).
+ */
+export function useEndPreviewForNonAdministrator(capabilities: { canViewAllScores: boolean } | null | undefined): void {
+  useEffect(() => { if (capabilities) leavePreviewUnlessAdministrator(capabilities.canViewAllScores); }, [capabilities]);
+}
+
 /** One of the account page's administrator rows: the same shared lookup as its neighbours (#73). */
 export function AdminOtaUpdatesEntry() {
   const capabilities = useViewerCapabilities();
   const preview = useSyncExternalStore(subscribeSelection, previewSelected, previewSelected);
   const [message, setMessage] = useState<string | null>(null);
-  // A definite "not an administrator" (role removed, another member) also ends preview on this phone.
-  useEffect(() => { if (capabilities) leavePreviewUnlessAdministrator(capabilities.canViewAllScores); }, [capabilities]);
+  useEndPreviewForNonAdministrator(capabilities);
   if (!capabilities?.canViewAllScores) return null;
 
   const changeChannel = (enabled: boolean) => {
