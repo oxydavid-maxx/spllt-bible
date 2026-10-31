@@ -8,6 +8,7 @@ import { isAppHidden, subscribeAppHidden } from '../../services/appVisibility';
 import { autoUpdateBlockers } from '../../services/autoUpdateGuard';
 import { readViewerCapabilities, useViewerCapabilities } from '../../services/viewerCapabilities';
 import { theme } from '../Theme';
+import { adminRowStyles } from './adminRowStyles';
 
 /**
  * 光佑 20261021 (「不能 default 更新嗎？對老人家很不友善」): older members almost never close the app fully, so
@@ -122,31 +123,39 @@ export function OtaUpdateCheck() {
   return null;
 }
 
+/**
+ * A definite "not an administrator" (role removed, another member) ends preview on this phone. The account page's
+ * 管理者 section calls it before deciding to draw nothing, so a removed role still leaves preview there (2026-10-31).
+ */
+export function useEndPreviewForNonAdministrator(capabilities: { canViewAllScores: boolean } | null | undefined): void {
+  useEffect(() => { if (capabilities) leavePreviewUnlessAdministrator(capabilities.canViewAllScores); }, [capabilities]);
+}
+
 /** One of the account page's administrator rows: the same shared lookup as its neighbours (#73). */
 export function AdminOtaUpdatesEntry() {
   const capabilities = useViewerCapabilities();
   const preview = useSyncExternalStore(subscribeSelection, previewSelected, previewSelected);
   const [message, setMessage] = useState<string | null>(null);
-  // A definite "not an administrator" (role removed, another member) also ends preview on this phone.
-  useEffect(() => { if (capabilities) leavePreviewUnlessAdministrator(capabilities.canViewAllScores); }, [capabilities]);
+  useEndPreviewForNonAdministrator(capabilities);
   if (!capabilities?.canViewAllScores) return null;
 
   const changeChannel = (enabled: boolean) => {
     setMessage(selectChannel(enabled) ? '下次開啟時會在背景下載，再下一次開啟時套用。' : '暫時無法切換，請稍後再試。');
   };
-  return <View style={styles.card}>
-    <View style={styles.row}>
-      <Text style={styles.title}>先收到測試版更新</Text>
-      <Switch testID="ota-preview-switch" accessibilityLabel="先收到測試版更新" accessibilityHint="只給管理者：先拿到還沒發給大家的修正，驗收用。" value={preview} onValueChange={changeChannel} trackColor={{ true: theme.colors.primary }} />
+  return <View style={styles.block}>
+    <View style={adminRowStyles.row}>
+      <View style={adminRowStyles.text}>
+        <Text style={adminRowStyles.title}>先收到測試版更新</Text>
+        <Text style={adminRowStyles.note}>先拿到還沒發給大家的修正，驗收用。</Text>
+      </View>
+      <Switch testID="ota-preview-switch" accessibilityLabel="先收到測試版更新" accessibilityHint="先拿到還沒發給大家的修正，驗收用。" value={preview} onValueChange={changeChannel} trackColor={{ true: theme.colors.primary }} />
     </View>
-    <Text style={styles.note}>只給管理者：先拿到還沒發給大家的修正，驗收用。</Text>
-    {message ? <Text accessibilityLiveRegion="polite" style={styles.note}>{message}</Text> : null}
+    {message ? <Text accessibilityLiveRegion="polite" style={[adminRowStyles.note, styles.message]}>{message}</Text> : null}
   </View>;
 }
 
 const styles = StyleSheet.create({
-  card: { padding: theme.spacing.md, gap: theme.spacing.xs, borderRadius: theme.radius.card, borderWidth: theme.control.hairline, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, minHeight: theme.control.tap },
-  title: { flex: 1, color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
-  note: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  // The last row of the 管理者 card (AdminSection); the switch's reply sits under it inside the same row block.
+  block: { paddingBottom: theme.spacing.xs },
+  message: { paddingHorizontal: theme.spacing.md },
 });

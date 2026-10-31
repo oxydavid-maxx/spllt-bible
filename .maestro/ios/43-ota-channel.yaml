@@ -26,7 +26,8 @@ appId: org.qingmu.youth
       id: "ota-preview-switch"
     direction: DOWN
     timeout: 15000
-- assertVisible: "只給管理者：先拿到還沒發給大家的修正，驗收用。"
+# 2026-10-31 (A): the 管理者 card heading says who sees it, so the note no longer starts with 只給管理者：.
+- assertVisible: "先拿到還沒發給大家的修正，驗收用。"
 - assertVisible:
     id: "ota-preview-switch"
     checked: false

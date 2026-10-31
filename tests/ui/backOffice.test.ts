@@ -36,7 +36,8 @@ describe('後台規則與文件', () => {
     act(() => tree!.unmount());
     state.canViewAllScores = true;
     await act(async () => { tree = TestRenderer.create(React.createElement(BackOfficeEntry)); });
-    expect(texts()).toEqual(['後台規則與文件', '管理者 ›']);
+    // A row of the 管理者 card (2026-10-31): the card's heading says 管理者 once, the row does not repeat it.
+    expect(texts()).toEqual(['後台規則與文件', '規則、試算表和表單連結', '›']);
     byLabel('後台規則與文件').props.onPress();
     expect(state.push).toHaveBeenCalledWith('/back-office');
   });
@@ -71,7 +72,7 @@ it('revalidates both account administrator entries once per foreground with no i
   expect(state.capabilities).toHaveBeenCalledTimes(initial);
   await act(async () => { state.foreground.forEach(fn => fn()); });
   expect(texts()).toContain('後台規則與文件');
-  expect(texts()).toContain('全體 (管理) ›');
+  expect(texts()).toContain('全體');
   expect(state.capabilities).toHaveBeenCalledTimes(initial + 1);
   state.canViewAllScores = false;
   await act(async () => { state.foreground.forEach(fn => fn()); });
@@ -102,9 +103,9 @@ it('does not let an earlier foreground capabilities response replace a newer one
   await act(async () => { state.foreground.forEach(fn => fn(1)); });
   state.canViewAllScores = true;
   await act(async () => { state.foreground.forEach(fn => fn(2)); });
-  expect(state.capabilities).toHaveBeenCalledTimes(3); expect(texts()).toContain('全體 (管理) ›');
+  expect(state.capabilities).toHaveBeenCalledTimes(3); expect(texts()).toContain('全體');
   await act(async () => { resolve({ canViewAllScores: false }); });
-  expect(texts()).toContain('全體 (管理) ›');
+  expect(texts()).toContain('全體');
 });
 
 
@@ -118,6 +119,6 @@ it('rechecks account capability when re-entered while its earlier read is pendin
   await act(async () => { state.focused = false; tree!.update(content()); });
   state.canViewAllScores = true;
   await act(async () => { state.focused = true; tree!.update(content()); });
-  expect(state.capabilities).toHaveBeenCalledTimes(3); expect(texts()).toContain('全體 (管理) ›');
-  await act(async () => { resolve({ canViewAllScores: false }); }); expect(texts()).toContain('全體 (管理) ›');
+  expect(state.capabilities).toHaveBeenCalledTimes(3); expect(texts()).toContain('全體');
+  await act(async () => { resolve({ canViewAllScores: false }); }); expect(texts()).toContain('全體');
 });
