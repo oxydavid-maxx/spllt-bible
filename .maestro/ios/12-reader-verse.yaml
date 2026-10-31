@@ -1,6 +1,8 @@
 # 12-reader-verse — tapping a verse selects it (the verse bar with Copy and Share appears), and tapping the same
-# verse again lets it go (iPhone has no back key). Use the observed verse-one accessibility
-# label: daily chapters wrap differently, so a fixed screen point can land between lines.
+# verse again lets it go (iPhone has no back key). Tap the first verse-number label on screen: daily chapters
+# wrap differently, so a fixed screen point can land between lines. Not verse 1: the Today entry opens the
+# real Taipei day (EXPO_PUBLIC_QINGMU_TEST_DATE does not reach it), and a day may start mid-chapter
+# (2026-10-31 opened 徒 7:31–60 and this flow failed waiting for 1).
 appId: org.qingmu.youth
 ---
 - launchApp
@@ -12,16 +14,18 @@ appId: org.qingmu.youth
     visible: "更多閱讀工具"
     timeout: 30000
 - extendedWaitUntil:
-    visible: '^1[\s\u00a0]*$'
+    visible: '^[1-9]\d{0,2}[\s\u00a0]*$'
     timeout: 60000
 - tapOn:
-    text: '^1[\s\u00a0]*$'
+    text: '^[1-9]\d{0,2}[\s\u00a0]*$'
+    index: 0
 - extendedWaitUntil:
     visible: "Copy"
     timeout: 15000
 - takeScreenshot: 12-reader-verse
 - tapOn:
-    text: '^1[\s\u00a0]*$'
+    text: '^[1-9]\d{0,2}[\s\u00a0]*$'
+    index: 0
 - extendedWaitUntil:
     notVisible: "Copy"
     timeout: 10000
