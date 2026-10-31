@@ -16,6 +16,8 @@ import { UpdateCard } from '../../src/ui/UpdateCard';
 import { installedVersionCode } from '../../src/ui/UpdatePrompt';
 import { theme } from '../../src/ui/Theme';
 import { useCongregation } from '../../src/ui/congregation/congregationStore';
+import { SIDE_NAME, SIDE_ORDER } from '../../src/ui/congregation/congregationCopy';
+import type { Congregation } from '../../src/services/devotionClient';
 import { BulletinBoard } from '../../src/ui/bulletin/BulletinBoard';
 import { bulletinPageSource, fetchBulletins, type BulletinWeek } from '../../src/services/bulletinClient';
 
@@ -31,12 +33,13 @@ import { bulletinPageSource, fetchBulletins, type BulletinWeek } from '../../src
  * alive at around 170 MB, and Google's own viewers handle a deck or an audio file better than
  * anything built here would.
  *
- * 「青少｜主堂」 (維護者 2026-10-17): the tab opens on the member's own side and either can be chosen. 主堂 shows
- * only the 週刊 kept from the church LINE group; that side does need the backend.
+ * 「主堂｜青少」 (維護者 2026-10-17; 主堂 on the left since 2026-10-31, the same order as 積分, SIDE_ORDER): the tab
+ * opens on the member's own side and either can be chosen. 主堂 shows only the 週刊 kept from the church LINE group;
+ * that side does need the backend.
  */
 
-const SIDES = [{ value: 'youth', name: '青少' }, { value: 'main', name: '主堂' }] as const;
-type Side = typeof SIDES[number]['value'];
+const SIDES = SIDE_ORDER.map((value) => ({ value, name: SIDE_NAME[value] }));
+type Side = Congregation;
 
 export default function AnnouncementsScreen() {
   const [client] = useState(() => createAnnouncementClient({
