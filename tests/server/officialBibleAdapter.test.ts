@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseHTML } from 'linkedom';
 import { ApiClient, BibleClient, transformBibleHtml } from '@youversion/platform-core';
 import { createOfficialBibleAdapter } from '../../server/officialBibleAdapter';
@@ -33,10 +36,14 @@ describe('official Bible SSR adapter',()=>{
     expect((await lookalike.get('/v1/bibles/46/passages/1TI.1')).status).toBe(502);
   });
 
-  it('sets a thirty minute public cache lifetime only on successful Bible JSON responses',async()=>{
+  // 維護者 2026-10-31 (選 A)：手機只留前後一天的經文。Replaces the 30-minute lifetime, which made every phone
+  // forget the text after about 25 minutes (Age was subtracted) and fetch it all again through the home server.
+  it('lets the phone keep Bible JSON for three days, with no Age to shorten it',async()=>{
     const success=fixture();
     const ok=await success.get('/v1/bibles/46/passages/1TI.1');
-    expect(ok.headers['cache-control']).toBe('public, max-age=1800');
+    expect(ok.headers['cache-control']).toBe('public, max-age=259200');
+    expect(ok.headers.age).toBeUndefined();
+    expect(ok.headers['x-qingmu-bible-source']).toBeUndefined();
 
     const failed=fixture({fetcher:async()=>new Response('upstream failure',{status:500})});
     const error=await failed.get('/v1/bibles/46/passages/1TI.1');
@@ -100,7 +107,7 @@ describe('official Bible SSR adapter',()=>{
     const first=await f.get('/v1/bibles/46/passages/1TI.1');expect(first.body.content).toContain('Initial exact chapter.');
     now=2_500;
     const stale=await f.get('/v1/bibles/46/passages/1TI.1');
-    expect(stale.status).toBe(200);expect(stale.body.content).toContain('Initial exact chapter.');expect(stale.headers['cache-control']).toContain('max-age=0');expect(stale.headers.age).toBe('2');
+    expect(stale.status).toBe(200);expect(stale.body.content).toContain('Initial exact chapter.');expect(stale.headers['cache-control']).toBe('public, max-age=259200');expect(stale.headers.age).toBeUndefined();
     const duplicate=await f.get('/v1/bibles/46/passages/1TI.1');expect(duplicate.body.content).toContain('Initial exact chapter.');expect(fetcher).toHaveBeenCalledTimes(2);
     finishRefresh(new Response(refreshed));await new Promise(resolve=>setTimeout(resolve,0));
     const fresh=await f.get('/v1/bibles/46/passages/1TI.1');expect(fresh.body.content).toContain('Refreshed exact chapter.');expect(fetcher).toHaveBeenCalledTimes(2);
@@ -110,7 +117,7 @@ describe('official Bible SSR adapter',()=>{
     const fetcher=vi.fn(async(url:string)=>url.endsWith('/46/1TI.1')&&fetcher.mock.calls.length===1?new Response(chapterHtml(46,'1TI.1')):new Response('unavailable',{status:503}));
     const f=fixture({fetcher,now:()=>now,cacheTtlMs:10,staleCacheTtlMs:100});
     expect((await f.get('/v1/bibles/46/passages/1TI.1')).status).toBe(200);
-    now=11;const stale=await f.get('/v1/bibles/46/passages/1TI.1');expect(stale.status).toBe(200);expect(stale.headers['cache-control']).toContain('max-age=0');
+    now=11;const stale=await f.get('/v1/bibles/46/passages/1TI.1');expect(stale.status).toBe(200);expect(stale.headers['cache-control']).toBe('public, max-age=259200');
     await Promise.resolve();await Promise.resolve();
     const retained=await f.get('/v1/bibles/46/passages/1TI.1');expect(retained.status).toBe(200);expect(retained.body.id).toBe('1TI.1');
     for(const path of ['/v1/bibles/46/passages/1TI.2','/v1/bibles/40/passages/1TI.1']){const miss=await f.get(path);expect(miss.status).toBe(502);expect(miss.headers['cache-control']).toBe('no-store');}
@@ -141,5 +148,67 @@ describe('official Bible SSR adapter',()=>{
 
   it('allows the SDK content preflight headers without forwarding them upstream',async()=>{
     const f=fixture();const response=await f.handle({method:'OPTIONS',url:'/v1/bibles/46/books'});expect(response?.status).toBe(204);expect(response?.headers['access-control-allow-headers'].toLowerCase()).toContain('x-yvp-installation-id');expect(response?.headers['access-control-allow-headers'].toLowerCase()).toContain('accept-language');expect(f.fetcher).not.toHaveBeenCalled();
+  });
+});
+
+// 維護者 2026-10-31：讀經轉圈。後端只把經文放在記憶體 (30 分鐘新、最多 6 小時、重開全忘)，過期就要等 bible.com。
+// Scripture does not change, so a chapter read once is kept on disk and a restart serves it without bible.com.
+describe('chapters kept on disk',()=>{
+  const dirs:string[]=[];
+  afterEach(()=>{for(const dir of dirs.splice(0))rmSync(dir,{recursive:true,force:true});});
+  const tempDir=()=>{const dir=mkdtempSync(join(tmpdir(),'qm-bible-cache-'));dirs.push(dir);return dir;};
+  const variants=['/v1/bibles/46/passages/1TI.1','/v1/bibles/46/passages/1TI.1?include_headings=false','/v1/bibles/46/passages/1TI.1?include_notes=false','/v1/bibles/46/passages/1TI.1?format=text','/v1/bibles/46/passages/1TI.1.2','/v1/bibles/46','/v1/bibles/46/books','/v1/bibles/46/books/1TI/chapters/1/verses'];
+
+  it('serves every request shape after a restart from disk, identical to the first answer, without calling bible.com',async()=>{
+    const dir=tempDir();
+    const first=fixture({diskCacheDir:dir});
+    const before:unknown[]=[];for(const path of variants)before.push((await first.get(path)).body);
+    expect(first.fetcher).toHaveBeenCalled();
+    const offline=vi.fn(async()=>{throw new Error('bible.com must not be called after a restart');});
+    const lines:string[]=[];
+    const restarted=fixture({diskCacheDir:dir,fetcher:offline,log:(line:string)=>lines.push(line)});
+    for(const [index,path] of variants.entries()){const again=await restarted.get(path);expect(again.status,path).toBe(200);expect(again.body,path).toEqual(before[index]);}
+    expect(offline).not.toHaveBeenCalled();
+    expect(lines[0]).toMatch(/^BIBLE_REQUEST path=\/v1\/bibles\/46\/passages\/1TI\.1 source=disk status=200 ms=\d+$/);
+    expect(lines).toHaveLength(variants.length);expect(lines.filter(line=>!/ source=(?:disk|memory) status=200 /.test(line))).toEqual([]);
+  });
+
+  it('keeps only what rendering needs, so a chapter file is much smaller than the bible.com page',async()=>{
+    const dir=tempDir();
+    const big=`<script>${'x'.repeat(50_000)}</script>`;
+    const fetcher=vi.fn(async(url:string)=>new Response(url.includes('/versions/')?indexHtml(46):chapterHtml(46,'1TI.1',big)));
+    const f=fixture({diskCacheDir:dir,fetcher});
+    expect((await f.get('/v1/bibles/46/passages/1TI.1')).status).toBe(200);
+    const file=join(dir,'46','1TI.1.json');
+    expect(statSync(file).size).toBeLessThan(10_000);
+    expect(readFileSync(file,'utf8')).not.toContain('xxxxxxxxxx');
+  });
+
+  it('treats a damaged file as missing and reads bible.com once more',async()=>{
+    const dir=tempDir();
+    await fixture({diskCacheDir:dir}).get('/v1/bibles/46/passages/1TI.1');
+    writeFileSync(join(dir,'46','1TI.1.json'),'{"v":1,"value":');
+    const again=fixture({diskCacheDir:dir});
+    const answer=await again.get('/v1/bibles/46/passages/1TI.1');
+    expect(answer.status).toBe(200);expect(again.fetcher).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(readFileSync(join(dir,'46','1TI.1.json'),'utf8')).v).toBe(1);
+  });
+
+  it('never stores a failed or refused answer',async()=>{
+    const dir=tempDir();
+    const failed=fixture({diskCacheDir:dir,fetcher:async()=>new Response('upstream failure',{status:500})});
+    expect((await failed.get('/v1/bibles/46/passages/1TI.1')).status).toBe(502);
+    expect((await failed.get('/v1/bibles/46/passages/..%2Fsecrets')).status).toBe(400);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it('logs where each Bible request was answered from, and nothing for other paths',async()=>{
+    const lines:string[]=[];
+    const f=fixture({log:(line:string)=>lines.push(line)});
+    await f.get('/v1/bibles/46/passages/1TI.1');await f.get('/v1/bibles/46/passages/1TI.1');
+    await f.handle({method:'GET',url:'/api/me',headers:{}});
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/^BIBLE_REQUEST path=\/v1\/bibles\/46\/passages\/1TI\.1 source=bible\.com status=200 ms=\d+$/);
+    expect(lines[1]).toMatch(/source=memory status=200/);
   });
 });

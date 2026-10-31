@@ -148,6 +148,9 @@ describe('private devotional audio API', () => {
       await f.api(f.request(1)); await f.api(f.request(1));
       await f.api(f.request(999));
     } finally { spy.mockRestore(); }
+    // Other lines can share the log (e.g. CLIENT_INSTALL_PLATFORM_UNKNOWN for a client with no version report, 2026-10-31).
+    expect(lines.join('\n')).not.toMatch(/測試/);
+    lines.splice(0, lines.length, ...lines.filter((line) => line.startsWith('DEVOTIONAL_AUDIO_REQUEST ')));
     expect(lines).toHaveLength(3);
     expect(lines[0]).toMatch(/^DEVOTIONAL_AUDIO_REQUEST date=2026-10-16 index=1 voice=zh-TW-YunJheNeural status=200 source=azure ms=\d+$/);
     expect(lines[1]).toMatch(/ status=200 source=cache ms=\d+$/);

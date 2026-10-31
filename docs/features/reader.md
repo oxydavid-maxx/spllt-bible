@@ -19,7 +19,7 @@
 | 字體設定 | 更多閱讀工具 → 調整字體：官方字體大小/字型/行距面板 |
 | 經節複製 | 選取經文出現複製按鈕，寫入剪貼簿並可帶入日記引句 |
 | 沉浸模式 | 往下捲收起工具列；往上捲一段/到章首/到章尾/按返回鍵/點收合細條會叫回 |
-| 內容預先載入 | 背景先抓今天每一段經文內容，換章不用等 |
+| 內容預先載入 | 背景先抓今天每一段經文，再抓前一個和後一個排定讀經日；手機存三天，換章、換前後一天不用等 |
 | 閱讀位置記憶 | 每個帳號、每天分別記住讀到哪一段/哪一章 |
 | 載入失敗與重試 | 章節或閱讀器本身載入失敗時顯示中文錯誤卡＋重試按鈕；回到前景/切回讀經 tab 會自動再試一次 |
 | 在 YouVersion 開啟 | 更多閱讀工具 → 在 YouVersion 開啟此章，用外部連結打開同一章 |
@@ -102,9 +102,10 @@
 
 ### 內容預先載入（`src/services/bibleContentPreload.ts`、`src/ui/BibleContentPreloadHost.tsx`）
 
-- 官方閱讀器就緒後，會在背景依序預先抓「今天」每一段指定經文的內容：先抓目前選中的那一段，再抓其餘的，同一時間最多 2 筆並行請求，用官方 SDK 自己的內容抓取管道。
+- 官方閱讀器就緒後，會在背景依序預先抓畫面上那一天每一段指定經文的內容：先抓目前選中的那一段，再抓其餘的，然後是前一個和後一個排定讀經日的經文 (`adjacentReferences`, `src/ui/readingSession.ts`；沒排讀經的日子跳過)。同一時間最多 2 筆並行請求，用官方 SDK 自己的內容抓取管道。
+- 抓到的內容存在 SDK 的手機內容快取 (MMKV)，存多久由後端回應的 `Cache-Control` 決定：經文回應一律 `public, max-age=259200` (三天)、不帶 `Age`，三天後 SDK 自己清掉，所以手機上只有最近幾天讀過或預先抓過的經文。
 - 換日期、版本或指定範圍時，還沒做完的預先載入會被取消，重新排一輪新的（依 `generationKey` 判斷是否要重排）。
-- 這個過程沒有任何畫面顯示，失敗也不會出現錯誤提示，純粹是背景加速；`src/ui/BibleContentPreloadHome.tsx` 是另一個掛載點，供尚未進到全螢幕讀經頁前就先熱身用。
+- 這個過程沒有任何畫面顯示，失敗也不會出現錯誤提示，純粹是背景加速。「讀經」分頁一打開就是這個讀經頁 (`app/(tabs)/today.tsx` 轉到 `/reader`)，預先載入掛在讀經頁本身。原本另一個沒有任何畫面使用的掛載點 `BibleContentPreloadHome` 已刪除 (2026-10-31：它從沒被接上，預先載入其實只抓了當天)。
 
 ### 閱讀位置記憶（`src/storage/readerPosition.ts`）
 
@@ -165,6 +166,8 @@
 
 ## 決定（為什麼這樣做）
 
+- **手機只留前後一天的經文，存三天** (維護者 2026-10-31，選 A：「經文存 30 天太久了，這是一個輕量 App」)：預先抓畫面上那一天和前後各一個排定讀經日，後端回應標三天。取代原本的 30 分鐘：那時後端標 `max-age=1800` 再扣 `Age`，手機大約 25 分鐘就忘掉，隔一陣子再開要整條路 (手機 → 後端 → bible.com) 重抓，demo 時轉圈很久。
+- **後端把讀過的章節存在硬碟，不會過期** (維護者 2026-10-31：「聖經萬年不改」「整本存下來才 25MB，這沒問題」)：存在資料庫旁的 `bible-cache/<譯本>/<章>.json`，只留排版需要的部分 (每章約數十 KB)；後端重開、閒置幾小時後也不用再等 bible.com。記憶體那層照舊 30 分鐘後在背景重新確認。
 - 看過的資料要跟上：回到前景、切回頁面時重讀，不用計時器 (維護者 2026-10-19)。
 
 **刻意不做：**
@@ -226,11 +229,13 @@
 
 - 帳號閱讀偏好（譯本、字體設定）：裝置本機安全儲存，鍵值含帳號 ID，訪客不落地（`src/services/readerPreferences.ts`、`src/services/nativeReaderPreferences.ts`）。
 - 閱讀位置：裝置本機 SQLite（`qingmu_reader_positions`），依帳號＋讀經計劃＋日期各存一筆（`src/storage/readerPosition.ts`）。
-- 譯本內容：不落地快取到裝置，每次由 App 後端即時向 bible.com 抓取/解析後回應，後端本身做記憶體快取（`server/officialBibleAdapter.ts`）。
+- 譯本內容：由 App 後端向 bible.com 抓取/解析後回應（`server/officialBibleAdapter.ts`）。後端先查記憶體，再查硬碟 `bible-cache/` (預設在資料庫旁，`QINGMU_BIBLE_CACHE_DIR` 可改)，都沒有才去 bible.com，抓到就寫進硬碟。手機照回應的 `max-age=259200` 存三天 (2026-10-31 起，之前不落地)。每個 `/v1/bibles` 請求記一行 `BIBLE_REQUEST path=… source=memory|disk|bible.com status=… ms=…`，不記帳號。
 - 朗讀章節位址登記表（`server/contentRegistry.ts`）與其評估邏輯（`server/contentCapabilities.ts`）屬於朗讀/朗讀能力查詢功能，不是本文件範圍；本文件只確認它們與 `contentGate.ts`/`readerAdapter.ts` 一樣不是譯本文字內容顯示的實際路徑。
 
 ## 守住它的測試
 
+- `tests/server/officialBibleAdapter.test.ts` 的「chapters kept on disk」— 後端重開後每種請求都從硬碟回答、內容跟第一次一樣、完全不叫 bible.com；硬碟檔只留排版需要的部分；壞掉的檔當作沒有；失敗不存；每個請求一行紀錄。同檔「three days」那條守住手機存三天、不帶 Age。
+- `tests/ui/fullscreenReaderScreen.test.ts`「preloads the day on screen, then the previous and next scheduled day」、`tests/ui/readingSessionDynamic.test.ts`「the days next to the one on screen」— 讀經頁真的把前後一天交給預先載入 (2026-10-31 之前只抓當天)。
 - `tests/domain/partialChapter.test.ts` — 節數範圍、整章不限制、合節邊界。
 - `tests/ui/partialChapterBridge.test.ts` — 詩篇 119 實錄經安裝的 WebView SDK 轉換後，真瀏覽器驗證範圍、空段、標題、頭尾提示、看整章、換日/內容重設和完成邊界。
 - `tests/services/partialChapterAudio.test.ts`、`tests/ui/partialChapterAudioControls.test.ts` — 兩個譯本的實錄首尾時間、無分節退路、seek/停止/重播、背景與同章換日/延遲 seek。

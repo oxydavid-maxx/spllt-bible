@@ -6,6 +6,12 @@ import type { Congregation } from '../../services/devotionClient';
  * 「我在主堂聚會 (不是青少)」. One place, so the first choice, the 積分 page and 我的帳戶 never drift apart.
  */
 export const SIDE_NAME: Record<Congregation, string> = { youth: '青少', main: '主堂' };
+/**
+ * Left to right wherever 主堂 and 青少 sit side by side (維護者 2026-10-31:「公告首頁大堂在左邊、青年在右邊，這樣才會跟
+ * 積分那邊看分數一致」). Every switch takes its order from here; tests/tools/sideOrder.test.ts stops a screen from
+ * ordering the two itself. CHOICES below is the first-run question, a list read top to bottom, not a switch.
+ */
+export const SIDE_ORDER: readonly Congregation[] = ['main', 'youth'];
 /** The group card counts 主堂 as the whole church (青少 included), so it is named 全教會 there. */
 export const GROUP_NAME: Record<Congregation, string> = { youth: '青少', main: '全教會' };
 

@@ -32,7 +32,8 @@ vi.mock('../../src/ui/devotion/useReaderDevotion', () => ({ useReaderDevotion: (
 const safeArea = vi.hoisted(() => ({ value: { top: 24, right: 0, bottom: 16, left: 0 } }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: primitive('SafeAreaView'), useSafeAreaInsets: () => ({ ...safeArea.value }) }));
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({ default: primitive('Icon') }));
-vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost: () => null }));
+const preload = vi.hoisted(() => ({ props: [] as Array<{ enabled: boolean; references: string[]; activeReferenceIndex?: number }> }));
+vi.mock('../../src/ui/BibleContentPreloadHost', () => ({ BibleContentPreloadHost: (props: { enabled: boolean; references: string[]; activeReferenceIndex?: number }) => { preload.props.push(props); return null; } }));
 vi.mock('expo-application', () => ({ nativeBuildVersion: '30' }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn(), maybeCompleteAuthSession() {} }));
 vi.mock('expo-status-bar', () => ({ StatusBar: primitive('StatusBar') }));
@@ -55,7 +56,7 @@ vi.mock('../../src/services/useOutboxRecovery', () => ({ useOutboxRecovery: () =
 vi.mock('../../src/services/apiClient', () => ({ createApiClient: vi.fn() }));
 vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: vi.fn(), openQingmuReaderPositionStore: vi.fn(), openQingmuJournalStore: vi.fn(() => ({ get: () => null, save: (command: Record<string, unknown>) => command })) }));
 vi.mock('../../src/ui/routes', () => ({ buildFixtureModels: () => ({ reader: { references: ['PSA.90', 'PSA.91'] } }) }));
-vi.mock('../../src/ui/readingSession', () => ({ useReadingDateRollover: () => undefined, useReadingSession: () => ({ selectedDate: '2026-09-12', planId: 'church-2026-09', day: { references: ['PSA.90', 'PSA.91'] }, period: 'week' }), setSelectedReadingDate: vi.fn(), setPendingJournalQuote: vi.fn() }));
+vi.mock('../../src/ui/readingSession', () => ({ useReadingDateRollover: () => undefined, useReadingSession: () => ({ selectedDate: '2026-09-12', planId: 'church-2026-09', day: { references: ['PSA.90', 'PSA.91'] }, period: 'week', previousDate: '2026-09-11', nextDate: '2026-09-14', adjacentReferences: ['PSA.89', 'PSA.91', 'PSA.92'] }), setSelectedReadingDate: vi.fn(), setPendingJournalQuote: vi.fn() }));
 vi.mock('../../src/services/youVersionAdapter', () => ({ createYouVersionAdapter: () => ({ loadReaderUi: async () => ({ status: 'READER_UI_READY', module: {
   getReaderSettings: () => ({ ...readerSettings.value }),
   getDefaultReaderSettings: () => ({ fontSize: 20, fontFamily: 'Inter', lineSpacing: 1.8 }),
@@ -83,6 +84,12 @@ beforeEach(async () => {
 });
 afterEach(() => { act(() => rendered?.unmount()); vi.restoreAllMocks(); });
 describe('approved fullscreen Reader assembled entry', () => {
+  // 維護者 2026-10-31：讀經轉圈。The preloader was built but the screen people use never gave it the next day; now the
+  // reader on screen warms its own day first and then the previous and next scheduled day, each chapter once.
+  it('preloads the day on screen, then the previous and next scheduled day', () => {
+    const last = preload.props.at(-1);
+    expect(last).toMatchObject({ enabled: true, references: ['PSA.90', 'PSA.91', 'PSA.89', 'PSA.92'], activeReferenceIndex: 0 });
+  });
   it('shows scripture with the header tools and ○ ▶, without account or completion cards', () => {
     expect(all('BibleReader')[0].props.showToolbar).toBe(false);
     expect(all('CompletionFeedback')).toHaveLength(0); expect(all('AccountEntryButton')).toHaveLength(0);
