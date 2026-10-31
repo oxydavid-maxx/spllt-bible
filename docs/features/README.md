@@ -79,7 +79,7 @@
 | 好友 | 加好友後互相看積分（看不到對方的餘額和目標） | 積分「好友」 | Android、iOS | [points.md](points.md) |
 | 好友 QR | 出示或掃描 QR 馬上互加好友 | 積分頁選單 | Android、iOS | [points.md](points.md) |
 | 好友通知 | 有人加你好友時收到通知 | 系統通知 | Android、iOS | [points.md](points.md) |
-| 全體排名 (管理) | 管理者從帳戶頁最下面進來，解鎖後看全體積分，每個人旁邊標主堂或青少，第二行是他的手機用哪一版、哪天打開 | 帳戶頁「全體 (管理) ›」| Android, iOS | [points.md](points.md) |
+| 全體排名 (管理) | 管理者從帳戶頁「管理者」卡片進來，解鎖後看全體積分，每個人旁邊標主堂或青少，第二行是他的手機用哪一版、哪天打開 | 帳戶頁「管理者」卡片「全體 ›」| Android, iOS | [points.md](points.md) |
 | 獎品與兌換 | 獎品清單和兌換紀錄在 Google 試算表；紙本兌換後同工寫一列，可兌換積分跟著扣 | 試算表；App 的積分「自己」和「我的領取紀錄」 | Android、iOS | [points.md](points.md) |
 | 讀經統計與管理者 (試算表) | 試算表青少、主堂各一頁，每人一列讀經數字和手機、版本、最後打開；「管理者」打勾就是管理者，取消就撤銷 | 獎品試算表的讀經統計頁 | Android, iOS | [points.md](points.md) |
 
@@ -105,7 +105,7 @@
 |---|---|---|---|---|
 | Google 登入 | 用 Google 帳號登入，第一次登入自動建立帳號；測試機旗標、IP 或驗過的 token email 網域命中的新會員直接停用 | 開 App 時的登入畫面 | Android、iOS (iOS 需私有 OAuth 設定，TestFlight 真機另驗) | [account.md](account.md) |
 | Apple 登入 | iPhone 原生授權，首次登入建立帳號；Android 不顯示 | 登入畫面 | iOS | [account.md](account.md) |
-| 後台規則與文件 | 管理者解鎖後看所有後台規則和文件連結，失敗可重試 (試算表、讀經表等) | 帳戶頁「後台規則與文件」 | Android、iOS | [account.md](account.md) |
+| 後台規則與文件 | 管理者解鎖後看所有後台規則和文件連結，失敗可重試 (試算表、讀經表等) | 帳戶頁「管理者」卡片「後台規則與文件 ›」 | Android、iOS | [account.md](account.md) |
 | 刪除帳號 | 二次確認後刪除伺服器個資並登出，無需寄信 | 帳戶頁「刪除帳號與資料」 | Android、iOS | [account.md](account.md) |
 | 啟用碼 | 認不出 Google 帳號時，用一次性啟用碼綁定 | 登入畫面（需要時才出現） | Android、iOS | [account.md](account.md) |
 | 帳戶頁 | 回前景更新名字、歸屬和提醒；進頁重驗管理資格；看自己的名字和小組、設定提醒、登出、刪除帳號與資料、看 App 版本 | 右上角頭像 | Android、iOS | [account.md](account.md) |
