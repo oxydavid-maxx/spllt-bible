@@ -194,7 +194,12 @@ export function createHttpServer(options: { fixtureToken?: string; database?: Se
         }
       : { ...(fixtureRoster ? { productionAppleAuth: { verify: async () => { throw new Error('FIXTURE_APPLE_IDENTITY_REFUSED'); } } } : {}), fixtureToken: options.fixtureToken ?? process.env.QINGMU_DEV_TOKEN ?? 'dev-fixture-token', ...(process.env.QINGMU_FIXTURE_DEFAULT_MEMBER?.trim() ? { fixtureDefaultMemberId: process.env.QINGMU_FIXTURE_DEFAULT_MEMBER.trim() } : {}) }),
   });
-  const officialBible = createOfficialBibleAdapter();
+  // Chapters read from bible.com are kept on disk beside the database (維護者 2026-10-31): a restart or a quiet
+  // afternoon never makes a reader wait on bible.com again. One BIBLE_REQUEST log line per request says where
+  // the content came from and how long it took.
+  const bibleCacheDir = process.env.QINGMU_BIBLE_CACHE_DIR?.trim()
+    || (!options.database && databaseFilename && databaseFilename !== ':memory:' ? join(dirname(resolve(databaseFilename)), 'bible-cache') : undefined);
+  const officialBible = createOfficialBibleAdapter({ ...(bibleCacheDir ? { diskCacheDir: bibleCacheDir } : {}), log: (line) => console.log(line) });
   const lineChannelSecret = readLineChannelSecret(process.env.QINGMU_LINE_SECRET_FILE);
   // 主堂週刊: off unless the channel ID sits beside the secret and a folder is configured (server/bulletins.ts).
   const lineChannelId = readLineChannelIdFile(process.env.QINGMU_LINE_SECRET_FILE);
