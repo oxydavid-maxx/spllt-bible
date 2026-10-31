@@ -168,6 +168,7 @@
 
 - **手機只留前後一天的經文，存三天** (維護者 2026-10-31，選 A：「經文存 30 天太久了，這是一個輕量 App」)：預先抓畫面上那一天和前後各一個排定讀經日，後端回應標三天。取代原本的 30 分鐘：那時後端標 `max-age=1800` 再扣 `Age`，手機大約 25 分鐘就忘掉，隔一陣子再開要整條路 (手機 → 後端 → bible.com) 重抓，demo 時轉圈很久。
 - **後端把讀過的章節存在硬碟，不會過期** (維護者 2026-10-31：「聖經萬年不改」「整本存下來才 25MB，這沒問題」)：存在資料庫旁的 `bible-cache/<譯本>/<章>.json`，只留排版需要的部分 (每章約數十 KB)；後端重開、閒置幾小時後也不用再等 bible.com。記憶體那層照舊 30 分鐘後在背景重新確認。
+- **和合本整本先存進後端硬碟** (維護者 2026-10-31：「本地我們應該就是把所有聖經都存下來才 25 MB，這沒問題」)：只存讀過的章節的話，沒人打開過的章節第一次還是要等 bible.com。`scripts/bible-cache-backfill.ts --dir <bible-cache> --version 46` 照書卷清單把每一章經由同一個轉接程式讀一次，寫進同一個資料夾；已經存了的章節不再問 bible.com，每抓一章停 1.5 秒，連續失敗 5 次就停。後端不用重開。其他譯本照舊讀過才存。
 - 看過的資料要跟上：回到前景、切回頁面時重讀，不用計時器 (維護者 2026-10-19)。
 
 **刻意不做：**
@@ -235,6 +236,7 @@
 ## 守住它的測試
 
 - `tests/server/officialBibleAdapter.test.ts` 的「chapters kept on disk」— 後端重開後每種請求都從硬碟回答、內容跟第一次一樣、完全不叫 bible.com；硬碟檔只留排版需要的部分；壞掉的檔當作沒有；失敗不存；每個請求一行紀錄。同檔「three days」那條守住手機存三天、不帶 Age。
+- `tests/server/bibleCacheBackfill.test.ts` — 整本存完後，沒人打開過的章節在 bible.com 斷線時照樣從硬碟讀出；第二次跑不問 bible.com 也不等；bible.com 一直拒絕就停。
 - `tests/ui/fullscreenReaderScreen.test.ts`「preloads the day on screen, then the previous and next scheduled day」、`tests/ui/readingSessionDynamic.test.ts`「the days next to the one on screen」— 讀經頁真的把前後一天交給預先載入 (2026-10-31 之前只抓當天)。
 - `tests/domain/partialChapter.test.ts` — 節數範圍、整章不限制、合節邊界。
 - `tests/ui/partialChapterBridge.test.ts` — 詩篇 119 實錄經安裝的 WebView SDK 轉換後，真瀏覽器驗證範圍、空段、標題、頭尾提示、看整章、換日/內容重設和完成邊界。

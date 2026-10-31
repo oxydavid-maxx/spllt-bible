@@ -31,6 +31,7 @@
 | `server/appleTokens.ts` | AES-256-GCM 封存/解開 Apple refresh token；交換 authorization code、撤銷 Apple token | `http.ts` 組裝 token client；`routes.ts` 登入與刪帳 |
 | `server/appleVerifier.ts` | 用 Apple JWKS 驗 ID token 的簽名、issuer、audience、必要 claims 與選配 nonce | `http.ts`、`appleTokens.ts`；`routes.ts` 引用身分型別 |
 | `server/authBoundary.ts` | 驗 fixture、Google、裝置/舊 session，回傳會員身分或認證錯誤 | `routes.ts` |
+| `server/bibleCacheBackfill.ts` | 照書卷清單把一個譯本的每一章經由 `officialBibleAdapter.ts` 讀一次，寫進後端讀的 `bible-cache/<譯本>/`；已存的不問 bible.com，每抓一章停一下，連續失敗就停 | `scripts/bible-cache-backfill.ts` (手動跑一次，不在 HTTP 請求內) |
 | `server/bulletinAccess.ts` | 簽發與驗證週刊相容 cookie，供不帶圖片 Bearer 的舊版 App 使用 | `routes.ts` 的週刊清單/圖片路徑 |
 | `server/bulletins.ts` | 聚合同發送者、時間相近的 A4 圖為週刊；檔案儲存、保留最近 8 週、讀清單與原圖 | `http.ts`、`routes.ts`、`bulletinsResize.ts`；`lineWebhook.ts` 引用圖片型別；`scripts/ios/make-bulletin-fixture.ts`、`scripts/ios/check-bulletin-requests.ts` |
 | `server/bulletinsImage.ts` | 尋找與載入純 JS `jimp-compact`，提供週刊圖片工具型別 | `bulletinsResize.ts` 尋找套件；`scripts/ios/make-bulletin-fixture.ts`、`scripts/ios/check-bulletin-viewer.ts` 載入工具 |
