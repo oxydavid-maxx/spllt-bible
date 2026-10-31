@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -70,5 +70,23 @@ describe('storing a whole Bible version on the server disk', () => {
     expect(sleep).toHaveBeenCalledTimes(3);
     await expect(backfillBibleVersion({ versionId: 46, diskCacheDir: tempDir(), pauseMs: 0, maxFailuresInARow: 2, fetcher: refusing(() => true), sleep }))
       .rejects.toThrow('BACKFILL_STOPPED after 2 failures in a row, last 1TI.2:502');
+  });
+
+  // Codex review: the adapter answers 200 even when it cannot write the chapter, and only logs it.
+  it('counts a chapter it could not write to disk as failed, so a full disk never reads as done', async () => {
+    const dir = tempDir();
+    // A file where the version folder should be: every write under it fails.
+    writeFileSync(join(dir, '46'), 'not a folder');
+    await expect(backfillBibleVersion({ versionId: 46, diskCacheDir: dir, pauseMs: 0, fetcher: bibleCom(), sleep: async () => {} }))
+      .rejects.toThrow('BACKFILL_INDEX_FAILED version=46 reason=write');
+  });
+
+  it('lists each chapter whose write failed', async () => {
+    const dir = tempDir();
+    await backfillBibleVersion({ versionId: 46, diskCacheDir: dir, pauseMs: 0, fetcher: bibleCom(), sleep: async () => {} });
+    // Index and 1TI.1 stay on disk; 1TI.2 and 2TI.1 cannot be written (a folder sits where each file goes).
+    for (const name of ['1TI.2.json', '2TI.1.json']) { rmSync(join(dir, '46', name)); mkdirSync(join(dir, '46', name)); }
+    const result = await backfillBibleVersion({ versionId: 46, diskCacheDir: dir, pauseMs: 0, fetcher: bibleCom(), sleep: async () => {} });
+    expect(result).toEqual({ chapters: 3, fromBibleCom: 2, failed: ['1TI.2:write', '2TI.1:write'] });
   });
 });
