@@ -89,13 +89,15 @@ describe('iOS flow readiness and semantic interaction targets', () => {
     expect(source).toContain('notVisible: "Copy"');
   });
 
-  it('matches the observed verse-one labels, including NBSP, without selecting verse 10 or a chapter chip', () => {
+  // 2026-10-31: the Today entry opens the real Taipei day, and 徒 7:31–60 has no verse 1, so the flow waited for
+  // 1 and failed. It now taps the first verse-number label on screen, the same one both times.
+  it('taps the first verse-number label on screen, including NBSP, never a chapter chip', () => {
     const source = flow('12-reader-verse');
-    const target = source.match(/- tapOn:\r?\n\s+text: '([^']+)'/)?.[1];
-    expect(target, 'Use a semantic first-verse selector from the captured iOS hierarchy.').toBeDefined();
-    const selector = new RegExp(target!);
-    for (const label of ['1', '1 ', '1\u00a0']) expect(selector.test(label)).toBe(true);
-    for (const label of ['10', '11', '詩篇 107，今日第1段，共2段']) expect(selector.test(label)).toBe(false);
+    const taps = [...source.matchAll(/- tapOn:\r?\n\s+text: '([^']+)'\r?\n\s+index: (\d+)/g)];
+    expect(taps.map(match => match[2]), 'Both taps take the first match: select, then let go of the same verse.').toEqual(['0', '0']);
+    const selector = new RegExp(taps[0][1]);
+    for (const label of ['1', '1 ', '1\u00a0', '31 ', '176\u00a0']) expect(selector.test(label)).toBe(true);
+    for (const label of ['0', '使徒行傳 7，今日第1段，共2段', '詩篇 107，今日第1段，共2段', '使徒行傳 7:31–60 ·']) expect(selector.test(label)).toBe(false);
   });
 
   it('never taps or asserts a tab the tab bar hides', () => {
