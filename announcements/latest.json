@@ -1,66 +1,56 @@
 {
-  "week": "2026-10-18",
-  "generatedAt": "2026-10-22T01:04:21.396Z",
+  "week": "2026-11-01",
+  "generatedAt": "2026-11-01T01:01:21.987Z",
   "sermon": {
     "label": "第一堂",
-    "title": "洪水，挪亞方舟",
-    "speaker": "德馨",
-    "passage": "創6-10",
-    "audio": "https://drive.google.com/file/d/1BChccpASxRX-KzyqMpbxidqcQYD37t02/view",
-    "slides": null,
-    "sermonSlides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
-    "transcript": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view",
+    "title": "被誤會的巴別塔！你真的讀懂了嗎？",
+    "speaker": "惠雯",
+    "passage": "創11",
+    "audio": null,
+    "slides": "https://drive.google.com/file/d/1OZLs6dqEk5x9neMiHgSQzu-6-nWJl-bJ/view",
+    "sermonSlides": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view",
+    "transcript": null,
     "youtube": null,
     "materials": [
       {
-        "name": "20261018青崇分享：舵.pptx",
+        "name": "20261101 青崇講章 (創11巴別塔).pptx",
         "role": "sermonSlides",
-        "url": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view"
+        "url": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view"
       },
       {
-        "name": "20261020 第一堂 逐字稿 10-18 主日信息：挪亞方舟與將生命的舵交給神.pdf",
-        "role": "transcript",
-        "url": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view"
-      },
-      {
-        "name": "20261020 第一堂 錄音 10-18 主日信息：挪亞方舟與將生命的舵交給神.mp4",
-        "role": "audio",
-        "url": "https://drive.google.com/file/d/1BChccpASxRX-KzyqMpbxidqcQYD37t02/view"
+        "name": "20261101聖餐and青崇報告PPT.pptx",
+        "role": "slides",
+        "url": "https://drive.google.com/file/d/1OZLs6dqEk5x9neMiHgSQzu-6-nWJl-bJ/view"
       }
     ]
   },
   "sessions": [
     {
       "label": "第一堂",
-      "title": "洪水，挪亞方舟",
-      "speaker": "德馨",
-      "passage": "創6-10",
-      "audio": "https://drive.google.com/file/d/1BChccpASxRX-KzyqMpbxidqcQYD37t02/view",
-      "slides": null,
-      "sermonSlides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
-      "transcript": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view",
+      "title": "被誤會的巴別塔！你真的讀懂了嗎？",
+      "speaker": "惠雯",
+      "passage": "創11",
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1OZLs6dqEk5x9neMiHgSQzu-6-nWJl-bJ/view",
+      "sermonSlides": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view",
+      "transcript": null,
       "youtube": null,
       "materials": [
         {
-          "name": "20261018青崇分享：舵.pptx",
+          "name": "20261101 青崇講章 (創11巴別塔).pptx",
           "role": "sermonSlides",
-          "url": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view"
+          "url": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view"
         },
         {
-          "name": "20261020 第一堂 逐字稿 10-18 主日信息：挪亞方舟與將生命的舵交給神.pdf",
-          "role": "transcript",
-          "url": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view"
-        },
-        {
-          "name": "20261020 第一堂 錄音 10-18 主日信息：挪亞方舟與將生命的舵交給神.mp4",
-          "role": "audio",
-          "url": "https://drive.google.com/file/d/1BChccpASxRX-KzyqMpbxidqcQYD37t02/view"
+          "name": "20261101聖餐and青崇報告PPT.pptx",
+          "role": "slides",
+          "url": "https://drive.google.com/file/d/1OZLs6dqEk5x9neMiHgSQzu-6-nWJl-bJ/view"
         }
       ]
     },
     {
       "label": "第二堂",
-      "title": "做傷心人的朋友1",
+      "title": "創世記6~8章",
       "speaker": null,
       "passage": null,
       "audio": null,
@@ -71,22 +61,22 @@
     }
   ],
   "next": {
-    "date": "10/25",
-    "topic": "信心：怎麼得著信心？",
+    "date": "11/8",
+    "topic": "禱告：為什麼要禱告？怎樣禱告？",
     "owner": "中亮/大專",
     "signup": null,
     "sessions": [
       {
         "label": "第一堂",
         "kind": "青年啟發",
-        "title": "信心：怎麼得著信心？",
+        "title": "禱告：為什麼要禱告？怎樣禱告？",
         "owner": "中亮/大專"
       },
       {
         "label": "第二堂",
         "kind": null,
-        "title": "吃喝玩樂躺平系列: 青年館電影院",
-        "owner": "正慧姐"
+        "title": "強身健體系列: 衝浪",
+        "owner": "旻棟"
       }
     ],
     "roles": [
@@ -96,23 +86,23 @@
       },
       {
         "label": "敬拜團+詩歌",
-        "value": "大專團"
+        "value": "青少團"
       },
       {
         "label": "主領(報告)",
-        "value": "中亮"
+        "value": "德馨"
       },
       {
         "label": "招待",
-        "value": "正慧/悅心"
+        "value": "心予/尉彤"
       },
       {
         "label": "影音(投影/音控)",
-        "value": "欣儀＆柏羽"
+        "value": "欣儀＆采人"
       },
       {
         "label": "愛筵",
-        "value": "淑君及大廚們"
+        "value": "正慧訂餐"
       },
       {
         "label": "清潔",
@@ -122,6 +112,56 @@
   },
   "standing": null,
   "past": [
+    {
+      "week": "2026-10-18",
+      "title": "洪水，挪亞方舟",
+      "speaker": "德馨",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "洪水，挪亞方舟",
+          "speaker": "德馨",
+          "passage": "創6-10",
+          "audio": "https://drive.google.com/file/d/1BChccpASxRX-KzyqMpbxidqcQYD37t02/view",
+          "slides": null,
+          "sermonSlides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
+          "transcript": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view",
+          "youtube": null,
+          "materials": [
+            {
+              "name": "20261018青崇分享：舵.pptx",
+              "role": "sermonSlides",
+              "url": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view"
+            },
+            {
+              "name": "20261020 第一堂 逐字稿 10-18 主日信息：挪亞方舟與將生命的舵交給神.pdf",
+              "role": "transcript",
+              "url": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view"
+            },
+            {
+              "name": "20261020 第一堂 錄音 10-18 主日信息：挪亞方舟與將生命的舵交給神.mp4",
+              "role": "audio",
+              "url": "https://drive.google.com/file/d/1BChccpASxRX-KzyqMpbxidqcQYD37t02/view"
+            }
+          ]
+        },
+        {
+          "label": "第二堂",
+          "title": "做傷心人的朋友1",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": "https://drive.google.com/file/d/1BChccpASxRX-KzyqMpbxidqcQYD37t02/view",
+      "slides": null,
+      "transcript": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view",
+      "sermonSlides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view"
+    },
     {
       "week": "2026-10-11",
       "title": "十架：耶穌為什麼死？",

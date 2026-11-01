@@ -40,7 +40,7 @@ export default function ReaderScreen() {
   // A chapter that failed to load while this tab was out of sight retries when it comes back.
   const retrySignal = useReaderRetrySignal(chrome.focused);
   const audio = useReaderAudioSnapshot();
-  const { selectedDate, planId, day, period, previousDate, nextDate, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession();
+  const { selectedDate, planId, day, period, previousDate, nextDate, adjacentReferences, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart } = useReadingSession();
   const auth = useAuthSnapshot();
   const session = auth.session;
   const memberId = session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
@@ -348,6 +348,7 @@ export default function ReaderScreen() {
     <YouVersionReader
       key={selectedDate}
       references={references}
+      adjacentReferences={adjacentReferences ?? []}
       date={selectedDate}
       appKey={process.env.EXPO_PUBLIC_YOUVERSION_APP_KEY ?? null}
       versionId={selectedVersionId}

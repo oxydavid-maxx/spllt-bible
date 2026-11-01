@@ -1,4 +1,6 @@
-import { parse, type DefaultTreeAdapterMap } from 'parse5';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { parse, parseFragment, type DefaultTreeAdapterMap } from 'parse5';
 
 type Node = DefaultTreeAdapterMap['node'];
 type Element = DefaultTreeAdapterMap['element'];
@@ -12,6 +14,10 @@ export interface OfficialBibleResponse { status:number; body:unknown; headers:Re
 export interface OfficialBibleAdapterOptions {
   fetcher?: (url:string, init?:RequestInit)=>Promise<Response>;
   now?:()=>number; timeoutMs?:number; maxResponseBytes?:number; cacheTtlMs?:number; staleCacheTtlMs?:number; maxCacheEntries?:number; maxInflight?:number;
+  /** Folder for chapters already read from bible.com, so a restart never makes a reader wait on bible.com again (維護者 2026-10-31). */
+  diskCacheDir?:string;
+  /** One BIBLE_REQUEST line per Bible request: where the content came from and how long it took. */
+  log?:(line:string)=>void;
 }
 const VERSIONS = [46,40,111,406,114] as const;
 const CORS = { 'access-control-allow-origin':'*', 'access-control-allow-methods':'GET, OPTIONS', 'access-control-allow-headers':'Accept, Accept-Language, Content-Type, X-YVP-App-Key, X-YVP-Installation-Id, X-YVP-SDK, X-YVP-SDK-Version', 'cache-control':'no-store' };
@@ -149,10 +155,27 @@ function renderPage(page:Page,includeHeadings:boolean,includeNotes:boolean,selec
   return render(page.root);
 }
 
+// The disk copy keeps only what renderPage reads (tag, normalized classes, data-usfm, colspan, rowspan, text), so a
+// chapter is tens of KB instead of the few hundred KB of bible.com's page; reading it back renders the same HTML.
+function compactHtml(n:Node):string {
+  if(n.nodeName==='#text')return escape(text(n));
+  if(!element(n)||DROP.has(n.tagName))return '';
+  const attributes=[] as string[];const names=classes(n);if(names.length)attributes.push(`class="${escape(names.join(' '))}"`);
+  for(const name of ['data-usfm','colspan','rowspan']){const value=attr(n,name);if(value!==undefined)attributes.push(`${name}="${escape(value)}"`);}
+  return `<${n.tagName}${attributes.length?' '+attributes.join(' '):''}>${children(n).map(compactHtml).join('')}</${n.tagName}>`;
+}
+type StoredPage={metadata:Metadata;reference:string;chapter:string;verses:Verse[];rootHtml:string};
+function pageFromDisk(stored:StoredPage):Page|null {
+  if(!stored||typeof stored.rootHtml!=='string'||typeof stored.chapter!=='string'||typeof stored.reference!=='string'||!Array.isArray(stored.verses)||!stored.metadata)return null;
+  const root=parseFragment(stored.rootHtml).childNodes.find(element);
+  return root?{metadata:stored.metadata,reference:stored.reference,chapter:stored.chapter,verses:stored.verses,root}:null;
+}
+
 export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={}) {
   const fetcher=options.fetcher??fetch; const now=options.now??Date.now;
   type CacheEntry<T>={freshUntil:number;staleUntil:number;verifiedAt:number;value:T};
-  type CacheResult<T>={value:T;verifiedAt:number;stale:boolean};
+  type Source='memory'|'disk'|'bible.com';
+  type CacheResult<T>={value:T;verifiedAt:number;stale:boolean;source:Source};
   const cache=new Map<string,CacheEntry<unknown>>(); const inflight=new Map<string,Promise<CacheResult<unknown>>>();
   const maxBytes=Math.max(1,Math.min(options.maxResponseBytes??4_000_000,4_000_000));
   const timeout=Math.max(1,Math.min(options.timeoutMs??12_000,15_000));
@@ -160,6 +183,27 @@ export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={
   // Keep only already parsed, identity-verified values. Six hours is the total
   // horizon from the last successful verification; failed refreshes never move it.
   const staleTtl=Math.max(freshTtl,Math.min(options.staleCacheTtlMs??21_600_000,86_400_000));
+  // Scripture does not change: a chapter or book list read once is kept on disk with no expiry. Memory stays the
+  // first tier (and still refreshes in the background after 30 minutes); disk is only read when memory has nothing.
+  const diskPath=(key:string):string|null=>{
+    if(!options.diskCacheDir)return null;
+    const m=key.match(/^(chapter|index):(\d+)(?::([A-Z0-9]{3}\.[1-9]\d{0,2}))?$/);
+    return m?join(options.diskCacheDir,m[2],m[1]==='index'?'index.json':`${m[3]}.json`):null;
+  };
+  function readDisk<T>(key:string):T|null {
+    const path=diskPath(key);if(!path)return null;
+    try{const stored=JSON.parse(readFileSync(path,'utf8'));if(stored?.v!==1||stored.value==null)return null;return (key.startsWith('chapter:')?pageFromDisk(stored.value):Array.isArray(stored.value)?stored.value:null) as T|null;}
+    catch{return null;/* missing or unreadable: read bible.com as before */}
+  }
+  function writeDisk(key:string,value:unknown):void {
+    const path=diskPath(key);if(!path)return;
+    try{
+      const page=value as Page;const stored=key.startsWith('chapter:')?{metadata:page.metadata,reference:page.reference,chapter:page.chapter,verses:page.verses,rootHtml:compactHtml(page.root)}:value;
+      mkdirSync(dirname(path),{recursive:true});const temporary=`${path}.${process.pid}.tmp`;
+      writeFileSync(temporary,JSON.stringify({v:1,savedAt:new Date(now()).toISOString(),value:stored}));renameSync(temporary,path);
+    }catch(error){options.log?.(`BIBLE_CACHE_WRITE_FAILED key=${key} reason=${error instanceof Error?error.message:'unknown'}`);}
+  }
+  const trim=()=>{while(cache.size>Math.min(options.maxCacheEntries??64,128))cache.delete(cache.keys().next().value!);};
   async function request(url:string,headers:Record<string,string>={'accept':'text/html'}):Promise<{body:string;type:string}> {
     const controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
     const work=(async()=>{
@@ -177,25 +221,32 @@ export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={
   function startLoad<T>(key:string,load:()=>Promise<T>):Promise<CacheResult<T>> {
     const pending=inflight.get(key);if(pending)return pending as Promise<CacheResult<T>>;
     if(inflight.size>=(options.maxInflight??8))throw new AdapterError(503,'OFFICIAL_SOURCE_BUSY');
-    const work=load().then(value=>{const verifiedAt=now();cache.set(key,{freshUntil:verifiedAt+freshTtl,staleUntil:verifiedAt+staleTtl,verifiedAt,value});while(cache.size>Math.min(options.maxCacheEntries??64,128))cache.delete(cache.keys().next().value!);return {value,verifiedAt,stale:false};});
+    const work=load().then(value=>{const verifiedAt=now();cache.set(key,{freshUntil:verifiedAt+freshTtl,staleUntil:verifiedAt+staleTtl,verifiedAt,value});trim();writeDisk(key,value);return {value,verifiedAt,stale:false,source:'bible.com' as Source};});
     inflight.set(key,work as Promise<CacheResult<unknown>>);
     work.then(()=>{if(inflight.get(key)===work)inflight.delete(key);},error=>{if(inflight.get(key)===work)inflight.delete(key);if(error instanceof AdapterError&&error.invalidatesStale)cache.delete(key);});
     return work;
   }
   async function cached<T>(key:string,load:()=>Promise<T>):Promise<CacheResult<T>> {
     const at=now();const entry=cache.get(key) as CacheEntry<T>|undefined;
-    if(entry&&entry.freshUntil>at)return {value:entry.value,verifiedAt:entry.verifiedAt,stale:false};
-    if(entry&&entry.staleUntil>at){try{const refresh=startLoad(key,load);void refresh.catch(()=>{});}catch{/* Busy refresh cannot invalidate a still-bounded verified value. */}return {value:entry.value,verifiedAt:entry.verifiedAt,stale:true};}
-    cache.delete(key);return startLoad(key,load);
+    if(entry&&entry.freshUntil>at)return {value:entry.value,verifiedAt:entry.verifiedAt,stale:false,source:'memory'};
+    if(entry&&entry.staleUntil>at){try{const refresh=startLoad(key,load);void refresh.catch(()=>{});}catch{/* Busy refresh cannot invalidate a still-bounded verified value. */}return {value:entry.value,verifiedAt:entry.verifiedAt,stale:true,source:'memory'};}
+    cache.delete(key);
+    const stored=readDisk<T>(key);
+    if(stored!==null){cache.set(key,{freshUntil:at+freshTtl,staleUntil:at+staleTtl,verifiedAt:at,value:stored});trim();return {value:stored,verifiedAt:at,stale:false,source:'disk'};}
+    return startLoad(key,load);
   }
   const chapter=(id:number,usfm:string)=>cached(`chapter:${id}:${usfm}`,async()=>parseChapter((await request(`https://www.bible.com/bible/${id}/${usfm}`)).body,id,usfm));
   const index=(id:number)=>cached(`index:${id}`,async()=>parseIndex((await request(`https://www.bible.com/versions/${id}`)).body,id));
-  const stamp=(...parts:{verifiedAt:number;stale:boolean}[])=>({verifiedAt:Math.min(...parts.map(part=>part.verifiedAt)),stale:parts.some(part=>part.stale)});
+  const RANK:Record<Source,number>={memory:0,disk:1,'bible.com':2};
+  const stamp=(...parts:{verifiedAt:number;stale:boolean;source:Source}[])=>({verifiedAt:Math.min(...parts.map(part=>part.verifiedAt)),stale:parts.some(part=>part.stale),source:parts.reduce<Source>((worst,part)=>RANK[part.source]>RANK[worst]?part.source:worst,'memory')});
   const version=async(id:number)=>{const [page,books]=await Promise.all([chapter(id,'1TI.1'),index(id)]);const m=page.value.metadata;return {value:{id,abbreviation:m.abbreviation,localized_abbreviation:m.abbreviation,title:m.title,localized_title:m.title,language_tag:m.languageTag,books:books.value.map(b=>b.id),copyright:m.copyright,info:m.publisher,youversion_deep_link:`https://www.bible.com/versions/${id}`},...stamp(page,books)};};
   const response=(status:number,body:unknown,extra:Record<string,string>={},raw=false,cacheControl='no-store'):OfficialBibleResponse=>({status,body,headers:{...CORS,'content-type':raw?'text/css; charset=utf-8':'application/json; charset=utf-8','cache-control':cacheControl,...extra},...(raw?{raw:true}:{})});
-  const bibleJson=(status:number,body:unknown,cacheState:{verifiedAt:number;stale:boolean}):OfficialBibleResponse=>response(status,body,{'age':String(Math.max(0,Math.floor((now()-cacheState.verifiedAt)/1000)))},false,cacheState.stale?'public, max-age=0, must-revalidate':'public, max-age=1800');
+  // 維護者 2026-10-31 (選 A)：手機只留前後一天的經文。SDK 照 max-age 存 (沒有 max-age 會存 7 天)，三天後自己清掉；
+  // 不送 Age, 手機才存滿三天。Scripture does not change, so a stale memory copy is announced the same way.
+  const PHONE_LIFETIME='public, max-age=259200';
+  const bibleJson=(status:number,body:unknown,cacheState:{source:Source}):OfficialBibleResponse=>response(status,body,{'x-qingmu-bible-source':cacheState.source},false,PHONE_LIFETIME);
   const list=(data:unknown[])=>({data,next_page_token:null});
-  return async function handleOfficialBibleRequest(input:OfficialBibleRequest):Promise<OfficialBibleResponse|null> {
+  const handle=async(input:OfficialBibleRequest):Promise<OfficialBibleResponse|null>=>{
     let url:URL;try{url=new URL(input.url,'https://adapter.invalid');}catch{return response(400,{error:'INVALID_URL'});}
     const path=url.pathname;
     const ancillary=/^\/v1\/fonts\/1(?:\/stylesheet)?$/.test(path)||path==='/v1/languages'||/^\/v1\/languages\/[A-Za-z0-9-]+$/.test(path);
@@ -217,7 +268,7 @@ export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={
       if(path==='/v1/bibles'){
         const ranges=url.searchParams.getAll('language_ranges[]');let ids=[...VERSIONS];
         if(ranges.length&&!ranges.includes('*'))ids=ids.filter(id=>ranges.some(r=>r.toLowerCase().startsWith(id===46||id===40?'zh':'en')));
-        const versions=[];for(const id of ids)versions.push(await version(id));return bibleJson(200,list(versions.map(item=>item.value)),versions.length?stamp(...versions):{verifiedAt:now(),stale:false});
+        const versions=[];for(const id of ids)versions.push(await version(id));return bibleJson(200,list(versions.map(item=>item.value)),versions.length?stamp(...versions):{source:'memory'});
       }
       const match=path.match(/^\/v1\/bibles\/(\d+)(?:\/(.*))?$/);if(!match)return response(400,{error:'INVALID_PATH'});
       const id=Number(match[1]);if(!(VERSIONS as readonly number[]).includes(id))return response(404,{error:'BIBLE_NOT_SUPPORTED'});
@@ -244,5 +295,13 @@ export function createOfficialBibleAdapter(options:OfficialBibleAdapterOptions={
       if(bookPath[3]){const verse=page.value.verses.find(v=>v.id===bookPath[3]||(!bookPath[3].includes('-')&&intersectsVerse(v.id,Number(bookPath[3]),Number(bookPath[3]))));return verse?bibleJson(200,verse,combined):response(404,{error:'VERSE_NOT_FOUND'});}
       return bibleJson(200,{...current,verses:page.value.verses},combined);
     }catch(error){return error instanceof AdapterError?response(error.status,{error:error.code}):response(502,{error:'OFFICIAL_SOURCE_UNAVAILABLE'});}
+  };
+  return async function handleOfficialBibleRequest(input:OfficialBibleRequest):Promise<OfficialBibleResponse|null> {
+    const started=Date.now();const result=await handle(input);
+    if(!result)return result;
+    const source=result.headers['x-qingmu-bible-source'];delete result.headers['x-qingmu-bible-source'];
+    let path='';try{path=new URL(input.url,'https://adapter.invalid').pathname;}catch{/* logged as empty */}
+    if(path.startsWith('/v1/bibles')&&input.method==='GET')options.log?.(`BIBLE_REQUEST path=${path} source=${source??'none'} status=${result.status} ms=${Date.now()-started}`);
+    return result;
   };
 }

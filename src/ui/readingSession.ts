@@ -193,7 +193,10 @@ export function getReadingSessionSnapshot() {
   const day = getReadingDay(activePlan, selectedDate);
   const period = getPeriodForDate(activePlan, selectedDate);
   const adjacent = getAdjacentScheduledDates(activePlan, selectedDate);
-  return { selectedDate, planId: planIdByDate.get(selectedDate) ?? activePlan.planId, day, period, previousDate: adjacent.previous, nextDate: adjacent.next, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart, journalEntryDate, journalEntryRevision, pendingJournalQuote };
+  // 維護者 2026-10-31 (選 A)：手機只留前後一天的經文。The reader warms the previous and next scheduled day as well,
+  // so moving one day back or ahead shows text from the phone instead of waiting on the network.
+  const adjacentReferences = [adjacent.previous, adjacent.next].flatMap((date) => (date ? getReadingDay(activePlan, date)?.references ?? [] : []));
+  return { selectedDate, planId: planIdByDate.get(selectedDate) ?? activePlan.planId, day, period, previousDate: adjacent.previous, nextDate: adjacent.next, adjacentReferences, todayReaderTabPressRevision, todayReaderTabPressMemberId, todayReaderTabPressAuthEpoch, todayReaderTabPressSameDate, todayReaderTabPressTargetDate, todayReaderTabPressResetToAssignedStart, journalEntryDate, journalEntryRevision, pendingJournalQuote };
 }
 
 export function getReadingPlanId(taskDate: string): string | null {

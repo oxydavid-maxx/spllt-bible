@@ -8,6 +8,7 @@ import { useViewerCapabilities } from '../../services/viewerCapabilities';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../services/adminUnlockGuard';
 import { withClientHeaders } from '../../services/clientInfo';
 import { theme } from '../Theme';
+import { adminRowStyles } from './adminRowStyles';
 
 /**
  * 後台規則與文件 (維護者 2026-10-17, mock 9): every back-office rule and document on one page, so nothing has to be
@@ -24,12 +25,15 @@ export const BACK_OFFICE_RULES: ReadonlyArray<[string, string]> = [
 
 const apiBaseUrl = () => runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL }).apiBaseUrl;
 
-/** The row on 我的帳戶; only an administrator sees it. */
+/** A row of the 管理者 card on 我的帳戶 (AdminSection); only an administrator sees it. */
 export function BackOfficeEntry() {
   if (!useViewerCapabilities()?.canViewAllScores) return null;
-  return <Pressable accessibilityRole="button" accessibilityLabel="後台規則與文件" onPress={() => router.push('/back-office')} style={styles.entry}>
-    <Text style={styles.entryLabel}>後台規則與文件</Text>
-    <Text style={styles.entryValue}>管理者 ›</Text>
+  return <Pressable accessibilityRole="button" accessibilityLabel="後台規則與文件" accessibilityHint="規則、試算表和表單連結" onPress={() => router.push('/back-office')} style={adminRowStyles.row}>
+    <View style={adminRowStyles.text}>
+      <Text style={adminRowStyles.title}>後台規則與文件</Text>
+      <Text style={adminRowStyles.note}>規則、試算表和表單連結</Text>
+    </View>
+    <Text style={adminRowStyles.chevron}>›</Text>
   </Pressable>;
 }
 
@@ -82,9 +86,6 @@ export function BackOfficePage() {
 }
 
 const styles = StyleSheet.create({
-  entry: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: theme.control.tap, paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.card, borderWidth: theme.control.hairline, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-  entryLabel: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
-  entryValue: { color: theme.colors.muted, fontSize: theme.type.label.size },
   page: { padding: theme.spacing.lg, gap: theme.spacing.sm },
   section: { color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '800', paddingTop: theme.spacing.sm },
   list: { borderRadius: theme.radius.card, backgroundColor: theme.colors.surface, overflow: 'hidden' },

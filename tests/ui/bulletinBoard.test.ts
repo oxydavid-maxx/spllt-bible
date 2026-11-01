@@ -90,6 +90,13 @@ describe('the 公告 tabs', () => {
     for (const page of pages) expect(uriOf(page)).toMatch(/\/api\/bulletins\/\d{4}-\d{2}-\d{2}\/\d\?w=1080$/);
   });
 
+  // 維護者 2026-10-31:「公告首頁大堂在左邊、青年在右邊，這樣才會跟積分那邊看分數一致」.
+  it('puts 主堂 on the left and 青少 on the right, as 積分 does', async () => {
+    await act(async () => { tree = TestRenderer.create(React.createElement(AnnouncementsScreen)); });
+    const tabs = tree!.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityRole === 'tab');
+    expect(tabs.map((tab) => tab.props.accessibilityLabel)).toEqual(['主堂', '青少']);
+  });
+
   it('opens on 青少 for everyone else, and either side can be chosen', async () => {
     await act(async () => { tree = TestRenderer.create(React.createElement(AnnouncementsScreen)); });
     expect(byLabel('青少').props.accessibilityState).toEqual({ selected: true });

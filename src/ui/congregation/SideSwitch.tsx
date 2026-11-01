@@ -1,15 +1,16 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../Theme';
 import type { Congregation } from '../../services/devotionClient';
+import { SIDE_ORDER } from './congregationCopy';
 
 /**
  * The small 「全教會｜青少」 / 「主堂獎品｜青少獎品」 switch (維護者 2026-10-20, mock v3 ② ④). It only changes which side is
- * on screen; where the member counts is the separate 「改」. 主堂 first on both, so the two switches read alike. The
+ * on screen; where the member counts is the separate 「改」. 主堂 first on both (SIDE_ORDER), so the two switches read alike. The
  * side on screen is filled green like the 自己/好友 tabs above it; 36dp tall, 48dp to the finger with the slop.
  */
 export function SideSwitch({ labels, selected, onSelect }: { labels: Record<Congregation, string>; selected: Congregation; onSelect: (side: Congregation) => void }) {
   return <View style={styles.track} accessibilityRole="tablist">
-    {(['main', 'youth'] as const).map((side) => {
+    {SIDE_ORDER.map((side) => {
       const on = side === selected;
       return <Pressable
         key={side}

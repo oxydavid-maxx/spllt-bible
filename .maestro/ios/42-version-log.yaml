@@ -26,11 +26,12 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "登出"
     timeout: 15000
+# 2026-10-31 (A): the entry is the 全體 row of the 管理者 card, no longer 全體 (管理) at the foot of the page.
 - scrollUntilVisible:
-    element: "全體 \\(管理\\)"
+    element: "全體"
     direction: DOWN
     timeout: 15000
-- tapOn: "全體 \\(管理\\)"
+- tapOn: "全體"
 - extendedWaitUntil:
     visible: '查看測試成員甲的積分.*iOS 0\.5\.\d+.*\d+/\d+ 打開'
     timeout: 30000

@@ -7,7 +7,11 @@ import type { DatabaseSync } from 'node:sqlite';
  * (管理) list (server/routes.ts) and, since 光佑's 2026-10-21 request, the 手機/版本/最後打開 columns of the
  * prize sheet's 讀經統計 pages (server/rewardSheetStats.ts); friends never see it.
  *
- * Older apps send none of these headers and are served exactly as before: nothing is recorded for them.
+ * Older apps send none of these headers and are served exactly as before. Superseded 2026-10-31 (維護者:「回報表看起來
+ * 少很多人」): the headers only arrived with the 10/21 OTA, so a fresh install of the store build and every older
+ * build were missing from the list. A signed-in request without them now records one 「舊版」 row per member and
+ * platform (recordLegacyClientInstall); the platform comes from the native networking User-Agent, else from the
+ * member's push registration, else nothing is recorded. The phone's own report replaces that row.
  * A malformed header records nothing rather than half a row. The day is enough (Taipei date, no time),
  * and a request that changes nothing writes nothing, so a member opening the app twenty times a day costs
  * one write. Account deletion clears the rows (server/accountDeletion.ts).
@@ -38,6 +42,9 @@ export const CLIENT_HEADERS = {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VERSION = /^\d{1,4}\.\d{1,4}\.\d{1,4}$/;
+/** What the 全體 list and the prize sheet show for a phone that runs an app too old to say its version. */
+export const LEGACY_VERSION = '舊版';
+const legacyInstallId = (memberId: string, platform: 'android' | 'ios') => `legacy:${memberId}:${platform}`;
 const BUILD = /^\d{1,9}$/;
 
 export function ensureClientInstallSchema(db: DatabaseSync): void {
@@ -86,12 +93,40 @@ export function recordClientInstall(db: DatabaseSync, memberId: string, report: 
       OR client_installs.app_version IS NOT excluded.app_version OR client_installs.app_build IS NOT excluded.app_build
       OR client_installs.update_id IS NOT excluded.update_id OR client_installs.last_seen_date IS NOT excluded.last_seen_date`)
     .run(report.installId, memberId, report.platform, report.version, report.build, report.updateId, date);
+  // The same phone now says its version: its 「舊版」 row from before the update is no longer true.
+  db.prepare('DELETE FROM client_installs WHERE install_id = ?').run(legacyInstallId(memberId, report.platform));
+}
+
+/**
+ * The platform of a signed-in request that carries no report. React Native's networking stack names itself in the
+ * User-Agent (okhttp on Android, CFNetwork/Darwin on iOS); anything else (a browser, a script) is not a phone of
+ * this app and falls back to the member's newest push registration, which only the app makes.
+ */
+export function legacyPlatform(db: DatabaseSync, memberId: string, headers: Record<string, string | undefined>): 'android' | 'ios' | null {
+  const agent = headers['user-agent'] ?? '';
+  if (/\bokhttp\//i.test(agent)) return 'android';
+  if (/\bCFNetwork\/|\bDarwin\//.test(agent)) return 'ios';
+  try {
+    const row = db.prepare(`SELECT platform FROM device_delivery_tokens WHERE member_id = ? AND revoked_at IS NULL
+      ORDER BY updated_at DESC LIMIT 1`).get(memberId) as { platform: string } | undefined;
+    const platform = row?.platform.toLowerCase();
+    return platform === 'android' || platform === 'ios' ? platform : null;
+  } catch { return null; }
+}
+
+/** One 「舊版」 row per member and platform, moved to the day it was opened; written at most once a day. */
+export function recordLegacyClientInstall(db: DatabaseSync, memberId: string, platform: 'android' | 'ios', date: string): void {
+  db.prepare(`INSERT INTO client_installs(install_id, member_id, platform, app_version, app_build, update_id, last_seen_date)
+    VALUES (?, ?, ?, ?, NULL, NULL, ?)
+    ON CONFLICT(install_id) DO UPDATE SET last_seen_date = excluded.last_seen_date
+    WHERE client_installs.last_seen_date IS NOT excluded.last_seen_date`)
+    .run(legacyInstallId(memberId, platform), memberId, platform, LEGACY_VERSION, date);
 }
 
 /** The member's most recently opened installation, or null when no app of theirs has reported yet. */
 export function latestClientInstall(db: DatabaseSync, memberId: string): ClientInstall | null {
   const row = db.prepare(`SELECT platform, app_version, app_build, update_id, last_seen_date FROM client_installs
-    WHERE member_id = ? ORDER BY last_seen_date DESC, rowid DESC LIMIT 1`).get(memberId) as
+    WHERE member_id = ? ORDER BY last_seen_date DESC, install_id LIKE 'legacy:%' ASC, rowid DESC LIMIT 1`).get(memberId) as
     { platform: 'android' | 'ios'; app_version: string; app_build: string | null; update_id: string | null; last_seen_date: string } | undefined;
   return row ? { platform: row.platform, version: row.app_version, build: row.app_build, updateId: row.update_id, lastSeenDate: row.last_seen_date } : null;
 }

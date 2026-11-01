@@ -154,15 +154,15 @@ describe('the green 靈修 button beside 完成今日讀經', () => {
   });
 });
 
-describe('全體 (管理) at the bottom of 我的帳戶', () => {
+describe('全體 in the 管理者 card of 我的帳戶', () => {
   it('stays hidden for a member and opens the guarded 全體 scope for an admin', async () => {
     let tree!: TestRenderer.ReactTestRenderer;
     await act(async () => { tree = TestRenderer.create(React.createElement(AdminAllScoresEntry)); });
     expect(tree.toJSON()).toBeNull();
     gamification.getCapabilities.mockResolvedValueOnce({ canViewAllScores: true, canManageRewards: false, canRedeemRewards: false });
     await act(async () => { tree = TestRenderer.create(React.createElement(AdminAllScoresEntry)); });
-    const entry = tree.root.find((node) => (node.type as unknown) === 'Pressable' && node.props.accessibilityLabel === '全體 (管理)');
-    expect(texts(tree)).toEqual(['全體 (管理) ›']);
+    const entry = tree.root.find((node) => (node.type as unknown) === 'Pressable' && node.props.accessibilityLabel === '全體');
+    expect(texts(tree)).toEqual(['全體', '每個人的積分、在哪邊聚會、手機版本', '›']);
     act(() => entry.props.onPress());
     expect(nav.navigate).toHaveBeenCalledWith('/progress');
     expect(consumeOpenAllScores()).toBe(true);

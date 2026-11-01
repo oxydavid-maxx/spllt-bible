@@ -50,11 +50,13 @@ describe('version log per installation', () => {
     expect(f.rows()).toHaveLength(2);
   });
 
-  it('serves an older app that reports nothing exactly as before, and records nothing for it', async () => {
+  // Superseded 2026-10-31 (維護者:「回報表看起來少很多人」): an older app is still served as before, but it now
+  // shows up as 「舊版」 instead of not at all (see 'phones too old to report' below).
+  it('serves an older app that reports nothing exactly as before', async () => {
     const f = setup();
     const response = await f.profile('elder', {});
     expect(response.status).toBe(200);
-    expect(f.rows()).toEqual([]);
+    expect(f.rows()).toEqual([]); // no User-Agent of the app and no push registration: nothing to say which phone
   });
 
   it('records nothing from a malformed report but still answers the request', async () => {
@@ -106,5 +108,59 @@ describe('only administrators see it', () => {
     const deleted = await f.api({ method: 'DELETE', url: '/api/me', headers: { ...f.as('elder', f.client(INSTALL_A, 'android', '0.5.35', '60')), 'content-type': 'application/json' }, body: '{"confirmed":true}' });
     expect(deleted.status).toBe(200);
     expect(f.rows()).toEqual([]);
+  });
+});
+
+// 維護者 2026-10-31:「回報表看起來少很多人」. The report headers only arrived with the 10/21 OTA, so 11 of 20 members
+// (a fresh install of the store build, every older build) were missing from 全體 and the prize sheet.
+describe('phones too old to report', () => {
+  const ANDROID_AGENT = { 'user-agent': 'okhttp/4.12.0' };
+  const IOS_AGENT = { 'user-agent': '%E7%AB%B9%E7%A7%91%E8%81%96%E7%B6%93/60 CFNetwork/1568.100.1 Darwin/24.0.0' };
+  const pushRegistration = (db: { db: { prepare(sql: string): { run(...values: unknown[]): unknown } } }, memberId: string, platform: string) =>
+    db.db.prepare('INSERT INTO device_delivery_tokens(installation_id, member_id, platform, token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(`inst-${memberId}`, memberId, platform, 'token', '2026-10-20T00:00:00Z', '2026-10-20T00:00:00Z');
+
+  it('records 「舊版」 with the platform the phone\'s networking names, once a day', async () => {
+    const f = setup();
+    await f.profile('elder', ANDROID_AGENT);
+    await f.profile('friend', IOS_AGENT);
+    expect(f.rows()).toEqual([
+      { install_id: 'legacy:elder:android', member_id: 'elder', platform: 'android', app_version: '舊版', app_build: null, update_id: null, last_seen_date: '2026-10-21' },
+      { install_id: 'legacy:friend:ios', member_id: 'friend', platform: 'ios', app_version: '舊版', app_build: null, update_id: null, last_seen_date: '2026-10-21' },
+    ]);
+    const writes = () => (f.db.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
+    const before = writes();
+    await f.profile('elder', ANDROID_AGENT);
+    expect(writes()).toBe(before);
+    f.setNow('2026-10-23T02:00:00Z');
+    await f.profile('elder', ANDROID_AGENT);
+    expect(f.rows()[0]).toMatchObject({ install_id: 'legacy:elder:android', last_seen_date: '2026-10-23' });
+  });
+
+  it('falls back to the member\'s push registration, and records nothing for a browser or script with none', async () => {
+    const f = setup();
+    pushRegistration(f.db, 'elder', 'IOS');
+    await f.profile('elder', { 'user-agent': 'node' });
+    await f.profile('friend', { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/130.0' });
+    expect(f.rows()).toEqual([
+      { install_id: 'legacy:elder:ios', member_id: 'elder', platform: 'ios', app_version: '舊版', app_build: null, update_id: null, last_seen_date: '2026-10-21' },
+    ]);
+  });
+
+  it('shows 「舊版」 on 全體 until the same phone reports its version, which replaces it', async () => {
+    const f = setup();
+    await f.profile('elder', ANDROID_AGENT);
+    expect(clientOf((await f.people('admin', 'all')).body, 'elder')).toEqual({ platform: 'android', version: '舊版', build: null, updateId: null, lastSeenDate: '2026-10-21' });
+    await f.profile('elder', { ...ANDROID_AGENT, ...f.client(INSTALL_A, 'android', '0.5.35', '60', UPDATE) });
+    expect(f.rows()).toEqual([{ install_id: INSTALL_A, member_id: 'elder', platform: 'android', app_version: '0.5.35', app_build: '60', update_id: UPDATE, last_seen_date: '2026-10-21' }]);
+    expect(clientOf((await f.people('admin', 'all')).body, 'elder')).toMatchObject({ version: '0.5.35' });
+  });
+
+  it('prefers a real report over a 「舊版」 row of another phone opened the same day', async () => {
+    const f = setup();
+    await f.profile('elder', f.client(INSTALL_B, 'ios', '0.5.35', '60'));
+    await f.profile('elder', ANDROID_AGENT);
+    expect(f.rows()).toHaveLength(2);
+    expect(clientOf((await f.people('admin', 'all')).body, 'elder')).toMatchObject({ platform: 'ios', version: '0.5.35' });
   });
 });
