@@ -57,6 +57,16 @@ describe('devotional pronunciation, without changing the displayed words', () =>
     expect(speechUnits(source)[0].text).toBe('測試題目。背誦經文。神哪，謝謝你，你的話使我們得着力量，也一路保護著我們；我們屬他。');
     expect(JSON.stringify(source)).toBe(before);
   });
+  // 維護者 2026-10-23: Azure read 使徒行傳 as chuán (船); in a book title 傳 is zhuàn (賺). Approved by ear 2026-10-28.
+  it('says 行傳 as 行撰 wherever the book name is spoken, keeping its citations and 傳記, 自傳 as they are', () => {
+    const source = post(['使徒行傳 1:8 測試甲。', '再讀徒2:1，也讀使徒行傳的傳記與自傳。'], '徒1');
+    const before = JSON.stringify(source);
+    expect(speechUnits(source).map(u => u.text)).toEqual([
+      '使徒行撰第一章。背誦經文。測試甲。',
+      '再讀使徒行撰二章一節，也讀使徒行撰的傳記與自傳。',
+    ]);
+    expect(JSON.stringify(source)).toBe(before);
+  });
 });
 
 describe('read-along by the share of the audio played (2026-10-21)', () => {
