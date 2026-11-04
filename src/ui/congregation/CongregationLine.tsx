@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 import type { Congregation } from '../../services/devotionClient';
 import { ActionSheet } from '../gamification/ActionSheet';
 import { useCongregation, type CongregationBinding } from './congregationStore';
@@ -20,6 +21,7 @@ export function CongregationLine({ variant }: { variant: 'points' | 'account' })
 
 /** For a screen that already holds the member's binding (the 積分 page), so it does not read or listen twice. */
 export function CongregationLineView({ variant, congregation }: { variant: 'points' | 'account'; congregation: CongregationBinding }) {
+  const styles = useStyles();
   const [open, setOpen] = useState(false);
   if (!congregation.value) return null;
   const parts = whereParts(congregation.value);
@@ -35,6 +37,7 @@ export function CongregationLineView({ variant, congregation }: { variant: 'poin
 }
 
 function CongregationChangeSheet({ current, choose, onClose }: { current: Congregation; choose: (value: Congregation) => Promise<void>; onClose: () => void }) {
+  const styles = useStyles();
   const [picked, setPicked] = useState<Congregation | null>(null);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -71,19 +74,19 @@ function CongregationChangeSheet({ current, choose, onClose }: { current: Congre
   </ActionSheet>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   pointsRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.xxs },
-  accountRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, minHeight: theme.control.tap, paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.card, borderWidth: theme.control.hairline, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-  says: { flex: 1, color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
+  accountRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, minHeight: theme.control.tap, paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.card, borderWidth: theme.control.hairline, borderColor: colors.border, backgroundColor: colors.surface },
+  says: { flex: 1, color: colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
   saysAccount: { fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-  not: { color: theme.colors.muted, fontWeight: '600' },
-  change: { minHeight: 40, minWidth: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.chip, borderWidth: 1.5, borderColor: theme.colors.primary, backgroundColor: theme.colors.surface },
-  changePressed: { backgroundColor: theme.colors.primarySoft },
-  changeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
-  choice: { minHeight: theme.control.tap, justifyContent: 'center', gap: 2, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.card, borderWidth: 2, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-  choicePicked: { borderColor: theme.colors.primary, borderWidth: 3, backgroundColor: theme.colors.primarySoft },
-  choiceName: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
-  choiceDetail: { color: theme.colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
-  hint: { color: theme.colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
-  error: { color: theme.colors.danger, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-});
+  not: { color: colors.muted, fontWeight: '600' },
+  change: { minHeight: 40, minWidth: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.chip, borderWidth: 1.5, borderColor: colors.primary, backgroundColor: colors.surface },
+  changePressed: { backgroundColor: colors.primarySoft },
+  changeText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  choice: { minHeight: theme.control.tap, justifyContent: 'center', gap: 2, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, borderRadius: theme.radius.card, borderWidth: 2, borderColor: colors.border, backgroundColor: colors.surface },
+  choicePicked: { borderColor: colors.primary, borderWidth: 3, backgroundColor: colors.primarySoft },
+  choiceName: { color: colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
+  choiceDetail: { color: colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
+  hint: { color: colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
+  error: { color: colors.danger, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+}));

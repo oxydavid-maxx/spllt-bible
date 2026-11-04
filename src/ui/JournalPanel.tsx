@@ -4,6 +4,7 @@ import { SheetBackdrop } from './SheetBackdrop';
 import { useAndroidKeyboardVisible } from './useAndroidKeyboardVisible';
 import { useJournalEntry } from './useJournalEntry';
 import { theme } from './Theme';
+import { makeStyles, useColors } from './useAppTheme';
 
 /**
  * The half-page writing panel that slides up under the reader.
@@ -32,6 +33,8 @@ export interface JournalPanelProps {
 }
 
 export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, newOperationId, onClose, pendingQuote, onQuoteConsumed, mirror }: JournalPanelProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const entry = useJournalEntry({ memberId, planId, taskDate, newOperationId, mirror });
   const keyboardUp = useAndroidKeyboardVisible();
 
@@ -61,7 +64,7 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
             multiline
             maxLength={4000}
             placeholder="今天想記下的"
-            placeholderTextColor={theme.colors.muted}
+            placeholderTextColor={colors.muted}
             value={entry.body}
             onChangeText={entry.setBody}
             onBlur={entry.flushNow}
@@ -78,16 +81,16 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
   </Modal>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   keyboardRoot: { flex: 1 },
-  scrim: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
-  sheet: { minHeight: '52%', maxHeight: '92%', backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, paddingBottom: theme.spacing.md },
+  scrim: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' },
+  sheet: { minHeight: '52%', maxHeight: '92%', backgroundColor: colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, paddingBottom: theme.spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md },
-  title: { flex: 1, color: theme.colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
+  title: { flex: 1, color: colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
   done: { minHeight: theme.control.tap, minWidth: theme.control.tap, alignItems: 'flex-end', justifyContent: 'center' },
-  doneText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  doneText: { color: colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
   body: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, gap: theme.spacing.sm },
-  input: { minHeight: 180, color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-  quoteOffer: { minHeight: theme.control.tap, justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs },
-  quoteOfferText: { color: theme.colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-});
+  input: { minHeight: 180, color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  quoteOffer: { minHeight: theme.control.tap, justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: colors.primary, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs },
+  quoteOfferText: { color: colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+}));

@@ -4,8 +4,8 @@ import { DomWebView, type DomWebViewRef } from '@expo/dom-webview';
 import Svg, { Path } from 'react-native-svg';
 import { readAlongPlan, splitDevotionReference } from '../../domain/devotionReading';
 import type { DevotionalPost } from '../../services/devotionClient';
-import { READ_ALONG_HIGHLIGHT } from '../readAlongBridge';
 import { theme } from '../Theme';
+import { makeStyles, useColors } from '../useAppTheme';
 
 /**
  * The 靈修 tab (維護者 2026-10-14): the pastor's post for the day, the paragraph being read aloud lit,
@@ -67,7 +67,7 @@ const PLAY = 'window.qmPlay&&window.qmPlay();true;';
 const PAUSE = 'window.qmPause&&window.qmPause();true;';
 
 /** A paragraph drawn as its pieces, one of them lit; the leading citation keeps its small grey label. */
-function pieceTexts(pieces: string[], reference: string, lit: number, referenceSize: number) {
+function pieceTexts(styles: ReturnType<typeof useStyles>, pieces: string[], reference: string, lit: number, referenceSize: number) {
   let offset = 0;
   return pieces.flatMap((piece, index) => {
     const start = offset;
@@ -82,6 +82,8 @@ function pieceTexts(pieces: string[], reference: string, lit: number, referenceS
 }
 
 export function DevotionalView({ state, activeIndex, activePart = -1, playerUrl, songRequest, songFollows, insets, onEndChange, fontSize = DEFAULT_FONT_SIZE, lineSpacing = DEFAULT_LINE_SPACING, speaking = false }: DevotionalViewProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const viewport = useRef({ height: 0, content: 0, y: 0 });
   const reportEnd = () => {
     const v = viewport.current;
@@ -152,7 +154,7 @@ export function DevotionalView({ state, activeIndex, activePart = -1, playerUrl,
 
   if (state.kind !== 'ready') {
     return <View style={[styles.center, { paddingTop: insets.top + theme.spacing.xl, paddingBottom: insets.bottom }]}>
-      {state.kind === 'loading' ? <><ActivityIndicator color={theme.colors.primary} /><Text style={styles.note}>正在載入今天的靈修…</Text></>
+      {state.kind === 'loading' ? <><ActivityIndicator color={colors.primary} /><Text style={styles.note}>正在載入今天的靈修…</Text></>
         : state.kind === 'missing' ? (state.awaiting ? <Text style={styles.awaiting}>靈修請待發佈</Text> : <Text style={styles.note}>這一天的靈修還沒有上傳</Text>)
           : <><Text accessibilityRole="alert" style={styles.note}>靈修暫時無法載入</Text><Pressable accessibilityRole="button" accessibilityLabel="重試載入靈修" onPress={state.onRetry} style={styles.retry}><Text style={styles.retryText}>重試</Text></Pressable></>}
     </View>;
@@ -201,7 +203,7 @@ export function DevotionalView({ state, activeIndex, activePart = -1, playerUrl,
         const pieces = active && activePart >= 1 ? plan[index]?.pieces : undefined;
         // An active paragraph keeps the lit padding throughout, so lighting its pieces never moves the words.
         return <Text key={paragraphIndex} onLayout={(event) => { const { y, height } = event.nativeEvent.layout; paragraphTops.current.set(index, { section: sectionIndex, y, height, first: paragraphIndex === 0 }); }} style={[styles.paragraph, active && (activePart < 0 ? styles.paragraphLit : styles.paragraphActive), text.paragraph]}>
-          {pieces ? pieceTexts(pieces, parts.reference, activePart - 1, fontSize * 0.65)
+          {pieces ? pieceTexts(styles, pieces, parts.reference, activePart - 1, fontSize * 0.65)
             : <>{parts.reference ? <Text testID="devotion-reference" style={[styles.reference, { fontSize: fontSize * 0.65 }]}>{parts.reference}</Text> : null}{parts.body}</>}
         </Text>;
       })}
@@ -228,14 +230,14 @@ export function DevotionalView({ state, activeIndex, activePart = -1, playerUrl,
             else if (message.startsWith('error')) setSong('error');
           }}
         />
-        {song === 'loading' ? <View pointerEvents="none" style={styles.songPlay}><ActivityIndicator color={theme.colors.white} /></View> : null}
+        {song === 'loading' ? <View pointerEvents="none" style={styles.songPlay}><ActivityIndicator color={colors.onFill} /></View> : null}
       </View>
       <View style={styles.songCaption}>
         <Text numberOfLines={1} style={styles.songTitle}>{songTitle}</Text>
         <Text style={styles.songNote}>{caption}</Text>
       </View>
     </View> : <Pressable accessibilityRole="button" accessibilityLabel={`播放詩歌 ${songTitle}`} onPress={() => { handedOff.current = false; setSong('loading'); }} style={styles.poster}>
-      <View pointerEvents="none" style={styles.songPlay}><Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M8 5v14l11-7z" fill={theme.colors.white} /></Svg></View>
+      <View pointerEvents="none" style={styles.songPlay}><Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M8 5v14l11-7z" fill={colors.onFill} /></Svg></View>
       <View pointerEvents="none" style={styles.posterCaption}>
         <Text numberOfLines={1} style={styles.songTitle}>{songTitle}</Text>
         <Text style={styles.songNote}>{caption}</Text>
@@ -249,39 +251,39 @@ export function DevotionalView({ state, activeIndex, activePart = -1, playerUrl,
   </ScrollView>;
 }
 
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: theme.colors.surface },
+const useStyles = makeStyles((colors) => ({
+  scroll: { flex: 1, backgroundColor: colors.readerSurface },
   content: { paddingHorizontal: theme.spacing.lg, gap: 14 },
-  center: { flex: 1, alignItems: 'center', gap: theme.spacing.md, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.lg },
-  note: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, textAlign: 'center' },
+  center: { flex: 1, alignItems: 'center', gap: theme.spacing.md, backgroundColor: colors.readerSurface, paddingHorizontal: theme.spacing.lg },
+  note: { color: colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, textAlign: 'center' },
   // 維護者 2026-10-19: the wait-for-today message reads a little larger than an ordinary note.
-  awaiting: { color: theme.colors.muted, fontSize: 18, lineHeight: 26, textAlign: 'center' },
-  retry: { minHeight: theme.control.tap, paddingHorizontal: theme.spacing.xl, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
-  retryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  awaiting: { color: colors.muted, fontSize: 18, lineHeight: 26, textAlign: 'center' },
+  retry: { minHeight: theme.control.tap, paddingHorizontal: theme.spacing.xl, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  retryText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
   titleBlock: { gap: 2 },
-  title: { color: theme.colors.ink, fontSize: 19, lineHeight: 26, fontWeight: '800' },
-  meta: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  title: { color: colors.ink, fontSize: 19, lineHeight: 26, fontWeight: '800' },
+  meta: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   section: { gap: 6 },
-  heading: { color: theme.colors.primary, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
-  paragraph: { color: theme.colors.ink, fontSize: 16, lineHeight: 27 },
+  heading: { color: colors.primary, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
+  paragraph: { color: colors.ink, fontSize: 16, lineHeight: 27 },
   // Installed YouVersion verse labels: .65em and --yv-muted-foreground (#636161 in light mode).
-  reference: { color: '#636161' },
-  paragraphLit: { backgroundColor: `#${READ_ALONG_HIGHLIGHT}`, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8 },
+  reference: { color: colors.scriptureMuted },
+  paragraphLit: { backgroundColor: colors.readAlong, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8 },
   paragraphActive: { paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: -8 },
-  pieceLit: { backgroundColor: `#${READ_ALONG_HIGHLIGHT}` },
-  headingLit: { alignSelf: 'flex-start', backgroundColor: `#${READ_ALONG_HIGHLIGHT}`, borderRadius: 6, overflow: 'hidden', paddingHorizontal: 6, marginHorizontal: -6 },
-  poster: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: theme.colors.ink, aspectRatio: 16 / 9, justifyContent: 'flex-end' },
+  pieceLit: { backgroundColor: colors.readAlong },
+  headingLit: { alignSelf: 'flex-start', backgroundColor: colors.readAlong, borderRadius: 6, overflow: 'hidden', paddingHorizontal: 6, marginHorizontal: -6 },
+  poster: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: colors.mediaStage, aspectRatio: 16 / 9, justifyContent: 'flex-end' },
   posterCaption: { paddingHorizontal: theme.spacing.md, paddingVertical: 10, gap: 2 },
-  songCard: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: theme.colors.ink },
+  songCard: { borderRadius: theme.radius.button, overflow: 'hidden', backgroundColor: colors.mediaStage },
   songMedia: { aspectRatio: 16 / 9 },
   fill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
-  songPlay: { position: 'absolute', left: '50%', top: '42%', width: 54, height: 54, marginLeft: -27, marginTop: -27, borderRadius: 27, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  songPlay: { position: 'absolute', left: '50%', top: '42%', width: 54, height: 54, marginLeft: -27, marginTop: -27, borderRadius: 27, backgroundColor: colors.overImageButton, alignItems: 'center', justifyContent: 'center' },
   songCaption: { paddingHorizontal: theme.spacing.md, paddingVertical: 10, gap: 2 },
-  songTitle: { color: theme.colors.white, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
+  songTitle: { color: colors.onFill, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
   songSource: { gap: 2, marginTop: -6 },
-  attribution: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  attribution: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   // Same secondary action as ReadingCalendarCard's 整份計畫 ›.
   youtubeLink: { marginLeft: 'auto', minHeight: theme.control.tap, justifyContent: 'center' },
-  youtubeLinkText: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
-  songNote: { color: theme.colors.primarySoft, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
-});
+  youtubeLinkText: { color: colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
+  songNote: { color: colors.onMediaSoft, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+}));

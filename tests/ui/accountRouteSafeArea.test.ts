@@ -11,7 +11,7 @@ vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'SafeAreaView' 
 vi.mock('../../src/ui/accountSurfaceComponent', () => ({ AccountSurface: 'AccountSurface' }));
 vi.mock('../../src/ui/admin/AdminSection', () => ({ AdminSection: 'AdminSection' }));
 import AccountScreen from '../../app/account';
-import { theme } from '../../src/ui/Theme';
+import { lightColors } from '../../src/ui/Theme';
 
 describe('account route', () => {
   it('keeps the page above the system navigation bar', async () => {
@@ -19,7 +19,7 @@ describe('account route', () => {
     await act(async () => { renderer = TestRenderer.create(React.createElement(AccountScreen)); });
     const area = renderer.root.find(node => String(node.type) === 'SafeAreaView');
     expect(area.props.edges).toContain('bottom');
-    expect(area.props.style).toMatchObject({ flex: 1, backgroundColor: theme.colors.background });
+    expect(area.props.style).toMatchObject({ flex: 1, backgroundColor: lightColors.background });
     expect(area.findAll(node => String(node.type) === 'AccountSurface')).toHaveLength(1);
     expect(area.findByType('ScrollView' as never).props.contentContainerStyle).toEqual({ flexGrow: 1 });
     expect(renderer.root.findByType('StackScreen' as never).props.options).toMatchObject({ headerBackButtonDisplayMode: 'minimal', headerBackTitle: '返回' });

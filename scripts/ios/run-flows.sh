@@ -93,6 +93,13 @@ for flow in .maestro/ios/*.yaml; do
     45-account-deletion) maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/maestro/45-account-screen.txt" 2>/dev/null || true ;;
     46-apple-login) maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/maestro/46-apple-authorization-screen.txt" 2>/dev/null || true; xcrun simctl io "$UDID" screenshot "$OUT/maestro/46-apple-native.png" ;;
     30-friend-push-open) npx tsx scripts/ios/make-friend-apns.ts "$OUT/friend.apns" && xcrun simctl push "$UDID" org.qingmu.youth "$OUT/friend.apns" ;;
+    # 夜間模式 (2026-11-04): every screenshot the flow took with 一直深色 has no big white block (週刊 dimmed, QR and Apple's
+    # button allowed). Collect its screenshots first (Maestro writes them where it likes, as at the end of this script).
+    47-night-mode)
+      [ "$LAST_RESULT" = SKIP ] && continue
+      find . "$HOME/.maestro" -name '47-*.png' -newer "$OUT/.flows-start" -not -path './node_modules/*' -not -path "./$OUT/maestro/*" -exec cp {} "$OUT/maestro/" \; 2>/dev/null || true
+      npx tsx scripts/ios/check-dark-screens.ts "$OUT/maestro" "$OUT/dark-screens.json" > "$OUT/maestro/47-dark-screens.txt" 2>&1 \
+        || [ "$LAST_RESULT" = FAIL ] || { record 47-night-mode FAIL; bash scripts/ios/collect-failure.sh "$UDID" 47-night-mode; } ;;
   esac
 done
 # Maestro writes takeScreenshot files under its own test output folder, not where the flow names them;

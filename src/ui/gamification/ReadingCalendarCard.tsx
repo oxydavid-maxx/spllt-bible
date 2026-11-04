@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 import { dayState, monthCells, type CalendarDays, type DayState } from './readingCalendarModel';
 
 /**
@@ -35,6 +36,7 @@ function monthLabel(month: string): string {
 }
 
 export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect, onPreviousMonth, onNextMonth, onOpenReadingPlan, onExportReadingCard, devotionDates }: ReadingCalendarCardProps) {
+  const styles = useStyles();
   return <View style={styles.card}>
     <View style={styles.periodNav}>
       <Pressable accessibilityRole="button" accessibilityLabel="上個月" accessibilityState={{ disabled: !onPreviousMonth }} disabled={!onPreviousMonth} onPress={onPreviousMonth} style={styles.navButton}><Text style={styles.navText}>‹</Text></Pressable>
@@ -74,35 +76,35 @@ export function ReadingCalendarCard({ month, today, selectedDate, days, onSelect
   </View>;
 }
 
-const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, padding: 14, gap: 6 },
+const useStyles = makeStyles((colors) => ({
+  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, padding: 14, gap: 6 },
   periodNav: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.xs },
-  navButton: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface },
-  navText: { color: theme.colors.primary, fontSize: 30, lineHeight: 32 },
-  periodLabel: { flex: 1, color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '800', textAlign: 'center' },
+  navButton: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderColor: colors.borderStrong, borderWidth: theme.control.hairline, backgroundColor: colors.surface },
+  navText: { color: colors.primary, fontSize: 30, lineHeight: 32 },
+  periodLabel: { flex: 1, color: colors.ink, fontSize: theme.type.body.size, fontWeight: '800', textAlign: 'center' },
   // Seven slots per row, each carrying its own gutter, as in the trend card's old calendar.
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   slot: { width: '14.2857%', padding: 2 },
-  weekday: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, textAlign: 'center' },
+  weekday: { color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, textAlign: 'center' },
   cellBlank: { height: 40 },
-  cell: { height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted },
-  devotionMark: { color: theme.colors.goldText, fontSize: 11, lineHeight: 12, fontWeight: '700' },
-  devotionMarkDone: { color: theme.colors.goldOnPrimary },
+  cell: { height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
+  devotionMark: { color: colors.goldText, fontSize: 11, lineHeight: 12, fontWeight: '700' },
+  devotionMarkDone: { color: colors.goldOnPrimary },
   legend: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 2 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
-  legendDone: { width: 12, height: 12, borderRadius: 3, backgroundColor: theme.colors.primary },
-  legendText: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
-  legendDevotion: { color: theme.colors.goldText, fontWeight: '700' },
-  cellDone: { backgroundColor: theme.colors.primary },
+  legendDone: { width: 12, height: 12, borderRadius: 3, backgroundColor: colors.primaryFill },
+  legendText: { color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+  legendDevotion: { color: colors.goldText, fontWeight: '700' },
+  cellDone: { backgroundColor: colors.primaryFill },
   cellFuture: { opacity: 0.45 },
-  cellToday: { borderWidth: 2, borderColor: theme.colors.primaryDeep },
+  cellToday: { borderWidth: 2, borderColor: colors.primaryDeep },
   // Clay, the app's "needs you" colour: this is the day the card at the top of the page acts on.
-  cellSelected: { borderWidth: 3, borderColor: theme.colors.accent, opacity: 1 },
-  cellText: { color: theme.colors.ink, fontSize: theme.type.caption.size, fontWeight: '700' },
-  cellTextDone: { color: theme.colors.white },
+  cellSelected: { borderWidth: 3, borderColor: colors.accent, opacity: 1 },
+  cellText: { color: colors.ink, fontSize: theme.type.caption.size, fontWeight: '700' },
+  cellTextDone: { color: colors.onFill },
   cellTextSelected: { fontWeight: '900' },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
   exportLink: { minHeight: theme.control.tap, justifyContent: 'center' },
   planLink: { marginLeft: 'auto', minHeight: theme.control.tap, justifyContent: 'center' },
-  planLinkText: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
-});
+  planLinkText: { color: colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
+}));

@@ -8,7 +8,8 @@ import { useViewerCapabilities } from '../../services/viewerCapabilities';
 import { createAdminUnlockGuard, createNativeAdminAuthenticator } from '../../services/adminUnlockGuard';
 import { withClientHeaders } from '../../services/clientInfo';
 import { theme } from '../Theme';
-import { adminRowStyles } from './adminRowStyles';
+import { makeStyles } from '../useAppTheme';
+import { useAdminRowStyles } from './adminRowStyles';
 
 /**
  * 後台規則與文件 (維護者 2026-10-17, mock 9): every back-office rule and document on one page, so nothing has to be
@@ -27,6 +28,7 @@ const apiBaseUrl = () => runtimeConfig({ QINGMU_API_BASE_URL: process.env.EXPO_P
 
 /** A row of the 管理者 card on 我的帳戶 (AdminSection); only an administrator sees it. */
 export function BackOfficeEntry() {
+  const adminRowStyles = useAdminRowStyles();
   if (!useViewerCapabilities()?.canViewAllScores) return null;
   return <Pressable accessibilityRole="button" accessibilityLabel="後台規則與文件" accessibilityHint="規則、試算表和表單連結" onPress={() => router.push('/back-office')} style={adminRowStyles.row}>
     <View style={adminRowStyles.text}>
@@ -40,6 +42,7 @@ export function BackOfficeEntry() {
 type LinksState = { status: 'locked' | 'loading' | 'ready' | 'error'; links: Array<{ name: string; url: string }> };
 
 export function BackOfficePage() {
+  const styles = useStyles();
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
   const [state, setState] = useState<LinksState>({ status: 'locked', links: [] });
@@ -85,15 +88,15 @@ export function BackOfficePage() {
   </ScrollView>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   page: { padding: theme.spacing.lg, gap: theme.spacing.sm },
-  section: { color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '800', paddingTop: theme.spacing.sm },
-  list: { borderRadius: theme.radius.card, backgroundColor: theme.colors.surface, overflow: 'hidden' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', gap: theme.spacing.sm, minHeight: theme.control.tap, alignItems: 'center', paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, borderBottomWidth: theme.control.hairline, borderBottomColor: theme.colors.border },
-  key: { color: theme.colors.ink, fontSize: theme.type.label.size, fontWeight: '800', flexShrink: 0 },
-  value: { flex: 1, color: theme.colors.muted, fontSize: theme.type.label.size, textAlign: 'right' },
-  link: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
-  note: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, padding: theme.spacing.sm },
-  retry: { minHeight: theme.control.tap, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.primary },
-  retryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
-});
+  section: { color: colors.ink, fontSize: theme.type.body.size, fontWeight: '800', paddingTop: theme.spacing.sm },
+  list: { borderRadius: theme.radius.card, backgroundColor: colors.surface, overflow: 'hidden' },
+  row: { flexDirection: 'row', justifyContent: 'space-between', gap: theme.spacing.sm, minHeight: theme.control.tap, alignItems: 'center', paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, borderBottomWidth: theme.control.hairline, borderBottomColor: colors.border },
+  key: { color: colors.ink, fontSize: theme.type.label.size, fontWeight: '800', flexShrink: 0 },
+  value: { flex: 1, color: colors.muted, fontSize: theme.type.label.size, textAlign: 'right' },
+  link: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  note: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, padding: theme.spacing.sm },
+  retry: { minHeight: theme.control.tap, alignSelf: 'flex-start', justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: colors.primary },
+  retryText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
+}));

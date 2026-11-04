@@ -4,6 +4,7 @@ import type { Congregation, GroupReading } from '../../services/devotionClient';
 import { monthCells } from './readingCalendarModel';
 import { monthName, monthSummary, myPrizeLine, prizeProgress, prizeRule, readersLevel } from './groupReadingModel';
 import { theme } from '../Theme';
+import { makeStyles, useColors } from '../useAppTheme';
 import { GROUP_NAME, whereSentence } from '../congregation/congregationCopy';
 import { SideSwitch } from '../congregation/SideSwitch';
 
@@ -14,7 +15,6 @@ import { SideSwitch } from '../congregation/SideSwitch';
  */
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
-const LEVEL_STYLE = [{ backgroundColor: theme.colors.surfaceMuted }, { backgroundColor: theme.colors.primarySoft }, { backgroundColor: '#A9CDB7' }, { backgroundColor: theme.colors.primary }] as const;
 
 export interface GroupReadingCardProps {
   view: GroupReading;
@@ -29,12 +29,15 @@ export interface GroupReadingCardProps {
 }
 
 function Chevron({ direction }: { direction: 'left' | 'right' }) {
-  return <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={theme.colors.primary} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><Path d={direction === 'left' ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'} /></Svg>;
+  const colors = useColors();
+  return <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={colors.primary} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><Path d={direction === 'left' ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'} /></Svg>;
 }
 
 function PrizeIcon({ icon }: { icon: 'beanbag' | 'sofa' }) {
-  const color = icon === 'beanbag' ? theme.colors.accent : theme.colors.muted;
-  return <View style={[styles.prizeIcon, { backgroundColor: icon === 'beanbag' ? theme.colors.accentSoft : theme.colors.surfaceMuted }]}>
+  const styles = useStyles();
+  const colors = useColors();
+  const color = icon === 'beanbag' ? colors.accent : colors.muted;
+  return <View style={[styles.prizeIcon, { backgroundColor: icon === 'beanbag' ? colors.accentSoft : colors.surfaceMuted }]}>
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       {icon === 'beanbag'
         ? <><Path d="M5 19c-2-3-1-9 3-12 3-2 7-1 9 2s3 7 2 10z" /><Path d="M4 19h16" /></>
@@ -44,6 +47,7 @@ function PrizeIcon({ icon }: { icon: 'beanbag' | 'sofa' }) {
 }
 
 function Count({ label, readers }: { label: string; readers: number | null }) {
+  const styles = useStyles();
   return <View style={styles.countBox} accessible accessibilityLabel={readers === null ? `${label}不到 2 人讀` : `${label} ${readers} 人讀了`}>
     <Text style={styles.countLabel}>{label}</Text>
     {readers === null ? <Text style={styles.countFew}>不到 2 人</Text> : <Text style={styles.countLine}><Text style={styles.countNumber}>{readers}</Text> 人讀了</Text>}
@@ -51,6 +55,8 @@ function Count({ label, readers }: { label: string; readers: number | null }) {
 }
 
 export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onView, failedSide }: GroupReadingCardProps) {
+  const styles = useStyles();
+  const levelStyle = [styles.level0, styles.level1, styles.level2, styles.level3] as const;
   const readers = new Map(view.days.map((day) => [day.date, day.readers]));
   const busiest = view.busiest?.readers ?? 0;
   const summary = monthSummary(view);
@@ -88,7 +94,7 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onVi
           if (date > view.today || !readers.has(date)) return <View key={date} style={styles.slot}><View style={[styles.cell, styles.cellFuture]}><Text style={styles.futureText}>{day}</Text></View></View>;
           const count = readers.get(date) ?? null;
           const level = readersLevel(count, busiest);
-          return <View key={date} style={styles.slot}><View accessible accessibilityLabel={count === null ? `${date} 不到 2 人` : `${date} ${count} 人`} style={[styles.cell, LEVEL_STYLE[level], date === view.today && styles.cellToday]}>
+          return <View key={date} style={styles.slot}><View accessible accessibilityLabel={count === null ? `${date} 不到 2 人` : `${date} ${count} 人`} style={[styles.cell, levelStyle[level], date === view.today && styles.cellToday]}>
             <Text style={[styles.cellDay, level === 3 && styles.cellDayDark]}>{day}</Text>
             {count !== null ? <Text style={[styles.cellCount, level === 3 && styles.cellCountDark]}>{count}</Text> : null}
           </View></View>;
@@ -97,7 +103,7 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onVi
     </View>
     <View style={styles.legendRow}>
       <Text style={styles.legendText}>不到 2 人的日子不顯示人數</Text>
-      <View style={styles.scale}><Text style={styles.legendText}>少</Text>{[1, 2, 3].map((level) => <View key={level} style={[styles.swatch, LEVEL_STYLE[level]]} />)}<Text style={styles.legendText}>多</Text></View>
+      <View style={styles.scale}><Text style={styles.legendText}>少</Text>{[1, 2, 3].map((level) => <View key={level} style={[styles.swatch, levelStyle[level]]} />)}<Text style={styles.legendText}>多</Text></View>
     </View>
     {summary ? <Text style={styles.summary}>{summary.lead}<Text style={styles.bold}>{summary.reads}</Text>{summary.middle}{summary.busiest ? <Text style={styles.bold}>{summary.busiest}</Text> : null}{summary.tail}</Text> : null}
 
@@ -120,56 +126,60 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onVi
   </View>;
 }
 
-const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, padding: 14, gap: theme.spacing.md },
+const useStyles = makeStyles((colors) => ({
+  card: { backgroundColor: colors.surface, borderRadius: theme.radius.card, padding: 14, gap: theme.spacing.md },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-  title: { flex: 1, color: theme.colors.ink, fontSize: 18, lineHeight: 24, fontWeight: '800' },
+  title: { flex: 1, color: colors.ink, fontSize: 18, lineHeight: 24, fontWeight: '800' },
   monthRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
   monthCaption: { flex: 1 },
-  looking: { color: theme.colors.accent, backgroundColor: theme.colors.accentSoft, borderRadius: theme.radius.chip, paddingHorizontal: 10, paddingVertical: 6, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700' },
-  failed: { color: theme.colors.danger, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  looking: { color: colors.accent, backgroundColor: colors.accentSoft, borderRadius: theme.radius.chip, paddingHorizontal: 10, paddingVertical: 6, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700' },
+  failed: { color: colors.danger, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   monthStep: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  monthLabel: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  monthLabel: { color: colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
   disabled: { opacity: 0.35 },
   counts: { flexDirection: 'row', gap: theme.spacing.sm },
-  countBox: { flex: 1, backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.button, paddingVertical: 10, paddingHorizontal: theme.spacing.md, gap: 2 },
-  countLabel: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
-  countLine: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: 38, fontWeight: '700' },
-  countNumber: { color: theme.colors.primary, fontSize: 32, lineHeight: 38, fontWeight: '800' },
-  countFew: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: 38, fontWeight: '700' },
-  caption: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  countBox: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: theme.radius.button, paddingVertical: 10, paddingHorizontal: theme.spacing.md, gap: 2 },
+  countLabel: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
+  countLine: { color: colors.ink, fontSize: theme.type.body.size, lineHeight: 38, fontWeight: '700' },
+  countNumber: { color: colors.primary, fontSize: 32, lineHeight: 38, fontWeight: '800' },
+  countFew: { color: colors.muted, fontSize: theme.type.body.size, lineHeight: 38, fontWeight: '700' },
+  caption: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   slot: { width: '14.2857%', padding: 2 },
-  weekday: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, textAlign: 'center', paddingBottom: 2 },
+  weekday: { color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, textAlign: 'center', paddingBottom: 2 },
   cell: { height: 46, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  cellFuture: { backgroundColor: theme.colors.surfaceMuted },
-  futureText: { color: '#B5C2B9', fontSize: theme.type.micro.size, fontWeight: '600' },
-  cellToday: { borderWidth: 2, borderColor: theme.colors.accent },
-  cellDay: { position: 'absolute', top: 3, left: 5, color: theme.colors.muted, fontSize: 10, lineHeight: 11, fontWeight: '600' },
-  cellDayDark: { color: theme.colors.primarySoft },
-  cellCount: { color: theme.colors.ink, fontSize: 16, fontWeight: '800' },
-  cellCountDark: { color: theme.colors.white },
+  cellFuture: { backgroundColor: colors.surfaceMuted },
+  level0: { backgroundColor: colors.surfaceMuted },
+  level1: { backgroundColor: colors.primarySoft },
+  level2: { backgroundColor: colors.heatHigh },
+  level3: { backgroundColor: colors.primaryFill },
+  futureText: { color: colors.futureText, fontSize: theme.type.micro.size, fontWeight: '600' },
+  cellToday: { borderWidth: 2, borderColor: colors.accent },
+  cellDay: { position: 'absolute', top: 3, left: 5, color: colors.muted, fontSize: 10, lineHeight: 11, fontWeight: '600' },
+  cellDayDark: { color: colors.primarySoft },
+  cellCount: { color: colors.ink, fontSize: 16, fontWeight: '800' },
+  cellCountDark: { color: colors.onFill },
   legendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
-  legendText: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+  legendText: { color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
   scale: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
   swatch: { width: 14, height: 14, borderRadius: 3 },
-  summary: { color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
+  summary: { color: colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
   bold: { fontWeight: '800' },
-  prizes: { borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.border, paddingTop: theme.spacing.md, gap: theme.spacing.md },
+  prizes: { borderTopWidth: theme.control.hairline, borderTopColor: colors.border, paddingTop: theme.spacing.md, gap: theme.spacing.md },
   prizeHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-  prizeTitle: { flex: 1, color: theme.colors.ink, fontSize: 17, lineHeight: 24, fontWeight: '800' },
-  prizeNote: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  prizeTitle: { flex: 1, color: colors.ink, fontSize: 17, lineHeight: 24, fontWeight: '800' },
+  prizeNote: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   prize: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   prizeIcon: { width: 40, height: 40, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center' },
   prizeCopy: { flex: 1, minWidth: 0, gap: 5 },
   prizeNameRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: theme.spacing.sm },
-  prizeName: { flexShrink: 1, color: theme.colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '800' },
-  prizeMonths: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '800' },
-  prizeMonthsActive: { color: theme.colors.primary },
-  prizeRule: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  bar: { height: 8, borderRadius: 4, backgroundColor: theme.colors.primarySoft, overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: 4, backgroundColor: theme.colors.primary },
-  barFillQuiet: { backgroundColor: theme.colors.borderStrong },
-  prizeLine: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  prizeMine: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
-});
+  prizeName: { flexShrink: 1, color: colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '800' },
+  prizeMonths: { color: colors.muted, fontSize: theme.type.caption.size, fontWeight: '800' },
+  prizeMonthsActive: { color: colors.primary },
+  prizeRule: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  bar: { height: 8, borderRadius: 4, backgroundColor: colors.primarySoft, overflow: 'hidden' },
+  barFill: { height: '100%', borderRadius: 4, backgroundColor: colors.primaryFill },
+  barFillQuiet: { backgroundColor: colors.borderStrong },
+  prizeLine: { color: colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  prizeMine: { color: colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
+}));

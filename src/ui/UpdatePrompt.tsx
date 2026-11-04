@@ -4,6 +4,8 @@ import { AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View }
 import { checkAppUpdate, startAppUpdate } from '../services/appUpdate';
 import { NO_UPDATE, updateActionLabel, updateTitle, type UpdateState } from '../services/updateCheck';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
+import { setUpdatePromptShowing } from './updatePromptPresence';
 
 const RETRY_MS = 20_000;
 
@@ -35,6 +37,7 @@ export function UpdatePrompt({
   open?: (url: string) => void | Promise<unknown>;
   start?: () => Promise<boolean>;
 }) {
+  const styles = useStyles();
   const [state, setState] = useState<UpdateState>(NO_UPDATE);
   const [dismissed, setDismissed] = useState(false);
 
@@ -57,6 +60,7 @@ export function UpdatePrompt({
   }, []);
 
   const visible = state.available && !dismissed;
+  useEffect(() => { setUpdatePromptShowing(visible); return () => setUpdatePromptShowing(false); }, [visible]);
   return <Modal transparent animationType="fade" visible={visible} onRequestClose={() => setDismissed(true)}>
     <View style={styles.scrim}>
       <View style={styles.card} accessibilityViewIsModal accessibilityLabel="有新版本">
@@ -83,14 +87,14 @@ function updateHint(state: UpdateState): string {
   return '按「更新」會打開安裝頁，照步驟下載後按「更新」，資料都會保留。';
 }
 
-const styles = StyleSheet.create({
-  scrim: { flex: 1, backgroundColor: '#00000066', justifyContent: 'center', padding: theme.spacing.xl },
-  card: { borderRadius: theme.radius.card, backgroundColor: theme.colors.surface, padding: theme.spacing.xl, gap: theme.spacing.md },
-  title: { color: theme.colors.ink, fontSize: theme.type.label.size + 4, fontWeight: '800' },
-  note: { color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.size + 8 },
-  hint: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  update: { minHeight: theme.control.tap + 8, justifyContent: 'center', alignItems: 'center', borderRadius: theme.radius.button, backgroundColor: theme.colors.primary },
-  updateText: { color: theme.colors.white, fontSize: theme.type.label.size + 2, fontWeight: '800' },
+const useStyles = makeStyles((colors) => ({
+  scrim: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'center', padding: theme.spacing.xl },
+  card: { borderRadius: theme.radius.card, backgroundColor: colors.surface, padding: theme.spacing.xl, gap: theme.spacing.md },
+  title: { color: colors.ink, fontSize: theme.type.label.size + 4, fontWeight: '800' },
+  note: { color: colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.size + 8 },
+  hint: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  update: { minHeight: theme.control.tap + 8, justifyContent: 'center', alignItems: 'center', borderRadius: theme.radius.button, backgroundColor: colors.primaryFill },
+  updateText: { color: colors.onFill, fontSize: theme.type.label.size + 2, fontWeight: '800' },
   later: { minHeight: theme.control.tap, justifyContent: 'center', alignItems: 'center' },
-  laterText: { color: theme.colors.muted, fontSize: theme.type.label.size, fontWeight: '700' },
-});
+  laterText: { color: colors.muted, fontSize: theme.type.label.size, fontWeight: '700' },
+}));

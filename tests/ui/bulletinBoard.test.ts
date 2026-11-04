@@ -48,8 +48,7 @@ import AnnouncementsScreen from '../../app/(tabs)/announcements';
 import { BulletinBoard } from '../../src/ui/bulletin/BulletinBoard';
 import { bulletinHeading, bulletinPageSource } from '../../src/services/bulletinClient';
 import { BULLETIN_LIST_WIDTHS, bulletinListWidth } from '../../src/domain/bulletinWidths';
-import { theme } from '../../src/ui/Theme';
-import { PAGE_PLACEHOLDER } from '../../src/ui/bulletin/BulletinPageStatus';
+import { lightColors } from '../../src/ui/Theme';
 import { clampOffset, fitSize, pinchScale } from '../../src/ui/bulletin/zoomMath';
 import { androidForwardedHeaders } from '../helpers/androidImageHeaders';
 
@@ -167,12 +166,12 @@ describe('the 週刊 board and viewer', () => {
     // The state is in the label too: VoiceOver, TalkBack and the iOS flow can tell a page that is still coming.
     expect(first.props.accessibilityLabel).toBe('10/18 (日) 週刊第 1 頁，載入中');
     expect(flat(first.props.style).aspectRatio).toBeCloseTo(760 / 1075);
-    expect(first.findAll((node) => String(node.type) === 'View' && flat(node.props.style).backgroundColor === PAGE_PLACEHOLDER)).toHaveLength(1);
-    expect(PAGE_PLACEHOLDER).not.toBe(theme.colors.surface);
+    expect(first.findAll((node) => String(node.type) === 'View' && flat(node.props.style).backgroundColor === lightColors.imagePlaceholder)).toHaveLength(1);
+    expect(lightColors.imagePlaceholder).not.toBe(lightColors.surface);
     await act(async () => { images()[0].props.onLoad(); });
     expect(texts().filter((text) => text === LOADING)).toHaveLength(4);
     expect(tile('10/18 (日) 週刊', 1).props.accessibilityLabel).toBe('10/18 (日) 週刊第 1 頁，點了放大');
-    expect(tile('10/18 (日) 週刊', 1).findAll((node) => flat(node.props.style).backgroundColor === PAGE_PLACEHOLDER)).toHaveLength(0);
+    expect(tile('10/18 (日) 週刊', 1).findAll((node) => flat(node.props.style).backgroundColor === lightColors.imagePlaceholder)).toHaveLength(0);
   });
 
   it('says a page could not be loaded, and a tap asks for it again instead of opening it', async () => {
@@ -226,7 +225,7 @@ describe('the 週刊 board and viewer', () => {
     const [statusArea, stage] = screen.children as TestRenderer.ReactTestInstance[];
     expect(statusArea.props.testID).toBe('bulletin-viewer-status-area');
     // The status bar keeps the app's light background, where its dark icons show, as on every other screen.
-    expect(flat(statusArea.props.style)).toMatchObject({ height: 47, backgroundColor: theme.colors.background });
+    expect(flat(statusArea.props.style)).toMatchObject({ height: 47, backgroundColor: lightColors.background });
     const bar = stage.findAll((node) => node.props.testID === 'bulletin-viewer-bar')[0];
     expect(bar.findAll((node) => String(node.type) === 'Text').map((node) => node.children.join(''))).toContain('10/18 週刊 2 / 3');
     expect(flat(bar.props.style)).toMatchObject({ position: 'absolute', top: 0 });

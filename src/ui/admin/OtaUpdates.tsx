@@ -8,7 +8,8 @@ import { isAppHidden, subscribeAppHidden } from '../../services/appVisibility';
 import { autoUpdateBlockers } from '../../services/autoUpdateGuard';
 import { readViewerCapabilities, useViewerCapabilities } from '../../services/viewerCapabilities';
 import { theme } from '../Theme';
-import { adminRowStyles } from './adminRowStyles';
+import { currentColors, useColors } from '../useAppTheme';
+import { useAdminRowStyles } from './adminRowStyles';
 
 /**
  * 光佑 20261021 (「不能 default 更新嗎？對老人家很不友善」): older members almost never close the app fully, so
@@ -16,8 +17,12 @@ import { adminRowStyles } from './adminRowStyles';
  * unless something is in use (src/services/autoUpdateGuard.ts). Replaces 2026-10-19's "never reload".
  */
 export const AUTO_APPLY_AWAY_MS = 30 * 60_000;
-// The app's own background behind the official reload screen, so the second of reloading looks like the app.
-const RELOAD_SCREEN = { backgroundColor: theme.colors.background, fade: true, spinner: { color: theme.colors.primary } };
+// The app's own background behind the official reload screen, so the second of reloading looks like the app, in the
+// scheme it shows at that moment (夜間模式).
+function reloadScreen() {
+  const colors = currentColors();
+  return { backgroundColor: colors.background, fade: true, spinner: { color: colors.primary } };
+}
 
 // A downloaded update (or a roll-back to the store build) is waiting for the next launch or a quiet return.
 let downloaded = false;
@@ -61,7 +66,7 @@ async function applyOnReturn(awayMs: number): Promise<void> {
     if (!downloaded) { await checkOtaUpdateInBackground(); return; }
     // Narration playing, an unsaved input or an open panel: leave it for a later quiet return or the next launch.
     if ((await autoUpdateBlockers()).length > 0 || isAppHidden()) return;
-    await Updates.reloadAsync({ reloadScreenOptions: RELOAD_SCREEN });
+    await Updates.reloadAsync({ reloadScreenOptions: reloadScreen() });
   } catch {
     // A refused reload leaves the update for the next launch.
   } finally {
@@ -133,6 +138,8 @@ export function useEndPreviewForNonAdministrator(capabilities: { canViewAllScore
 
 /** One of the account page's administrator rows: the same shared lookup as its neighbours (#73). */
 export function AdminOtaUpdatesEntry() {
+  const adminRowStyles = useAdminRowStyles();
+  const colors = useColors();
   const capabilities = useViewerCapabilities();
   const preview = useSyncExternalStore(subscribeSelection, previewSelected, previewSelected);
   const [message, setMessage] = useState<string | null>(null);
@@ -148,7 +155,7 @@ export function AdminOtaUpdatesEntry() {
         <Text style={adminRowStyles.title}>先收到測試版更新</Text>
         <Text style={adminRowStyles.note}>先拿到還沒發給大家的修正，驗收用。</Text>
       </View>
-      <Switch testID="ota-preview-switch" accessibilityLabel="先收到測試版更新" accessibilityHint="先拿到還沒發給大家的修正，驗收用。" value={preview} onValueChange={changeChannel} trackColor={{ true: theme.colors.primary }} />
+      <Switch testID="ota-preview-switch" accessibilityLabel="先收到測試版更新" accessibilityHint="先拿到還沒發給大家的修正，驗收用。" value={preview} onValueChange={changeChannel} trackColor={{ true: colors.primary }} />
     </View>
     {message ? <Text accessibilityLiveRegion="polite" style={[adminRowStyles.note, styles.message]}>{message}</Text> : null}
   </View>;

@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { Reward } from '../../services/gamificationApiClient';
 import type { Congregation } from '../../services/devotionClient';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 import { SIDE_NAME, whereSentence } from '../congregation/congregationCopy';
 import { SideSwitch } from '../congregation/SideSwitch';
 import { RewardControls } from './RewardControls';
@@ -29,6 +30,7 @@ export function RewardPicker({ own, viewing, ownRewards, otherRewards, otherFail
   onView: (side: Congregation) => void;
   onSelect: (rewardId: string) => void;
 }) {
+  const styles = useStyles();
   const other = otherRewards?.filter((reward) => reward.active) ?? null;
   return <View style={styles.container}>
     <SideSwitch labels={PRIZE_TAB} selected={viewing} onSelect={onView} />
@@ -47,13 +49,13 @@ export function RewardPicker({ own, viewing, ownRewards, otherRewards, otherFail
   </View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { gap: theme.spacing.sm },
-  empty: { color: theme.colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, textAlign: 'center', padding: theme.spacing.md },
-  emptyBox: { borderRadius: theme.radius.chip, borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.colors.border },
+  empty: { color: colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, textAlign: 'center', padding: theme.spacing.md },
+  emptyBox: { borderRadius: theme.radius.chip, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.border },
   // Dimmed, not greyed to nothing: the names and points still read, they just are not offered.
-  seen: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.sm, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceMuted },
-  seenName: { flex: 1, color: theme.colors.muted, fontSize: theme.type.body.size },
-  seenCost: { color: theme.colors.muted, fontSize: theme.type.label.size, fontWeight: '700' },
-  why: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-});
+  seen: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.sm, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: colors.border, backgroundColor: colors.surfaceMuted },
+  seenName: { flex: 1, color: colors.muted, fontSize: theme.type.body.size },
+  seenCost: { color: colors.muted, fontSize: theme.type.label.size, fontWeight: '700' },
+  why: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+}));

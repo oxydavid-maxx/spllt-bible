@@ -12,7 +12,12 @@ import { SettingSwitchRow } from './SettingSwitchRow';
 import { devotionFab } from './devotion/devotionFabModel';
 import { BookGlyph, GrownLeafGlyph, LeafGlyph, PlayPauseGlyph } from './devotion/glyphs';
 import { formatChapterTitleZhTw, formatReferenceZhTw } from '../domain/scriptureReference';
-import { theme } from './Theme';
+import { theme, type AppColors } from './Theme';
+import { makeStyles, useAppTheme, useColors } from './useAppTheme';
+import { NightModeMenuRow, NightModePage } from './NightModeSettings';
+import { NightModeNews } from './NightModeNews';
+import { useNightMode } from './nightModeContext';
+import { useUpdatePromptShowing } from './updatePromptPresence';
 import { formatReadingDateHeader, formatReadingDateLabel } from './ReadingDateNavigator';
 import { setReaderImmersed } from './readerImmersionState';
 import type { ReaderOverlayControls } from './YouVersionReader';
@@ -215,15 +220,32 @@ export interface FullscreenReaderLayoutProps {
   devotion?: ReaderDevotion;
 }
 export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerActive = chrome.focused, selectionSource = 'ASSIGNED', activeReferenceIndex = 0, chapterUsfm, versionId, references, onSelectReference, selectedDate, previousDate, nextDate, onSelectDate, onOpenReadingPlan, completed = false, completionDisabled = false, completionPending = false, completionFailed = false, completionLabel, completionFeedback, onComplete, onUndo, noPlanMessage, statusMessage, canOpenYouVersion = false, onOpenYouVersion, versionOptions, onSelectVersion, metadata, accountEntry, loginGate, updateBanner, narrationSpeed = 1, onSelectNarrationSpeed, devotion }: FullscreenReaderLayoutProps) {
+  const styles = useStyles();
+  const colors = useColors();
   const insets = chrome.settledInsets;
   const { width: windowWidth, fontScale } = useWindowDimensions();
   const [versionPageOpen, setVersionPageOpen] = useState(false);
+  // ⋯ 更多閱讀工具 → 夜間模式, the panel's next page like 選擇譯本 (光佑 2026-11-04, mock C).
+  const [nightPageOpen, setNightPageOpen] = useState(false);
+  const { scheme } = useAppTheme();
+  const nightMode = useNightMode();
+  const updatePromptShowing = useUpdatePromptShowing();
+  // The 新功能 card, once per phone, over the reader; it waits while 有新版本 or a panel is up.
+  const newsVisible = nightMode.newsDue && chrome.focused && !updatePromptShowing && !chrome.moreOpen && !chrome.audioOpen && !chrome.infoOpen;
+  // 改設定 opens the four choices once the card has gone: two dialogs presented at the same moment can lose the second on iOS.
+  const nightPageAfterNews = useRef(false);
+  const openNightPageAfterNews = useCallback(() => {
+    if (!nightPageAfterNews.current) return;
+    nightPageAfterNews.current = false;
+    setNightPageOpen(true);
+    chrome.openMore();
+  }, [chrome]);
   const audioControlRef = useRef<ChapterAudioControlsHandle | null>(null);
   const curatedVersions = versionOptions !== undefined && onSelectVersion !== undefined;
   const { handleCanvasEdge, clearVerseSelection, handleReadAlongChapter } = chrome;
   const verseSelected = useRef(chrome.verseSelected);
   verseSelected.current = chrome.verseSelected;
-  useEffect(() => { if (!chrome.moreOpen) setVersionPageOpen(false); }, [chrome.moreOpen]);
+  useEffect(() => { if (!chrome.moreOpen) { setVersionPageOpen(false); setNightPageOpen(false); } }, [chrome.moreOpen]);
   useEffect(() => {
     if (!chrome.focused) return;
     return () => NavigationBar.setHidden(false);
@@ -294,7 +316,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   const feedback = isValidElement<{ bottomOffset?: number }>(completionFeedback) ? cloneElement(completionFeedback, { bottomOffset: aboveActions }) : completionFeedback;
   return (
     <View style={styles.root}>
-      {chrome.focused && <><StatusBar hidden={chrome.collapsed} style="dark" /><NavigationBar hidden={chrome.barsHidden} style="dark" /></>}
+      {chrome.focused && <><StatusBar hidden={chrome.collapsed} style={scheme === 'dark' ? 'light' : 'dark'} /><NavigationBar hidden={chrome.barsHidden} style={scheme === 'dark' ? 'light' : 'dark'} /></>}
       {onDevotion && devotion ? <View style={styles.devotionLayer}>{devotion.renderView({ top: insets.top + ROW * 2, bottom: aboveActions + 56 })}</View> : null}
       <View accessibilityLabel="經文" importantForAccessibility={onDevotion ? 'no-hide-descendants' : 'auto'} accessibilityElementsHidden={onDevotion} style={[styles.surface, { paddingLeft: insets.left, paddingRight: insets.right }, !controls.ready && { paddingTop: insets.top + ROW * 2, paddingBottom: aboveActions }]}>{reader}</View>
       {chrome.collapsed ? <Pressable
@@ -311,12 +333,12 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
             <Text numberOfLines={1} style={styles.collapsedPosition}>{`${assignedIndex + 1}/${references.length}`}</Text>
           </> : null}
         </View>
-        <View style={styles.collapsedExpand}><MaterialCommunityIcons name="chevron-down" size={26} color={theme.colors.muted} /></View>
+        <View style={styles.collapsedExpand}><MaterialCommunityIcons name="chevron-down" size={26} color={colors.muted} /></View>
       </Pressable> : <SafeAreaView edges={['top', 'left', 'right']} accessibilityLabel="閱讀工具列" style={styles.header}>
         <View accessibilityLabel="閱讀日期工具列" style={styles.dateRow}>
           <View style={styles.headerSide}>
             <Pressable accessibilityRole="button" accessibilityLabel="上一個排定讀經日" accessibilityHint={previousDate ? `前往${formatReadingDateLabel(previousDate)}` : undefined} disabled={!previousDate} onPress={() => previousDate && onSelectDate(previousDate)} style={[styles.dateStep, !previousDate && styles.disabled]}>
-              <MaterialCommunityIcons name="chevron-left" size={18} color={previousDate ? theme.colors.primary : theme.colors.muted} />
+              <MaterialCommunityIcons name="chevron-left" size={18} color={previousDate ? colors.primary : colors.muted} />
               {previousDate && showAdjacentDateLabels ? <Text numberOfLines={1} style={styles.sideDateText}>{formatReadingDateLabel(previousDate)}</Text> : null}
             </Pressable>
           </View>
@@ -327,7 +349,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           <View style={[styles.headerSide, styles.trailingSide]}>
             <Pressable accessibilityRole="button" accessibilityLabel="下一個排定讀經日" accessibilityHint={nextDate ? `前往${formatReadingDateLabel(nextDate)}` : undefined} disabled={!nextDate} onPress={() => nextDate && onSelectDate(nextDate)} style={[styles.dateStep, styles.nextDateStep, !nextDate && styles.disabled]}>
               {nextDate && showAdjacentDateLabels ? <Text numberOfLines={1} style={styles.sideDateText}>{formatReadingDateLabel(nextDate)}</Text> : null}
-              <MaterialCommunityIcons name="chevron-right" size={18} color={nextDate ? theme.colors.primary : theme.colors.muted} />
+              <MaterialCommunityIcons name="chevron-right" size={18} color={nextDate ? colors.primary : colors.muted} />
             </Pressable>
           </View>
         </View>
@@ -348,8 +370,8 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
             {devotion ? <ReaderChip label="靈修" leaf accessibilityLabel="靈修，傳道的每日靈修" selected={onDevotion} onPress={devotion.onSelect} /> : null}
             {noPlanMessage ? <Text accessibilityRole="text" numberOfLines={2} style={styles.noPlanText}>{noPlanMessage}</Text> : null}
           </ScrollView>
-          <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} android_ripple={{ color: theme.colors.primarySoft }} style={styles.iconButton}>
-            <MaterialCommunityIcons name="dots-horizontal" size={24} color={theme.colors.ink} />
+          <Pressable accessibilityRole="button" accessibilityLabel="更多閱讀工具" onPress={chrome.openMore} android_ripple={{ color: colors.primarySoft }} style={styles.iconButton}>
+            <MaterialCommunityIcons name="dots-horizontal" size={24} color={colors.ink} />
           </Pressable>
         </View>
       </SafeAreaView>}
@@ -358,10 +380,10 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
         <ChapterAudioAutoplayNotice active={chrome.focused} />
         {devotion?.banner ? <Text accessibilityLiveRegion="polite" style={styles.devotionBanner}>{devotion.banner}</Text> : null}
         {statusMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.statusBanner}>{statusMessage}</Text> : null}
-        {nextReference ? <Pressable accessibilityRole="button" accessibilityLabel={`繼續讀 ${formatChapterTitleZhTw(nextReference)}`} onPress={continueReading} android_ripple={{ color: theme.colors.primarySoft }} style={styles.nextCard}>
+        {nextReference ? <Pressable accessibilityRole="button" accessibilityLabel={`繼續讀 ${formatChapterTitleZhTw(nextReference)}`} onPress={continueReading} android_ripple={{ color: colors.primarySoft }} style={styles.nextCard}>
           <Text numberOfLines={1} style={styles.nextCardText}>{`繼續讀 ${formatReferenceZhTw(nextReference)} ›`}</Text>
         </Pressable> : null}
-        {devotionNext && devotion ? <Pressable accessibilityRole="button" accessibilityLabel="接著讀靈修" onPress={devotion.onSelect} android_ripple={{ color: theme.colors.primarySoft }} style={styles.nextCard}>
+        {devotionNext && devotion ? <Pressable accessibilityRole="button" accessibilityLabel="接著讀靈修" onPress={devotion.onSelect} android_ripple={{ color: colors.primarySoft }} style={styles.nextCard}>
           <Text numberOfLines={1} style={styles.nextCardText}>接著讀靈修 ›</Text>
         </Pressable> : null}
       </View>
@@ -372,7 +394,7 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           accessibilityState={{ disabled: leafDisabled, checked: leaf.done }}
           disabled={leafDisabled}
           onPress={devotion.onToggle}
-          android_ripple={{ color: theme.colors.primarySoft }}
+          android_ripple={{ color: colors.primarySoft }}
           style={[styles.leafAction, leaf.expanded && styles.leafExpanded, leaf.done && styles.leafDone, leafDisabled && styles.disabled]}
         >
           {leaf.done ? <GrownLeafGlyph /> : <LeafGlyph size={leaf.expanded ? 20 : 24} />}
@@ -386,10 +408,10 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           disabled={completionActionDisabled}
           onPress={completionFailed ? onComplete : completed ? onUndo : onComplete}
           onLongPress={() => Alert.alert('讀經完成狀態', completed ? '已完成所選日期的讀經。點按可依確認流程撤銷。' : completionPending ? '完成記錄正在同步。同步成功前不會顯示加分。' : completionDisabled ? completionLabel ?? '目前無法完成此日期。' : '點按圓圈完成所選日期的讀經。')}
-          android_ripple={{ color: theme.colors.primarySoft }}
+          android_ripple={{ color: colors.primarySoft }}
           style={[styles.completionAction, completionExpanded && styles.completionExpanded, completed && styles.completionActionComplete, completionActionDisabled && styles.disabled]}
         >
-          {completionPending || completionFailed ? <MaterialCommunityIcons name={completionPending ? 'clock-outline' : 'sync-alert'} size={26} color={theme.colors.primary} /> : <BookGlyph completed={completed} size={completionExpanded ? 20 : undefined} />}
+          {completionPending || completionFailed ? <MaterialCommunityIcons name={completionPending ? 'clock-outline' : 'sync-alert'} size={26} color={colors.primary} /> : <BookGlyph completed={completed} size={completionExpanded ? 20 : undefined} />}
           {completionExpanded ? <Text style={styles.completionExpandedText}>完成今日讀經</Text> : null}
         </Pressable>}
         <View accessible={false} style={styles.audioCell}>
@@ -407,23 +429,29 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
           accessibilityLabel="回到朗讀處"
           accessibilityHint="捲到正在朗讀的經文，並繼續跟著朗讀捲動"
           onPress={chrome.returnToNarration}
-          android_ripple={{ color: theme.colors.primarySoft }}
+          android_ripple={{ color: colors.primarySoft }}
           style={styles.returnToNarration}
         >
           {chrome.readAlong.position === 'above' || chrome.readAlong.position === 'below'
-            ? <MaterialCommunityIcons name={chrome.readAlong.position === 'above' ? 'arrow-up' : 'arrow-down'} size={20} color={theme.colors.primary} />
+            ? <MaterialCommunityIcons name={chrome.readAlong.position === 'above' ? 'arrow-up' : 'arrow-down'} size={20} color={colors.primary} />
             : null}
           <Text style={styles.returnToNarrationText}>回到朗讀處</Text>
         </Pressable>
       </View> : null}
       {feedback}
-      <Modal transparent animationType="fade" visible={chrome.moreOpen} onRequestClose={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore}>
-        {chrome.moreOpen && <SheetBackdrop label="關閉更多閱讀工具" onPress={versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore} style={styles.scrim}><View style={styles.sheetHost}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
-          {versionPageOpen && curatedVersions ? <CuratedVersionChoices options={versionOptions} versionId={versionId} onSelect={onSelectVersion} onBack={() => setVersionPageOpen(false)} onClose={closeVersionPage} /> : <>
+      <NightModeNews visible={newsVisible} onDone={nightMode.dismissNews} onChange={() => {
+        nightPageAfterNews.current = true;
+        nightMode.dismissNews();
+        setTimeout(openNightPageAfterNews, 450);
+      }} onClosed={openNightPageAfterNews} />
+      <Modal transparent animationType="fade" visible={chrome.moreOpen} onRequestClose={nightPageOpen ? () => setNightPageOpen(false) : versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore}>
+        {chrome.moreOpen && <SheetBackdrop label="關閉更多閱讀工具" onPress={nightPageOpen ? () => setNightPageOpen(false) : versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore} style={styles.scrim}><View style={styles.sheetHost}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
+          {nightPageOpen ? <NightModePage onBack={() => setNightPageOpen(false)} /> : versionPageOpen && curatedVersions ? <CuratedVersionChoices options={versionOptions} versionId={versionId} onSelect={onSelectVersion} onBack={() => setVersionPageOpen(false)} onClose={closeVersionPage} /> : <>
           <View style={styles.sheetHeader}><Text accessibilityRole="header" style={styles.heading}>更多閱讀工具</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={chrome.closeMore} style={styles.iconButton}><Text style={styles.close}>關閉</Text></Pressable></View>
           <ScrollView style={styles.menuScroller} contentContainerStyle={styles.menuContent}>
             <MenuButton label="選擇譯本" disabled={!curatedVersions && !controls.ready} onPress={() => curatedVersions ? setVersionPageOpen(true) : openOfficial(controls.openVersionPicker)} />
             <MenuButton label="調整字體" disabled={!controls.ready} onPress={() => openOfficial(controls.openSettings)} />
+            <NightModeMenuRow onPress={() => setNightPageOpen(true)} />
             <MenuButton label="選擇其他章節" disabled={!controls.ready} onPress={() => openOfficial(controls.openChapterPicker)} />
             <MenuButton label="在 YouVersion 開啟此章" disabled={!canOpenYouVersion || !onOpenYouVersion} onPress={openYouVersion} />
             <ChapterAudioAutoplayToggle active={chrome.focused} />
@@ -478,8 +506,10 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
 }
 
 function ReaderChip({ label, accessibilityLabel, accessibilityHint, selected, onPress, leaf = false }: { label: string; accessibilityLabel: string; accessibilityHint?: string; selected: boolean; onPress: () => void; leaf?: boolean }) {
+  const styles = useStyles();
+  const colors = useColors();
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityHint={accessibilityHint} accessibilityState={{ selected }} onPress={onPress} style={styles.chipTouch}>
-    <View style={[styles.chip, leaf && styles.chipLeaf, selected && styles.chipSelected]}>{leaf ? <LeafGlyph size={15} color={selected ? theme.colors.white : theme.colors.ink} /> : null}<Text numberOfLines={1} style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text></View>
+    <View style={[styles.chip, leaf && styles.chipLeaf, selected && styles.chipSelected]}>{leaf ? <LeafGlyph size={15} color={selected ? colors.onFill : colors.ink} /> : null}<Text numberOfLines={1} style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text></View>
   </Pressable>;
 }
 
@@ -490,6 +520,7 @@ function CuratedVersionChoices({ options, versionId, onSelect, onBack, onClose }
   onBack: () => void;
   onClose: () => void;
 }) {
+  const styles = useStyles();
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const mounted = useRef(true);
@@ -540,89 +571,90 @@ function CuratedVersionChoices({ options, versionId, onSelect, onBack, onClose }
 }
 
 function MenuButton({ label, onPress, disabled = false }: { label: string; onPress: () => void; disabled?: boolean }) {
+  const styles = useStyles();
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={[styles.menuButton, disabled && styles.disabled]}><Text style={styles.menuLabel}>{label}</Text></Pressable>;
 }
 
-const floating = { elevation: 4, shadowColor: '#15302A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.28, shadowRadius: 8 } as const;
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.colors.surface },
+const floating = (colors: AppColors) => ({ elevation: 4, shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.28, shadowRadius: 8 }) as const;
+const useStyles = makeStyles((colors) => ({
+  root: { flex: 1, backgroundColor: colors.readerSurface },
   surface: { flex: 1 },
-  header: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2, backgroundColor: theme.colors.surface, borderBottomWidth: theme.control.hairline, borderBottomColor: theme.colors.border },
+  header: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2, backgroundColor: colors.readerSurface, borderBottomWidth: theme.control.hairline, borderBottomColor: colors.border },
   dateRow: { minHeight: ROW, flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
-  dateTitle: { flex: 1, minWidth: 0, color: theme.colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '600', textAlign: 'center' },
+  dateTitle: { flex: 1, minWidth: 0, color: colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '600', textAlign: 'center' },
   headerSide: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' },
   planDate: { flex: 1, minWidth: 0, minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  dateCaret: { color: theme.colors.primary, fontSize: theme.type.micro.size, paddingLeft: theme.spacing.xxs },
+  dateCaret: { color: colors.primary, fontSize: theme.type.micro.size, paddingLeft: theme.spacing.xxs },
   trailingSide: { justifyContent: 'flex-end' },
   dateStep: { minWidth: 48, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: theme.spacing.xxs, paddingHorizontal: theme.spacing.xxs },
   nextDateStep: { justifyContent: 'flex-end' },
-  sideDateText: { color: theme.colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
+  sideDateText: { color: colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
   chipsRow: { minHeight: ROW, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingLeft: theme.spacing.sm, paddingRight: theme.spacing.xs },
   chipsScroller: { flex: 1, minWidth: 0 },
   chipsContent: { alignItems: 'center', gap: theme.spacing.sm },
   chipTouch: { minHeight: ROW, justifyContent: 'center' },
-  chip: { height: 34, justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderRadius: 17, borderWidth: theme.control.hairline, borderColor: theme.colors.border, backgroundColor: theme.colors.white },
-  chipSelected: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
+  chip: { height: 34, justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderRadius: 17, borderWidth: theme.control.hairline, borderColor: colors.border, backgroundColor: colors.readerSurface },
+  chipSelected: { borderColor: colors.primaryFill, backgroundColor: colors.primaryFill },
   chipLeaf: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: theme.spacing.md },
-  chipText: { color: theme.colors.ink, fontSize: 16, lineHeight: 20, fontWeight: '700' },
-  chipTextSelected: { color: theme.colors.white },
-  noPlanText: { maxWidth: 240, color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+  chipText: { color: colors.ink, fontSize: 16, lineHeight: 20, fontWeight: '700' },
+  chipTextSelected: { color: colors.onFill },
+  noPlanText: { maxWidth: 240, color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
   iconButton: { minHeight: 48, minWidth: 48, alignItems: 'center', justifyContent: 'center' },
-  collapsedBar: { position: 'absolute', top: 0, left: 0, right: 0, height: ROW, zIndex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.colors.surface, borderBottomWidth: theme.control.hairline, borderBottomColor: theme.colors.border },
+  collapsedBar: { position: 'absolute', top: 0, left: 0, right: 0, height: ROW, zIndex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.readerSurface, borderBottomWidth: theme.control.hairline, borderBottomColor: colors.border },
   collapsedGroup: { flexShrink: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10, overflow: 'hidden' },
-  collapsedChip: { flexShrink: 0, borderRadius: 13, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: theme.colors.primary },
-  collapsedChipText: { color: theme.colors.white, fontSize: 14, lineHeight: 16, fontWeight: '700' },
+  collapsedChip: { flexShrink: 0, borderRadius: 13, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.primaryFill },
+  collapsedChipText: { color: colors.onFill, fontSize: 14, lineHeight: 16, fontWeight: '700' },
   segments: { flexShrink: 1, minWidth: 0, flexDirection: 'row', gap: 3 },
-  segment: { flexShrink: 1, width: 18, minWidth: 4, height: 4, borderRadius: 2, backgroundColor: theme.colors.border },
-  segmentOn: { backgroundColor: theme.colors.primary },
-  collapsedPosition: { flexShrink: 0, color: theme.colors.muted, fontSize: 13, lineHeight: 16, fontWeight: '600' },
+  segment: { flexShrink: 1, width: 18, minWidth: 4, height: 4, borderRadius: 2, backgroundColor: colors.border },
+  segmentOn: { backgroundColor: colors.primaryFill },
+  collapsedPosition: { flexShrink: 0, color: colors.muted, fontSize: 13, lineHeight: 16, fontWeight: '600' },
   collapsedExpand: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   aboveActions: { position: 'absolute', zIndex: 3, gap: theme.spacing.sm },
-  statusBanner: { alignSelf: 'flex-end', color: theme.colors.ink, backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.chip, overflow: 'hidden', fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs },
-  nextCard: { height: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderRadius: 26, backgroundColor: theme.colors.primary, ...floating },
-  nextCardText: { color: theme.colors.white, fontSize: 17, lineHeight: 22, fontWeight: '700' },
+  statusBanner: { alignSelf: 'flex-end', color: colors.ink, backgroundColor: colors.surfaceMuted, borderRadius: theme.radius.chip, overflow: 'hidden', fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs },
+  nextCard: { height: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderRadius: 26, backgroundColor: colors.primaryFill, ...floating(colors) },
+  nextCardText: { color: colors.onFill, fontSize: 17, lineHeight: 22, fontWeight: '700' },
   actionRow: { position: 'absolute', zIndex: 3, flexDirection: 'row', alignItems: 'center', gap: GAP },
-  completionAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.white, ...floating },
+  completionAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.readerSurface, ...floating(colors) },
   completionExpanded: { width: 'auto', paddingLeft: 14, paddingRight: 18 },
-  completionActionComplete: { backgroundColor: theme.colors.primary },
-  completionExpandedText: { color: theme.colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '800' },
-  leafAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.white, ...floating },
+  completionActionComplete: { backgroundColor: colors.primaryFill },
+  completionExpandedText: { color: colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '800' },
+  leafAction: { width: ACTION, height: ACTION, flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: ACTION / 2, borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.readerSurface, ...floating(colors) },
   leafExpanded: { width: 'auto', paddingLeft: 14, paddingRight: 18 },
-  leafDone: { backgroundColor: theme.colors.primary },
-  leafExpandedText: { color: theme.colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '800' },
+  leafDone: { backgroundColor: colors.primaryFill },
+  leafExpandedText: { color: colors.primary, fontSize: 16, lineHeight: 20, fontWeight: '800' },
   audioInner: { width: ACTION, height: ACTION, alignItems: 'center', justifyContent: 'center' },
   hidden: { display: 'none' },
   devotionPlay: { width: ACTION, height: ACTION, borderRadius: ACTION / 2, alignItems: 'center', justifyContent: 'center' },
-  devotionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 1, backgroundColor: theme.colors.surface },
-  devotionBanner: { alignSelf: 'flex-end', color: theme.colors.white, backgroundColor: theme.colors.ink, borderRadius: 10, overflow: 'hidden', fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 6, ...floating },
-  audioCell: { width: ACTION, height: ACTION, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: ACTION / 2, backgroundColor: theme.colors.primary, ...floating },
+  devotionLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 1, backgroundColor: colors.readerSurface },
+  devotionBanner: { alignSelf: 'flex-end', color: colors.onInverse, backgroundColor: colors.inverse, borderRadius: 10, overflow: 'hidden', fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 6, ...floating(colors) },
+  audioCell: { width: ACTION, height: ACTION, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: ACTION / 2, backgroundColor: colors.primaryFill, ...floating(colors) },
   disabled: { opacity: 0.4 },
   stepAside: { display: 'none' },
   returnRow: { position: 'absolute', zIndex: 3, height: ACTION, justifyContent: 'center' },
-  returnToNarration: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.lg, borderRadius: 24, backgroundColor: theme.colors.white, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, ...floating },
-  returnToNarrationText: { color: theme.colors.primary, fontSize: 16, lineHeight: 22, fontWeight: '800' },
+  returnToNarration: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.lg, borderRadius: 24, backgroundColor: colors.readerSurface, borderWidth: theme.control.hairline, borderColor: colors.borderStrong, ...floating(colors) },
+  returnToNarrationText: { color: colors.primary, fontSize: 16, lineHeight: 22, fontWeight: '800' },
   speedRow: { flexDirection: 'row', gap: theme.spacing.sm },
-  speedChoice: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong },
-  speedChoiceSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-  speedLabel: { color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '700' },
-  speedLabelSelected: { color: theme.colors.white },
-  scrim: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
+  speedChoice: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: colors.borderStrong },
+  speedChoiceSelected: { backgroundColor: colors.primaryFill, borderColor: colors.primaryFill },
+  speedLabel: { color: colors.ink, fontSize: theme.type.body.size, fontWeight: '700' },
+  speedLabelSelected: { color: colors.onFill },
+  scrim: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' },
   // The percentage must resolve against the full-screen scrim, not an intrinsic-height wrapper.
   // Each inner container can shrink so overflowing controls become ScrollView content, not clips.
   sheetHost: { maxHeight: '85%', flexShrink: 1 },
-  sheet: { flexShrink: 1, minHeight: 0, backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card },
+  sheet: { flexShrink: 1, minHeight: 0, backgroundColor: colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card },
   sheetHeader: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg },
-  heading: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '700', flexShrink: 1 },
-  close: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
+  heading: { color: colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '700', flexShrink: 1 },
+  close: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
   menuScroller: { flexShrink: 1, minHeight: 0 },
   menuContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: theme.spacing.lg, gap: theme.spacing.sm },
-  menuButton: { minHeight: 48, justifyContent: 'center', borderBottomWidth: theme.control.hairline, borderBottomColor: theme.colors.border },
-  menuLabel: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-  versionGroupHeading: { color: theme.colors.muted, fontSize: theme.type.label.size, fontWeight: '700', paddingTop: theme.spacing.md, paddingBottom: theme.spacing.sm },
+  menuButton: { minHeight: 48, justifyContent: 'center', borderBottomWidth: theme.control.hairline, borderBottomColor: colors.border },
+  menuLabel: { color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  versionGroupHeading: { color: colors.muted, fontSize: theme.type.label.size, fontWeight: '700', paddingTop: theme.spacing.md, paddingBottom: theme.spacing.sm },
   versionOption: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.md, borderRadius: theme.radius.chip },
-  versionOptionSelected: { backgroundColor: theme.colors.primarySoft },
-  radioMark: { color: theme.colors.primary, fontSize: 20 },
-  versionOptionLabel: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, flex: 1 },
-  versionError: { color: theme.colors.danger, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-  body: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-});
+  versionOptionSelected: { backgroundColor: colors.primarySoft },
+  radioMark: { color: colors.primary, fontSize: 20 },
+  versionOptionLabel: { color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, flex: 1 },
+  versionError: { color: colors.danger, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  body: { color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+}));

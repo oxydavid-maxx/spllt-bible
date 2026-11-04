@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 // Two snapping wheels (hour / minute) like the system clock picker, but pure JS: no native module,
 // same look on every device, and every settle commits immediately — there is nothing to "submit",
@@ -44,6 +45,7 @@ export function stepTime(value: string, direction: 1 | -1): string {
 }
 
 function Wheel({ values, selected, onSettle, label }: { values: readonly number[]; selected: number; onSettle: (value: number) => void; label: string }) {
+  const styles = useStyles();
   const ref = useRef<ScrollView | null>(null);
   const selectedIndex = Math.max(0, values.indexOf(selected));
   const lastReported = useRef(selected);
@@ -76,6 +78,7 @@ function Wheel({ values, selected, onSettle, label }: { values: readonly number[
 }
 
 export function TimeWheelPicker({ value, onChange, accessibilityLabel = '每日讀經時間' }: { value: string; onChange: (time: string) => void; accessibilityLabel?: string }) {
+  const styles = useStyles();
   const parsed = useMemo(() => parseTime(value) ?? { hour: 6, minute: 30 }, [value]);
   const minute = snapMinute(parsed.minute);
   const commit = (hour: number, nextMinute: number) => {
@@ -98,12 +101,12 @@ export function TimeWheelPicker({ value, onChange, accessibilityLabel = '每日�
   </View>;
 }
 
-const styles = StyleSheet.create({
-  picker: { height: ITEM_HEIGHT * VISIBLE_ROWS, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: theme.radius.button, backgroundColor: theme.colors.surfaceMuted, overflow: 'hidden' },
-  band: { position: 'absolute', left: theme.spacing.md, right: theme.spacing.md, top: ITEM_HEIGHT, height: ITEM_HEIGHT, borderRadius: theme.radius.chip, backgroundColor: theme.colors.primarySoft },
+const useStyles = makeStyles((colors) => ({
+  picker: { height: ITEM_HEIGHT * VISIBLE_ROWS, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, borderRadius: theme.radius.button, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
+  band: { position: 'absolute', left: theme.spacing.md, right: theme.spacing.md, top: ITEM_HEIGHT, height: ITEM_HEIGHT, borderRadius: theme.radius.chip, backgroundColor: colors.primarySoft },
   wheel: { width: 72, height: ITEM_HEIGHT * VISIBLE_ROWS },
   item: { height: ITEM_HEIGHT, alignItems: 'center', justifyContent: 'center' },
-  itemText: { color: theme.colors.muted, fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  itemTextSelected: { color: theme.colors.primaryDeep, fontSize: 26, fontWeight: '800' },
-  colon: { color: theme.colors.primaryDeep, fontSize: 26, fontWeight: '800', marginTop: -4 },
-});
+  itemText: { color: colors.muted, fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  itemTextSelected: { color: colors.primaryDeep, fontSize: 26, fontWeight: '800' },
+  colon: { color: colors.primaryDeep, fontSize: 26, fontWeight: '800', marginTop: -4 },
+}));

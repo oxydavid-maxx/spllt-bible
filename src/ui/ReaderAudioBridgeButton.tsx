@@ -1,10 +1,12 @@
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { requestReaderAudioToggle, useReaderAudioSnapshot } from '../services/readerAudioBridge';
-import { theme } from './Theme';
+import { makeStyles, useColors } from './useAppTheme';
 
 /** A remote command for the Reader-owned player. This component never creates an audio player. */
 export function ReaderAudioBridgeButton() {
+  const styles = useStyles();
+  const colors = useColors();
   const audio = useReaderAudioSnapshot();
   const disabled = audio.state === 'inactive' || audio.state === 'loading' || audio.state === 'unavailable';
   const label = audio.state === 'playing' ? '暫停朗讀'
@@ -22,18 +24,18 @@ export function ReaderAudioBridgeButton() {
       accessibilityState={{ disabled, busy: audio.state === 'loading' }}
       disabled={disabled}
       onPress={requestReaderAudioToggle}
-      android_ripple={{ color: theme.colors.primarySoft }}
+      android_ripple={{ color: colors.primarySoft }}
       style={[styles.button, disabled && styles.disabled]}
     >
       {audio.state === 'loading'
-        ? <ActivityIndicator accessibilityLabel="朗讀載入中" color={theme.colors.white} />
-        : <MaterialCommunityIcons name={icon} size={22} color={theme.colors.white} />}
+        ? <ActivityIndicator accessibilityLabel="朗讀載入中" color={colors.onFill} />
+        : <MaterialCommunityIcons name={icon} size={22} color={colors.onFill} />}
     </Pressable>
   </View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   host: { width: 48, height: 48, flexShrink: 0, alignItems: 'center', justifyContent: 'center' },
-  button: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary },
+  button: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryFill },
   disabled: { opacity: 0.5 },
-});
+}));

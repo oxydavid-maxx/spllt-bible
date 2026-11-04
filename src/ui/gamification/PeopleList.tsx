@@ -3,6 +3,7 @@ import type { ClientInstallSummary } from '../../domain/gamificationV1';
 import type { PersonListItem } from '../../services/gamificationApiClient';
 import { SIDE_NAME } from '../congregation/congregationCopy';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 
 /**
  * Which version a person's phone runs, e.g. 「Android 0.5.35 · 更新 bff271 · 10/21 打開」 (光佑 2026-10-21): the
@@ -26,6 +27,7 @@ export function clientVersionLabel(client: ClientInstallSummary | null): string 
  * the score moves up beside the name, and the version line runs the full width, under the side and rank too.
  */
 export function PeopleList({ people, showRank = false, showCongregation = false, showClient = false, onSelect }: { people: PersonListItem[]; showRank?: boolean; showCongregation?: boolean; showClient?: boolean; onSelect: (person: PersonListItem) => void }) {
+  const styles = useStyles();
   return <FlatList data={people} keyExtractor={(person) => person.memberId} contentContainerStyle={styles.list} renderItem={({ item }) => {
     const side = showCongregation && item.congregation ? item.congregation : null;
     const version = showClient ? clientVersionLabel(item.client ?? null) : null;
@@ -46,14 +48,14 @@ export function PeopleList({ people, showRank = false, showCongregation = false,
   }} ListEmptyComponent={<Text style={styles.empty}>目前沒有資料。</Text>} />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   list: { gap: theme.spacing.xs, paddingBottom: theme.spacing.md },
-  row: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline },
+  row: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.card, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: theme.control.hairline },
   stacked: { flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center', gap: theme.spacing.xxs, paddingVertical: theme.spacing.xs },
   top: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   shrink: { flexShrink: 1 }, fill: { flex: 1 },
-  version: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
-  copy: { flex: 1, gap: theme.spacing.xxs }, name: { color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '700' }, total: { color: theme.colors.muted, fontSize: theme.type.caption.size }, rank: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, chevron: { color: theme.colors.primary, fontSize: 28, lineHeight: 32 }, empty: { color: theme.colors.muted, fontSize: theme.type.body.size, paddingVertical: theme.spacing.lg },
-  badge: { overflow: 'hidden', color: theme.colors.primary, backgroundColor: theme.colors.primarySoft, borderRadius: theme.radius.pill, paddingHorizontal: theme.spacing.sm, paddingVertical: 1, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '800' },
-  badgeMain: { borderWidth: theme.control.hairline, borderColor: theme.colors.primary },
-});
+  version: { color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+  copy: { flex: 1, gap: theme.spacing.xxs }, name: { color: colors.ink, fontSize: theme.type.body.size, fontWeight: '700' }, total: { color: colors.muted, fontSize: theme.type.caption.size }, rank: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '800' }, chevron: { color: colors.primary, fontSize: 28, lineHeight: 32 }, empty: { color: colors.muted, fontSize: theme.type.body.size, paddingVertical: theme.spacing.lg },
+  badge: { overflow: 'hidden', color: colors.primary, backgroundColor: colors.primarySoft, borderRadius: theme.radius.pill, paddingHorizontal: theme.spacing.sm, paddingVertical: 1, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '800' },
+  badgeMain: { borderWidth: theme.control.hairline, borderColor: colors.primary },
+}));

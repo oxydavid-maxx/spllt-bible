@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 import type { Congregation } from '../../services/devotionClient';
 import { SIDE_ORDER } from './congregationCopy';
 
@@ -9,6 +10,7 @@ import { SIDE_ORDER } from './congregationCopy';
  * side on screen is filled green like the 自己/好友 tabs above it; 36dp tall, 48dp to the finger with the slop.
  */
 export function SideSwitch({ labels, selected, onSelect }: { labels: Record<Congregation, string>; selected: Congregation; onSelect: (side: Congregation) => void }) {
+  const styles = useStyles();
   return <View style={styles.track} accessibilityRole="tablist">
     {SIDE_ORDER.map((side) => {
       const on = side === selected;
@@ -27,10 +29,10 @@ export function SideSwitch({ labels, selected, onSelect }: { labels: Record<Cong
   </View>;
 }
 
-const styles = StyleSheet.create({
-  track: { flexDirection: 'row', alignSelf: 'flex-start', gap: 3, padding: 3, borderRadius: theme.radius.chip, backgroundColor: theme.colors.surfaceMuted, borderWidth: theme.control.hairline, borderColor: theme.colors.border },
+const useStyles = makeStyles((colors) => ({
+  track: { flexDirection: 'row', alignSelf: 'flex-start', gap: 3, padding: 3, borderRadius: theme.radius.chip, backgroundColor: colors.surfaceMuted, borderWidth: theme.control.hairline, borderColor: colors.border },
   item: { minHeight: 36, minWidth: 52, justifyContent: 'center', alignItems: 'center', paddingHorizontal: theme.spacing.md, borderRadius: 8 },
-  itemOn: { backgroundColor: theme.colors.primary },
-  text: { color: theme.colors.muted, fontSize: theme.type.label.size, fontWeight: '800' },
-  textOn: { color: theme.colors.white },
-});
+  itemOn: { backgroundColor: colors.primaryFill },
+  text: { color: colors.muted, fontSize: theme.type.label.size, fontWeight: '800' },
+  textOn: { color: colors.onFill },
+}));

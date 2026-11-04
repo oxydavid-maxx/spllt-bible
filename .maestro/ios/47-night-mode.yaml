@@ -1,0 +1,198 @@
+# 47-night-mode — 夜間模式 (光佑 2026-11-04, docs/features/night-mode.md). The fixture build's 晚上自動 reads noon, so every
+# other flow runs light whatever the runner's clock says, and the 新功能 card only shows when a flow asks
+# (launch argument qingmuWhatsNew: show). This flow sets 一直深色 through the app's own page, then screenshots each
+# screen of the approved mock; run-flows.sh measures the white area of every 47-*.png (scripts/ios/check-dark-screens.ts).
+# It signs out for the sign-in screen and puts 晚上自動 back at the end. Needs the YouVersion key (REQUIRES_KEY_PATTERN).
+# Maestro reads text as a regular expression: parentheses are escaped.
+appId: org.qingmu.youth
+---
+- launchApp:
+    arguments:
+      qingmuWhatsNew: show
+# The card opens over the reader together with its tools.
+- extendedWaitUntil:
+    visible: "改設定"
+    timeout: 90000
+- assertVisible: "知道了"
+# 改設定 puts the card away and opens ⋯ 更多閱讀工具 → 夜間模式 with its four choices.
+- tapOn: "改設定"
+- extendedWaitUntil:
+    visible: "只改這支手機"
+    timeout: 15000
+- assertVisible: "18:00–06:00 深色，其他時間白底 \\(預設\\)"
+- tapOn: "一直深色"
+- extendedWaitUntil:
+    visible: "一直是深色"
+    timeout: 10000
+- takeScreenshot: 47-night-mode-page
+- tapOn: "返回更多閱讀工具"
+- extendedWaitUntil:
+    visible: "夜間模式，一直深色"
+    timeout: 10000
+- takeScreenshot: 47-reader-menu
+- tapOn: "關閉"
+- extendedWaitUntil:
+    notVisible: "夜間模式，一直深色"
+    timeout: 10000
+# The day's scripture, dark.
+- extendedWaitUntil:
+    notVisible: "官方閱讀器還在準備中.*"
+    timeout: 60000
+- extendedWaitUntil:
+    visible: '^[1-9]\d{0,2}[\s ]*$'
+    timeout: 60000
+- takeScreenshot: 47-reader
+- tapOn:
+    text: '^[1-9]\d{0,2}[\s ]*$'
+    index: 0
+- extendedWaitUntil:
+    visible: "Copy"
+    timeout: 15000
+- takeScreenshot: 47-reader-verse
+- tapOn:
+    text: '^[1-9]\d{0,2}[\s ]*$'
+    index: 0
+- extendedWaitUntil:
+    notVisible: "Copy"
+    timeout: 10000
+- tapOn: "整份讀經計畫"
+- extendedWaitUntil:
+    visible: "關閉計畫"
+    timeout: 15000
+- takeScreenshot: 47-plan
+- tapOn: "關閉計畫"
+- extendedWaitUntil:
+    notVisible: "關閉計畫"
+    timeout: 10000
+# A cold start keeps 一直深色 (stored on the phone); the card shown again on request, now dark.
+- launchApp:
+    arguments:
+      qingmuWhatsNew: show
+- extendedWaitUntil:
+    visible: "改設定"
+    timeout: 90000
+- takeScreenshot: 47-whats-new
+- tapOn: "知道了"
+- extendedWaitUntil:
+    notVisible: "改設定"
+    timeout: 10000
+- tapOn: "更多閱讀工具"
+- assertVisible: "夜間模式，一直深色"
+- tapOn: "關閉"
+# 公告 › 主堂 with the 週刊 (dimmed, not inverted).
+- repeat:
+    times: 3
+    while:
+      notVisible: "主堂"
+    commands:
+      - tapOn:
+          text: "公告"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "主堂"
+    timeout: 15000
+- tapOn: "主堂"
+- extendedWaitUntil:
+    visible: "8/30 .日. 週刊第 1 頁，點了放大"
+    timeout: 30000
+- takeScreenshot: 47-bulletin
+# 積分: 團體 (一起讀) and 自己, the 選聚會 sheet, the friend QR.
+- repeat:
+    times: 3
+    while:
+      notVisible: "開啟積分操作"
+    commands:
+      - tapOn:
+          text: "積分"
+          retryTapIfNoChange: false
+- extendedWaitUntil:
+    visible: "開啟積分操作"
+    timeout: 30000
+- scrollUntilVisible:
+    element: '我在青少聚會 \(不是主堂\)'
+    direction: DOWN
+    timeout: 30000
+- takeScreenshot: 47-points-together
+- tapOn: "改我在哪裡聚會"
+- extendedWaitUntil:
+    visible: "我平常在哪裡聚會？"
+    timeout: 15000
+- takeScreenshot: 47-congregation
+- tapOn: "關閉操作"
+- extendedWaitUntil:
+    notVisible: "我平常在哪裡聚會？"
+    timeout: 10000
+- scrollUntilVisible:
+    element: "測試成員甲"
+    direction: DOWN
+    timeout: 30000
+- takeScreenshot: 47-points-self
+- scrollUntilVisible:
+    element: "開啟積分操作"
+    direction: UP
+    timeout: 15000
+- tapOn: "開啟積分操作"
+- tapOn: "我的好友 QR"
+- extendedWaitUntil:
+    visible: "有效至.*"
+    timeout: 30000
+- takeScreenshot: 47-friend-qr
+- tapOn: "關閉操作"
+- extendedWaitUntil:
+    notVisible: "有效至.*"
+    timeout: 10000
+# 我的帳戶 with the new card, 刪除帳號, then 登出 for the sign-in screen.
+- tapOn: "開啟帳戶"
+- extendedWaitUntil:
+    visible: "登出"
+    timeout: 15000
+- scrollUntilVisible:
+    element: "一直白底"
+    direction: DOWN
+    timeout: 15000
+    centerElement: true
+- takeScreenshot: 47-account
+- scrollUntilVisible:
+    element: "刪除帳號與資料"
+    direction: DOWN
+    timeout: 15000
+- tapOn: "刪除帳號與資料"
+- extendedWaitUntil:
+    visible: "確認刪除"
+    timeout: 10000
+- takeScreenshot: 47-delete
+- tapOn: "取消"
+- scrollUntilVisible:
+    element: "登出"
+    direction: UP
+    timeout: 15000
+- tapOn: "登出"
+- extendedWaitUntil:
+    visible: "使用Apple登入"
+    timeout: 15000
+- takeScreenshot: 47-sign-in
+# 有新版本 as a TestFlight install (src/services/iosInstallSource.ts); the fixture member is signed in again on start.
+- launchApp:
+    arguments:
+      qingmuInstallSource: testflight
+- extendedWaitUntil:
+    visible: "有新版本.*"
+    timeout: 90000
+- takeScreenshot: 47-update
+- tapOn: "稍後再說"
+- extendedWaitUntil:
+    notVisible: "有新版本.*"
+    timeout: 10000
+# Back to the default for anything that runs after this flow.
+- extendedWaitUntil:
+    visible: "更多閱讀工具"
+    timeout: 30000
+- tapOn: "更多閱讀工具"
+- tapOn: "夜間模式，一直深色"
+- tapOn: "晚上自動"
+- extendedWaitUntil:
+    visible: "18:00–06:00 深色，其他時間白底 \\(預設\\)"
+    timeout: 10000
+- tapOn: "返回更多閱讀工具"
+- assertVisible: "夜間模式，晚上自動"
+- tapOn: "關閉"
