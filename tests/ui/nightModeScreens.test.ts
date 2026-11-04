@@ -1,6 +1,6 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // 夜間模式 on screen (光佑 2026-11-04, mock C): the ⋯ row and page, the 我的帳戶 card, the 新功能 card, and the
 // reader following the scheme. Same doubles as tests/ui/fullscreenReaderLayout.test.ts.
@@ -37,7 +37,7 @@ vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice
 import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
 import { NightModeContext, type NightModeBinding } from '../../src/ui/nightModeContext';
 import { NightModeCard } from '../../src/ui/NightModeSettings';
-import { NightModeNewsHost } from '../../src/ui/NightModeNewsHost';
+import { NEWS_SETTLE_MS, NightModeNewsHost } from '../../src/ui/NightModeNewsHost';
 import { AppThemeScope } from '../../src/ui/useAppTheme';
 import { darkColors, lightColors } from '../../src/ui/Theme';
 import { setUpdatePromptShowing } from '../../src/ui/updatePromptPresence';
@@ -69,6 +69,9 @@ const all = (type: string) => renderer!.root.findAll((node) => String(node.type)
 const pressable = (label: string) => { const node = all('Pressable').find((item) => item.props.accessibilityLabel === label); expect(node, label).toBeDefined(); return node!; };
 const words = (node = renderer!.root) => node.findAll((item) => String(item.type) === 'Text').map((item) => [item.props.children].flat(Infinity).join(''));
 const flat = (style: unknown) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+
+// A reader left mounted by an earlier test would answer the module-level 改設定 request first.
+afterEach(() => { act(() => renderer?.unmount()); renderer = null; });
 
 beforeEach(() => {
   renderer = null;
@@ -121,9 +124,13 @@ describe('我的帳戶 card', () => {
 });
 
 describe('新功能 card', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+  const settle = () => act(() => { vi.advanceTimersByTime(NEWS_SETTLE_MS); });
   it('shows once over the reader (from the root) with the approved words', async () => {
     binding = { ...binding, newsDue: true };
     await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(ReaderWithNews))); });
+    settle();
     const card = all('View').find((node) => node.props.accessibilityLabel === '新功能：晚上自動變深色')!;
     expect(card).toBeDefined();
     expect(words(card)).toEqual([
@@ -135,21 +142,21 @@ describe('新功能 card', () => {
   });
 
   it('改設定 puts it away and opens the four choices', async () => {
-    vi.useFakeTimers();
     binding = { ...binding, newsDue: true };
     await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(ReaderWithNews))); });
+    settle();
     act(() => pressable('改設定').props.onPress());
     expect(binding.dismissNews).toHaveBeenCalledOnce();
     act(() => { renderer!.update(wrap(React.createElement(ReaderWithNews))); });
     act(() => { vi.advanceTimersByTime(500); });
     expect(all('Pressable').filter((node) => node.props.accessibilityRole === 'radio').map((node) => node.props.accessibilityLabel)).toEqual(['晚上自動', '跟手機', '一直深色', '一直白底']);
-    vi.useRealTimers();
   });
 
   // Run 41831056740: the reader unmounts and mounts again while it starts, and a card that lived inside it vanished.
   it('stays on screen while the reader under it unmounts and mounts again', async () => {
     binding = { ...binding, newsDue: true };
     await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(ReaderWithNews))); });
+    settle();
     const cards = () => all('View').filter((node) => node.props.accessibilityLabel === '新功能：晚上自動變深色').length;
     expect(cards()).toBe(1);
     act(() => { renderer!.update(wrap(React.createElement(ReaderWithNews, { withReader: false }))); });
@@ -158,12 +165,29 @@ describe('新功能 card', () => {
     expect(cards()).toBe(1);
   });
 
+  it('appears only after the reader has settled on screen', async () => {
+    binding = { ...binding, newsDue: true };
+    await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(ReaderWithNews))); });
+    const cards = () => all('View').filter((node) => node.props.accessibilityLabel === '新功能：晚上自動變深色').length;
+    act(() => { vi.advanceTimersByTime(NEWS_SETTLE_MS - 100); });
+    expect(cards()).toBe(0);
+    // The reader goes away and comes back while it starts: the wait starts again.
+    act(() => { renderer!.update(wrap(React.createElement(ReaderWithNews, { withReader: false }))); });
+    act(() => { renderer!.update(wrap(React.createElement(ReaderWithNews))); });
+    act(() => { vi.advanceTimersByTime(NEWS_SETTLE_MS - 100); });
+    expect(cards()).toBe(0);
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(cards()).toBe(1);
+  });
+
   it('waits while 有新版本 is on screen', async () => {
     binding = { ...binding, newsDue: true };
     setUpdatePromptShowing(true);
     await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(ReaderWithNews))); });
+    settle();
     expect(all('View').some((node) => node.props.accessibilityLabel === '新功能：晚上自動變深色')).toBe(false);
     act(() => setUpdatePromptShowing(false));
+    settle();
     expect(all('View').some((node) => node.props.accessibilityLabel === '新功能：晚上自動變深色')).toBe(true);
   });
 });

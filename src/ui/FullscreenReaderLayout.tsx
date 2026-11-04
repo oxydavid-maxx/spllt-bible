@@ -15,7 +15,7 @@ import { formatChapterTitleZhTw, formatReferenceZhTw } from '../domain/scripture
 import { theme, type AppColors } from './Theme';
 import { makeStyles, useAppTheme, useColors } from './useAppTheme';
 import { NightModeMenuRow, NightModePage } from './NightModeSettings';
-import { setReaderFreeForNews, useNightModePageRequest } from './nightModeNewsSlot';
+import { setReaderFreeForNews, takeNightModePageRequest, useNightModePageRequested } from './nightModeNewsSlot';
 import { formatReadingDateHeader, formatReadingDateLabel } from './ReadingDateNavigator';
 import { setReaderImmersed } from './readerImmersionState';
 import type { ReaderOverlayControls } from './YouVersionReader';
@@ -227,19 +227,17 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   const [nightPageOpen, setNightPageOpen] = useState(false);
   const { scheme } = useAppTheme();
   // The 新功能 card (src/ui/NightModeNewsHost.tsx, at the root) first appears over the reader with no panel open;
-  // its 改設定 opens this panel's 夜間模式 page. A request made before this reader mounted is not replayed.
+  // its 改設定 opens this panel's 夜間模式 page (a reader that mounts while the request waits takes it).
   const readerFree = chrome.focused && !chrome.moreOpen && !chrome.audioOpen && !chrome.infoOpen;
   useEffect(() => { setReaderFreeForNews(readerFree); }, [readerFree]);
   useEffect(() => () => setReaderFreeForNews(false), []);
-  const nightPageRequest = useNightModePageRequest();
-  const handledNightPageRequest = useRef(nightPageRequest);
+  const nightPageRequested = useNightModePageRequested();
   const { openMore } = chrome;
   useEffect(() => {
-    if (nightPageRequest === handledNightPageRequest.current || !chrome.focused) return;
-    handledNightPageRequest.current = nightPageRequest;
+    if (!nightPageRequested || !chrome.focused || !takeNightModePageRequest()) return;
     setNightPageOpen(true);
     openMore();
-  }, [nightPageRequest, chrome.focused, openMore]);
+  }, [nightPageRequested, chrome.focused, openMore]);
   const audioControlRef = useRef<ChapterAudioControlsHandle | null>(null);
   const curatedVersions = versionOptions !== undefined && onSelectVersion !== undefined;
   const { handleCanvasEdge, clearVerseSelection, handleReadAlongChapter } = chrome;
