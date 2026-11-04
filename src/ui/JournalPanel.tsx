@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppModal } from './AppModal';
+import { useModalNavigationBarInset } from './modalInsets';
 import { SheetBackdrop } from './SheetBackdrop';
 import { useAndroidKeyboardVisible } from './useAndroidKeyboardVisible';
 import { useJournalEntry } from './useJournalEntry';
@@ -49,10 +49,8 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
   useEffect(() => { if (visible && pendingQuote) setOffered(pendingQuote); }, [visible, pendingQuote]);
 
   const close = () => { entry.flushNow(); onClose(); };
-  // Android: AppModal draws the panel under the navigation bar, so the sheet keeps its last line above it. An iPhone
-  // keeps the layout it had (its Modal never moved), hence the platform check.
-  const insets = useSafeAreaInsets();
-  const bottomInset = Platform.OS === 'android' ? insets.bottom : 0;
+  // AppModal draws the panel under the Android navigation bar, so the sheet keeps its last line above it (0 on an iPhone).
+  const bottomInset = useModalNavigationBarInset();
 
   return <AppModal transparent animationType="slide" visible={visible} onRequestClose={close}>
     <KeyboardAvoidingView style={styles.keyboardRoot} behavior="padding" enabled={Platform.OS !== 'android' || keyboardUp}>

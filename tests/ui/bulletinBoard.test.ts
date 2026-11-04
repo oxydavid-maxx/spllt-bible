@@ -234,6 +234,10 @@ describe('the 週刊 board and viewer', () => {
     expect(typeof stage.props.onLayout).toBe('function');
     await act(async () => { stage.props.onLayout({ nativeEvent: { layout: { x: 0, y: 47, width: 400, height: 719 } } }); });
     expect(modal().findAll((node) => node.props.accessible === true && String(node.props.accessibilityLabel).startsWith('10/18 週刊第 1 頁'))[0].parent!.props.style).toMatchObject({ width: 400, height: 719 });
+    // AppModal draws the window under a transparent Android navigation bar (2026-11-05): the stage stops above its strip.
+    const navArea = screen.children[2] as TestRenderer.ReactTestInstance;
+    expect(navArea.props.testID).toBe('bulletin-viewer-nav-area');
+    expect(flat(navArea.props.style)).toMatchObject({ height: 34, backgroundColor: lightColors.viewerStage });
     const source = readFileSync('src/ui/bulletin/BulletinViewer.tsx', 'utf8');
     expect(source, 'one layout for both platforms').not.toMatch(/Platform\.OS/);
   });

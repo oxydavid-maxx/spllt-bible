@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View, type ImageSourcePropType } from 'react-native';
 import { AppModal } from '../AppModal';
+import { useModalNavigationBarInset } from '../modalInsets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BulletinWeek } from '../../services/bulletinClient';
 import { makeStyles } from '../useAppTheme';
@@ -29,6 +30,7 @@ export function BulletinViewer({ week, startIndex, sourceFor, previewFor, onClos
   const styles = useStyles();
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const navigationBarInset = useModalNavigationBarInset();
   // The space under the status bar, as laid out; the window less the inset until then.
   const [stage, setStage] = useState<{ width: number; height: number } | null>(null);
   const view = stage ?? { width: window.width, height: window.height - insets.top };
@@ -77,6 +79,9 @@ export function BulletinViewer({ week, startIndex, sourceFor, previewFor, onClos
         </View>
         {hint ? <View pointerEvents="none" style={[styles.hint, { bottom: insets.bottom + 20 }]}><Text style={styles.hintText}>兩指放大縮小・左右滑換頁</Text></View> : null}
       </View>
+      {/* AppModal draws this window under a transparent Android navigation bar (2026-11-05): the page stage ends above it,
+          where it ended before, and the bar's strip keeps the stage's dark. 0 on an iPhone (src/ui/modalInsets.ts). */}
+      {navigationBarInset > 0 ? <View testID="bulletin-viewer-nav-area" style={[styles.navArea, { height: navigationBarInset }]} /> : null}
     </View>
   </AppModal>;
 }
@@ -85,6 +90,7 @@ const useStyles = makeStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.background },
   statusArea: { backgroundColor: colors.background },
   stage: { flex: 1, backgroundColor: colors.viewerStage },
+  navArea: { backgroundColor: colors.viewerStage },
   bar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: colors.viewerBar },
   title: { color: colors.onViewer, fontSize: 17, fontWeight: '700' },
   close: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.viewerButton },
