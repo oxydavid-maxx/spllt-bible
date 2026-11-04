@@ -1,4 +1,5 @@
-import { Modal, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { AppModal } from './AppModal';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from './Theme';
 import { AppThemeScope, makeStyles, useColors } from './useAppTheme';
@@ -15,7 +16,7 @@ export function NightModeNews({ visible, onDone, onChange, onClosed }: { visible
   const styles = useStyles();
   // Not work in progress, but a reload under it would only show it again; holding keeps it from blinking away.
   useAutoUpdateHold(visible, '新功能卡開著');
-  return <Modal transparent animationType="fade" visible={visible} onRequestClose={onDone} onDismiss={onClosed}>
+  return <AppModal transparent animationType="fade" visible={visible} onRequestClose={onDone} onDismiss={onClosed}>
     <View style={styles.scrim}>
       <View style={styles.card} accessibilityViewIsModal accessibilityLabel={NIGHT_NEWS_TITLE}>
         <View style={styles.minis} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
@@ -39,7 +40,7 @@ export function NightModeNews({ visible, onDone, onChange, onClosed }: { visible
         </Pressable>
       </View>
     </View>
-  </Modal>;
+  </AppModal>;
 }
 
 /** A small phone screen in one scheme: the page, four lines of text, the sun or the moon. */

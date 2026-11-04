@@ -26,7 +26,8 @@ describe('everything the reload must not interrupt tells the guard', () => {
     // The update prompt is not work in progress: a reload shows it again, and holding on it would keep a
     // phone with a pending store update from ever taking its OTA update.
     const exempt = new Set(['src/ui/UpdatePrompt.tsx']);
-    const missing = files.filter((file) => /<Modal\b/.test(file.text) && !exempt.has(file.path) && !/<SheetBackdrop\b|useAutoUpdateHold\(/.test(file.text)).map((file) => file.path);
+    // Panels open through AppModal (src/ui/AppModal.tsx, tests/tools/appModalGuard.test.ts); AppModal itself is not a panel.
+    const missing = files.filter((file) => /<(App)?Modal\b/.test(file.text) && !exempt.has(file.path) && file.path !== 'src/ui/AppModal.tsx' && !/<SheetBackdrop\b|useAutoUpdateHold\(/.test(file.text)).map((file) => file.path);
     expect(missing, 'a Modal must contain the shared SheetBackdrop or call useAutoUpdateHold(open, …)').toEqual([]);
     expect(readFileSync('src/ui/SheetBackdrop.tsx', 'utf8')).toContain('useAutoUpdateHold(true');
     expect(readFileSync('src/ui/sheet/bottomSheet.tsx', 'utf8')).toMatch(/useAutoUpdateHold\(index === 0/);

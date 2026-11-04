@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, BackHandler, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppModal } from './AppModal';
 import { SheetBackdrop } from './SheetBackdrop';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createYouVersionAdapter } from '../services/youVersionAdapter';
@@ -377,7 +378,7 @@ export function YouVersionReader({ date, references, adjacentReferences = [], as
     onVerseCopied?.(`「${data.verseText}」${data.reference}`);
   };
 
-  const footnotePanel = footnote ? <Modal transparent animationType="fade" visible onRequestClose={closeFootnote}>
+  const footnotePanel = footnote ? <AppModal transparent animationType="fade" visible onRequestClose={closeFootnote}>
     <SheetBackdrop label="關閉註腳" onPress={closeFootnote} style={styles.footnoteScrim}>
       <View style={styles.footnoteHost} accessibilityViewIsModal>
         {/* The bottom edge keeps the notes above a three-button navigation bar, which otherwise
@@ -388,7 +389,7 @@ export function YouVersionReader({ date, references, adjacentReferences = [], as
         </SafeAreaView>
       </View>
     </SheetBackdrop>
-  </Modal> : null;
+  </AppModal> : null;
   return (
     <ChapterAudioAutoplayContext.Provider value={autoplayContext}>
       <View style={styles.host}>

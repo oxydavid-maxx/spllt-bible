@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AppModal } from './AppModal';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { createApiClient, type ReadingDaySnapshot } from '../services/apiClient';
 import { getAuthSnapshot, useAuthSnapshot } from '../services/authSession';
@@ -140,7 +141,7 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
   const last = days[days.length - 1]?.date;
   const summary = first && last ? `${formatReadingDateLabel(first)}–${formatReadingDateLabel(last)}，共 ${days.length} 天，已讀 ${days.filter(day => day.completed).length} 天` : '目前沒有讀經計畫';
 
-  return <Modal visible transparent animationType="slide" onShow={() => { modalShown.current = true; scrollToToday(); }} onRequestClose={dismiss}>
+  return <AppModal visible transparent animationType="slide" onShow={() => { modalShown.current = true; scrollToToday(); }} onRequestClose={dismiss}>
     <SafeAreaProvider><SheetBackdrop label="關閉整份讀經計畫" onPress={dismiss} style={styles.scrim}>
       <Animated.View testID="reading-plan-sheet" onLayout={event => { sheetHeight.current = event.nativeEvent.layout.height; }} style={[styles.sheetWrap, { transform: [{ translateY }] }]}>
         <SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']} accessibilityViewIsModal>
@@ -176,7 +177,7 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
         </SafeAreaView>
       </Animated.View>
     </SheetBackdrop></SafeAreaProvider>
-  </Modal>;
+  </AppModal>;
 }
 
 const useStyles = makeStyles((colors) => ({

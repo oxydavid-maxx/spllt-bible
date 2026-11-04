@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View, type ImageSourcePropType } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View, type ImageSourcePropType } from 'react-native';
+import { AppModal } from '../AppModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BulletinWeek } from '../../services/bulletinClient';
 import { makeStyles } from '../useAppTheme';
@@ -37,7 +38,7 @@ export function BulletinViewer({ week, startIndex, sourceFor, previewFor, onClos
   // Full screen over the app, like a panel: a downloaded update waits until it is closed (2026-10-21).
   useAutoUpdateHold(true, '週刊全螢幕');
   const [, month, day] = week.date.split('-').map(Number);
-  return <Modal visible animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+  return <AppModal visible animationType="fade" onRequestClose={onClose}>
     <View style={styles.screen}>
       <View testID="bulletin-viewer-status-area" style={[styles.statusArea, { height: insets.top }]} />
       <View
@@ -77,7 +78,7 @@ export function BulletinViewer({ week, startIndex, sourceFor, previewFor, onClos
         {hint ? <View pointerEvents="none" style={[styles.hint, { bottom: insets.bottom + 20 }]}><Text style={styles.hintText}>兩指放大縮小・左右滑換頁</Text></View> : null}
       </View>
     </View>
-  </Modal>;
+  </AppModal>;
 }
 
 const useStyles = makeStyles((colors) => ({

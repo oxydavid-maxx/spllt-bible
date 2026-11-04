@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AppModal } from './AppModal';
 import { SheetBackdrop } from './SheetBackdrop';
 import { useAndroidKeyboardVisible } from './useAndroidKeyboardVisible';
 import { useJournalEntry } from './useJournalEntry';
@@ -47,11 +49,15 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
   useEffect(() => { if (visible && pendingQuote) setOffered(pendingQuote); }, [visible, pendingQuote]);
 
   const close = () => { entry.flushNow(); onClose(); };
+  // Android: AppModal draws the panel under the navigation bar, so the sheet keeps its last line above it. An iPhone
+  // keeps the layout it had (its Modal never moved), hence the platform check.
+  const insets = useSafeAreaInsets();
+  const bottomInset = Platform.OS === 'android' ? insets.bottom : 0;
 
-  return <Modal transparent animationType="slide" visible={visible} onRequestClose={close}>
+  return <AppModal transparent animationType="slide" visible={visible} onRequestClose={close}>
     <KeyboardAvoidingView style={styles.keyboardRoot} behavior="padding" enabled={Platform.OS !== 'android' || keyboardUp}>
     <SheetBackdrop label="關閉靈修日記" onPress={close} style={styles.scrim}>
-      <View style={styles.sheet} accessibilityViewIsModal>
+      <View style={[styles.sheet, bottomInset > 0 && { paddingBottom: theme.spacing.md + bottomInset }]} accessibilityViewIsModal>
         <View style={styles.header}>
           <Text accessibilityRole="header" style={styles.title}>{`靈修日記 ${dateLabel}`}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="完成" onPress={close} hitSlop={8} style={styles.done}>
@@ -78,7 +84,7 @@ export function JournalPanel({ visible, memberId, planId, taskDate, dateLabel, n
       </View>
     </SheetBackdrop>
     </KeyboardAvoidingView>
-  </Modal>;
+  </AppModal>;
 }
 
 const useStyles = makeStyles((colors) => ({

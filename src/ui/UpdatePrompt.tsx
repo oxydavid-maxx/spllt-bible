@@ -1,6 +1,7 @@
 import * as Application from 'expo-application';
 import { useEffect, useState } from 'react';
-import { AppState, Linking, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppModal } from './AppModal';
 import { checkAppUpdate, startAppUpdate } from '../services/appUpdate';
 import { NO_UPDATE, updateActionLabel, updateTitle, type UpdateState } from '../services/updateCheck';
 import { theme } from './Theme';
@@ -61,7 +62,7 @@ export function UpdatePrompt({
 
   const visible = state.available && !dismissed;
   useEffect(() => { setUpdatePromptShowing(visible); return () => setUpdatePromptShowing(false); }, [visible]);
-  return <Modal transparent animationType="fade" visible={visible} onRequestClose={() => setDismissed(true)}>
+  return <AppModal transparent animationType="fade" visible={visible} onRequestClose={() => setDismissed(true)}>
     <View style={styles.scrim}>
       <View style={styles.card} accessibilityViewIsModal accessibilityLabel="有新版本">
         <Text accessibilityRole="header" style={styles.title}>{updateTitle(state)}</Text>
@@ -76,7 +77,7 @@ export function UpdatePrompt({
         </Pressable>
       </View>
     </View>
-  </Modal>;
+  </AppModal>;
 }
 
 /** What 更新 is about to do, in the words a member sees on the next screen. */

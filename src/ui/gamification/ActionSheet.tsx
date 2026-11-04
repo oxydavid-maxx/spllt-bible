@@ -1,4 +1,5 @@
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppModal } from '../AppModal';
 import { SheetBackdrop } from '../SheetBackdrop';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useAndroidKeyboardVisible } from '../useAndroidKeyboardVisible';
@@ -17,9 +18,9 @@ export interface ActionSheetAction { label: string; onPress: () => void; destruc
 export function ActionSheet({ visible, title, actions, onClose, children, dismissOnOutsideTap = false }: { visible: boolean; title: string; actions?: ActionSheetAction[]; onClose: () => void; children?: React.ReactNode; dismissOnOutsideTap?: boolean }) {
   const styles = useStyles();
   const androidKeyboardVisible = useAndroidKeyboardVisible();
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} accessibilityViewIsModal>
+  return <AppModal visible={visible} transparent animationType="slide" onRequestClose={onClose} accessibilityViewIsModal>
     <SafeAreaProvider><KeyboardAvoidingView style={styles.keyboardRoot} behavior="padding" enabled={Platform.OS !== 'android' || androidKeyboardVisible}><SheetBackdrop label={`關閉${title}`} onPress={dismissOnOutsideTap ? onClose : undefined} style={styles.scrim}><View style={styles.sheetWrap}><SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']}><View style={styles.heading}><Text style={styles.title}>{title}</Text><Pressable accessibilityRole="button" accessibilityLabel="關閉操作" onPress={onClose} style={styles.close}><Text style={styles.closeText}>×</Text></Pressable></View><ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">{children}{actions?.map((action) => <Pressable key={action.label} accessibilityRole="button" accessibilityLabel={action.label} disabled={action.disabled} onPress={action.onPress} style={[styles.action, action.destructive && styles.destructive, action.disabled && styles.disabled]}><Text style={[styles.actionText, action.destructive && styles.destructiveText]}>{action.label}</Text></Pressable>)}</ScrollView></SafeAreaView></View></SheetBackdrop></KeyboardAvoidingView></SafeAreaProvider>
-  </Modal>;
+  </AppModal>;
 }
 const useStyles = makeStyles((colors) => ({
   scrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: colors.scrimSoft },

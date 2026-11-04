@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppModal } from '../AppModal';
 import { theme } from '../Theme';
 import { makeStyles } from '../useAppTheme';
 import { useAutoUpdateHold } from '../useAutoUpdateHold';
@@ -39,7 +40,7 @@ export function CongregationGate() {
     try { await congregation.choose(picked); } catch { setFailed(true); } finally { setSaving(false); }
   };
   const confirmLabel = saving ? '儲存中…' : picked ? whereSentence(picked) : '請先選上面其中一個';
-  return <Modal visible animationType="fade" onRequestClose={() => undefined}>
+  return <AppModal visible animationType="fade" onRequestClose={() => undefined}>
     <View style={styles.page}>
       <Text accessibilityRole="header" style={styles.title}>{QUESTION}</Text>
       {CHOICES.map((choice) => {
@@ -82,7 +83,7 @@ export function CongregationGate() {
         <Text style={styles.retryText}>{retrying ? '讀取中…' : '再試一次'}</Text>
       </Pressable> : null}
     </View>
-  </Modal>;
+  </AppModal>;
 }
 
 const useStyles = makeStyles((colors) => ({
