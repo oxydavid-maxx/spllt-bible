@@ -1,5 +1,5 @@
 import { Modal, Pressable, Text, View } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from './Theme';
 import { AppThemeScope, makeStyles, useColors } from './useAppTheme';
 import { useAutoUpdateHold } from './useAutoUpdateHold';
@@ -49,8 +49,8 @@ function MiniScreen({ kind }: { kind: 'day' | 'night' }) {
   return <View style={styles.screen}>
     <View style={styles.mark}>
       {kind === 'day'
-        ? <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={colors.sunMark} strokeWidth={2} strokeLinecap="round"><Circle cx={12} cy={12} r={4} /><Path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></Svg>
-        : <Svg width={16} height={16} viewBox="0 0 24 24" fill={colors.moonMark}><Path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a.7.7 0 0 0-.9-.8A9.6 9.6 0 1 0 21.3 15.5a.7.7 0 0 0-.8-.9z" /></Svg>}
+        ? <MaterialCommunityIcons name="white-balance-sunny" size={16} color={colors.sunMark} />
+        : <MaterialCommunityIcons name="weather-night" size={16} color={colors.moonMark} />}
     </View>
     {[55, 85, 70, 80].map((width) => <View key={width} style={[styles.line, { width: `${width}%` }]} />)}
   </View>;

@@ -37,6 +37,7 @@ vi.mock('../../src/ui/ChapterAudioControls', () => ({ ChapterAudioAutoplayNotice
 import { FullscreenReaderLayout, useReaderChrome } from '../../src/ui/FullscreenReaderLayout';
 import { NightModeContext, type NightModeBinding } from '../../src/ui/nightModeContext';
 import { NightModeCard } from '../../src/ui/NightModeSettings';
+import { NightModeNewsHost } from '../../src/ui/NightModeNewsHost';
 import { AppThemeScope } from '../../src/ui/useAppTheme';
 import { darkColors, lightColors } from '../../src/ui/Theme';
 import { setUpdatePromptShowing } from '../../src/ui/updatePromptPresence';
@@ -56,6 +57,10 @@ function Reader() {
     onSelectReference: vi.fn(), selectedDate: '2026-11-04', onSelectDate: vi.fn(),
     metadata: { translationName: '測試譯本', publisher: '測試出版社', copyrightNotice: '版權', officialUrl: '' },
   });
+}
+// The 新功能 card lives at the root (NightModeProvider renders NightModeNewsHost beside the app).
+function ReaderWithNews(props: { withReader?: boolean }) {
+  return React.createElement(React.Fragment, null, props.withReader === false ? null : React.createElement(Reader), React.createElement(NightModeNewsHost));
 }
 function wrap(child: React.ReactElement) {
   return React.createElement(NightModeContext.Provider, { value: binding }, React.createElement(AppThemeScope, { scheme }, child));
@@ -116,9 +121,9 @@ describe('我的帳戶 card', () => {
 });
 
 describe('新功能 card', () => {
-  it('shows once over the reader with the approved words', async () => {
+  it('shows once over the reader (from the root) with the approved words', async () => {
     binding = { ...binding, newsDue: true };
-    await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(Reader))); });
+    await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(ReaderWithNews))); });
     const card = all('View').find((node) => node.props.accessibilityLabel === '新功能：晚上自動變深色')!;
     expect(card).toBeDefined();
     expect(words(card)).toEqual([
@@ -132,19 +137,31 @@ describe('新功能 card', () => {
   it('改設定 puts it away and opens the four choices', async () => {
     vi.useFakeTimers();
     binding = { ...binding, newsDue: true };
-    await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(Reader))); });
+    await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(ReaderWithNews))); });
     act(() => pressable('改設定').props.onPress());
     expect(binding.dismissNews).toHaveBeenCalledOnce();
-    act(() => { renderer!.update(wrap(React.createElement(Reader))); });
+    act(() => { renderer!.update(wrap(React.createElement(ReaderWithNews))); });
     act(() => { vi.advanceTimersByTime(500); });
     expect(all('Pressable').filter((node) => node.props.accessibilityRole === 'radio').map((node) => node.props.accessibilityLabel)).toEqual(['晚上自動', '跟手機', '一直深色', '一直白底']);
     vi.useRealTimers();
   });
 
+  // Run 41831056740: the reader unmounts and mounts again while it starts, and a card that lived inside it vanished.
+  it('stays on screen while the reader under it unmounts and mounts again', async () => {
+    binding = { ...binding, newsDue: true };
+    await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(ReaderWithNews))); });
+    const cards = () => all('View').filter((node) => node.props.accessibilityLabel === '新功能：晚上自動變深色').length;
+    expect(cards()).toBe(1);
+    act(() => { renderer!.update(wrap(React.createElement(ReaderWithNews, { withReader: false }))); });
+    expect(cards()).toBe(1);
+    act(() => { renderer!.update(wrap(React.createElement(ReaderWithNews))); });
+    expect(cards()).toBe(1);
+  });
+
   it('waits while 有新版本 is on screen', async () => {
     binding = { ...binding, newsDue: true };
     setUpdatePromptShowing(true);
-    await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(Reader))); });
+    await act(async () => { renderer = TestRenderer.create(wrap(React.createElement(ReaderWithNews))); });
     expect(all('View').some((node) => node.props.accessibilityLabel === '新功能：晚上自動變深色')).toBe(false);
     act(() => setUpdatePromptShowing(false));
     expect(all('View').some((node) => node.props.accessibilityLabel === '新功能：晚上自動變深色')).toBe(true);

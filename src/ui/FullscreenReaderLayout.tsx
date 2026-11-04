@@ -15,9 +15,7 @@ import { formatChapterTitleZhTw, formatReferenceZhTw } from '../domain/scripture
 import { theme, type AppColors } from './Theme';
 import { makeStyles, useAppTheme, useColors } from './useAppTheme';
 import { NightModeMenuRow, NightModePage } from './NightModeSettings';
-import { NightModeNews } from './NightModeNews';
-import { useNightMode } from './nightModeContext';
-import { useUpdatePromptShowing } from './updatePromptPresence';
+import { setReaderFreeForNews, useNightModePageRequest } from './nightModeNewsSlot';
 import { formatReadingDateHeader, formatReadingDateLabel } from './ReadingDateNavigator';
 import { setReaderImmersed } from './readerImmersionState';
 import type { ReaderOverlayControls } from './YouVersionReader';
@@ -228,18 +226,20 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
   // ⋯ 更多閱讀工具 → 夜間模式, the panel's next page like 選擇譯本 (光佑 2026-11-04, mock C).
   const [nightPageOpen, setNightPageOpen] = useState(false);
   const { scheme } = useAppTheme();
-  const nightMode = useNightMode();
-  const updatePromptShowing = useUpdatePromptShowing();
-  // The 新功能 card, once per phone, over the reader; it waits while 有新版本 or a panel is up.
-  const newsVisible = nightMode.newsDue && chrome.focused && !updatePromptShowing && !chrome.moreOpen && !chrome.audioOpen && !chrome.infoOpen;
-  // 改設定 opens the four choices once the card has gone: two dialogs presented at the same moment can lose the second on iOS.
-  const nightPageAfterNews = useRef(false);
-  const openNightPageAfterNews = useCallback(() => {
-    if (!nightPageAfterNews.current) return;
-    nightPageAfterNews.current = false;
+  // The 新功能 card (src/ui/NightModeNewsHost.tsx, at the root) first appears over the reader with no panel open;
+  // its 改設定 opens this panel's 夜間模式 page. A request made before this reader mounted is not replayed.
+  const readerFree = chrome.focused && !chrome.moreOpen && !chrome.audioOpen && !chrome.infoOpen;
+  useEffect(() => { setReaderFreeForNews(readerFree); }, [readerFree]);
+  useEffect(() => () => setReaderFreeForNews(false), []);
+  const nightPageRequest = useNightModePageRequest();
+  const handledNightPageRequest = useRef(nightPageRequest);
+  const { openMore } = chrome;
+  useEffect(() => {
+    if (nightPageRequest === handledNightPageRequest.current || !chrome.focused) return;
+    handledNightPageRequest.current = nightPageRequest;
     setNightPageOpen(true);
-    chrome.openMore();
-  }, [chrome]);
+    openMore();
+  }, [nightPageRequest, chrome.focused, openMore]);
   const audioControlRef = useRef<ChapterAudioControlsHandle | null>(null);
   const curatedVersions = versionOptions !== undefined && onSelectVersion !== undefined;
   const { handleCanvasEdge, clearVerseSelection, handleReadAlongChapter } = chrome;
@@ -439,11 +439,6 @@ export function FullscreenReaderLayout({ reader, controls, chrome, audioOwnerAct
         </Pressable>
       </View> : null}
       {feedback}
-      <NightModeNews visible={newsVisible} onDone={nightMode.dismissNews} onChange={() => {
-        nightPageAfterNews.current = true;
-        nightMode.dismissNews();
-        setTimeout(openNightPageAfterNews, 450);
-      }} onClosed={openNightPageAfterNews} />
       <Modal transparent animationType="fade" visible={chrome.moreOpen} onRequestClose={nightPageOpen ? () => setNightPageOpen(false) : versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore}>
         {chrome.moreOpen && <SheetBackdrop label="關閉更多閱讀工具" onPress={nightPageOpen ? () => setNightPageOpen(false) : versionPageOpen ? () => setVersionPageOpen(false) : chrome.closeMore} style={styles.scrim}><View style={styles.sheetHost}><SafeAreaView style={styles.sheet} edges={['top', 'bottom', 'left', 'right']} accessibilityViewIsModal>
           {nightPageOpen ? <NightModePage onBack={() => setNightPageOpen(false)} /> : versionPageOpen && curatedVersions ? <CuratedVersionChoices options={versionOptions} versionId={versionId} onSelect={onSelectVersion} onBack={() => setVersionPageOpen(false)} onClose={closeVersionPage} /> : <>

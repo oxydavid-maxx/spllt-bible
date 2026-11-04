@@ -50,11 +50,12 @@
 - Apple 登入鈕：深色時用 Apple 的白色樣式。
 - 匯出的讀經卡 PDF 不變：那是要印出來的 A4 紙，維持白底。
 
-### 新功能卡 (`src/ui/NightModeNews.tsx`、`src/services/nightMode.ts` `createNightModeNews`)
+### 新功能卡 (`src/ui/NightModeNews.tsx`、`src/ui/NightModeNewsHost.tsx`、`src/services/nightMode.ts` `createNightModeNews`)
 
 - 更新後第一次進到讀經頁時跳一次，一支手機只出現一次 (`qingmu.nightMode.news.v1`)。
 - 按「知道了」或「改設定」(Android 返回鍵等於「知道了」) 就不再出現；沒按任何一顆就關掉 App 的話，下次打開還會再跳。
 - 「改設定」關掉卡片後打開 ⋯ 更多閱讀工具的「夜間模式」頁。
+- 卡片放在 App 最外層 (不放在讀經頁裡)：讀經頁開 App 時會因為帳號設定載入而重新掛上一次，放在裡面的對話框在 iPhone 上會跟著消失 (CI run 41831056740)。讀經頁出現、沒有面板開著時第一次跳出，之後一直留到按下按鈕。
 - 「有新版本」提示在畫面上時先等它關掉，不同時疊兩個對話框。卡片開著時，下載好的 OTA 更新先不換上 (`useAutoUpdateHold`)。
 
 ### 雲端測試機 (CI 模擬器)

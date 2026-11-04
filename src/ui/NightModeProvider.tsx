@@ -6,6 +6,7 @@ import { createNightModeController, createNightModeNews, type NightModeControlle
 import { NightModeContext, type NightModeBinding } from './nightModeContext';
 import { colorsFor } from './Theme';
 import { AppThemeScope, setShownScheme } from './useAppTheme';
+import { NightModeNewsHost } from './NightModeNewsHost';
 
 /**
  * 夜間模式 at the root (光佑 2026-11-04, docs/features/night-mode.md): the choice, the scheme on screen, the 新功能
@@ -122,6 +123,7 @@ export function NightModeProvider({ controller: given, news: givenNews, children
       <ThemeProvider value={navigationTheme}>
         <StatusBar style={snapshot.scheme === 'dark' ? 'light' : 'dark'} />
         {children}
+        <NightModeNewsHost />
       </ThemeProvider>
     </AppThemeScope>
   </NightModeContext.Provider>;
