@@ -17,7 +17,7 @@ import { AppThemeScope, setShownScheme } from './useAppTheme';
  *
  * The CI simulator (EXPO_PUBLIC_QINGMU_FIXTURE) must not turn dark or show the 新功能 card just because the runner's
  * clock reads 18:00–06:00 or the app was just installed: there 晚上自動 reads noon, and the card shows only when a
- * flow asks with the launch argument `qingmuWhatsNew: show` (.maestro/ios/47-night-mode.yaml). A real build never
+ * flow asks with the launch argument `qingmuWhatsNew: show` (.maestro/ios/45-night-mode.yaml). A real build never
  * reads either.
  */
 const FIXTURE = process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true';

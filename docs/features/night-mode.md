@@ -60,7 +60,7 @@
 ### 雲端測試機 (CI 模擬器)
 
 - 模擬器 (`EXPO_PUBLIC_QINGMU_FIXTURE`) 的「晚上自動」一律當成中午 12:00，所以現有流程不會因為 CI 機器的時間落在 18:00–06:00 而變成深色；新功能卡只在流程用啟動參數 `qingmuWhatsNew: show` 要求時才出現。正式版不讀這兩個。
-- `.maestro/ios/47-night-mode.yaml` 在畫面上選「一直深色」，截下每個 mock 畫面，`scripts/ios/check-dark-screens.ts` 算白色面積。
+- `.maestro/ios/45-night-mode.yaml` 在畫面上選「一直深色」，截下每個 mock 畫面，`scripts/ios/check-dark-screens.ts` 算白色面積。10pt 見方以上全白的區域連成一片、超過畫面 0.4% 就算白塊；照設計留白的只有：好友 QR、登入頁 Apple 的白色按鈕和 App 圖示 (mock 也保留)、新功能卡上「06:00–18:00 白底」的小畫面。流程排在 46-apple-login 前面 (它的 Apple 登入會留下系統對話框)。
 
 ## 決定（為什麼這樣做）
 
@@ -93,7 +93,7 @@
 - `tests/ui/nightModeScreens.test.ts`：⋯ 裡的列和頁、我的帳戶卡、新功能卡的字一字不差；讀經頁沒有月亮；深色時讀經頁用深色。
 - `tests/tools/themeGuard.test.ts`：畫面檔 (`src/ui/`、`app/`) 不准寫死顏色、不准在載入時把顏色固定。
 - `tests/ui/themeContrast.test.ts` / `scripts/check-contrast.ts`：兩套顏色每組字和底 ≥ 4.5:1、控制項邊框 ≥ 3:1。
-- `.maestro/ios/47-night-mode.yaml` + `scripts/ios/check-dark-screens.ts`：iOS 模擬器在「一直深色」截每個畫面，週刊圖片和 QR 以外不准有大片白塊。
+- `.maestro/ios/45-night-mode.yaml` + `scripts/ios/check-dark-screens.ts`：iOS 模擬器在「一直深色」截每個畫面，週刊圖片和 QR 以外不准有大片白塊。
 
 ## 相關文件
 

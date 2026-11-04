@@ -1,4 +1,4 @@
-// scripts/ios/check-dark-screens.ts — CI only, run by scripts/ios/run-flows.sh right after .maestro/ios/47-night-mode.yaml,
+// scripts/ios/check-dark-screens.ts — CI only, run by scripts/ios/run-flows.sh right after .maestro/ios/45-night-mode.yaml,
 // which screenshots every screen of the approved 夜間模式 mock with the app set to 一直深色 (光佑 2026-11-04).
 // A screen that missed the dark palette shows up as a white block: a white card, sheet, chip or page. White words on
 // the dark page are thin strokes, so a block is an area at least BLOCK_PT × BLOCK_PT points where every pixel is
@@ -6,8 +6,9 @@
 // The status bar is the system's (its battery is drawn white at night) and is left out. Allowed by decision: the friend
 // QR stays black on white (the white inside its square on the QR screen); on the sign-in screen Apple's button is white at
 // night (one wide button-shaped region) and the app icon picture stays as it is (one square region above the title), as
-// in the mock. The 週刊 pages are dimmed to 0.82, under the white threshold.
-// usage: tsx scripts/ios/check-dark-screens.ts <dir with 47-*.png | a .png> [<receipt.json>]
+// in the mock; the 新功能 card's small 白底 sample screen is white on purpose. The 週刊 pages are dimmed to 0.82, under
+// the white threshold.
+// usage: tsx scripts/ios/check-dark-screens.ts <dir with night-*.png | a .png> [<receipt.json>]
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -100,6 +101,10 @@ export function checkDarkScreen(name: string, bitmap: Bitmap): DarkScreenCheck {
     const icon = big.find((region) => squarish(region) && region.width >= 60 * scale && region.width <= 140 * scale && region.y < height / 2);
     if (icon) allowed.push(icon);
   }
+  if (/whats-new/.test(name)) {
+    // The 新功能 card draws a small white sample screen for 06:00–18:00 白底 (left of the dark one), on purpose.
+    allowed.push(...big.filter((region) => region.x + region.width <= width / 2 && region.width <= 200 * scale && region.height <= 80 * scale));
+  }
   const failing = big.filter((region) => !allowed.includes(region));
   const problems = failing.map((region) => `white block ${Math.round(region.width / scale)}×${Math.round(region.height / scale)} pt at (${Math.round(region.x / scale)}, ${Math.round(region.y / scale)}) pt, ${(region.share * 100).toFixed(2)}% of the screen`);
   return { name, ok: problems.length === 0, whiteShare: whiteCount / (width * height), regions: big, allowed, problems };
@@ -109,7 +114,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const [target, receipt] = process.argv.slice(2);
   void (async () => {
     const files = target && statSync(target, { throwIfNoEntry: false })?.isDirectory()
-      ? readdirSync(target).filter((name) => /^47-.*\.png$/.test(name)).sort().map((name) => join(target, name))
+      ? readdirSync(target).filter((name) => /^night-.*\.png$/.test(name) && !/native-screen/.test(name)).sort().map((name) => join(target, name))
       : target ? [target] : [];
     const results: DarkScreenCheck[] = [];
     for (const file of files) {
@@ -127,7 +132,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       console.log(`${result.ok ? 'PASS' : 'FAIL'} ${result.name} white=${(result.whiteShare * 100).toFixed(2)}%${result.allowed.length ? ` allowed=${result.allowed.length}` : ''}`);
       for (const problem of result.problems) console.log(`  ${problem}`);
     }
-    console.log(ok ? `DARK_SCREENS PASS (${results.length})` : `DARK_SCREENS FAIL${results.length ? '' : ' (no 47-*.png screenshots)'}`);
+    console.log(ok ? `DARK_SCREENS PASS (${results.length})` : `DARK_SCREENS FAIL${results.length ? '' : ' (no night-*.png screenshots)'}`);
     process.exit(ok ? 0 : 1);
   })();
 }

@@ -66,7 +66,7 @@ jobs:
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
       - name: flows and runtime budgets
         env:
-          REQUIRES_KEY_PATTERN: '^(1[0-9]-reader|2[0-9]-audio|47-night-mode)'
+          REQUIRES_KEY_PATTERN: '^(1[0-9]-reader|2[0-9]-audio|45-night-mode)'
         run: bash scripts/ios/run-flows.sh
       - name: summary
         if: always()

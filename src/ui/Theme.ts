@@ -71,6 +71,8 @@ export const lightColors = {
   // Words and icons on a filled control (primaryFill, primaryDeepFill, accentFill, dangerFill).
   onFill: '#FFFFFF',
   onFillMuted: 'rgba(255,255,255,0.86)',
+  // Quieter words on the darkest filled cell (the 團體 calendar's busiest days).
+  onFillSoft: '#DAE8DE',
   // Behind a panel or dialog, and the shadow under floating buttons.
   // A message laid over the page in the opposite scheme (the undo snackbar, the award line, the 靈修 banner).
   inverse: '#15302A',
@@ -143,12 +145,13 @@ export const darkColors: AppColors = {
   dangerFill: '#A33A3A',
   gold: '#D9A93A',
   goldText: '#E0B860',
-  goldOnPrimary: '#F0C75E',
+  goldOnPrimary: '#FFF0C2', // the lighter fill green needs a paler gold to keep 4.5:1
   goldLine: '#D2A645',
   border: '#353333',
   borderStrong: '#7A7777',
   onFill: '#FFFFFF',
   onFillMuted: 'rgba(255,255,255,0.86)',
+  onFillSoft: '#EEF3F0',
   inverse: '#F2F4F3',
   onInverse: '#121212',
   // 20% of the light fill over the dark page, as the reader mixes it (readAlongBridge.ts, --yv-highlight-mix-p).

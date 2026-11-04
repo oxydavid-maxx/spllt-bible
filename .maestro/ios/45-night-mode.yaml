@@ -1,8 +1,10 @@
-# 47-night-mode — 夜間模式 (光佑 2026-11-04, docs/features/night-mode.md). The fixture build's 晚上自動 reads noon, so every
+# 45-night-mode — 夜間模式 (光佑 2026-11-04, docs/features/night-mode.md). The fixture build's 晚上自動 reads noon, so every
 # other flow runs light whatever the runner's clock says, and the 新功能 card only shows when a flow asks
 # (launch argument qingmuWhatsNew: show). This flow sets 一直深色 through the app's own page, then screenshots each
-# screen of the approved mock; run-flows.sh measures the white area of every 47-*.png (scripts/ios/check-dark-screens.ts).
+# screen of the approved mock; run-flows.sh measures the white area of every night-*.png (scripts/ios/check-dark-screens.ts).
 # It signs out for the sign-in screen and puts 晚上自動 back at the end. Needs the YouVersion key (REQUIRES_KEY_PATTERN).
+# It runs before 46-apple-login: that flow's Apple sign-in leaves a system alert over every later launch (run
+# 41817384859). 46 starts with launchApp, which signs the fixture member in again.
 # Maestro reads text as a regular expression: parentheses are escaped.
 appId: org.qingmu.youth
 ---
@@ -24,12 +26,12 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "一直是深色"
     timeout: 10000
-- takeScreenshot: 47-night-mode-page
+- takeScreenshot: night-settings-page
 - tapOn: "返回更多閱讀工具"
 - extendedWaitUntil:
     visible: "夜間模式，一直深色"
     timeout: 10000
-- takeScreenshot: 47-reader-menu
+- takeScreenshot: night-reader-menu
 - tapOn: "關閉"
 - extendedWaitUntil:
     notVisible: "夜間模式，一直深色"
@@ -41,14 +43,14 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: '^[1-9]\d{0,2}[\s ]*$'
     timeout: 60000
-- takeScreenshot: 47-reader
+- takeScreenshot: night-reader
 - tapOn:
     text: '^[1-9]\d{0,2}[\s ]*$'
     index: 0
 - extendedWaitUntil:
     visible: "Copy"
     timeout: 15000
-- takeScreenshot: 47-reader-verse
+- takeScreenshot: night-reader-verse
 - tapOn:
     text: '^[1-9]\d{0,2}[\s ]*$'
     index: 0
@@ -59,7 +61,7 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "關閉計畫"
     timeout: 15000
-- takeScreenshot: 47-plan
+- takeScreenshot: night-plan
 - tapOn: "關閉計畫"
 - extendedWaitUntil:
     notVisible: "關閉計畫"
@@ -71,7 +73,7 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "改設定"
     timeout: 90000
-- takeScreenshot: 47-whats-new
+- takeScreenshot: night-whats-new
 - tapOn: "知道了"
 - extendedWaitUntil:
     notVisible: "改設定"
@@ -95,7 +97,7 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "8/30 .日. 週刊第 1 頁，點了放大"
     timeout: 30000
-- takeScreenshot: 47-bulletin
+- takeScreenshot: night-bulletin
 # 積分: 團體 (一起讀) and 自己, the 選聚會 sheet, the friend QR.
 - repeat:
     times: 3
@@ -112,12 +114,12 @@ appId: org.qingmu.youth
     element: '我在青少聚會 \(不是主堂\)'
     direction: DOWN
     timeout: 30000
-- takeScreenshot: 47-points-together
+- takeScreenshot: night-points-together
 - tapOn: "改我在哪裡聚會"
 - extendedWaitUntil:
     visible: "我平常在哪裡聚會？"
     timeout: 15000
-- takeScreenshot: 47-congregation
+- takeScreenshot: night-congregation
 - tapOn: "關閉操作"
 - extendedWaitUntil:
     notVisible: "我平常在哪裡聚會？"
@@ -126,7 +128,7 @@ appId: org.qingmu.youth
     element: "測試成員甲"
     direction: DOWN
     timeout: 30000
-- takeScreenshot: 47-points-self
+- takeScreenshot: night-points-self
 - scrollUntilVisible:
     element: "開啟積分操作"
     direction: UP
@@ -136,7 +138,7 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "有效至.*"
     timeout: 30000
-- takeScreenshot: 47-friend-qr
+- takeScreenshot: night-friend-qr
 - tapOn: "關閉操作"
 - extendedWaitUntil:
     notVisible: "有效至.*"
@@ -151,7 +153,7 @@ appId: org.qingmu.youth
     direction: DOWN
     timeout: 15000
     centerElement: true
-- takeScreenshot: 47-account
+- takeScreenshot: night-account
 - scrollUntilVisible:
     element: "刪除帳號與資料"
     direction: DOWN
@@ -160,7 +162,7 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "確認刪除"
     timeout: 10000
-- takeScreenshot: 47-delete
+- takeScreenshot: night-delete
 - tapOn: "取消"
 - scrollUntilVisible:
     element: "登出"
@@ -170,7 +172,7 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "使用Apple登入"
     timeout: 15000
-- takeScreenshot: 47-sign-in
+- takeScreenshot: night-sign-in
 # 有新版本 as a TestFlight install (src/services/iosInstallSource.ts); the fixture member is signed in again on start.
 - launchApp:
     arguments:
@@ -178,7 +180,7 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "有新版本.*"
     timeout: 90000
-- takeScreenshot: 47-update
+- takeScreenshot: night-update
 - tapOn: "稍後再說"
 - extendedWaitUntil:
     notVisible: "有新版本.*"

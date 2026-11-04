@@ -95,7 +95,7 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onVi
           const count = readers.get(date) ?? null;
           const level = readersLevel(count, busiest);
           return <View key={date} style={styles.slot}><View accessible accessibilityLabel={count === null ? `${date} 不到 2 人` : `${date} ${count} 人`} style={[styles.cell, levelStyle[level], date === view.today && styles.cellToday]}>
-            <Text style={[styles.cellDay, level === 3 && styles.cellDayDark]}>{day}</Text>
+            <Text style={[styles.cellDay, level === 2 && styles.cellDayOnHigh, level === 3 && styles.cellDayDark]}>{day}</Text>
             {count !== null ? <Text style={[styles.cellCount, level === 3 && styles.cellCountDark]}>{count}</Text> : null}
           </View></View>;
         })}
@@ -156,7 +156,9 @@ const useStyles = makeStyles((colors) => ({
   futureText: { color: colors.futureText, fontSize: theme.type.micro.size, fontWeight: '600' },
   cellToday: { borderWidth: 2, borderColor: colors.accent },
   cellDay: { position: 'absolute', top: 3, left: 5, color: colors.muted, fontSize: 10, lineHeight: 11, fontWeight: '600' },
-  cellDayDark: { color: colors.primarySoft },
+  // The day number on the second-darkest shade reads in ink: muted fell under 4.5:1 there (scripts/check-contrast.ts).
+  cellDayOnHigh: { color: colors.ink },
+  cellDayDark: { color: colors.onFillSoft },
   cellCount: { color: colors.ink, fontSize: 16, fontWeight: '800' },
   cellCountDark: { color: colors.onFill },
   legendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },

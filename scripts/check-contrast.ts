@@ -16,10 +16,17 @@ const TEXT: Array<[Token[], Token[]]> = [
   [['ink', 'muted', 'primary', 'primaryDeep', 'danger', 'accent', 'goldText'], ['background', 'surface']],
   [['ink', 'muted', 'primary', 'danger'], ['surfaceMuted']],
   [['ink', 'muted', 'primary', 'scriptureInk', 'scriptureMuted'], ['readerSurface']],
-  [['ink', 'primary'], ['primarySoft']],
+  [['ink', 'primary', 'primaryDeep'], ['primarySoft']],
   [['accent'], ['accentSoft']],
   [['warning'], ['warningSoft']],
   [['onFill'], ['primaryFill', 'primaryDeepFill', 'accentFill', 'dangerFill', 'mediaStage']],
+  [['onFillSoft'], ['primaryFill']],
+  // The 團體 calendar's day numbers and counts on its four shades.
+  [['ink', 'muted'], ['primarySoft']],
+  [['ink'], ['heatHigh']],
+  // The reading calendar's 靈修 mark, on an open day and on a read (filled) day.
+  [['goldText', 'accent'], ['surfaceMuted']],
+  [['goldOnPrimary'], ['primaryFill']],
   [['primaryDeepFill'], ['onFill']],
   [['onInverse'], ['inverse']],
   [['muted'], ['imagePlaceholder']],
