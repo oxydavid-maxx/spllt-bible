@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 const { primitive } = vi.hoisted(() => ({
   primitive: (name: string) => (props: Record<string, unknown>) => require('react').createElement(name, props, props.children as never),
 }));
+// The panel keeps clear of the Android navigation bar with the safe-area insets (src/ui/JournalPanel.tsx).
+vi.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 vi.mock('react-native', () => ({
   Modal: (props: Record<string, unknown>) => (props.visible ? require('react').createElement('Modal', props, props.children as never) : null),
   KeyboardAvoidingView: primitive('KeyboardAvoidingView'),

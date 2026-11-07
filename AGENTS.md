@@ -29,6 +29,7 @@
 - 一份程式碼。平台差異只能放在 config plugin（`plugins/`）、`app.json`／`app.config.js`，或 `Platform.OS` 分支，而且每一處都用註解寫原因。
 - `android/`、`ios/` 由 `expo prebuild` 產生，不進 git（`.gitignore` 只忽略最外層的這兩個資料夾）。要改原生設定只能寫 plugin。
 - 每個 PR 自動跑下面三個雲端驗證，三個都要綠。
+- 面板和對話框一律用 `src/ui/AppModal.tsx`，不直接用 React Native 的 `Modal`：Android 的 Modal 是另一個視窗，不設 `statusBarTranslucent`/`navigationBarTranslucent` 時系統列不跟 App 的深淺 (夜間模式，2026-11-05)。守衛測試：`tests/tools/appModalGuard.test.ts`。
 - 版本號：發版只改 `app.json` 的 `version` 和 `android.versionCode`。iOS 的 `buildNumber` 由 `app.config.js` 從 versionCode 算出來，不要在 `app.json` 另外寫（`tests/config/iosConfig.test.ts` 會擋）。
 - 0.5.35 起用官方 `expo-updates`/EAS Update 更新 JS, 文字、樣式與圖片；`runtimeVersion` 採 `appVersion`, 每次商店發版都改 version, 同 version 才可互收 OTA. 新增/改變原生套件、權限、SDK, config plugin 或原生設定一定要重新上架。OTA 不改版號；建置/發布方法見 [docs/eas-update.md](docs/eas-update.md)。
 - Android 本機 Gradle 與 iOS EAS 正式建置預設 `production`; 管理者手機用官方 request-header API 選 `preview`. 不得關防變磚保護。下載好的 OTA 只在冷啟動，或離開 30 分鐘以上回前景時換上 (光佑 20261021)；朗讀或播放中、輸入沒存、面板開著不換。新的輸入框、面板、播放器要告訴 `src/services/autoUpdateGuard.ts` (`useAutoUpdateHold`、`addAutoUpdateProbe`)，守衛測試 `tests/tools/autoUpdateHolds.test.ts`。CI 專用停用檢查旗標不得帶進正式 Gradle 建置；EAS profiles 會強制保留檢查。

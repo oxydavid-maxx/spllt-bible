@@ -1,4 +1,5 @@
 import { ownScrollGuardScript } from './ownScrollGuard';
+import { webThemeCss } from './Theme';
 
 /** Restrict the SDK's transformed verse units. No second scripture renderer and no idle polling. */
 export function partialChapterScript(): string {
@@ -11,13 +12,15 @@ export function partialChapterScript(): string {
   // Its own scrolls never collapse or reveal the reading tools, however late their events come (src/ui/ownScrollGuard.ts).
 ${ownScrollGuardScript('__qingmuRangeScrolling')}
   var style = document.createElement('style');
-  style.textContent = '[data-qingmu-range-hidden]{display:none!important}'
-    + '[data-qingmu-range-head],[data-qingmu-range-tail],[data-qingmu-range-audio]{color:#4c5f57;background:#fff;font:14px/1.6 system-ui,sans-serif;}'
+  // Colours of both schemes, switched by the reader's own data-yv-theme (夜間模式): the script never changes with the scheme.
+  style.textContent = '${webThemeCss(['muted', 'readerSurface', 'border', 'primary'])}'
+    + '[data-qingmu-range-hidden]{display:none!important}'
+    + '[data-qingmu-range-head],[data-qingmu-range-tail],[data-qingmu-range-audio]{color:var(--qm-muted);background:var(--qm-readerSurface);font:14px/1.6 system-ui,sans-serif;}'
     + '[data-qingmu-range-head]{display:flex;align-items:center;flex-wrap:wrap;gap:0 4px;margin-bottom:12px;}'
-    + '[data-qingmu-range-tail]{text-align:center;border-top:1px solid #d5ddd8;padding-top:16px;margin-top:20px;}'
+    + '[data-qingmu-range-tail]{text-align:center;border-top:1px solid var(--qm-border);padding-top:16px;margin-top:20px;}'
     + '[data-qingmu-range-audio]{margin:8px 0;}'
-    + '[data-qingmu-range-control]{font:inherit;color:#1a5544;background:transparent;border:0;min-width:44px;min-height:44px;padding:0 4px;cursor:pointer;}'
-    + '[data-qingmu-range-control]:focus-visible{outline:2px solid #1a5544;outline-offset:2px;}';
+    + '[data-qingmu-range-control]{font:inherit;color:var(--qm-primary);background:transparent;border:0;min-width:44px;min-height:44px;padding:0 4px;cursor:pointer;}'
+    + '[data-qingmu-range-control]:focus-visible{outline:2px solid var(--qm-primary);outline-offset:2px;}';
   document.head.appendChild(style);
   function readRange() {
     try {

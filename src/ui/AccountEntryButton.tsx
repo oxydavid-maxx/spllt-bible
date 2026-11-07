@@ -2,8 +2,10 @@ import { Image, Pressable, StyleSheet, Text } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthSnapshot } from '../services/authSession';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 export function AccountEntryButton() {
+  const styles = useStyles();
   const auth = useAuthSnapshot();
   const profile = auth.status === 'signed-in' && auth.session && auth.profile?.memberId === auth.session.memberId ? auth.profile : null;
   // Review 121 C9. 小明 signed in and still saw 人. The cause was NOT this label - it was that the
@@ -19,8 +21,8 @@ export function AccountEntryButton() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   button: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' },
-  label: { width: 34, height: 34, borderRadius: 17, backgroundColor: theme.colors.primary, color: theme.colors.white, fontSize: theme.type.heading.size, fontWeight: '800', textAlign: 'center', textAlignVertical: 'center' },
-  image: { width: 34, height: 34, borderRadius: 17, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline },
-});
+  label: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primaryFill, color: colors.onFill, fontSize: theme.type.heading.size, fontWeight: '800', textAlign: 'center', textAlignVertical: 'center' },
+  image: { width: 34, height: 34, borderRadius: 17, borderColor: colors.borderStrong, borderWidth: theme.control.hairline },
+}));

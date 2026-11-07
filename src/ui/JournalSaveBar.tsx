@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 /**
  * The Save button under the journal, with a label that says whether the writing is saved. The
@@ -11,6 +12,7 @@ export function JournalSaveBar({ status, savedAt, onSave }: {
   savedAt: string | null;
   onSave: () => void;
 }) {
+  const styles = useStyles();
   if (status === 'empty') return null;
   const saved = status === 'saved';
   return <View style={styles.bar}>
@@ -28,12 +30,12 @@ function taipeiClock(iso: string): string {
   return `${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')}`;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, marginTop: theme.spacing.sm },
-  unsaved: { color: theme.colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
-  saved: { color: theme.colors.primary, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700' },
-  button: { minHeight: theme.control.tap, minWidth: 96, paddingHorizontal: theme.spacing.lg, borderRadius: theme.radius.button, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
-  buttonDone: { backgroundColor: theme.colors.primarySoft },
-  buttonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '700' },
-  buttonTextDone: { color: theme.colors.primary },
-});
+  unsaved: { color: colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
+  saved: { color: colors.primary, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '700' },
+  button: { minHeight: theme.control.tap, minWidth: 96, paddingHorizontal: theme.spacing.lg, borderRadius: theme.radius.button, backgroundColor: colors.primaryFill, alignItems: 'center', justifyContent: 'center' },
+  buttonDone: { backgroundColor: colors.primarySoft },
+  buttonText: { color: colors.onFill, fontSize: theme.type.body.size, fontWeight: '700' },
+  buttonTextDone: { color: colors.primary },
+}));

@@ -29,7 +29,7 @@ vi.mock('../../src/storage/mobileDatabase', () => ({ openQingmuRepository: () =>
 import { resetReadingPlan, replaceReadingDaysRange } from '../../src/ui/readingSession';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { canonicalReadingPlan } from '../../src/domain/calendar';
-import { theme } from '../../src/ui/Theme';
+import { lightColors } from '../../src/ui/Theme';
 
 let tree: ReactTestRenderer | null = null;
 const flat = (value: any) => Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
@@ -63,7 +63,7 @@ describe('the full reading plan shared by both entry points', () => {
     await mount();
     expect(texts()).toEqual(expect.arrayContaining(['整份讀經計畫', '9/1–12/31，共 105 天，已讀 1 天', '9 月', '10 月', '11 月', '12 月', '今天', '✓']));
     expect(tree!.root.findAll(node => String(node.type) === 'Pressable' && String(node.props.accessibilityLabel).startsWith('讀 2026-'))).toHaveLength(105);
-    expect(flat(row('2026-09-30').props.style).backgroundColor).toBe(theme.colors.primarySoft);
+    expect(flat(row('2026-09-30').props.style).backgroundColor).toBe(lightColors.primarySoft);
     expect(row('2026-09-29').props.accessibilityLabel).toContain('已完成');
     expect(texts().join('')).not.toContain('讀經表原本');
     expect(boundary.getReadingDays.mock.calls.map(args => args.slice(0, 2))).toEqual([

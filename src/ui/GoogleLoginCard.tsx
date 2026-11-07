@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 import { useAutoUpdateHold } from './useAutoUpdateHold';
 import { createApiClient, type SessionResult } from '../services/apiClient';
 import { establishGoogleSession } from '../services/googleSession';
@@ -18,6 +19,7 @@ interface NativeLoginWait {
 
 /** `welcome` is the sign-in screen's one large button; `card` is the framed card used everywhere else. */
 export function GoogleLoginCard({ baseUrl, onSignedIn, variant = 'card', onSignInStart }: { onSignInStart?: () => void; baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void; variant?: 'card' | 'welcome' }) {
+  const styles = useStyles();
   const clientId = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID)?.trim();
   const fixture = process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true';
   if (fixture) {
@@ -30,6 +32,7 @@ export function GoogleLoginCard({ baseUrl, onSignedIn, variant = 'card', onSignI
 }
 
 function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant, onSignInStart }: { onSignInStart?: () => void; clientId: string; baseUrl: string; onSignedIn?: (sessionToken: string, memberId: string) => void; variant: 'card' | 'welcome' }) {
+  const styles = useStyles();
   const [state, setState] = useState<'idle' | 'exchanging' | 'needs-invite' | 'claiming-invite' | 'signed-in' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
@@ -196,22 +199,22 @@ function ConfiguredGoogleLogin({ clientId, baseUrl, onSignedIn, variant, onSignI
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   // Sign-in is one decision, so the card is one column with a single filled action.
   // The rail turns clay whenever the card is telling you something went wrong.
-  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderLeftWidth: theme.control.rail, borderLeftColor: theme.colors.primary, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.sm },
-  cardAlert: { borderLeftColor: theme.colors.accent },
-  title: { color: theme.colors.ink, fontSize: theme.type.title.size, lineHeight: theme.type.title.line, fontWeight: '800' },
-  body: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-  bodyAlert: { color: theme.colors.accent, fontWeight: '700' },
-  button: { minHeight: theme.control.cta, borderRadius: theme.radius.button, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
-  input: { minHeight: theme.control.tap, borderColor: theme.colors.borderStrong, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, color: theme.colors.ink, fontSize: theme.type.body.size, paddingHorizontal: theme.spacing.md },
-  disabled: { backgroundColor: theme.colors.muted },
-  buttonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '700' },
+  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: theme.control.hairline, borderLeftWidth: theme.control.rail, borderLeftColor: colors.primary, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.sm },
+  cardAlert: { borderLeftColor: colors.accent },
+  title: { color: colors.ink, fontSize: theme.type.title.size, lineHeight: theme.type.title.line, fontWeight: '800' },
+  body: { color: colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  bodyAlert: { color: colors.accent, fontWeight: '700' },
+  button: { minHeight: theme.control.cta, borderRadius: theme.radius.button, backgroundColor: colors.primaryFill, alignItems: 'center', justifyContent: 'center' },
+  input: { minHeight: theme.control.tap, borderColor: colors.borderStrong, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, color: colors.ink, fontSize: theme.type.body.size, paddingHorizontal: theme.spacing.md },
+  disabled: { backgroundColor: colors.muted },
+  buttonText: { color: colors.onFill, fontSize: theme.type.body.size, fontWeight: '700' },
   welcome: { gap: theme.spacing.sm },
   welcomeMessage: { textAlign: 'center' },
-  welcomeButton: { minHeight: theme.control.cta, borderRadius: theme.radius.button, backgroundColor: theme.colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm },
-  googleMark: { width: 26, height: 26, borderRadius: 13, backgroundColor: theme.colors.white, alignItems: 'center', justifyContent: 'center' },
-  googleMarkText: { color: '#4285F4', fontSize: 15, fontWeight: '800' },
-  welcomeButtonText: { color: theme.colors.white, fontSize: 17, fontWeight: '800' },
-});
+  welcomeButton: { minHeight: theme.control.cta, borderRadius: theme.radius.button, backgroundColor: colors.primaryFill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm },
+  googleMark: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.onFill, alignItems: 'center', justifyContent: 'center' },
+  googleMarkText: { color: colors.googleBlue, fontSize: 15, fontWeight: '800' },
+  welcomeButtonText: { color: colors.onFill, fontSize: 17, fontWeight: '800' },
+}));

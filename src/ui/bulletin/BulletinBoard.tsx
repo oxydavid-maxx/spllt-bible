@@ -3,6 +3,7 @@ import { FlatList, Image, PixelRatio, Pressable, StyleSheet, Text, useWindowDime
 import { bulletinListWidth } from '../../domain/bulletinWidths';
 import { bulletinHeading, type BulletinPage, type BulletinWeek } from '../../services/bulletinClient';
 import { theme } from '../Theme';
+import { makeStyles, useAppTheme } from '../useAppTheme';
 import { PAGE_FAILED, PAGE_LOADING, PageStatus, usePageLoad } from './BulletinPageStatus';
 import { BulletinViewer } from './BulletinViewer';
 
@@ -21,6 +22,7 @@ export function BulletinBoard({ weeks, status, sourceFor, onRetry }: {
   sourceFor: (date: string, index: number, width?: number) => ImageSourcePropType;
   onRetry: () => void;
 }) {
+  const styles = useStyles();
   const [open, setOpen] = useState<{ week: BulletinWeek; index: number } | null>(null);
   const window = useWindowDimensions();
   // The pages are as wide as the list less its side padding (styles.list).
@@ -62,6 +64,8 @@ export function BulletinBoard({ weeks, status, sourceFor, onRetry }: {
 
 /** One page in the list. Its label carries its state, for VoiceOver, TalkBack and the iOS flow (44-bulletin). */
 function PageTile({ heading, page, source, onOpen }: { heading: string; page: BulletinPage; source: ImageSourcePropType; onOpen: () => void }) {
+  const styles = useStyles();
+  const { scheme } = useAppTheme();
   const load = usePageLoad();
   const failed = load.state === 'error';
   return <Pressable
@@ -71,19 +75,22 @@ function PageTile({ heading, page, source, onOpen }: { heading: string; page: Bu
     style={[styles.page, { aspectRatio: page.width / page.height }]}
   >
     <Image key={load.attempt} source={source} resizeMode="contain" onLoad={load.onLoad} onError={load.onError} style={StyleSheet.absoluteFill} />
+    {/* At night the scanned paper is dimmed to 0.82, never inverted (光佑 2026-11-04). */}
+    {scheme === 'dark' ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dim]} /> : null}
     {load.state === 'ready' ? null : <PageStatus text={failed ? PAGE_FAILED : PAGE_LOADING} />}
   </Pressable>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
+  dim: { backgroundColor: colors.imageDim },
   list: { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.xl, gap: theme.spacing.lg },
   week: { gap: theme.spacing.sm },
   heading: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm },
-  headingText: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
-  count: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  page: { width: '100%', borderRadius: 6, overflow: 'hidden', borderWidth: theme.control.hairline, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
+  headingText: { color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
+  count: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  page: { width: '100%', borderRadius: 6, overflow: 'hidden', borderWidth: theme.control.hairline, borderColor: colors.border, backgroundColor: colors.surface },
   message: { paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md, gap: theme.spacing.sm, alignItems: 'flex-start' },
-  empty: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-  retry: { minHeight: theme.control.tap, justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.primary },
-  retryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
-});
+  empty: { color: colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  retry: { minHeight: theme.control.tap, justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: colors.primary },
+  retryText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
+}));

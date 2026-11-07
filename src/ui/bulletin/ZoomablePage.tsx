@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Animated, Image, PanResponder, Pressable, StyleSheet, Text, View, type GestureResponderEvent, type ImageSourcePropType } from 'react-native';
 import { theme } from '../Theme';
+import { makeStyles, useAppTheme } from '../useAppTheme';
 import { PAGE_FAILED, PAGE_LOADING, PageStatus, usePageLoad } from './BulletinPageStatus';
 import { clampOffset, distance, fitSize, pinchScale, type Point } from './zoomMath';
 
@@ -21,6 +22,8 @@ export function ZoomablePage({ source, preview, page, view, label, onZoomChange 
   label: string;
   onZoomChange: (zoomed: boolean) => void;
 }) {
+  const styles = useStyles();
+  const { scheme } = useAppTheme();
   const fitted = fitSize(view, page);
   const scale = useRef(new Animated.Value(1)).current;
   const offsetX = useRef(new Animated.Value(0)).current;
@@ -86,6 +89,8 @@ export function ZoomablePage({ source, preview, page, view, label, onZoomChange 
       <Animated.View style={{ width: fitted.width, height: fitted.height, transform: [{ translateX: offsetX }, { translateY: offsetY }, { scale }] }}>
         {preview ? <Image testID="bulletin-page-preview" source={preview} resizeMode="contain" onLoad={() => setPreviewShown(true)} style={StyleSheet.absoluteFill} /> : null}
         <Image key={original.attempt} testID="bulletin-page-original" source={source} resizeMode="contain" onLoad={original.onLoad} onError={original.onError} style={StyleSheet.absoluteFill} />
+        {/* At night the scanned paper is dimmed to 0.82, never inverted (光佑 2026-11-04). */}
+        {scheme === 'dark' ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dim]} /> : null}
         {shown ? null : <PageStatus text={failed ? undefined : PAGE_LOADING} />}
       </Animated.View>
     </View>
@@ -97,8 +102,9 @@ export function ZoomablePage({ source, preview, page, view, label, onZoomChange 
   </View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
+  dim: { backgroundColor: colors.imageDim },
   fill: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  retry: { minHeight: theme.control.tap, justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderRadius: theme.radius.button, backgroundColor: 'rgba(0,0,0,0.75)' },
-  retryText: { color: '#FFFFFF', fontSize: theme.type.body.size, fontWeight: '700' },
-});
+  retry: { minHeight: theme.control.tap, justifyContent: 'center', paddingHorizontal: theme.spacing.lg, borderRadius: theme.radius.button, backgroundColor: colors.viewerRetry },
+  retryText: { color: colors.onViewer, fontSize: theme.type.body.size, fontWeight: '700' },
+}));

@@ -30,10 +30,12 @@ import { CompletionAwardFeedback } from '../../src/ui/CompletionAwardFeedback';
 import { useReaderRetrySignal } from '../../src/ui/readerRetrySignal';
 import { ReadingPlanSheet } from '../../src/ui/ReadingPlanSheet';
 import { useReaderDevotion } from '../../src/ui/devotion/useReaderDevotion';
+import { useColors } from '../../src/ui/useAppTheme';
 
 let handledTodayReaderTabPressRevision = 0;
 
 export default function ReaderScreen() {
+  const colors = useColors();
   const chrome = useReaderChrome();
   const [planOpen, setPlanOpen] = useState(false);
   useEffect(() => { if (!chrome.focused) setPlanOpen(false); }, [chrome.focused]);
@@ -339,7 +341,7 @@ export default function ReaderScreen() {
     void Linking.openURL(youVersionChapterUrl).catch(() => Alert.alert('YouVersion', '目前無法開啟本章，請稍後再試。'));
   };
   if (!preferences.ready || !autoplaySnapshot.ready || selectionOwner.current !== owner) return (
-    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: '#fff', paddingHorizontal: 16 }}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.readerSurface, paddingHorizontal: 16 }}>
       <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}><AccountEntryButton /></View>
       <Text accessibilityLiveRegion="polite">正在載入閱讀設定…</Text>
     </SafeAreaView>

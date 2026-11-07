@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View, type ImageSourcePropType } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View, type ImageSourcePropType } from 'react-native';
+import { AppModal } from '../AppModal';
+import { useModalNavigationBarInset } from '../modalInsets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BulletinWeek } from '../../services/bulletinClient';
-import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 import { useAutoUpdateHold } from '../useAutoUpdateHold';
 import { ZoomablePage } from './ZoomablePage';
 
@@ -25,8 +27,10 @@ export function BulletinViewer({ week, startIndex, sourceFor, previewFor, onClos
   previewFor?: (index: number) => ImageSourcePropType;
   onClose: () => void;
 }) {
+  const styles = useStyles();
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const navigationBarInset = useModalNavigationBarInset();
   // The space under the status bar, as laid out; the window less the inset until then.
   const [stage, setStage] = useState<{ width: number; height: number } | null>(null);
   const view = stage ?? { width: window.width, height: window.height - insets.top };
@@ -36,7 +40,7 @@ export function BulletinViewer({ week, startIndex, sourceFor, previewFor, onClos
   // Full screen over the app, like a panel: a downloaded update waits until it is closed (2026-10-21).
   useAutoUpdateHold(true, '週刊全螢幕');
   const [, month, day] = week.date.split('-').map(Number);
-  return <Modal visible animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+  return <AppModal visible animationType="fade" onRequestClose={onClose}>
     <View style={styles.screen}>
       <View testID="bulletin-viewer-status-area" style={[styles.statusArea, { height: insets.top }]} />
       <View
@@ -75,18 +79,22 @@ export function BulletinViewer({ week, startIndex, sourceFor, previewFor, onClos
         </View>
         {hint ? <View pointerEvents="none" style={[styles.hint, { bottom: insets.bottom + 20 }]}><Text style={styles.hintText}>兩指放大縮小・左右滑換頁</Text></View> : null}
       </View>
+      {/* AppModal draws this window under a transparent Android navigation bar (2026-11-05): the page stage ends above it,
+          where it ended before, and the bar's strip keeps the stage's dark. 0 on an iPhone (src/ui/modalInsets.ts). */}
+      {navigationBarInset > 0 ? <View testID="bulletin-viewer-nav-area" style={[styles.navArea, { height: navigationBarInset }]} /> : null}
     </View>
-  </Modal>;
+  </AppModal>;
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.colors.background },
-  statusArea: { backgroundColor: theme.colors.background },
-  stage: { flex: 1, backgroundColor: '#111111' },
-  bar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: 'rgba(0,0,0,0.65)' },
-  title: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
-  close: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' },
-  closeText: { color: '#FFFFFF', fontSize: 26, lineHeight: 30 },
-  hint: { position: 'absolute', alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.7)' },
-  hintText: { color: '#FFFFFF', fontSize: 15 },
-});
+const useStyles = makeStyles((colors) => ({
+  screen: { flex: 1, backgroundColor: colors.background },
+  statusArea: { backgroundColor: colors.background },
+  stage: { flex: 1, backgroundColor: colors.viewerStage },
+  navArea: { backgroundColor: colors.viewerStage },
+  bar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, backgroundColor: colors.viewerBar },
+  title: { color: colors.onViewer, fontSize: 17, fontWeight: '700' },
+  close: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.viewerButton },
+  closeText: { color: colors.onViewer, fontSize: 26, lineHeight: 30 },
+  hint: { position: 'absolute', alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: colors.viewerHint },
+  hintText: { color: colors.onViewer, fontSize: 15 },
+}));

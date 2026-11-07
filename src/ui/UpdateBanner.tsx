@@ -5,6 +5,7 @@ import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-nati
 import { checkAppUpdate, startAppUpdate } from '../services/appUpdate';
 import { NO_UPDATE, updateActionLabel, updateTitle, type UpdateState } from '../services/updateCheck';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 /**
  * One line at the top of the reading tab when a newer build exists.
@@ -25,6 +26,7 @@ import { theme } from './Theme';
  * with no signal gets their reading, not an error.
  */
 export function UpdateBanner() {
+  const styles = useStyles();
   const [state, setState] = useState<UpdateState>(NO_UPDATE);
   const [dismissed, setDismissed] = useState(false);
 
@@ -60,18 +62,18 @@ export function UpdateBanner() {
   </View>;
 }
 
-const styles = StyleSheet.create({
-  banner: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, borderRadius: theme.radius.card, backgroundColor: theme.colors.primarySoft, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm },
-  mandatory: { backgroundColor: theme.colors.primary },
+const useStyles = makeStyles((colors) => ({
+  banner: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, borderRadius: theme.radius.card, backgroundColor: colors.primarySoft, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm },
+  mandatory: { backgroundColor: colors.primaryFill },
   copy: { flex: 1, minWidth: 0, gap: theme.spacing.xxs },
-  title: { color: theme.colors.ink, fontSize: theme.type.label.size, fontWeight: '800' },
-  note: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  onPrimary: { color: theme.colors.white },
-  onPrimarySoft: { color: 'rgba(255,255,255,0.86)' },
-  action: { minHeight: theme.control.tap, justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.button, backgroundColor: theme.colors.primary },
-  actionText: { color: theme.colors.white, fontSize: theme.type.label.size, fontWeight: '800' },
-  actionOnPrimary: { backgroundColor: theme.colors.white },
-  actionTextOnPrimary: { color: theme.colors.primaryDeep },
+  title: { color: colors.ink, fontSize: theme.type.label.size, fontWeight: '800' },
+  note: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  onPrimary: { color: colors.onFill },
+  onPrimarySoft: { color: colors.onFillMuted },
+  action: { minHeight: theme.control.tap, justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.button, backgroundColor: colors.primaryFill },
+  actionText: { color: colors.onFill, fontSize: theme.type.label.size, fontWeight: '800' },
+  actionOnPrimary: { backgroundColor: colors.onFill },
+  actionTextOnPrimary: { color: colors.primaryDeepFill },
   dismiss: { minHeight: theme.control.tap, justifyContent: 'center', paddingHorizontal: theme.spacing.sm },
-  dismissText: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
-});
+  dismissText: { color: colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
+}));

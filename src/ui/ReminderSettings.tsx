@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { TimeWheelPicker } from './TimeWheelPicker';
 import { useState } from 'react';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 import { buildReminderSettingsModel, type ReminderSettingsModelInput } from './reminderSettingsModel';
 export { buildReminderSettingsModel } from './reminderSettingsModel';
 
@@ -32,6 +33,7 @@ export function ReminderSettings({
   /** Compatibility rendering switch; the production account surface disables retired meeting reminders. */
   showMeeting?: boolean;
 }) {
+  const styles = useStyles();
   const [retrying, setRetrying] = useState(false);
   const model = buildReminderSettingsModel({ ready, error, saving, readingEnabled, meetingEnabled, remoteDeliveryStatus, permission, readingTime, meetingAdvanceMinutes });
   return (
@@ -60,23 +62,23 @@ export function ReminderSettings({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   // Settings read as a ruled list: one hairline-separated row per decision, each
   // row at least 52dp. Control boundaries move to borderStrong (3.57:1) so the
   // text field and the unselected chips satisfy WCAG 1.4.11; border was 1.53:1.
-  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, gap: theme.spacing.xs },
-  title: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
-  row: { minHeight: 52, borderTopColor: theme.colors.border, borderTopWidth: theme.control.hairline, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingTop: theme.spacing.xs },
+  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, gap: theme.spacing.xs },
+  title: { color: colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
+  row: { minHeight: 52, borderTopColor: colors.border, borderTopWidth: theme.control.hairline, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingTop: theme.spacing.xs },
   copy: { flex: 1, gap: theme.spacing.xxs },
-  label: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
-  body: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  button: { minHeight: theme.control.tap, borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft, borderWidth: 1.5, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { color: theme.colors.accent, fontSize: theme.type.label.size, fontWeight: '700' },
-  timeRow: { borderTopColor: theme.colors.border, borderTopWidth: theme.control.hairline, gap: theme.spacing.xs, paddingTop: theme.spacing.sm },
-  timeInput: { minHeight: theme.control.tap, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline, borderRadius: theme.radius.button, color: theme.colors.ink, fontSize: theme.type.body.size, paddingHorizontal: theme.spacing.md },
+  label: { color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
+  body: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  button: { minHeight: theme.control.tap, borderColor: colors.accent, backgroundColor: colors.accentSoft, borderWidth: 1.5, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center' },
+  buttonText: { color: colors.accent, fontSize: theme.type.label.size, fontWeight: '700' },
+  timeRow: { borderTopColor: colors.border, borderTopWidth: theme.control.hairline, gap: theme.spacing.xs, paddingTop: theme.spacing.sm },
+  timeInput: { minHeight: theme.control.tap, borderColor: colors.borderStrong, borderWidth: theme.control.hairline, borderRadius: theme.radius.button, color: colors.ink, fontSize: theme.type.body.size, paddingHorizontal: theme.spacing.md },
   chips: { flexDirection: 'row', gap: theme.spacing.sm, flexWrap: 'wrap' },
-  chip: { minWidth: theme.control.tap, minHeight: theme.control.tapCompact, alignItems: 'center', justifyContent: 'center', borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline, borderRadius: theme.radius.button, paddingHorizontal: theme.spacing.sm },
-  chipActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-  chipText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
-  chipTextActive: { color: theme.colors.white },
-});
+  chip: { minWidth: theme.control.tap, minHeight: theme.control.tapCompact, alignItems: 'center', justifyContent: 'center', borderColor: colors.borderStrong, borderWidth: theme.control.hairline, borderRadius: theme.radius.button, paddingHorizontal: theme.spacing.sm },
+  chipActive: { backgroundColor: colors.primaryFill, borderColor: colors.primaryFill },
+  chipText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
+  chipTextActive: { color: colors.onFill },
+}));
