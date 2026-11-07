@@ -4,8 +4,10 @@
 # (2026-11-04) shows its 新功能 card once over the reader; 知道了 puts it away (a flag on this phone only).
 appId: org.qingmu.youth
 ---
+# The card can already be up by the time this flow starts, and while it is open the tab bar is hidden from the
+# accessibility tree (ios-ota-verify 42344725178), so either one shows the app has started.
 - extendedWaitUntil:
-    visible: "積分"
+    visible: "(積分|改設定)"
     timeout: 90000
 # Today replaces itself with the Reader at launch (00-smoke); wait for the reader, then for its content.
 - extendedWaitUntil:
