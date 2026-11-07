@@ -215,7 +215,9 @@ export function createApiClient(options: ApiClientOptions) {
       return response.ok || response.status === 401 || response.status === 403;
     },
     async saveCompletion(command: CompletionCommand): Promise<SyncResult> {
-      const response = await fetchImpl(
+      // Android's OkHttp waits forever by default; without a limit one half-open connection holds the
+      // outbox (flushTail, outboxRecovery inFlight) until restart. The server dedups the retry by operation_id.
+      const response = await timedFetch(
         `${options.baseUrl}/api/me/completions/${encodeURIComponent(command.planId)}/${encodeURIComponent(command.taskDate)}`,
         {
           method: 'PUT',
@@ -230,6 +232,7 @@ export function createApiClient(options: ApiClientOptions) {
             status: command.desiredStatus,
           }),
         },
+        10_000,
       );
       handleAuthStatus(response);
       const body = responseObject(await response.json().catch(() => null));
