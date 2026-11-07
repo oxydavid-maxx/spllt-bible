@@ -18,6 +18,7 @@ import { Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions, typ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createSheetDrag, SHEET_CLOSE_MS } from './sheetDrag';
 import { useAutoUpdateHold } from '../useAutoUpdateHold';
+import { makeStyles } from '../useAppTheme';
 
 const OPEN_MS = 250;
 const BACKDROP_OPACITY = 0.5;
@@ -68,6 +69,7 @@ interface SheetContextValue {
 const SheetContext = createContext<SheetContextValue | null>(null);
 
 const BottomSheet = forwardRef<BottomSheetMethods, BottomSheetProps>(function BottomSheet(props, ref) {
+  const styles = useStyles();
   const {
     children, enablePanDownToClose = false, enableHandlePanningGesture = true, backdropComponent, backgroundComponent,
     backgroundStyle, handleComponent, handleIndicatorStyle, style, containerStyle, accessible, accessibilityElementsHidden,
@@ -180,6 +182,7 @@ export function BottomSheetView({ children, style, onLayout, ...rest }: { childr
 }
 
 export function BottomSheetBackdrop({ style, pressBehavior = 'close' }: BackdropProps) {
+  const styles = useStyles();
   const sheet = useContext(SheetContext);
   if (!sheet) return null;
   const opacity = sheet.progress.interpolate({ inputRange: [0, 1], outputRange: [0, BACKDROP_OPACITY] });
@@ -197,12 +200,12 @@ export function BottomSheetBackdrop({ style, pressBehavior = 'close' }: Backdrop
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, overflow: 'hidden' },
   // Gorhom's defaults, so the SDK's sheets look the same: 15 pt top corners, a 30 x 4 indicator
   // in a 24 pt handle row.
-  background: { ...StyleSheet.absoluteFill, backgroundColor: 'white', borderTopLeftRadius: 15, borderTopRightRadius: 15 },
+  background: { ...StyleSheet.absoluteFill, backgroundColor: colors.surface, borderTopLeftRadius: 15, borderTopRightRadius: 15 },
   handle: { paddingVertical: 10, alignItems: 'center' },
-  indicator: { width: 30, height: 4, borderRadius: 4, backgroundColor: 'rgba(0, 0, 0, 0.75)' },
-  backdrop: { backgroundColor: 'black' },
-});
+  indicator: { width: 30, height: 4, borderRadius: 4, backgroundColor: colors.grabber },
+  backdrop: { backgroundColor: colors.sheetBackdrop },
+}));

@@ -3,8 +3,10 @@ import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import { buildGroupLinkFallback } from './groupLinkFallback';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 export function GroupCard({ groupName, openChatUrl, rpgUrl, callUrl, callProvider, callScope, linkStatus }: { groupName: string; openChatUrl: string | null; rpgUrl: string | null; callUrl?: string | null; callProvider?: string | null; callScope?: 'TEST_ONLY' | 'APPROVED' | null; linkStatus: 'PENDING_UI_VERIFICATION' | 'READY' }) {
+  const styles = useStyles();
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const open = async (url: string) => {
@@ -27,18 +29,18 @@ export function GroupCard({ groupName, openChatUrl, rpgUrl, callUrl, callProvide
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   // One filled action per card. Everything still waiting on a person (link
   // approval, copy-link fallback) is clay on a rail, not another green block.
-  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderLeftWidth: theme.control.rail, borderLeftColor: theme.colors.primary, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.sm },
-  title: { color: theme.colors.ink, fontSize: theme.type.title.size, lineHeight: theme.type.title.line, fontWeight: '800' },
-  body: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  button: { minHeight: theme.control.cta, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary, paddingHorizontal: theme.spacing.md },
-  disabled: { backgroundColor: theme.colors.muted },
-  buttonSecondary: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', borderColor: theme.colors.primary, borderWidth: theme.control.hairline, paddingHorizontal: theme.spacing.md },
-  disabledSecondary: { opacity: 0.62, borderColor: theme.colors.borderStrong },
-  buttonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '700' },
-  secondaryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
-  pending: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
-  fallback: { gap: theme.spacing.xs, backgroundColor: theme.colors.accentSoft, borderRadius: theme.radius.chip, padding: theme.spacing.sm },
-});
+  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: theme.control.hairline, borderLeftWidth: theme.control.rail, borderLeftColor: colors.primary, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.sm },
+  title: { color: colors.ink, fontSize: theme.type.title.size, lineHeight: theme.type.title.line, fontWeight: '800' },
+  body: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  button: { minHeight: theme.control.cta, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryFill, paddingHorizontal: theme.spacing.md },
+  disabled: { backgroundColor: colors.muted },
+  buttonSecondary: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', borderColor: colors.primary, borderWidth: theme.control.hairline, paddingHorizontal: theme.spacing.md },
+  disabledSecondary: { opacity: 0.62, borderColor: colors.borderStrong },
+  buttonText: { color: colors.onFill, fontSize: theme.type.body.size, fontWeight: '700' },
+  secondaryText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
+  pending: { color: colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
+  fallback: { gap: theme.spacing.xs, backgroundColor: colors.accentSoft, borderRadius: theme.radius.chip, padding: theme.spacing.sm },
+}));

@@ -1,7 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 export function ProgressCard({ completed, target, personal, points, pointsStatus, monthly, goalTarget, goalAchieved, scope = 'group' }: { completed: number; target: number; personal: number; points: number; pointsStatus: string; monthly?: { personalCompleted: number; points: number; periodStart: string; periodEnd: string }; goalTarget?: number; goalAchieved?: boolean; scope?: 'group' | 'local' }) {
+  const styles = useStyles();
   const ratio = target ? Math.round((completed / target) * 100) : 0;
   return (
     <View style={styles.card} accessible accessibilityRole="summary">
@@ -19,15 +21,15 @@ export function ProgressCard({ completed, target, personal, points, pointsStatus
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   // The metric shares the title baseline instead of owning its own band: same
   // information, about 40dp less height, and the number still leads the block.
-  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.sm },
+  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.sm },
   head: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm },
-  title: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '700' },
-  big: { color: theme.colors.primary, fontSize: theme.type.metric.size, lineHeight: theme.type.metric.line, fontWeight: '800' },
-  unit: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
-  track: { height: 10, overflow: 'hidden', backgroundColor: theme.colors.primarySoft, borderRadius: 5 },
-  fill: { height: '100%', backgroundColor: theme.colors.primary, borderRadius: 5 },
-  body: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-});
+  title: { color: colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '700' },
+  big: { color: colors.primary, fontSize: theme.type.metric.size, lineHeight: theme.type.metric.line, fontWeight: '800' },
+  unit: { color: colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
+  track: { height: 10, overflow: 'hidden', backgroundColor: colors.primarySoft, borderRadius: 5 },
+  fill: { height: '100%', backgroundColor: colors.primaryFill, borderRadius: 5 },
+  body: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+}));

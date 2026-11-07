@@ -3,6 +3,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import type { Announcement } from '../services/announcementClient';
 import type { EventRegistrationSummary } from '../services/eventRegistrationClient';
 import { theme } from './Theme';
+import { makeStyles, useColors } from './useAppTheme';
 import { taipeiDate } from '../domain/gamificationV1';
 import { nextDateBlock, sermonWeeks, shortRole, shortWeek, type BoardLink, type BoardSession } from './announcementModel';
 
@@ -24,7 +25,8 @@ export interface AnnouncementBoardProps {
 }
 
 function LinkIcon({ kind }: { kind: BoardLink['kind'] }) {
-  return <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={theme.colors.primary} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+  const colors = useColors();
+  return <Svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={colors.primary} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
     {kind === 'audio' ? <><Path d="M4 15v-3a8 8 0 0 1 16 0v3" /><Rect x={3} y={14} width={4} height={6} rx={1} /><Rect x={17} y={14} width={4} height={6} rx={1} /></>
       : kind === 'slides' ? <><Rect x={3} y={4} width={18} height={12} rx={1} /><Path d="M12 16v4M8 20h8" /></>
         : kind === 'video' ? <><Rect x={3} y={5} width={18} height={14} rx={2} /><Path d="M10 9l5 3-5 3z" /></>
@@ -33,16 +35,19 @@ function LinkIcon({ kind }: { kind: BoardLink['kind'] }) {
 }
 
 function TextLink({ link, onOpen, last }: { link: BoardLink; onOpen: (url: string) => void; last?: boolean }) {
+  const styles = useStyles();
   return <Pressable accessibilityRole="button" accessibilityLabel={link.label} onPress={() => onOpen(link.url)} style={[styles.textLink, last && styles.textLinkLast]}>
     <LinkIcon kind={link.kind} /><Text style={styles.textLinkText}>{link.label}</Text>
   </Pressable>;
 }
 
 function SessionTag({ label, centered }: { label: string; centered?: boolean }) {
+  const styles = useStyles();
   return <Text style={[styles.sessionTag, centered && styles.sessionTagCentered]}>{label}</Text>;
 }
 
 function SermonSession({ session, first, onOpen }: { session: BoardSession; first: boolean; onOpen: (url: string) => void }) {
+  const styles = useStyles();
   if (session.compact) return <View style={[styles.compactSession, !first && styles.sessionDivider]} accessibilityLabel={session.label ?? undefined}>
     {session.label ? <SessionTag label={session.label} centered /> : null}
     <Text style={styles.compactTitle}>{session.title}</Text>
@@ -59,6 +64,7 @@ function SermonSession({ session, first, onOpen }: { session: BoardSession; firs
 }
 
 export function AnnouncementBoard({ announcement, stale, onOpen, registration }: AnnouncementBoardProps) {
+  const styles = useStyles();
   const { next, standing } = announcement;
   const today = taipeiDate();
   const weeks = sermonWeeks(announcement);
@@ -120,50 +126,50 @@ export function AnnouncementBoard({ announcement, stale, onOpen, registration }:
   </ScrollView>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   page: { padding: theme.spacing.md, gap: theme.spacing.sm, paddingBottom: theme.spacing.xl },
-  card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.xxs },
-  nextCard: { flexDirection: 'row', gap: theme.spacing.md, backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, padding: theme.spacing.md },
-  dateBlock: { width: 58, alignSelf: 'flex-start', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.spacing.sm, borderRadius: 10, backgroundColor: theme.colors.primary },
-  dateBlockSmall: { color: theme.colors.white, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '700' },
-  dateBlockDay: { color: theme.colors.white, fontSize: 26, lineHeight: 30, fontWeight: '800' },
+  card: { backgroundColor: colors.surface, borderRadius: theme.radius.card, padding: theme.spacing.md, gap: theme.spacing.xxs },
+  nextCard: { flexDirection: 'row', gap: theme.spacing.md, backgroundColor: colors.surface, borderRadius: theme.radius.card, padding: theme.spacing.md },
+  dateBlock: { width: 58, alignSelf: 'flex-start', alignItems: 'center', justifyContent: 'center', paddingVertical: theme.spacing.sm, borderRadius: 10, backgroundColor: colors.primaryFill },
+  dateBlockSmall: { color: colors.onFill, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '700' },
+  dateBlockDay: { color: colors.onFill, fontSize: 26, lineHeight: 30, fontWeight: '800' },
   nextCopy: { flex: 1, minWidth: 0, gap: 6 },
-  nextEyebrow: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '800' },
+  nextEyebrow: { color: colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '800' },
   nextSession: { gap: 2 },
-  nextByline: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  nextByline: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   titleLine: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  sessionTag: { alignSelf: 'flex-start', overflow: 'hidden', borderRadius: theme.radius.chip, backgroundColor: theme.colors.primarySoft, color: theme.colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '800', paddingHorizontal: theme.spacing.sm, paddingVertical: 2 },
-  sessionTitle: { flexShrink: 1, color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
-  byline: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  roleGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 10, rowGap: 1, borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.border, paddingTop: 6 },
+  sessionTag: { alignSelf: 'flex-start', overflow: 'hidden', borderRadius: theme.radius.chip, backgroundColor: colors.primarySoft, color: colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '800', paddingHorizontal: theme.spacing.sm, paddingVertical: 2 },
+  sessionTitle: { flexShrink: 1, color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '800' },
+  byline: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  roleGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 10, rowGap: 1, borderTopWidth: theme.control.hairline, borderTopColor: colors.border, paddingTop: 6 },
   role: { flexBasis: '45%', flexGrow: 1, minWidth: 0, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  roleLabel: { color: theme.colors.muted },
-  roleValue: { color: theme.colors.ink, fontWeight: '700' },
-  primaryButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, backgroundColor: theme.colors.primary, marginTop: theme.spacing.xs },
-  primaryButtonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '800' },
+  roleLabel: { color: colors.muted },
+  roleValue: { color: colors.ink, fontWeight: '700' },
+  primaryButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, backgroundColor: colors.primaryFill, marginTop: theme.spacing.xs },
+  primaryButtonText: { color: colors.onFill, fontSize: theme.type.body.size, fontWeight: '800' },
   signups: { gap: 2 },
-  friends: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
+  friends: { color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingTop: 6, paddingHorizontal: theme.spacing.xxs },
-  sectionTitle: { color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '800' },
-  sectionRule: { flex: 1, height: theme.control.hairline, backgroundColor: theme.colors.border },
+  sectionTitle: { color: colors.ink, fontSize: theme.type.body.size, fontWeight: '800' },
+  sectionRule: { flex: 1, height: theme.control.hairline, backgroundColor: colors.border },
   weeks: { gap: theme.spacing.sm },
-  weekCard: { flexDirection: 'row', overflow: 'hidden', backgroundColor: theme.colors.surface, borderRadius: theme.radius.card },
-  weekDate: { width: 58, alignItems: 'center', gap: 2, paddingVertical: theme.spacing.md, backgroundColor: theme.colors.primarySoft },
-  weekDateText: { color: theme.colors.primary, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
-  latest: { overflow: 'hidden', color: theme.colors.white, backgroundColor: theme.colors.accent, borderRadius: 6, fontSize: 11, lineHeight: 15, fontWeight: '800', paddingHorizontal: 5, paddingVertical: 1 },
+  weekCard: { flexDirection: 'row', overflow: 'hidden', backgroundColor: colors.surface, borderRadius: theme.radius.card },
+  weekDate: { width: 58, alignItems: 'center', gap: 2, paddingVertical: theme.spacing.md, backgroundColor: colors.primarySoft },
+  weekDateText: { color: colors.primary, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
+  latest: { overflow: 'hidden', color: colors.onFill, backgroundColor: colors.accentFill, borderRadius: 6, fontSize: 11, lineHeight: 15, fontWeight: '800', paddingHorizontal: 5, paddingVertical: 1 },
   weekBody: { flex: 1, minWidth: 0, paddingTop: 10, paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.xs },
   sermonSession: { flexDirection: 'column', alignItems: 'stretch', paddingBottom: 2 },
-  sessionDivider: { borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.background, paddingTop: theme.spacing.sm },
+  sessionDivider: { borderTopWidth: theme.control.hairline, borderTopColor: colors.background, paddingTop: theme.spacing.sm },
   compactSession: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
   // The one-line row centres its words in its 44 high row, so the tag sits on that same line.
   sessionTagCentered: { alignSelf: 'center' },
-  compactTitle: { flexShrink: 1, color: theme.colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
+  compactTitle: { flexShrink: 1, color: colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line },
   spacer: { flex: 1 },
   textLinks: { flexDirection: 'row', flexWrap: 'wrap' },
   textLink: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5, paddingRight: 14 },
   textLinkLast: { paddingRight: 0 },
-  textLinkText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
-  standing: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  textLinkText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  standing: { color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   standingLink: { minHeight: theme.control.tap, justifyContent: 'center' },
-  stale: { color: theme.colors.muted, fontSize: theme.type.caption.size, textAlign: 'center', paddingTop: theme.spacing.xs },
-});
+  stale: { color: colors.muted, fontSize: theme.type.caption.size, textAlign: 'center', paddingTop: theme.spacing.xs },
+}));

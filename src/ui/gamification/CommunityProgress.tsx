@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import type { CommunityBookGoal } from '../../services/gamificationApiClient';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 
 /**
  * The foot of the points page: the one book the group is finishing together, then what it has read
@@ -20,6 +21,7 @@ export interface CommunityProgressProps {
 }
 
 export function CommunityProgress({ books, personDays, currentBook }: CommunityProgressProps) {
+  const styles = useStyles();
   if (books.length === 0 && !currentBook) return null;
   const lit = currentBook?.chapters.filter((entry) => entry.readers !== null).length ?? 0;
   return <View style={styles.card} accessibilityLabel="青牧處一起讀過的">
@@ -56,19 +58,19 @@ export function CommunityProgress({ books, personDays, currentBook }: CommunityP
 
 const CHAPTER_SIZE = 34;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   card: { paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, gap: theme.spacing.xs },
   goal: { gap: theme.spacing.xs },
   goalLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm },
-  goalTitle: { color: theme.colors.ink, fontSize: theme.type.label.size, fontWeight: '800', flexShrink: 1 },
-  goalCount: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
+  goalTitle: { color: colors.ink, fontSize: theme.type.label.size, fontWeight: '800', flexShrink: 1 },
+  goalCount: { color: colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
   chapters: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs },
   chapterColumn: { width: CHAPTER_SIZE, alignItems: 'center', gap: 2 },
-  chapter: { width: CHAPTER_SIZE, height: CHAPTER_SIZE, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-  chapterLit: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-  chapterNumber: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '800' },
-  chapterNumberLit: { color: theme.colors.white },
-  chapterReaders: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '700' },
-  books: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  count: { color: theme.colors.muted, fontSize: theme.type.caption.size },
-});
+  chapter: { width: CHAPTER_SIZE, height: CHAPTER_SIZE, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: colors.border, backgroundColor: colors.surface },
+  chapterLit: { backgroundColor: colors.primaryFill, borderColor: colors.primaryFill },
+  chapterNumber: { color: colors.muted, fontSize: theme.type.caption.size, fontWeight: '800' },
+  chapterNumberLit: { color: colors.onFill },
+  chapterReaders: { color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '700' },
+  books: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  count: { color: colors.muted, fontSize: theme.type.caption.size },
+}));

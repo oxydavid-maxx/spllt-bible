@@ -6,6 +6,7 @@ import { BRAND_ICON } from './brandIcon';
 import { GoogleLoginCard } from './GoogleLoginCard';
 import { AppleLoginCard } from './AppleLoginCard';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 const FEATURES = [
   ['✓', '跟著教會的進度讀經，讀完按完成'],
@@ -19,6 +20,7 @@ const FEATURES = [
  * reader's ⋯ menu. The same Google sign-in as everywhere else; the first sign-in creates the member.
  */
 export function SignInScreen({ baseUrl }: { baseUrl: string }) {
+  const styles = useStyles();
   const [interrupted, setInterrupted] = useState(false);
   useEffect(() => {
     let active = true;
@@ -44,16 +46,16 @@ export function SignInScreen({ baseUrl }: { baseUrl: string }) {
   </SafeAreaView>;
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.colors.background },
+const useStyles = makeStyles((colors) => ({
+  screen: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, alignItems: 'stretch', justifyContent: 'center', paddingHorizontal: theme.spacing.xxl, paddingVertical: theme.spacing.xxl },
   icon: { width: 88, height: 88, borderRadius: 22, alignSelf: 'center' },
-  title: { marginTop: theme.spacing.lg, textAlign: 'center', color: theme.colors.ink, fontSize: 26, lineHeight: 34, fontWeight: '800' },
-  tagline: { marginTop: theme.spacing.xs, textAlign: 'center', color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  title: { marginTop: theme.spacing.lg, textAlign: 'center', color: colors.ink, fontSize: 26, lineHeight: 34, fontWeight: '800' },
+  tagline: { marginTop: theme.spacing.xs, textAlign: 'center', color: colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   features: { marginTop: theme.spacing.xxl, marginBottom: theme.spacing.xl, gap: theme.spacing.sm },
-  feature: { flexDirection: 'row', gap: theme.spacing.sm, alignItems: 'center', backgroundColor: theme.colors.surface, borderRadius: theme.radius.chip, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md },
-  mark: { width: 20, textAlign: 'center', color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
-  featureText: { flex: 1, color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-  interrupted: { marginBottom: theme.spacing.sm, textAlign: 'center', color: theme.colors.accent, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
-  fine: { marginTop: theme.spacing.md, textAlign: 'center', color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-});
+  feature: { flexDirection: 'row', gap: theme.spacing.sm, alignItems: 'center', backgroundColor: colors.surface, borderRadius: theme.radius.chip, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md },
+  mark: { width: 20, textAlign: 'center', color: colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  featureText: { flex: 1, color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  interrupted: { marginBottom: theme.spacing.sm, textAlign: 'center', color: colors.accent, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
+  fine: { marginTop: theme.spacing.md, textAlign: 'center', color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+}));
