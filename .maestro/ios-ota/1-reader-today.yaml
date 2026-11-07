@@ -11,11 +11,20 @@ appId: org.qingmu.youth
 - extendedWaitUntil:
     visible: "(更多閱讀工具|改設定)"
     timeout: 60000
+# The card opens about 2.5 s after the reader settles, so the reader's ⋯ is visible first; checking once let the
+# card cover the reader for the rest of the run (ios-ota-verify 42341419506). Wait for it, then put it away.
+- extendedWaitUntil:
+    visible: "改設定"
+    timeout: 15000
+    optional: true
 - runFlow:
     when:
       visible: "改設定"
     commands:
       - tapOn: "知道了"
+      - extendedWaitUntil:
+          notVisible: "改設定"
+          timeout: 15000
 - extendedWaitUntil:
     visible: "更多閱讀工具"
     timeout: 60000
