@@ -37,7 +37,7 @@
 
 | workflow | 做什麼 | 失敗時看哪個 artifact |
 |---|---|---|
-| `unit` | vitest 全套（ubuntu）。兩個真瀏覽器測試用 chrome-headless-shell | `unit-summary`：`vitest-summary.json`，每個失敗附一行原因 |
+| `unit` | vitest 全套（ubuntu）。兩個真瀏覽器測試用 chrome-headless-shell | `unit-summary`：`vitest-summary.json`，每個失敗附一行原因（載入就丟例外的測試檔、vitest 結束碼不是 0 也算失敗）；`vitest.log` |
 | `android` | prebuild；原生設定和 main 差幾行；debug 簽章的 release APK；APK 守門（兩個 ARM 架構、沒有 .map、大小上限）；大小和 main 比 | `android-summary`：`android-summary.json`、`native-diff.txt` |
 | `ios` | `macos-26`＋Xcode 26.4.1；模擬器 Release 建置（ad-hoc 簽章）；守門（沒有 reanimated/worklets、Info.plist、沒有 .map）；Maestro 流程 `.maestro/ios/*.yaml`（假資料後端）；首頁閒置的 CPU、記憶體、網路請求 | `ios-summary`：`flows.json`、`ios-summary.json`、`maestro/<流程>-junit.txt`、`-screen.txt`、`-system.txt`、`-maestro-debug.txt`、`-backend.txt`、截圖 |
 

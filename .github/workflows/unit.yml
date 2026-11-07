@@ -34,8 +34,10 @@ jobs:
       - name: vitest
         run: |
           mkdir -p ci-out
-          npx vitest run --reporter=json --outputFile=ci-out/vitest.json > ci-out/vitest.log 2>&1 || true
-          npx tsx scripts/ci/vitest-summary.ts ci-out/vitest.json ci-out/vitest-summary.json >> "$GITHUB_STEP_SUMMARY"
+          # Keep vitest's exit code: a file that throws while loading and an unhandled error both make it non-zero
+          # while numFailedTests stays 0, and the summary judges all three (scripts/ci/vitest-summary.ts).
+          code=0; npx vitest run --reporter=json --outputFile=ci-out/vitest.json > ci-out/vitest.log 2>&1 || code=$?
+          npx tsx scripts/ci/vitest-summary.ts ci-out/vitest.json ci-out/vitest-summary.json "$code" >> "$GITHUB_STEP_SUMMARY"
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -43,4 +45,5 @@ jobs:
           path: |
             ci-out/vitest-summary.json
             ci-out/vitest.json
+            ci-out/vitest.log
           retention-days: 7

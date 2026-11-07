@@ -35,7 +35,9 @@ jobs:
       - name: prebuild (branch)
         run: npx expo prebuild --platform android --no-install --clean
       - name: native expo-updates config (isolated CI embeds NEVER)
-        # Same script the release path runs with ERROR_RECOVERY_ONLY (scripts/build-android.ps1).
+        # Same script the release path runs with ERROR_RECOVERY_ONLY (scripts/build-android.ps1). `shell: bash` runs
+        # with pipefail; the default `bash -e` took tee's 0 and built the APK after a FAIL.
+        shell: bash
         run: npx tsx scripts/android/check-updates-config.ts --check-on-launch NEVER | tee -a "$GITHUB_STEP_SUMMARY"
       - name: native diff vs main
         if: github.event_name == 'pull_request'
@@ -46,7 +48,8 @@ jobs:
           mkdir -p ci-out
           diff -r ../base/android/app/src/main android/app/src/main > ci-out/native-diff.txt || true
           for f in app/build.gradle build.gradle gradle.properties settings.gradle; do diff ../base/android/$f android/$f >> ci-out/native-diff.txt || true; done
-          grep -c '^diff\|^[<>]' ci-out/native-diff.txt > ci-out/native-diff-count.txt || echo 0 > ci-out/native-diff-count.txt
+          # diff -r also prints "Only in" for a file one side lacks and "Binary files ... differ"; both are native changes.
+          grep -cE '^(diff|[<>]|Only in|Binary files)' ci-out/native-diff.txt > ci-out/native-diff-count.txt || echo 0 > ci-out/native-diff-count.txt
       - uses: actions/cache@v4
         with:
           path: |

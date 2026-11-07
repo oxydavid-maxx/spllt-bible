@@ -24,7 +24,9 @@ const guards = {
     ...checkLeanReaderSheets([], readFileSync(join(app, 'main.jsbundle')))],
   I3: checkIosInfoPlist(plist, {
     bundleId: appJson.expo.ios.bundleIdentifier,
-    buildNumber: appJson.expo.ios.buildNumber,
+    // app.config.js sets ios.buildNumber from android.versionCode; app.json must not carry it (iosConfig.test.ts),
+    // so reading it from app.json gave undefined and skipped the check.
+    buildNumber: String(appJson.expo.android.versionCode),
     requireChineseStrings: (process.env.IOS_REQUIRED_CHINESE_STRINGS ?? 'NSCameraUsageDescription').split(',').filter(Boolean),
   }),
   I4: files.problems,
