@@ -68,6 +68,32 @@ describe('session onboarding client', () => {
     })).resolves.toMatchObject({ ok: false, error: 'INVALID_API_RESPONSE' });
   });
 
+  it('gives up on a completion request that gets no answer within 10 seconds', async () => {
+    // Android's OkHttp has no read timeout (OkHttpClientProvider.kt:52-54), so a half-open connection
+    // after a network switch would hold this request, and the whole outbox behind it, forever.
+    vi.useFakeTimers();
+    try {
+      const signals: (AbortSignal | null | undefined)[] = [];
+      const fetchImpl = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+        signals.push(init?.signal);
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      }));
+      const client = createApiClient({ baseUrl: 'https://api.example.test', token: 'token', memberId: 'google:self', fetchImpl });
+      const result = client.saveCompletion({
+        memberId: 'google:self', planId: 'church-2026-09', taskDate: '2026-09-08', desiredStatus: 'COMPLETED', operationId: 'op-1', expectedRevision: 2, syncStatus: 'PENDING_SAVE',
+      });
+      const settled = vi.fn();
+      result.then(settled, settled);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(settled).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(result).rejects.toThrow('aborted');
+      expect(signals[0]?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('publishes expired to the mounted auth snapshot on an authenticated 401', async () => {
     const expiry = vi.spyOn(authState, 'notifyAuthExpired');
     const client = createApiClient({ baseUrl: 'https://api.example.test', token: 'token', memberId: 'google:self', fetchImpl: async () => new Response('{}', { status: 401 }) });

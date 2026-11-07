@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createApiClient } from '../../src/services/apiClient';
 import { createOutboxRecoveryController, type OutboxRecoveryRepository, type OutboxRecoverySession } from '../../src/services/outboxRecovery';
 import type { SyncResult } from '../../src/storage/outbox';
 
@@ -128,6 +129,44 @@ describe('outboxRecovery controller', () => {
     // Confirmed — no further retries should ever fire.
     await vi.advanceTimersByTimeAsync(120_000);
     expect(saveCompletion).toHaveBeenCalledTimes(4);
+  });
+
+  it('retries a completion request that never answered, with the same operationId, once it times out', async () => {
+    // Before saveCompletion had a time limit, the first send stayed in flight and every retry
+    // returned early on `inFlight` until the app was restarted.
+    const repository = makeRepository();
+    const sent: string[] = [];
+    const fetchImpl = vi.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init!.body)).operation_id);
+      if (sent.length === 1) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        });
+      }
+      return Promise.resolve(new Response(JSON.stringify({
+        memberId: TARGET.memberId, planId: TARGET.planId, taskDate: TARGET.taskDate, operationId: OPERATION_ID,
+        status: 'COMPLETED', revision: 1, syncStatus: 'CONFIRMED',
+      }), { status: 200 }));
+    });
+    const client = createApiClient({ baseUrl: 'https://api.example.test', token: 'tok', memberId: TARGET.memberId, fetchImpl });
+    const session: OutboxRecoverySession = { memberId: 'member-1', sessionToken: 'tok' };
+    const controller = createOutboxRecoveryController({
+      getRepository: () => repository,
+      getClient: () => client,
+      getSession: () => session,
+      isCurrentAuthSession: () => true,
+      getTarget: () => TARGET,
+      onRecovered: () => {},
+    });
+
+    controller.kick();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(10_000); // the request gives up
+    await vi.advanceTimersByTimeAsync(10_000); // first backoff retry
+    expect(sent).toEqual([OPERATION_ID, OPERATION_ID]);
+    expect(repository.syncStatus).toBe('CONFIRMED');
+    controller.stop();
   });
 
   it('caps backoff at 60s and never exceeds it on repeated failures', async () => {
