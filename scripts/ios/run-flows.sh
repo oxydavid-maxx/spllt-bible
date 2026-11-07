@@ -78,7 +78,8 @@ for flow in .maestro/ios/*.yaml; do
   case "$(basename "$flow" .yaml)" in
     # The smoke flow ends on the 讀經 tab; its accessibility tree is what the reader flows are written against.
     00-smoke) bash scripts/ios/measure-idle.sh "$UDID" home > "$OUT/maestro/measure-home.txt" 2>&1; maestro --device "$UDID" hierarchy --no-reinstall-driver > "$OUT/hierarchy-home.json" 2>/dev/null || true ;;
-    10-reader-open) bash scripts/ios/measure-idle.sh "$UDID" reader ;;
+    # Without a YouVersion key the flow is skipped and the reader holds no text, so there is nothing to measure for R2.
+    10-reader-open) [ "$LAST_RESULT" = SKIP ] || bash scripts/ios/measure-idle.sh "$UDID" reader > "$OUT/maestro/measure-reader.txt" 2>&1 ;;
     # Narration must keep playing while the app is in the background: park it behind Settings for 20 s.
     20-audio-start) xcrun simctl launch "$UDID" com.apple.Preferences > /dev/null; sleep 20; xcrun simctl launch "$UDID" org.qingmu.youth > /dev/null ;;
     # The flow passes only if every 週刊 page was asked for with the member's token and answered 200 (a page without it

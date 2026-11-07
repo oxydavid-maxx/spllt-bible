@@ -1,8 +1,15 @@
+import { spawnSync } from 'node:child_process';
 import dns, { type LookupAddress } from 'node:dns';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { nat64Address, withNat64 } from '../../server/nat64Fallback';
+
+// The fetch test listens on ::1. A machine without IPv6 (the 2026-10-31 cloud review's container) cannot, and the
+// listen error escaped as an unhandled error after a 5 s timeout; probe once, in a child, so skipIf can read it.
+const ipv6Loopback = spawnSync(process.execPath, ['-e',
+  "const s = require('node:net').createServer(); s.on('error', () => process.exit(1)); s.listen(0, '::1', () => s.close());"],
+{ timeout: 10_000 }).status === 0;
 
 // 2026-10-20: the home line loses IPv4 now and then while IPv6 keeps working. LINE (週刊 photos) and Azure (靈修
 // voices) have no IPv6 address, so the backend falls back to a public NAT64 gateway for IPv4-only hosts.
@@ -41,7 +48,7 @@ describe('NAT64 fallback for IPv4-only hosts', () => {
     await expect(lookupAll(lookup, 'missing.test')).rejects.toThrow('ENOTFOUND');
   });
 
-  it('lets fetch reach a host whose IPv4 address does not answer, through the gateway address', async () => {
+  it.skipIf(!ipv6Loopback)('lets fetch reach a host whose IPv4 address does not answer, through the gateway address', async () => {
     server = createServer((_request, response) => response.end('reached'));
     await new Promise<void>((resolve) => server!.listen(0, '::1', resolve));
     const { port } = server.address() as AddressInfo;
