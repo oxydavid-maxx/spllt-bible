@@ -1,56 +1,32 @@
 {
-  "week": "2026-11-01",
-  "generatedAt": "2026-11-06T01:01:19.057Z",
+  "week": "2026-11-08",
+  "generatedAt": "2026-11-08T01:01:10.750Z",
   "sermon": {
     "label": "第一堂",
-    "title": "被誤會的巴別塔！你真的讀懂了嗎？",
-    "speaker": "惠雯",
-    "passage": "創11",
+    "title": "禱告：為什麼要禱告？怎樣禱告？",
+    "speaker": "中亮",
+    "passage": null,
     "audio": null,
-    "slides": "https://drive.google.com/file/d/1OZLs6dqEk5x9neMiHgSQzu-6-nWJl-bJ/view",
-    "sermonSlides": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view",
+    "slides": "https://drive.google.com/file/d/1WYePqmBofzrmMuiSIzLXj_xz_cFgzKNu/view",
+    "sermonSlides": null,
     "transcript": null,
-    "youtube": null,
-    "materials": [
-      {
-        "name": "20261101 青崇講章 (創11巴別塔).pptx",
-        "role": "sermonSlides",
-        "url": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view"
-      },
-      {
-        "name": "20261101聖餐and青崇報告PPT.pptx",
-        "role": "slides",
-        "url": "https://drive.google.com/file/d/1OZLs6dqEk5x9neMiHgSQzu-6-nWJl-bJ/view"
-      }
-    ]
+    "youtube": null
   },
   "sessions": [
     {
       "label": "第一堂",
-      "title": "被誤會的巴別塔！你真的讀懂了嗎？",
-      "speaker": "惠雯",
-      "passage": "創11",
+      "title": "禱告：為什麼要禱告？怎樣禱告？",
+      "speaker": "中亮",
+      "passage": null,
       "audio": null,
-      "slides": "https://drive.google.com/file/d/1OZLs6dqEk5x9neMiHgSQzu-6-nWJl-bJ/view",
-      "sermonSlides": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view",
+      "slides": "https://drive.google.com/file/d/1WYePqmBofzrmMuiSIzLXj_xz_cFgzKNu/view",
+      "sermonSlides": null,
       "transcript": null,
-      "youtube": null,
-      "materials": [
-        {
-          "name": "20261101 青崇講章 (創11巴別塔).pptx",
-          "role": "sermonSlides",
-          "url": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view"
-        },
-        {
-          "name": "20261101聖餐and青崇報告PPT.pptx",
-          "role": "slides",
-          "url": "https://drive.google.com/file/d/1OZLs6dqEk5x9neMiHgSQzu-6-nWJl-bJ/view"
-        }
-      ]
+      "youtube": null
     },
     {
       "label": "第二堂",
-      "title": "創世記6~8章",
+      "title": "強身健體系列: 衝浪",
       "speaker": null,
       "passage": null,
       "audio": null,
@@ -61,28 +37,28 @@
     }
   ],
   "next": {
-    "date": "11/8",
-    "topic": "禱告：為什麼要禱告？怎樣禱告？",
-    "owner": "中亮/大專",
+    "date": "11/15",
+    "topic": "神呼召亞伯拉罕，羅得",
+    "owner": "淑君",
     "signup": null,
     "sessions": [
       {
         "label": "第一堂",
-        "kind": "青年啟發",
-        "title": "禱告：為什麼要禱告？怎樣禱告？",
-        "owner": "中亮/大專"
+        "kind": "信息",
+        "title": "神呼召亞伯拉罕，羅得",
+        "owner": "淑君"
       },
       {
         "label": "第二堂",
         "kind": null,
-        "title": "強身健體系列: 衝浪",
-        "owner": "旻棟"
+        "title": "做傷心人的朋友2",
+        "owner": "分組進行"
       }
     ],
     "roles": [
       {
         "label": "講員",
-        "value": "中亮"
+        "value": "淑君"
       },
       {
         "label": "敬拜團+詩歌",
@@ -94,15 +70,15 @@
       },
       {
         "label": "招待",
-        "value": "心予/尉彤"
+        "value": "心予/品希"
       },
       {
         "label": "影音(投影/音控)",
-        "value": "欣儀＆采人"
+        "value": "柏睿＆欣儀"
       },
       {
         "label": "愛筵",
-        "value": "正慧訂餐"
+        "value": "小丁訂餐"
       },
       {
         "label": "清潔",
@@ -113,6 +89,38 @@
   "standing": null,
   "past": [
     {
+      "week": "2026-11-01",
+      "title": "巴別塔",
+      "speaker": "惠雯",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "巴別塔",
+          "speaker": "惠雯",
+          "passage": "創11",
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view",
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "創世記6~8章",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view",
+      "transcript": null
+    },
+    {
       "week": "2026-10-18",
       "title": "洪水，挪亞方舟",
       "speaker": "德馨",
@@ -122,28 +130,11 @@
           "title": "洪水，挪亞方舟",
           "speaker": "德馨",
           "passage": "創6-10",
-          "audio": "https://drive.google.com/file/d/1BChccpASxRX-KzyqMpbxidqcQYD37t02/view",
-          "slides": null,
-          "sermonSlides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
+          "sermonSlides": null,
           "transcript": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view",
-          "youtube": null,
-          "materials": [
-            {
-              "name": "20261018青崇分享：舵.pptx",
-              "role": "sermonSlides",
-              "url": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view"
-            },
-            {
-              "name": "20261020 第一堂 逐字稿 10-18 主日信息：挪亞方舟與將生命的舵交給神.pdf",
-              "role": "transcript",
-              "url": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view"
-            },
-            {
-              "name": "20261020 第一堂 錄音 10-18 主日信息：挪亞方舟與將生命的舵交給神.mp4",
-              "role": "audio",
-              "url": "https://drive.google.com/file/d/1BChccpASxRX-KzyqMpbxidqcQYD37t02/view"
-            }
-          ]
+          "youtube": null
         },
         {
           "label": "第二堂",
@@ -157,10 +148,9 @@
           "youtube": null
         }
       ],
-      "audio": "https://drive.google.com/file/d/1BChccpASxRX-KzyqMpbxidqcQYD37t02/view",
-      "slides": null,
-      "transcript": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view",
-      "sermonSlides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view"
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
+      "transcript": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view"
     },
     {
       "week": "2026-10-11",
@@ -173,71 +163,42 @@
           "speaker": "中亮",
           "passage": null,
           "audio": null,
-          "slides": null,
+          "slides": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view",
           "sermonSlides": null,
-          "transcript": null,
+          "transcript": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view",
           "youtube": null
         },
         {
           "label": "第二堂",
-          "title": "一本書終結你的拖延症",
+          "title": "人生開外掛系列: 讀書\"一本書終結你的拖延症\"",
           "speaker": null,
           "passage": null,
-          "audio": "https://drive.google.com/file/d/1D27APCjNOvfNtlKo1CVJPzQ2qMIojNUK/view",
+          "audio": null,
           "slides": null,
-          "sermonSlides": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view",
-          "transcript": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view",
-          "youtube": null,
-          "materials": [
-            {
-              "name": "20261011 第二堂 逐字稿 青崇講座 小丁 - 克服拖延症.pdf",
-              "role": "transcript",
-              "url": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view"
-            },
-            {
-              "name": "20261011 第二堂 錄音 青崇講座 小丁 - 克服拖延症.mp4",
-              "role": "audio",
-              "url": "https://drive.google.com/file/d/1D27APCjNOvfNtlKo1CVJPzQ2qMIojNUK/view"
-            },
-            {
-              "name": "20261011_青崇讀書會_拖延症_可編輯投影片.pptx",
-              "role": "sermonSlides",
-              "url": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view"
-            }
-          ]
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
         }
       ],
       "audio": null,
-      "slides": null,
-      "transcript": null
+      "slides": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view",
+      "transcript": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view"
     },
     {
       "week": "2026-10-04",
-      "title": "你的兄弟在哪裡",
+      "title": "亞當的後代",
       "speaker": "佑駿",
       "sessions": [
         {
           "label": "第一堂",
-          "title": "你的兄弟在哪裡",
+          "title": "亞當的後代",
           "speaker": "佑駿",
           "passage": "創4-5",
           "audio": null,
           "slides": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view",
-          "sermonSlides": "https://drive.google.com/file/d/1NuNctCuTdwt7UMQTa2roRcGevQUJgGnQ/view",
+          "sermonSlides": null,
           "transcript": null,
-          "youtube": null,
-          "materials": [
-            {
-              "name": "20261004青崇(全)PPT.pptx",
-              "role": "slides",
-              "url": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view"
-            },
-            {
-              "name": "你的兄弟在哪裡_V3.pptx",
-              "role": "sermonSlides",
-              "url": "https://drive.google.com/file/d/1NuNctCuTdwt7UMQTa2roRcGevQUJgGnQ/view"
-            }
-          ]
+          "youtube": null
         },
         {
           "label": "第二堂",
@@ -248,20 +209,12 @@
           "slides": null,
           "sermonSlides": null,
           "transcript": null,
-          "youtube": null,
-          "materials": [
-            {
-              "name": "20261004 青少契小組時間.docx",
-              "role": "sermonDoc",
-              "url": "https://drive.google.com/file/d/1C6H-I-h26Gs-nYqPFAijscRF-MODhjz5/view"
-            }
-          ]
+          "youtube": null
         }
       ],
       "audio": null,
       "slides": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view",
-      "transcript": null,
-      "sermonSlides": "https://drive.google.com/file/d/1NuNctCuTdwt7UMQTa2roRcGevQUJgGnQ/view"
+      "transcript": null
     },
     {
       "week": "2026-09-27",
@@ -277,14 +230,7 @@
           "slides": "https://docs.google.com/presentation/d/1FZvb7J25OFkecgwUcD1TTS5umyvQaDlB66ohskjfgLQ/preview",
           "sermonSlides": null,
           "transcript": null,
-          "youtube": null,
-          "materials": [
-            {
-              "name": "20260927青崇(全)PPT",
-              "role": "slides",
-              "url": "https://docs.google.com/presentation/d/1FZvb7J25OFkecgwUcD1TTS5umyvQaDlB66ohskjfgLQ/preview"
-            }
-          ]
+          "youtube": null
         },
         {
           "label": "第二堂",
@@ -316,29 +262,7 @@
           "slides": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview",
           "sermonSlides": "https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview",
           "transcript": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view",
-          "youtube": null,
-          "materials": [
-            {
-              "name": "2026-09-20 09_16_45.mp3",
-              "role": "audio",
-              "url": "https://drive.google.com/file/d/1CX5pHpYDmNPN-2_9E082QikMMWPhlHtg/view"
-            },
-            {
-              "name": "20260920 青崇講道｜先",
-              "role": "sermonSlides",
-              "url": "https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview"
-            },
-            {
-              "name": "20260920 青崇講道｜先｜現場逐字稿",
-              "role": "transcript",
-              "url": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view"
-            },
-            {
-              "name": "20260920青崇(全)PPT",
-              "role": "slides",
-              "url": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview"
-            }
-          ]
+          "youtube": null
         },
         {
           "label": "第二堂",
@@ -369,86 +293,13 @@
           "passage": null,
           "audio": null,
           "slides": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview",
-          "sermonSlides": null,
-          "transcript": null,
-          "youtube": null,
-          "materials": [
-            {
-              "name": "20260913青崇(全)PPT",
-              "role": "slides",
-              "url": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview"
-            },
-            {
-              "name": "岩手短宣.pptx",
-              "role": "slides",
-              "url": "https://drive.google.com/file/d/150KiXW32avJZFS-hUbXHiTDWYbOlNb7q/view"
-            }
-          ]
-        },
-        {
-          "label": "第二堂",
-          "title": "健身是什麼？",
-          "speaker": "張珉銓",
-          "passage": null,
-          "audio": null,
-          "slides": null,
           "sermonSlides": "https://drive.google.com/file/d/1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD/view",
           "transcript": null,
-          "youtube": null,
-          "materials": [
-            {
-              "name": "913健身是什麼？.pptx",
-              "role": "sermonSlides",
-              "url": "https://drive.google.com/file/d/1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD/view"
-            },
-            {
-              "name": "未命名文件",
-              "role": "sermonSlides",
-              "url": "https://docs.google.com/document/d/1cuaRcYwP_RytcnXpIwyblcGNlEXuCOgS6yC_ZFM0dzI/view"
-            }
-          ]
-        }
-      ],
-      "audio": null,
-      "slides": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview",
-      "transcript": null
-    },
-    {
-      "week": "2026-09-06",
-      "title": "創造，亞當和夏娃",
-      "speaker": "為潔",
-      "sessions": [
-        {
-          "label": "第一堂",
-          "title": "創造，亞當和夏娃",
-          "speaker": "為潔",
-          "passage": "創1-2",
-          "audio": null,
-          "slides": "https://docs.google.com/presentation/d/1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ/preview",
-          "sermonSlides": "https://drive.google.com/file/d/1FVOvVG9Egjr_NYTgoYIqaQzaJQOONt3y/view",
-          "transcript": null,
-          "youtube": null,
-          "materials": [
-            {
-              "name": "20260906青崇(全)PPT",
-              "role": "slides",
-              "url": "https://docs.google.com/presentation/d/1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ/preview"
-            },
-            {
-              "name": "260906 亞當與夏娃.pptx",
-              "role": "sermonSlides",
-              "url": "https://drive.google.com/file/d/1FVOvVG9Egjr_NYTgoYIqaQzaJQOONt3y/view"
-            },
-            {
-              "name": "聖餐.pptx",
-              "role": "slides",
-              "url": "https://drive.google.com/file/d/1LeXLcKFSaiPJR3x6GPqx5t20dHxWhP61/view"
-            }
-          ]
+          "youtube": null
         },
         {
           "label": "第二堂",
-          "title": "創世記1~2章",
+          "title": "強身健體系列: 正確健身",
           "speaker": null,
           "passage": null,
           "audio": null,
@@ -459,9 +310,9 @@
         }
       ],
       "audio": null,
-      "slides": "https://docs.google.com/presentation/d/1Dhl5vFPStKJhxDCcSAL4tNV1wCoLMGGxieIJQDnRSzQ/preview",
+      "slides": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview",
       "transcript": null,
-      "sermonSlides": "https://drive.google.com/file/d/1FVOvVG9Egjr_NYTgoYIqaQzaJQOONt3y/view"
+      "sermonSlides": "https://drive.google.com/file/d/1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD/view"
     }
   ]
 }
