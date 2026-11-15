@@ -1,13 +1,13 @@
 {
-  "week": "2026-11-08",
-  "generatedAt": "2026-11-08T01:01:10.750Z",
+  "week": "2026-11-15",
+  "generatedAt": "2026-11-15T01:01:05.837Z",
   "sermon": {
     "label": "第一堂",
-    "title": "禱告：為什麼要禱告？怎樣禱告？",
-    "speaker": "中亮",
-    "passage": null,
+    "title": "神呼召亞伯拉罕，羅得",
+    "speaker": "淑君",
+    "passage": "創12-15",
     "audio": null,
-    "slides": "https://drive.google.com/file/d/1WYePqmBofzrmMuiSIzLXj_xz_cFgzKNu/view",
+    "slides": "https://drive.google.com/file/d/1FdnHTs9OQALH2BDZv1ujeV9xPowKWEk1/view",
     "sermonSlides": null,
     "transcript": null,
     "youtube": null
@@ -15,18 +15,18 @@
   "sessions": [
     {
       "label": "第一堂",
-      "title": "禱告：為什麼要禱告？怎樣禱告？",
-      "speaker": "中亮",
-      "passage": null,
+      "title": "神呼召亞伯拉罕，羅得",
+      "speaker": "淑君",
+      "passage": "創12-15",
       "audio": null,
-      "slides": "https://drive.google.com/file/d/1WYePqmBofzrmMuiSIzLXj_xz_cFgzKNu/view",
+      "slides": "https://drive.google.com/file/d/1FdnHTs9OQALH2BDZv1ujeV9xPowKWEk1/view",
       "sermonSlides": null,
       "transcript": null,
       "youtube": null
     },
     {
       "label": "第二堂",
-      "title": "強身健體系列: 衝浪",
+      "title": "做傷心人的朋友2",
       "speaker": null,
       "passage": null,
       "audio": null,
@@ -37,28 +37,28 @@
     }
   ],
   "next": {
-    "date": "11/15",
-    "topic": "神呼召亞伯拉罕，羅得",
-    "owner": "淑君",
+    "date": "11/22",
+    "topic": "聖經：為什麼要讀聖經？怎樣讀聖經？",
+    "owner": "中亮/大專",
     "signup": null,
     "sessions": [
       {
         "label": "第一堂",
-        "kind": "信息",
-        "title": "神呼召亞伯拉罕，羅得",
-        "owner": "淑君"
+        "kind": "青年啟發",
+        "title": "聖經：為什麼要讀聖經？怎樣讀聖經？",
+        "owner": "中亮/大專"
       },
       {
         "label": "第二堂",
         "kind": null,
-        "title": "做傷心人的朋友2",
-        "owner": "分組進行"
+        "title": "爸媽不在家，我要活下去系列: 義大利麵/馬鈴薯泥",
+        "owner": "淑君校長/大廚"
       }
     ],
     "roles": [
       {
         "label": "講員",
-        "value": "淑君"
+        "value": "中亮"
       },
       {
         "label": "敬拜團+詩歌",
@@ -70,15 +70,15 @@
       },
       {
         "label": "招待",
-        "value": "心予/品希"
+        "value": "以諾/恩碩"
       },
       {
         "label": "影音(投影/音控)",
-        "value": "柏睿＆欣儀"
+        "value": "欣儀＆柏羽"
       },
       {
         "label": "愛筵",
-        "value": "小丁訂餐"
+        "value": "淑君及大廚們"
       },
       {
         "label": "清潔",
@@ -88,6 +88,38 @@
   },
   "standing": null,
   "past": [
+    {
+      "week": "2026-11-08",
+      "title": "禱告：為什麼要禱告？怎樣禱告？",
+      "speaker": "中亮",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "禱告：為什麼要禱告？怎樣禱告？",
+          "speaker": "中亮",
+          "passage": null,
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1WYePqmBofzrmMuiSIzLXj_xz_cFgzKNu/view",
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "強身健體系列: 衝浪",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1WYePqmBofzrmMuiSIzLXj_xz_cFgzKNu/view",
+      "transcript": null
+    },
     {
       "week": "2026-11-01",
       "title": "巴別塔",
@@ -280,39 +312,6 @@
       "slides": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview",
       "transcript": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view",
       "sermonSlides": "https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview"
-    },
-    {
-      "week": "2026-09-13",
-      "title": "生命：這就是人生嗎？",
-      "speaker": "中亮",
-      "sessions": [
-        {
-          "label": "第一堂",
-          "title": "生命：這就是人生嗎？",
-          "speaker": "中亮",
-          "passage": null,
-          "audio": null,
-          "slides": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview",
-          "sermonSlides": "https://drive.google.com/file/d/1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD/view",
-          "transcript": null,
-          "youtube": null
-        },
-        {
-          "label": "第二堂",
-          "title": "強身健體系列: 正確健身",
-          "speaker": null,
-          "passage": null,
-          "audio": null,
-          "slides": null,
-          "sermonSlides": null,
-          "transcript": null,
-          "youtube": null
-        }
-      ],
-      "audio": null,
-      "slides": "https://docs.google.com/presentation/d/1BfSlo8O4R80y3ew_lm72XjjrFKFDmWQbiZUQiJxVPNE/preview",
-      "transcript": null,
-      "sermonSlides": "https://drive.google.com/file/d/1L3714Keo6OY44cZq6lTLxW20Ss7VqWgD/view"
     }
   ]
 }
