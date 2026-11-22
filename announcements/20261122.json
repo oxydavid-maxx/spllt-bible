@@ -1,0 +1,300 @@
+{
+  "week": "2026-11-22",
+  "generatedAt": "2026-11-22T01:01:07.454Z",
+  "sermon": {
+    "label": "第一堂",
+    "title": "聖經：為什麼要讀聖經？怎樣讀聖經？",
+    "speaker": "中亮",
+    "passage": null,
+    "audio": null,
+    "slides": "https://docs.google.com/presentation/d/14JVTZOeL49q82Iujv_mYWjfxjmdKgThz5PtIfsHt3H0/preview",
+    "sermonSlides": null,
+    "transcript": null,
+    "youtube": null
+  },
+  "sessions": [
+    {
+      "label": "第一堂",
+      "title": "聖經：為什麼要讀聖經？怎樣讀聖經？",
+      "speaker": "中亮",
+      "passage": null,
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/14JVTZOeL49q82Iujv_mYWjfxjmdKgThz5PtIfsHt3H0/preview",
+      "sermonSlides": null,
+      "transcript": null,
+      "youtube": null
+    },
+    {
+      "label": "第二堂",
+      "title": "爸媽不在家，我要活下去系列: 義大利麵/馬鈴薯泥",
+      "speaker": null,
+      "passage": null,
+      "audio": null,
+      "slides": null,
+      "sermonSlides": null,
+      "transcript": null,
+      "youtube": null
+    }
+  ],
+  "next": {
+    "date": "11/29",
+    "topic": "跟隨：神怎樣指引我們？",
+    "owner": "中亮/大專",
+    "signup": null,
+    "sessions": [
+      {
+        "label": "第一堂",
+        "kind": "青年啟發",
+        "title": "跟隨：神怎樣指引我們？",
+        "owner": "中亮/大專"
+      },
+      {
+        "label": "第二堂",
+        "kind": null,
+        "title": "感恩節特別活動",
+        "owner": "德馨"
+      }
+    ],
+    "roles": [
+      {
+        "label": "講員",
+        "value": "德馨"
+      },
+      {
+        "label": "愛筵",
+        "value": "豐盛小組"
+      },
+      {
+        "label": "清潔",
+        "value": "全體"
+      }
+    ]
+  },
+  "standing": null,
+  "past": [
+    {
+      "week": "2026-11-15",
+      "title": "神呼召亞伯拉罕，羅得",
+      "speaker": "淑君",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "神呼召亞伯拉罕，羅得",
+          "speaker": "淑君",
+          "passage": "創12-15",
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1FdnHTs9OQALH2BDZv1ujeV9xPowKWEk1/view",
+          "sermonSlides": null,
+          "transcript": "https://drive.google.com/file/d/1HJS833jqGxyla0Mr7FLXJymF8NFx4POa/view",
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "做傷心人的朋友2",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1FdnHTs9OQALH2BDZv1ujeV9xPowKWEk1/view",
+      "transcript": "https://drive.google.com/file/d/1HJS833jqGxyla0Mr7FLXJymF8NFx4POa/view"
+    },
+    {
+      "week": "2026-11-08",
+      "title": "禱告：為什麼要禱告？怎樣禱告？",
+      "speaker": "中亮",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "禱告：為什麼要禱告？怎樣禱告？",
+          "speaker": "中亮",
+          "passage": null,
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1WYePqmBofzrmMuiSIzLXj_xz_cFgzKNu/view",
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "強身健體系列: 衝浪",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1WYePqmBofzrmMuiSIzLXj_xz_cFgzKNu/view",
+      "transcript": null
+    },
+    {
+      "week": "2026-11-01",
+      "title": "巴別塔",
+      "speaker": "惠雯",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "巴別塔",
+          "speaker": "惠雯",
+          "passage": "創11",
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view",
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "創世記6~8章",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1Qlm9bS431Z2KNabaXz0Q3wfs4m3EE9sY/view",
+      "transcript": null
+    },
+    {
+      "week": "2026-10-18",
+      "title": "洪水，挪亞方舟",
+      "speaker": "德馨",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "洪水，挪亞方舟",
+          "speaker": "德馨",
+          "passage": "創6-10",
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
+          "sermonSlides": null,
+          "transcript": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view",
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "做傷心人的朋友1",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1Y4uSW9hHg6gsbg4O-vfURcv3dHjmjzXO/view",
+      "transcript": "https://drive.google.com/file/d/1M_3nmifJgcmkoaQZoYKAN0AHc6NdWztA/view"
+    },
+    {
+      "week": "2026-10-11",
+      "title": "十架：耶穌為什麼死？",
+      "speaker": "中亮",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "十架：耶穌為什麼死？",
+          "speaker": "中亮",
+          "passage": null,
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view",
+          "sermonSlides": null,
+          "transcript": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view",
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "人生開外掛系列: 讀書\"一本書終結你的拖延症\"",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1vu5hUIGAZRjF-cuVPbD8bMgZC7mhHSuE/view",
+      "transcript": "https://drive.google.com/file/d/184Vm_S4_MGD9-49P12iNxwoSk532J65e/view"
+    },
+    {
+      "week": "2026-10-04",
+      "title": "亞當的後代",
+      "speaker": "佑駿",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "亞當的後代",
+          "speaker": "佑駿",
+          "passage": "創4-5",
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view",
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "創世記3~5章",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1hUIHese2l-W7AFi6xI7ZyRZzLhyGZ84O/view",
+      "transcript": null
+    },
+    {
+      "week": "2026-09-27",
+      "title": "耶穌：耶穌是誰？",
+      "speaker": "中亮",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "耶穌：耶穌是誰？",
+          "speaker": "中亮",
+          "passage": null,
+          "audio": null,
+          "slides": "https://docs.google.com/presentation/d/1FZvb7J25OFkecgwUcD1TTS5umyvQaDlB66ohskjfgLQ/preview",
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "爸媽不在家，我要活下去系列: 豚汁定食/如何殺柚子",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://docs.google.com/presentation/d/1FZvb7J25OFkecgwUcD1TTS5umyvQaDlB66ohskjfgLQ/preview",
+      "transcript": null
+    }
+  ]
+}

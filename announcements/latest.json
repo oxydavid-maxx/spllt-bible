@@ -1,32 +1,32 @@
 {
-  "week": "2026-11-15",
-  "generatedAt": "2026-11-16T01:01:05.142Z",
+  "week": "2026-11-22",
+  "generatedAt": "2026-11-22T01:01:07.454Z",
   "sermon": {
     "label": "第一堂",
-    "title": "神呼召亞伯拉罕，羅得",
-    "speaker": "淑君",
-    "passage": "創12-15",
+    "title": "聖經：為什麼要讀聖經？怎樣讀聖經？",
+    "speaker": "中亮",
+    "passage": null,
     "audio": null,
-    "slides": "https://drive.google.com/file/d/1FdnHTs9OQALH2BDZv1ujeV9xPowKWEk1/view",
+    "slides": "https://docs.google.com/presentation/d/14JVTZOeL49q82Iujv_mYWjfxjmdKgThz5PtIfsHt3H0/preview",
     "sermonSlides": null,
-    "transcript": "https://drive.google.com/file/d/1HJS833jqGxyla0Mr7FLXJymF8NFx4POa/view",
+    "transcript": null,
     "youtube": null
   },
   "sessions": [
     {
       "label": "第一堂",
-      "title": "神呼召亞伯拉罕，羅得",
-      "speaker": "淑君",
-      "passage": "創12-15",
+      "title": "聖經：為什麼要讀聖經？怎樣讀聖經？",
+      "speaker": "中亮",
+      "passage": null,
       "audio": null,
-      "slides": "https://drive.google.com/file/d/1FdnHTs9OQALH2BDZv1ujeV9xPowKWEk1/view",
+      "slides": "https://docs.google.com/presentation/d/14JVTZOeL49q82Iujv_mYWjfxjmdKgThz5PtIfsHt3H0/preview",
       "sermonSlides": null,
-      "transcript": "https://drive.google.com/file/d/1HJS833jqGxyla0Mr7FLXJymF8NFx4POa/view",
+      "transcript": null,
       "youtube": null
     },
     {
       "label": "第二堂",
-      "title": "做傷心人的朋友2",
+      "title": "爸媽不在家，我要活下去系列: 義大利麵/馬鈴薯泥",
       "speaker": null,
       "passage": null,
       "audio": null,
@@ -37,48 +37,32 @@
     }
   ],
   "next": {
-    "date": "11/22",
-    "topic": "聖經：為什麼要讀聖經？怎樣讀聖經？",
+    "date": "11/29",
+    "topic": "跟隨：神怎樣指引我們？",
     "owner": "中亮/大專",
     "signup": null,
     "sessions": [
       {
         "label": "第一堂",
         "kind": "青年啟發",
-        "title": "聖經：為什麼要讀聖經？怎樣讀聖經？",
+        "title": "跟隨：神怎樣指引我們？",
         "owner": "中亮/大專"
       },
       {
         "label": "第二堂",
         "kind": null,
-        "title": "爸媽不在家，我要活下去系列: 義大利麵/馬鈴薯泥",
-        "owner": "淑君校長/大廚"
+        "title": "感恩節特別活動",
+        "owner": "德馨"
       }
     ],
     "roles": [
       {
         "label": "講員",
-        "value": "中亮"
-      },
-      {
-        "label": "敬拜團+詩歌",
-        "value": "青少團"
-      },
-      {
-        "label": "主領(報告)",
         "value": "德馨"
       },
       {
-        "label": "招待",
-        "value": "以諾/恩碩"
-      },
-      {
-        "label": "影音(投影/音控)",
-        "value": "欣儀＆柏羽"
-      },
-      {
         "label": "愛筵",
-        "value": "淑君及大廚們"
+        "value": "豐盛小組"
       },
       {
         "label": "清潔",
@@ -88,6 +72,38 @@
   },
   "standing": null,
   "past": [
+    {
+      "week": "2026-11-15",
+      "title": "神呼召亞伯拉罕，羅得",
+      "speaker": "淑君",
+      "sessions": [
+        {
+          "label": "第一堂",
+          "title": "神呼召亞伯拉罕，羅得",
+          "speaker": "淑君",
+          "passage": "創12-15",
+          "audio": null,
+          "slides": "https://drive.google.com/file/d/1FdnHTs9OQALH2BDZv1ujeV9xPowKWEk1/view",
+          "sermonSlides": null,
+          "transcript": "https://drive.google.com/file/d/1HJS833jqGxyla0Mr7FLXJymF8NFx4POa/view",
+          "youtube": null
+        },
+        {
+          "label": "第二堂",
+          "title": "做傷心人的朋友2",
+          "speaker": null,
+          "passage": null,
+          "audio": null,
+          "slides": null,
+          "sermonSlides": null,
+          "transcript": null,
+          "youtube": null
+        }
+      ],
+      "audio": null,
+      "slides": "https://drive.google.com/file/d/1FdnHTs9OQALH2BDZv1ujeV9xPowKWEk1/view",
+      "transcript": "https://drive.google.com/file/d/1HJS833jqGxyla0Mr7FLXJymF8NFx4POa/view"
+    },
     {
       "week": "2026-11-08",
       "title": "禱告：為什麼要禱告？怎樣禱告？",
@@ -279,39 +295,6 @@
       "audio": null,
       "slides": "https://docs.google.com/presentation/d/1FZvb7J25OFkecgwUcD1TTS5umyvQaDlB66ohskjfgLQ/preview",
       "transcript": null
-    },
-    {
-      "week": "2026-09-20",
-      "title": "先",
-      "speaker": "光佑",
-      "sessions": [
-        {
-          "label": "第一堂",
-          "title": "先",
-          "speaker": "光佑",
-          "passage": "創3",
-          "audio": "https://drive.google.com/file/d/1CX5pHpYDmNPN-2_9E082QikMMWPhlHtg/view",
-          "slides": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview",
-          "sermonSlides": "https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview",
-          "transcript": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view",
-          "youtube": null
-        },
-        {
-          "label": "第二堂",
-          "title": "做傷心人的朋友",
-          "speaker": null,
-          "passage": null,
-          "audio": null,
-          "slides": null,
-          "sermonSlides": null,
-          "transcript": null,
-          "youtube": null
-        }
-      ],
-      "audio": "https://drive.google.com/file/d/1CX5pHpYDmNPN-2_9E082QikMMWPhlHtg/view",
-      "slides": "https://docs.google.com/presentation/d/1yf5JNezk_ubEdtFD70LzPyLvqG0v7EUZUDWRW2plNPY/preview",
-      "transcript": "https://docs.google.com/document/d/1rWlOtjhvzH92A9kohcPysh_cLqof-pHAikgZXENgZzE/view",
-      "sermonSlides": "https://docs.google.com/presentation/d/1Gd3wJY0JYSCSa4ahemGndSHxtcwmYIbVCF5lB0_Yfrc/preview"
     }
   ]
 }
