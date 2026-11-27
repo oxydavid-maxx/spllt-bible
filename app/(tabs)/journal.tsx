@@ -19,6 +19,7 @@ import { useJournalEntry } from '../../src/ui/useJournalEntry';
 import { JournalSaveBar } from '../../src/ui/JournalSaveBar';
 import { useAndroidKeyboardVisible } from '../../src/ui/useAndroidKeyboardVisible';
 import { theme } from '../../src/ui/Theme';
+import { makeStyles, useColors } from '../../src/ui/useAppTheme';
 
 /**
  * Every entry in one place: read back, reopen to edit, take the whole thing away.
@@ -27,6 +28,8 @@ import { theme } from '../../src/ui/Theme';
  */
 
 export default function JournalScreen() {
+  const styles = useStyles();
+  const colors = useColors();
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
   const memberId = session?.memberId ?? null;
@@ -157,7 +160,7 @@ export default function JournalScreen() {
           maxLength={4000}
           editable={memberId !== null}
           placeholder="今天想記下的"
-          placeholderTextColor={theme.colors.muted}
+          placeholderTextColor={colors.muted}
           value={entry.ready ? entry.body : ''}
           onChangeText={entry.setBody}
           onBlur={flushEditor}
@@ -203,32 +206,32 @@ export default function JournalScreen() {
   </SafeAreaView>;
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.colors.background },
+const useStyles = makeStyles((colors) => ({
+  screen: { flex: 1, backgroundColor: colors.background },
   page: { flex: 1 },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm },
   dateNavigation: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xxs },
   dateButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  dateArrow: { color: theme.colors.primary, fontSize: 28, lineHeight: 32, fontWeight: '600' },
+  dateArrow: { color: colors.primary, fontSize: 28, lineHeight: 32, fontWeight: '600' },
   toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },
-  title: { color: theme.colors.ink, fontSize: theme.type.title.size, fontWeight: '800' },
-  empty: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md },
+  title: { color: colors.ink, fontSize: theme.type.title.size, fontWeight: '800' },
+  empty: { color: colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md },
   pageContent: { flexGrow: 1, paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.lg, gap: theme.spacing.sm },
-  editor: { minHeight: 180, color: theme.colors.ink, backgroundColor: theme.colors.surface, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, padding: theme.spacing.md, borderRadius: theme.radius.card },
-  quoteOffer: { minHeight: theme.control.tap, justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs },
-  quoteOfferText: { color: theme.colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  note: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  historyHeading: { color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800', paddingTop: theme.spacing.xs },
-  row: { minHeight: theme.control.tap, justifyContent: 'center', backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, gap: theme.spacing.xxs },
-  selectedRow: { borderWidth: theme.control.hairline, borderColor: theme.colors.primary },
+  editor: { minHeight: 180, color: colors.ink, backgroundColor: colors.surface, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, padding: theme.spacing.md, borderRadius: theme.radius.card },
+  quoteOffer: { minHeight: theme.control.tap, justifyContent: 'center', borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: colors.primary, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs },
+  quoteOfferText: { color: colors.primary, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  note: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  historyHeading: { color: colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800', paddingTop: theme.spacing.xs },
+  row: { minHeight: theme.control.tap, justifyContent: 'center', backgroundColor: colors.surface, borderRadius: theme.radius.card, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm, gap: theme.spacing.xxs },
+  selectedRow: { borderWidth: theme.control.hairline, borderColor: colors.primary },
   disabled: { opacity: 0.4 },
-  rowDate: { color: theme.colors.ink, fontSize: theme.type.label.size, fontWeight: '800' },
-  rowPreview: { color: theme.colors.muted, fontSize: theme.type.caption.size },
+  rowDate: { color: colors.ink, fontSize: theme.type.label.size, fontWeight: '800' },
+  rowPreview: { color: colors.muted, fontSize: theme.type.caption.size },
   footer: { paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.md, gap: theme.spacing.xs },
-  exportButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.primary },
-  exportText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
-  folderPath: { color: theme.colors.muted, fontSize: theme.type.caption.size, textAlign: 'center' },
+  exportButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: colors.primary },
+  exportText: { color: colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  folderPath: { color: colors.muted, fontSize: theme.type.caption.size, textAlign: 'center' },
   stopButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' },
-  stopText: { color: theme.colors.muted, fontSize: theme.type.caption.size },
-  result: { color: theme.colors.muted, fontSize: theme.type.caption.size, textAlign: 'center' },
-});
+  stopText: { color: colors.muted, fontSize: theme.type.caption.size },
+  result: { color: colors.muted, fontSize: theme.type.caption.size, textAlign: 'center' },
+}));

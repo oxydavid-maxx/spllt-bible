@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, BackHandler, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppModal } from './AppModal';
 import { SheetBackdrop } from './SheetBackdrop';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createYouVersionAdapter } from '../services/youVersionAdapter';
 import type { YouVersionReaderUiModule } from '../services/youVersionAdapter';
 import { theme } from './Theme';
+import { makeStyles, useAppTheme, useColors } from './useAppTheme';
 import { formatReferenceListZhTw, formatReferenceZhTw } from '../domain/scriptureReference';
 import { buildYouVersionReaderConfig, resolveReaderContentApiHost } from './youVersionReaderConfig';
 import { getYouVersionContentMetadata } from '../config/youVersionContent';
@@ -35,6 +37,10 @@ function chapterForReference(reference: string): string | null {
 }
 
 export function YouVersionReader({ date, references, adjacentReferences = [], assignedReading = true, appKey, versionId, book, chapter, allowTechnicalProbe, attributionMode = 'compact', allowedVersionIds = versionId === null ? [] : [versionId], onBookChange, onChapterChange, onVersionChange, onVersionPickerPress, activeReferenceIndex: controlledIndex, onActiveReferenceChange, fullscreen = false, onCanvasReveal, onCanvasScroll, onCanvasEdge, canvasInsets, onVerseSelectionChange, onSheetOpenChange, followNarration = false, followRequest = 0, reduceMotion = false, onNarrationChange, onFollowRelease, onFollowPosition, clearVerseSelectionSignal = 0, retrySignal = 0, readerPreferences, continuousPlaybackEnabled = true, onContinuousPlaybackChange, renderScreen = (reader) => reader, onVerseCopied, narrationSpeed = 1, onLastChapterNarrated }: { date: string; references: string[]; adjacentReferences?: string[]; assignedReading?: boolean; appKey: string | null; versionId: number | null; book?: string; chapter?: string; allowTechnicalProbe: boolean; attributionMode?: 'compact' | 'full'; allowedVersionIds?: number[]; onBookChange?: (book: string) => void; onChapterChange?: (chapter: string) => void; onVersionChange?: (versionId: number) => void; onVersionPickerPress?: () => void; activeReferenceIndex?: number; onActiveReferenceChange?: (index: number) => void; fullscreen?: boolean; onCanvasReveal?: (reason: ReaderRevealReason) => void; onCanvasScroll?: (event: { direction: 'up' | 'down'; deltaY: number }) => void; onCanvasEdge?: (event: { atEnd: boolean }) => void; canvasInsets?: ReaderCanvasInsets; onVerseSelectionChange?: (selected: boolean) => void; onSheetOpenChange?: (open: boolean) => void; followNarration?: boolean; followRequest?: number; reduceMotion?: boolean; onNarrationChange?: (verse: number | null) => void; onFollowRelease?: () => void; onFollowPosition?: (position: ReadAlongPosition) => void; clearVerseSelectionSignal?: number; retrySignal?: number; readerPreferences?: ReaderPreferencesBinding; continuousPlaybackEnabled?: boolean; onContinuousPlaybackChange?: (enabled: boolean) => void | Promise<void>; renderScreen?: (reader: ReactNode, controls: ReaderOverlayControls) => ReactNode; onVerseCopied?: (quote: string) => void; narrationSpeed?: number; onLastChapterNarrated?: () => void }) {
+  const styles = useStyles();
+  const colors = useColors();
+  // The scripture follows 夜間模式 with the YouVersion reader's own dark page (光佑 2026-11-04).
+  const { scheme } = useAppTheme();
   const [readerModule, setReaderModule] = useState<YouVersionReaderUiModule | null>(null);
   const preferencesBinding = useReaderPreferencesBinding(readerModule, readerPreferences);
   const [error, setError] = useState<string | null>(null);
@@ -327,9 +333,9 @@ export function YouVersionReader({ date, references, adjacentReferences = [], as
     return renderScreen(<Text style={styles.pending}>官方閱讀器還在準備中，請稍後再試。</Text>, overlayControls);
   }
   if (error) return renderScreen(<View style={styles.errorBox}><Text style={styles.error}>閱讀器暫時無法開啟，請稍後再試。</Text><Pressable accessibilityRole="button" accessibilityLabel="重試開啟讀經" onPress={() => setRetryNonce((value) => value + 1)} style={styles.retryButton}><Text style={styles.retryText}>重試</Text></Pressable></View>, overlayControls);
-  if (!readerModule) return renderScreen(<View style={styles.loading}><ActivityIndicator color={theme.colors.primary} /><Text style={styles.pending}>正在載入官方閱讀器…</Text></View>, overlayControls);
+  if (!readerModule) return renderScreen(<View style={styles.loading}><ActivityIndicator color={colors.primary} /><Text style={styles.pending}>正在載入官方閱讀器…</Text></View>, overlayControls);
   if (preferencesBinding.failed) return renderScreen(<View style={styles.errorBox}><Text accessibilityRole="alert" style={styles.error}>無法套用此帳號的閱讀設定，請重試。</Text><Pressable accessibilityRole="button" accessibilityLabel="重試套用帳號閱讀設定" onPress={() => setRetryNonce(value => value + 1)} style={styles.retryButton}><Text style={styles.retryText}>重試</Text></Pressable></View>, overlayControls);
-  if (!preferencesBinding.ready) return renderScreen(<View style={styles.loading}><ActivityIndicator color={theme.colors.primary} /><Text style={styles.pending}>正在套用帳號閱讀設定…</Text></View>, overlayControls);
+  if (!preferencesBinding.ready) return renderScreen(<View style={styles.loading}><ActivityIndicator color={colors.primary} /><Text style={styles.pending}>正在套用帳號閱讀設定…</Text></View>, overlayControls);
 
   const { YouVersionProvider: Provider, BibleReader, BibleReaderSettingsSheet, BibleChapterPickerSheet, BibleVersionPickerSheet } = readerModule;
   const safeIndex = Math.min(activeReferenceIndex, Math.max(0, configs.length - 1));
@@ -344,7 +350,7 @@ export function YouVersionReader({ date, references, adjacentReferences = [], as
         {safeIndex < references.length - 1 && <Pressable accessibilityRole="button" accessibilityLabel="下一段指定經文" onPress={() => setActiveReferenceIndex(safeIndex + 1)} style={styles.nextButton}><Text style={styles.nextButtonText}>下一段 ›</Text></Pressable>}
       </View>}
         <View style={fullscreen ? styles.fullscreen : styles.passage}>
-          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} onFootnotePress={async (data) => { setFootnote({ verseNum: data.verseNum, notes: data.notes, reference: data.reference }); }} onVerseSelect={onVerseSelectionChange ? async (selection) => { onVerseSelectionChange(selection.verses.length > 0); } : undefined} clearSelectionSignal={clearVerseSelectionSignal} retrySignal={retrySignal} onCopy={(data) => { void copyVerses(data); }} showToolbar={!fullscreen} theme="light" passageRange={sdkPassageRange} passageAudioNotice={passageAudioNotice} playingVerse={narratedVerse} followNarration={fullscreen && followNarration} followRequest={followRequest} reduceMotion={reduceMotion} />
+          <BibleReader key={book === undefined && chapter === undefined ? `${date}-${references[safeIndex]}-${versionId}` : 'controlled-reader'} dom={readerDom} book={book} chapter={chapter} defaultBook={selectedConfig.book} defaultChapter={selectedConfig.chapter} versionId={versionId ?? undefined} defaultVersionId={versionId ?? undefined} onBookChange={onBookChange ? async (nextBook) => { cancelAutoplay(); onBookChange(nextBook); } : undefined} onChapterChange={onChapterChange ? async (nextChapter) => { cancelAutoplay(); onChapterChange(nextChapter); } : undefined} onVersionChange={onVersionChange ? async (nextVersionId) => { cancelAutoplay(); onVersionChange(nextVersionId); } : undefined} onVersionPickerPress={onVersionPickerPress ? async () => { cancelAutoplay(); onVersionPickerPress(); } : undefined} onFootnotePress={async (data) => { setFootnote({ verseNum: data.verseNum, notes: data.notes, reference: data.reference }); }} onVerseSelect={onVerseSelectionChange ? async (selection) => { onVerseSelectionChange(selection.verses.length > 0); } : undefined} clearSelectionSignal={clearVerseSelectionSignal} retrySignal={retrySignal} onCopy={(data) => { void copyVerses(data); }} showToolbar={!fullscreen} theme={scheme} passageRange={sdkPassageRange} passageAudioNotice={passageAudioNotice} playingVerse={narratedVerse} followNarration={fullscreen && followNarration} followRequest={followRequest} reduceMotion={reduceMotion} />
         </View>
       {!fullscreen && <Text style={styles.attribution} numberOfLines={2}>{attributionMode === 'compact'
         ? `${contentMetadata?.translationName ?? `YouVersion ${versionId}`}／${contentMetadata?.publisher ?? '官方內容'}`
@@ -372,7 +378,7 @@ export function YouVersionReader({ date, references, adjacentReferences = [], as
     onVerseCopied?.(`「${data.verseText}」${data.reference}`);
   };
 
-  const footnotePanel = footnote ? <Modal transparent animationType="fade" visible onRequestClose={closeFootnote}>
+  const footnotePanel = footnote ? <AppModal transparent animationType="fade" visible onRequestClose={closeFootnote}>
     <SheetBackdrop label="關閉註腳" onPress={closeFootnote} style={styles.footnoteScrim}>
       <View style={styles.footnoteHost} accessibilityViewIsModal>
         {/* The bottom edge keeps the notes above a three-button navigation bar, which otherwise
@@ -383,13 +389,13 @@ export function YouVersionReader({ date, references, adjacentReferences = [], as
         </SafeAreaView>
       </View>
     </SheetBackdrop>
-  </Modal> : null;
+  </AppModal> : null;
   return (
     <ChapterAudioAutoplayContext.Provider value={autoplayContext}>
       <View style={styles.host}>
         {footnotePanel}
         {/* The tracked SDK patch also carries apiHost across the native-to-DOM provider boundary. */}
-        <Provider appKey={appKey} apiHost={resolveReaderContentApiHost(process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL)} locale="zh-Hant-TW" permittedVersionIds={allowedVersionIds}>
+        <Provider theme={scheme} appKey={appKey} apiHost={resolveReaderContentApiHost(process.env.EXPO_PUBLIC_QINGMU_API_BASE_URL)} locale="zh-Hant-TW" permittedVersionIds={allowedVersionIds}>
           <View style={styles.host} accessibilityElementsHidden={Boolean(overlay)} importantForAccessibility={overlay ? 'no-hide-descendants' : 'auto'}>
             {renderScreen(surface, overlayControls)}
           </View>
@@ -405,7 +411,7 @@ export function YouVersionReader({ date, references, adjacentReferences = [], as
           {/* NativeSheet issues one snap when activated. Keep its native host mounted
               while closed so layout/detents can settle before that opening command. */}
           <BibleReaderSettingsSheet isSettingsSheetOpen={overlay === 'settings'} onClose={closeOverlay} />
-          <BibleChapterPickerSheet isOpen={overlay === 'chapter'} onClose={closeOverlay} book={book ?? selectedConfig.book} chapter={chapter ?? selectedConfig.chapter} versionId={versionId} theme="light" onSelect={(next) => {
+          <BibleChapterPickerSheet isOpen={overlay === 'chapter'} onClose={closeOverlay} book={book ?? selectedConfig.book} chapter={chapter ?? selectedConfig.chapter} versionId={versionId} theme={scheme} onSelect={(next) => {
             if (!allowedVersionIds.includes(next.versionId)) return;
             cancelAutoplay();
             onBookChange?.(next.book);
@@ -413,7 +419,7 @@ export function YouVersionReader({ date, references, adjacentReferences = [], as
             onVersionChange?.(next.versionId);
             closeOverlay();
           }} />
-          <BibleVersionPickerSheet isOpen={overlay === 'version'} onClose={closeOverlay} versionId={versionId} theme="light" onSelect={(nextVersionId) => {
+          <BibleVersionPickerSheet isOpen={overlay === 'version'} onClose={closeOverlay} versionId={versionId} theme={scheme} onSelect={(nextVersionId) => {
             if (!allowedVersionIds.includes(nextVersionId)) return;
             cancelAutoplay();
             onVersionChange?.(nextVersionId);
@@ -435,22 +441,22 @@ export function stripHtml(value: string): string {
   return value.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
 }
 
-const styles = StyleSheet.create({
-  footnoteScrim: { flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' },
+const useStyles = makeStyles((colors) => ({
+  footnoteScrim: { flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' },
   footnoteHost: { maxHeight: '60%' },
-  footnoteSheet: { backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, paddingBottom: theme.spacing.lg },
+  footnoteSheet: { backgroundColor: colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, paddingBottom: theme.spacing.lg },
   footnoteHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md },
-  footnoteTitle: { flex: 1, color: theme.colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
+  footnoteTitle: { flex: 1, color: colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
   footnoteClose: { minHeight: theme.control.tap, minWidth: theme.control.tap, alignItems: 'center', justifyContent: 'center' },
-  footnoteCloseText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  footnoteCloseText: { color: colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
   footnoteBody: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, gap: theme.spacing.sm },
-  footnoteNote: { color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  footnoteNote: { color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   host: { flex: 1, minHeight: 0 },
-  fullscreen: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface },
-  settingsHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2001, elevation: 20, backgroundColor: theme.colors.surface },
+  fullscreen: { flex: 1, minHeight: 0, backgroundColor: colors.readerSurface },
+  settingsHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2001, elevation: 20, backgroundColor: colors.surface },
   settingsDone: { minWidth: theme.control.tap, minHeight: theme.control.tap, paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.sm, alignItems: 'flex-end', justifyContent: 'center' },
-  settingsDoneText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
-  reader: { flex: 1, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, backgroundColor: theme.colors.surface },
+  settingsDoneText: { color: colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  reader: { flex: 1, borderColor: colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, backgroundColor: colors.surface },
   // One 44dp band of app chrome above the official renderer instead of a 100dp block
   // plus a duplicate passage label. The active chip already names the passage.
   selector: {
@@ -460,28 +466,28 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: colors.border,
     borderBottomWidth: theme.control.hairline,
-    backgroundColor: theme.colors.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
-  selectorTitle: { color: theme.colors.muted, fontSize: theme.type.micro.size, fontWeight: '800' },
+  selectorTitle: { color: colors.muted, fontSize: theme.type.micro.size, fontWeight: '800' },
   selectorScroller: { flex: 1 },
   selectorButtons: { flexDirection: 'row', gap: theme.spacing.xs },
   // minWidth added because the zh-TW abbreviations are SHORT: 詩88 is three glyphs, so the tab
   // collapsed to 46.5dp wide once the labels stopped being PSA.88. Height was already fixed by the
   // tapCompact change; this is the width half, and it is a side effect of my own label change.
-  selectorButton: { minHeight: theme.control.tapCompact, minWidth: theme.control.tap, alignItems: 'center', borderColor: theme.colors.borderStrong, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, justifyContent: 'center', paddingHorizontal: theme.spacing.sm },
-  selectorButtonActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-  selectorButtonText: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '700' },
-  selectorButtonTextActive: { color: theme.colors.white },
+  selectorButton: { minHeight: theme.control.tapCompact, minWidth: theme.control.tap, alignItems: 'center', borderColor: colors.borderStrong, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, justifyContent: 'center', paddingHorizontal: theme.spacing.sm },
+  selectorButtonActive: { backgroundColor: colors.primaryFill, borderColor: colors.primaryFill },
+  selectorButtonText: { color: colors.primary, fontSize: theme.type.caption.size, fontWeight: '700' },
+  selectorButtonTextActive: { color: colors.onFill },
   nextButton: { minHeight: theme.control.tapCompact, justifyContent: 'center', paddingHorizontal: theme.spacing.sm },
-  nextButtonText: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
-  passage: { flex: 1, borderBottomColor: theme.colors.border, borderBottomWidth: theme.control.hairline },
-  attribution: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs },
+  nextButtonText: { color: colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
+  passage: { flex: 1, borderBottomColor: colors.border, borderBottomWidth: theme.control.hairline },
+  attribution: { color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs },
   loading: { minHeight: 120, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, padding: theme.spacing.md },
-  pending: { color: theme.colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, padding: theme.spacing.md },
-  error: { color: theme.colors.danger, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, paddingHorizontal: theme.spacing.md },
+  pending: { color: colors.muted, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, padding: theme.spacing.md },
+  error: { color: colors.danger, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, paddingHorizontal: theme.spacing.md },
   errorBox: { minHeight: 120, justifyContent: 'center', padding: theme.spacing.md, gap: theme.spacing.sm },
-  retryButton: { alignSelf: 'flex-start', minHeight: theme.control.tap, borderColor: theme.colors.primary, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, justifyContent: 'center', paddingHorizontal: theme.spacing.xl },
-  retryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
-});
+  retryButton: { alignSelf: 'flex-start', minHeight: theme.control.tap, borderColor: colors.primary, borderRadius: theme.radius.button, borderWidth: theme.control.hairline, justifyContent: 'center', paddingHorizontal: theme.spacing.xl },
+  retryText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+}));

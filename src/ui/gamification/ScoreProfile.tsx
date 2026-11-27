@@ -2,6 +2,7 @@ import type { ReactNode, Ref } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { Reward, ScoreChartQuery, ScoreProfile as ScoreProfileData } from '../../services/gamificationApiClient';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 import { RewardGoalCard } from './RewardGoalCard';
 import { ScoreProfileChart } from './ScoreProfileChart';
 
@@ -38,6 +39,7 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
    */
   chart?: ReactNode;
 }) {
+  const styles = useStyles();
   const privateData = profile.private;
   return <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
     {lead}
@@ -54,6 +56,6 @@ export function ScoreProfile({ profile, rewards, onChooseReward, onChooseTarget,
 }
 
 export type { Reward };
-const styles = StyleSheet.create({
-  content: { gap: theme.spacing.sm, paddingBottom: theme.spacing.xl }, header: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, padding: theme.spacing.md, borderLeftColor: theme.colors.primary, borderLeftWidth: theme.control.rail, gap: theme.spacing.xxs }, name: { color: theme.colors.ink, fontSize: theme.type.title.size, fontWeight: '800' }, total: { color: theme.colors.primaryDeep, fontSize: 42, lineHeight: 48, fontWeight: '800' }, totalLabel: { color: theme.colors.muted, fontSize: theme.type.label.size }, band: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '700' }, bandPending: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line }, adminButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.primary }, adminText: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
-});
+const useStyles = makeStyles((colors) => ({
+  content: { gap: theme.spacing.sm, paddingBottom: theme.spacing.xl }, header: { backgroundColor: colors.surface, borderRadius: theme.radius.card, padding: theme.spacing.md, borderLeftColor: colors.primary, borderLeftWidth: theme.control.rail, gap: theme.spacing.xxs }, name: { color: colors.ink, fontSize: theme.type.title.size, fontWeight: '800' }, total: { color: colors.primaryDeep, fontSize: 42, lineHeight: 48, fontWeight: '800' }, totalLabel: { color: colors.muted, fontSize: theme.type.label.size }, band: { color: colors.primary, fontSize: theme.type.body.size, fontWeight: '700' }, bandPending: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line }, adminButton: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: colors.primary }, adminText: { color: colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+}));

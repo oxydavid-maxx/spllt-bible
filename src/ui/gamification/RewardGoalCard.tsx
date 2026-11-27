@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { Reward } from '../../services/gamificationApiClient';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 
 // The reward a member is saving for sits at the top of their own points page (Octalysis CD4
 // Ownership + CD2 progress bar; the "last mile" is shown as an honest fraction, never as a nag).
@@ -12,6 +13,7 @@ import { theme } from '../Theme';
 // size and the height saved goes to the calendar underneath.
 
 export function GoalBar({ value, max }: { value: number; max: number }) {
+  const styles = useStyles();
   const shown = Math.max(0, Math.min(value, max));
   const ratio = max > 0 ? shown / max : 0;
   return <View style={styles.bar} accessible accessibilityRole="progressbar" accessibilityLabel="兌換進度"
@@ -36,6 +38,7 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
   displayName?: string;
   band?: number | null;
 }) {
+  const styles = useStyles();
   const redeemed = Math.max(0, earnedTotal - redeemableBalance);
   const shelf = (rewards ?? []).filter((reward) => reward.active);
   const reachable = target !== null && redeemableBalance >= target.costPoints;
@@ -79,39 +82,39 @@ export function RewardGoalCard({ target, redeemableBalance, earnedTotal, rewards
   </View>;
 }
 
-const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, borderLeftColor: theme.colors.primary, borderLeftWidth: theme.control.rail, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md, gap: theme.spacing.sm },
+const useStyles = makeStyles((colors) => ({
+  card: { backgroundColor: colors.surface, borderRadius: theme.radius.card, borderLeftColor: colors.primary, borderLeftWidth: theme.control.rail, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md, gap: theme.spacing.sm },
   goal: { gap: theme.spacing.xxs },
   goalLine: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm },
-  totalRow: { flexDirection: 'row', alignItems: 'baseline', gap: theme.spacing.sm, borderTopColor: theme.colors.border, borderTopWidth: theme.control.hairline, paddingTop: theme.spacing.sm },
-  totalName: { color: theme.colors.ink, fontSize: theme.type.label.size, fontWeight: '800', flexShrink: 1 },
-  totalValue: { color: theme.colors.primaryDeep, fontSize: theme.type.metric.size, lineHeight: theme.type.metric.line, fontWeight: '800' },
-  totalLabel: { color: theme.colors.muted, fontSize: theme.type.caption.size },
-  totalBand: { color: theme.colors.muted, fontSize: theme.type.caption.size, marginLeft: 'auto', flexShrink: 1 },
+  totalRow: { flexDirection: 'row', alignItems: 'baseline', gap: theme.spacing.sm, borderTopColor: colors.border, borderTopWidth: theme.control.hairline, paddingTop: theme.spacing.sm },
+  totalName: { color: colors.ink, fontSize: theme.type.label.size, fontWeight: '800', flexShrink: 1 },
+  totalValue: { color: colors.primaryDeep, fontSize: theme.type.metric.size, lineHeight: theme.type.metric.line, fontWeight: '800' },
+  totalLabel: { color: colors.muted, fontSize: theme.type.caption.size },
+  totalBand: { color: colors.muted, fontSize: theme.type.caption.size, marginLeft: 'auto', flexShrink: 1 },
   goalCopy: { flex: 1, minWidth: 0, gap: theme.spacing.xxs },
-  eyebrow: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
-  goalName: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800', flexShrink: 1 },
-  goalCost: { color: theme.colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
-  ready: { color: theme.colors.primaryDeep, fontSize: theme.type.label.size, fontWeight: '800' },
-  muted: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  pickerHint: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  eyebrow: { color: colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
+  goalName: { color: colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800', flexShrink: 1 },
+  goalCost: { color: colors.primary, fontSize: theme.type.body.size, fontWeight: '800' },
+  ready: { color: colors.primaryDeep, fontSize: theme.type.label.size, fontWeight: '800' },
+  muted: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  pickerHint: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
   goalAction: { width: '100%', alignItems: 'stretch' },
   shelf: { gap: theme.spacing.sm },
-  shelfCard: { width: 116, minHeight: theme.control.tap, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, gap: theme.spacing.xxs },
-  shelfCardSelected: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-  shelfName: { color: theme.colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
-  shelfNameSelected: { color: theme.colors.white },
-  shelfCost: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '700' },
-  shelfState: { color: theme.colors.muted, fontSize: theme.type.micro.size, fontWeight: '700' },
-  bar: { height: 10, borderRadius: 5, backgroundColor: theme.colors.primarySoft, overflow: 'hidden' },
-  barFill: { height: 10, borderRadius: 5, backgroundColor: theme.colors.primary },
-  shelfBar: { height: 6, borderRadius: 3, backgroundColor: theme.colors.primarySoft, overflow: 'hidden' },
+  shelfCard: { width: 116, minHeight: theme.control.tap, borderRadius: theme.radius.chip, borderWidth: theme.control.hairline, borderColor: colors.borderStrong, backgroundColor: colors.surface, paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, gap: theme.spacing.xxs },
+  shelfCardSelected: { backgroundColor: colors.primaryFill, borderColor: colors.primaryFill },
+  shelfName: { color: colors.ink, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
+  shelfNameSelected: { color: colors.onFill },
+  shelfCost: { color: colors.primary, fontSize: theme.type.caption.size, fontWeight: '700' },
+  shelfState: { color: colors.muted, fontSize: theme.type.micro.size, fontWeight: '700' },
+  bar: { height: 10, borderRadius: 5, backgroundColor: colors.primarySoft, overflow: 'hidden' },
+  barFill: { height: 10, borderRadius: 5, backgroundColor: colors.primaryFill },
+  shelfBar: { height: 6, borderRadius: 3, backgroundColor: colors.primarySoft, overflow: 'hidden' },
   // On the selected card the background IS primary, so a primarySoft track sits a shade away from
   // white and a 9% white fill disappears into it — the bar reads as full. The track has to be
   // darker than the fill, not lighter than the card.
-  shelfBarSelected: { backgroundColor: 'rgba(0,0,0,0.28)' },
-  shelfBarFill: { height: 6, borderRadius: 3, backgroundColor: theme.colors.primary },
-  barFillSelected: { backgroundColor: theme.colors.white },
-  button: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, backgroundColor: theme.colors.primary },
-  buttonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '800' },
-});
+  shelfBarSelected: { backgroundColor: colors.shelfSelected },
+  shelfBarFill: { height: 6, borderRadius: 3, backgroundColor: colors.primaryFill },
+  barFillSelected: { backgroundColor: colors.onFill },
+  button: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, backgroundColor: colors.primaryFill },
+  buttonText: { color: colors.onFill, fontSize: theme.type.body.size, fontWeight: '800' },
+}));

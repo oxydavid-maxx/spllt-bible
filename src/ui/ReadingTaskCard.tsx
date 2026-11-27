@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 import { formatReferenceListZhTw } from '../domain/scriptureReference';
 
 const FEEDBACK_VISIBLE_MS = 900;
@@ -21,6 +22,7 @@ function confirmUndo(onUndo: () => void) {
 
 /** A short "+1" that appears the moment the day flips to completed, then fades. No copy, no badge. */
 function CompletionFeedback({ visible }: { visible: boolean }) {
+  const styles = useStyles();
   const animated = optionalAnimated();
   const opacity = useRef(animated ? new animated.Value(0) : null).current;
   useEffect(() => {
@@ -38,6 +40,7 @@ function CompletionFeedback({ visible }: { visible: boolean }) {
 }
 
 export function ReadingTaskCard({ date, references, completed, onOpenReader, onComplete, onUndo, syncStatus, canComplete = true }: { date: string; references: string[]; completed: boolean; onOpenReader?: () => void; onComplete?: () => void; onUndo?: () => void; syncStatus?: 'CONFIRMED' | 'PENDING_SAVE' | 'SAVE_FAILED'; canComplete?: boolean }) {
+  const styles = useStyles();
   const pending = syncStatus === 'PENDING_SAVE' || syncStatus === 'SAVE_FAILED';
   // 顯示用中文簡寫;references 本身仍是原始 USFM,往下傳給閱讀器與同步的都沒有改。
   const referencesLabel = formatReferenceListZhTw(references);
@@ -87,27 +90,27 @@ export function ReadingTaskCard({ date, references, completed, onOpenReader, onC
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   // Signature: a 3dp left rail marks whose turn it is - evergreen once the plan day
   // is confirmed, clay while the record still needs the network. Costs no whitespace.
   card: {
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: theme.control.hairline,
     borderLeftWidth: theme.control.rail,
-    borderLeftColor: theme.colors.borderStrong,
+    borderLeftColor: colors.borderStrong,
     borderRadius: theme.radius.card,
     padding: theme.spacing.md,
     gap: theme.spacing.sm,
   },
-  cardDone: { borderLeftColor: theme.colors.primary },
-  cardPending: { borderLeftColor: theme.colors.accent },
+  cardDone: { borderLeftColor: colors.primary },
+  cardPending: { borderLeftColor: colors.accent },
   row: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: theme.spacing.sm },
-  title: { color: theme.colors.ink, flexShrink: 1, fontSize: theme.type.title.size, lineHeight: theme.type.title.line, fontWeight: '800' },
+  title: { color: colors.ink, flexShrink: 1, fontSize: theme.type.title.size, lineHeight: theme.type.title.line, fontWeight: '800' },
   stateHost: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   state: {
-    color: theme.colors.muted,
-    backgroundColor: theme.colors.surfaceMuted,
+    color: colors.muted,
+    backgroundColor: colors.surfaceMuted,
     overflow: 'hidden',
     borderRadius: theme.radius.chip,
     fontSize: theme.type.micro.size,
@@ -116,19 +119,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.xs,
   },
-  stateDone: { color: theme.colors.primary, backgroundColor: theme.colors.primarySoft },
-  feedback: { width: 34, height: 34, borderRadius: 17, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
-  feedbackText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '900' },
-  button: { minHeight: theme.control.cta, borderRadius: theme.radius.button, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.md },
-  buttonDisabled: { backgroundColor: theme.colors.muted },
-  buttonText: { color: theme.colors.white, fontSize: theme.type.body.size, fontWeight: '700' },
+  stateDone: { color: colors.primary, backgroundColor: colors.primarySoft },
+  feedback: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.primaryFill, alignItems: 'center', justifyContent: 'center' },
+  feedbackText: { color: colors.onFill, fontSize: theme.type.body.size, fontWeight: '900' },
+  button: { minHeight: theme.control.cta, borderRadius: theme.radius.button, backgroundColor: colors.primaryFill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.md },
+  buttonDisabled: { backgroundColor: colors.muted },
+  buttonText: { color: colors.onFill, fontSize: theme.type.body.size, fontWeight: '700' },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm },
-  sync: { color: theme.colors.muted, flexShrink: 1, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  syncPending: { color: theme.colors.accent, fontWeight: '700' },
-  secondaryButton: { minHeight: theme.control.tapCompact, flexShrink: 0, borderColor: theme.colors.primary, borderWidth: 1.5, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.md },
-  secondaryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
+  sync: { color: colors.muted, flexShrink: 1, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  syncPending: { color: colors.accent, fontWeight: '700' },
+  secondaryButton: { minHeight: theme.control.tapCompact, flexShrink: 0, borderColor: colors.primary, borderWidth: 1.5, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.md },
+  secondaryText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
   // Undo is reversible but touches the ledger: quiet text link, confirmed before it runs.
   // The tap target keeps 48dp through minHeight + hitSlop while the visible text stays small.
   undoLink: { minHeight: theme.control.tapCompact, flexShrink: 0, alignItems: 'flex-end', justifyContent: 'center', paddingHorizontal: theme.spacing.xs },
-  undoLinkText: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '600', textDecorationLine: 'underline' },
-});
+  undoLinkText: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '600', textDecorationLine: 'underline' },
+}));

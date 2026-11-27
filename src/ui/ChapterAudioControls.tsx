@@ -24,6 +24,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAudioPlayer, type AudioLockScreenOptions, type AudioMetadata, type AudioStatus } from 'expo-audio';
 import { theme } from './Theme';
+import { makeStyles, useColors } from './useAppTheme';
 import { SettingSwitchRow } from './SettingSwitchRow';
 import { isAuthorizedAudioEnabled, isQaTestAudioEnabled, resolveChapterAudioSession, verseAtPosition } from '../services/audioChapterResolver';
 import { createCapabilityCoordinator, type CapabilityCoordinator, type CapabilityOutcome } from '../services/contentCapabilityClient';
@@ -126,6 +127,7 @@ export function ChapterAudioAutoplayToggle({ active = true }: { active?: boolean
 
 /** Stop/error notice rendered outside the interactive toolbar so it cannot cover controls. */
 export function ChapterAudioAutoplayNotice({ active = true }: { active?: boolean }) {
+  const styles = useStyles();
   const autoplay = useChapterAudioAutoplay();
   if (!active || !autoplay.available || !autoplay.notice) return null;
   return (
@@ -201,6 +203,8 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
   onPlaybackEnded,
   onPlaybackError,
 }, ref) {
+  const styles = useStyles();
+  const colors = useColors();
   const visibleRevision = useReaderRetrySignal(visible);
   const autoplay = useChapterAudioAutoplay();
   const autoplayRef = useRef(autoplay);
@@ -735,9 +739,9 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
         accessibilityState={{ busy: loading }}
         {...(!active ? { accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' as const } : {})}
       >
-      {active && loading ? <ActivityIndicator accessibilityLabel={slotLabel} color={readerAction ? theme.colors.white : theme.colors.primary} /> : null}
+      {active && loading ? <ActivityIndicator accessibilityLabel={slotLabel} color={readerAction ? colors.onFill : colors.primary} /> : null}
       {active && noAudio ? <>
-        <MaterialCommunityIcons accessible accessibilityLabel={slotLabel} name="volume-off" size={21} color={readerAction ? theme.colors.white : theme.colors.muted} />
+        <MaterialCommunityIcons accessible accessibilityLabel={slotLabel} name="volume-off" size={21} color={readerAction ? colors.onFill : colors.muted} />
         {bottomCell ? <Text style={styles.bottomLabel}>無朗讀</Text> : null}
       </> : null}
       {active && (hasSource || canRetry) ? (
@@ -746,10 +750,10 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
           accessibilityLabel={bottomCell ? (canRetry ? '重試' : progress.playing ? '暫停' : '播放') : canRetry ? `重試${label}語音` : progress.playing ? `暫停${label}語音` : `播放${label}語音`}
           accessibilityHint={bottomCell ? `${canRetry ? '重試' : progress.playing ? '暫停' : '播放'}${label}語音` : undefined}
           onPress={canRetry ? retryPlayback : run(progress.playing ? '暫停' : '播放', () => progress.playing ? pauseCurrentPlayback() : playCurrentPlayback())}
-          android_ripple={{ color: theme.colors.primarySoft }}
+          android_ripple={{ color: colors.primarySoft }}
           style={[styles.button, bottomCell && styles.bottomButton, readerAction && styles.readerActionButton]}
         >
-          <MaterialCommunityIcons name={canRetry ? 'replay' : progress.playing ? 'pause' : 'play'} size={22} color={readerAction ? theme.colors.white : theme.colors.primary} />
+          <MaterialCommunityIcons name={canRetry ? 'replay' : progress.playing ? 'pause' : 'play'} size={22} color={readerAction ? colors.onFill : colors.primary} />
           {bottomCell ? <Text style={styles.bottomLabel}>{canRetry ? '重試' : progress.playing ? '暫停' : '播放'}</Text> : null}
         </Pressable>
       ) : null}
@@ -769,7 +773,7 @@ export const ChapterAudioControls = forwardRef<ChapterAudioControlsHandle, Chapt
   );
 });
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   host: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   readerActionHost: { width: 56, height: 56 },
   bottomHost: { width: '100%', height: theme.control.tap, flex: 1 },
@@ -777,11 +781,11 @@ const styles = StyleSheet.create({
   readerActionSlot: { width: 56, height: 56 },
   bottomSlot: { width: '100%', height: theme.control.tap, flex: 1, flexDirection: 'row', gap: theme.spacing.xxs },
   // The collapsed overlay keeps a circular boundary; the bottom action row overrides it with borderless chrome.
-  button: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.pill, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, backgroundColor: theme.colors.surface },
+  button: { width: theme.control.tap, height: theme.control.tap, flexShrink: 0, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.pill, borderWidth: theme.control.hairline, borderColor: colors.primary, backgroundColor: colors.surface },
   bottomButton: { width: '100%', height: theme.control.tap, minHeight: theme.control.tap, flexDirection: 'row', gap: theme.spacing.xxs, borderWidth: 0, borderColor: 'transparent', borderRadius: 0, backgroundColor: 'transparent' },
-  readerActionButton: { width: 56, height: 56, minHeight: 56, flexDirection: 'row', borderRadius: 28, borderWidth: 0, borderColor: 'transparent', backgroundColor: theme.colors.primary },
-  bottomLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
-  autoplayNoticeRow: { flexShrink: 0, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, backgroundColor: theme.colors.surfaceMuted },
-  autoplayNoticeText: { color: theme.colors.danger, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
-  feedback: { position: 'absolute', left: theme.control.tap + theme.spacing.xs, top: 0, color: theme.colors.danger ?? theme.colors.ink, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, maxWidth: 160 },
-});
+  readerActionButton: { width: 56, height: 56, minHeight: 56, flexDirection: 'row', borderRadius: 28, borderWidth: 0, borderColor: 'transparent', backgroundColor: colors.primaryFill },
+  bottomLabel: { color: colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
+  autoplayNoticeRow: { flexShrink: 0, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, backgroundColor: colors.surfaceMuted },
+  autoplayNoticeText: { color: colors.danger, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+  feedback: { position: 'absolute', left: theme.control.tap + theme.spacing.xs, top: 0, color: colors.danger ?? colors.ink, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, maxWidth: 160 },
+}));

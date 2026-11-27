@@ -16,6 +16,7 @@
 | [journal.md](journal.md) | 靈修日記：寫、存、匯出、存到自選資料夾 (2026-10-14 起分頁列不顯示) |
 | [reminders.md](reminders.md) | 讀經提醒與推播 |
 | [account.md](account.md) | Google/Apple 登入 (含開機分流與登入中斷提示)、帳戶頁、青少/主堂、永久刪除帳號、登出、App 更新提示 |
+| [night-mode.md](night-mode.md) | 夜間模式：晚上自動/跟手機/一直深色/一直白底、讀經頁 ⋯ 和我的帳戶的設定、新功能卡、深色長相 |
 
 ## 公告
 
@@ -112,6 +113,13 @@
 | 青少/主堂 | 新會員第一次登入一定要選青少或主堂 (沒有預設、讀不到也照樣問)；之後在帳戶頁或積分頁「我在主堂聚會 (不是青少)」旁的「改」改 | 登入後第一個畫面、帳戶頁、積分「團體」 | Android、iOS | [account.md](account.md) |
 | App 更新提示 | 有新版時提示更新：Play 裝的在 App 裡更新，側載的開安裝頁，TestFlight 裝的 iPhone 開 TestFlight | 開 App 或回到前景時自動出現 | Android, iOS (只有 TestFlight 安裝；App Store 安裝不出現) | [account.md](account.md) |
 | JS/圖片背景更新 | 同一商店版本背景下載；下次冷啟動，或離開 30 分鐘以上回來時自動換上 (朗讀中、輸入沒存、面板開著不換)；管理者可先收 preview | 自動；帳戶頁最下面的管理區 | Android, iOS | [account.md](account.md) |
+
+## 顯示
+
+| 功能 | 一句話 | 從哪裡進 | 平台 | 規格 |
+|---|---|---|---|---|
+| 夜間模式 | 預設晚上 6 點到早上 6 點自動變深色 (深灰)，也能選跟手機、一直深色、一直白底；只改這支手機 | 讀經頁 ⋯ 更多閱讀工具 →「夜間模式」、我的帳戶「夜間模式」卡 | Android、iOS | [night-mode.md](night-mode.md) |
+| 新功能卡 (夜間模式) | 更新後第一次打開讀經頁跳一次，「知道了」或「改設定」後不再出現 | 自動 | Android、iOS | [night-mode.md](night-mode.md) |
 
 ## 其他文件放哪
 

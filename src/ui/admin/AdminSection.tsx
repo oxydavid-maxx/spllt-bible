@@ -4,6 +4,7 @@ import { AdminAllScoresEntry } from '../AdminAllScoresEntry';
 import { BackOfficeEntry } from './BackOffice';
 import { AdminOtaUpdatesEntry, useEndPreviewForNonAdministrator } from './OtaUpdates';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 
 /**
  * 我的帳戶的「管理者」區塊 (維護者 2026-10-31，選 A：「同意：我的帳戶管理入口照 A 收成一個管理者區塊」). The three
@@ -12,6 +13,7 @@ import { theme } from '../Theme';
  * it, once, over one card of three rows. Everyone else sees nothing; the rows share one capabilities lookup.
  */
 export function AdminSection() {
+  const styles = useStyles();
   const capabilities = useViewerCapabilities();
   // Before drawing nothing: a role removed during this sign-in still takes the phone off preview (Codex review).
   useEndPreviewForNonAdministrator(capabilities);
@@ -28,9 +30,9 @@ export function AdminSection() {
   </View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   section: { gap: theme.spacing.xs, marginTop: theme.spacing.xs },
-  heading: { color: theme.colors.muted, fontSize: theme.type.label.size, fontWeight: '700', paddingHorizontal: theme.spacing.xs },
-  card: { borderRadius: theme.radius.card, borderWidth: theme.control.hairline, borderColor: theme.colors.primary, backgroundColor: theme.colors.surface, overflow: 'hidden' },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
-});
+  heading: { color: colors.muted, fontSize: theme.type.label.size, fontWeight: '700', paddingHorizontal: theme.spacing.xs },
+  card: { borderRadius: theme.radius.card, borderWidth: theme.control.hairline, borderColor: colors.primary, backgroundColor: colors.surface, overflow: 'hidden' },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+}));

@@ -20,10 +20,10 @@ if (!measuredPositive(current[field]) || !measuredPositive(baseline[field])) {
   process.exit(1);
 }
 if (mode === 'same-flows') {
-  // run-flows.sh measures home/reader before 43. Adding the late OTA interaction must not
-  // turn off the existing 1.10 memory guard; all earlier flow/key distinctions still apply.
+  // run-flows.sh measures home/reader before 43. Adding the late OTA interaction (and the 夜間模式 screenshots, 45-night-mode)
+  // must not turn off the existing 1.10 memory guard; all earlier flow/key distinctions still apply.
   const ran = (summary: Summary) => Object.entries(summary.flows ?? {})
-    .filter(([name, result]) => result !== 'SKIP' && !(field === 'footprintMB' && name === '43-ota-channel'))
+    .filter(([name, result]) => result !== 'SKIP' && !(field === 'footprintMB' && (name === '43-ota-channel' || name === '45-night-mode')))
     .map(([name]) => name).sort().join(',');
   if (ran(current) !== ran(baseline)) {
     console.log(`| ${label} | 略過 | 跑的流程和 main 的基準不同，不能直接比；合併後 main 會用這組流程重新記錄基準 |`);

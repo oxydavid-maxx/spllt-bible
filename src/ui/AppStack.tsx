@@ -2,6 +2,7 @@ import { Image, View } from 'react-native';
 import { BRAND_ICON } from './brandIcon';
 import { Stack } from 'expo-router';
 import type { AuthStatus } from '../services/authSession';
+import { useColors } from './useAppTheme';
 
 /** Only a restored local session opens the app; returning members never see sign-in flash. */
 export function canUseApp(status: AuthStatus): boolean {
@@ -14,8 +15,10 @@ export function canUseApp(status: AuthStatus): boolean {
  * List any new top-level route here; a route the layout does not name stays reachable signed out.
  */
 export function AppStack({ signedIn, hydrating = false }: { signedIn: boolean; hydrating?: boolean }) {
-  // Match the native launch screen's white background and app icon, with no routes or text yet.
-  if (hydrating) return <View testID="auth-startup" style={{ flex: 1, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+  const colors = useColors();
+  // Match the native launch screen's white background and app icon, with no routes or text yet (white at night too:
+  // an OTA update cannot change the launch screen, docs/features/night-mode.md).
+  if (hydrating) return <View testID="auth-startup" style={{ flex: 1, backgroundColor: colors.launchBackground, alignItems: 'center', justifyContent: 'center' }}>
     <Image source={BRAND_ICON} style={{ width: 200, height: 200 }} accessibilityIgnoresInvertColors />
   </View>;
   return <Stack screenOptions={{ headerShown: false }}>

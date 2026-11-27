@@ -33,7 +33,7 @@ describe('iOS flow readiness and semantic interaction targets', () => {
     // The bounded reveal is not a retry of the test; every original navigation/audio assertion remains.
     expect(commands.slice(-7)).toEqual([
       { extendedWaitUntil: { visible: '積分', timeout: 10000 } },
-      { tapOn: { text: '積分', retryTapIfNoChange: true } },
+      { repeat: { times: 3, while: { notVisible: '開啟積分操作' }, commands: [{ tapOn: { text: '積分', retryTapIfNoChange: false } }] } },
       { extendedWaitUntil: { visible: '開啟積分操作', timeout: 15000 } },
       { tapOn: '讀經入口' },
       { assertVisible: '暫停.*語音' },

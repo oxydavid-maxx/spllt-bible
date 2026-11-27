@@ -3,6 +3,7 @@ import { AccessibilityInfo, Animated, StyleSheet, Text } from 'react-native';
 import type { CompletionAwardEvent } from '../services/completionController';
 import { taipeiDate } from '../domain/gamificationV1';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 export interface DevotionCompletionEvent { kind: 'devotion'; taskDate: string; operationId: string }
 export type CompletionFeedbackEvent = CompletionAwardEvent | DevotionCompletionEvent;
@@ -17,6 +18,7 @@ export function buildCompletionAwardMessage(event: CompletionFeedbackEvent, toda
 
 /** `bottomOffset` floats the award up from just above a bottom action (the Reader's ○) instead of under the header. */
 export function CompletionAwardFeedback({ event, onFinished, bottomOffset }: { event: CompletionFeedbackEvent | null; onFinished: (operationId: string) => void; bottomOffset?: number }) {
+  const styles = useStyles();
   const [reduceMotion, setReduceMotion] = useState<boolean | null>(null);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
@@ -52,8 +54,8 @@ export function CompletionAwardFeedback({ event, onFinished, bottomOffset }: { e
   </Animated.View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   container: { position: 'absolute', top: 82, left: theme.spacing.lg, right: theme.spacing.lg, alignItems: 'center', zIndex: 20 },
   aboveAction: { top: undefined, right: theme.spacing.sm, alignItems: 'flex-end' },
-  label: { color: theme.colors.white, backgroundColor: theme.colors.ink, borderRadius: theme.radius.chip, overflow: 'hidden', paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.sm, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
-});
+  label: { color: colors.onInverse, backgroundColor: colors.inverse, borderRadius: theme.radius.chip, overflow: 'hidden', paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.sm, fontSize: theme.type.label.size, lineHeight: theme.type.label.line, fontWeight: '800' },
+}));

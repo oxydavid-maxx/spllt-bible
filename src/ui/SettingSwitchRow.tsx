@@ -1,11 +1,13 @@
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 /**
  * A switch row in the reader's ⋯ sheet (維護者 2026-10-14): what it does in words on the left, a
  * system-style switch on the right. Green track with the knob right is on; grey with it left is off.
  */
 export function SettingSwitchRow({ label, description, enabled, hint, onPress, help }: { label: string; description: string; enabled: boolean; hint: string; onPress: () => void; help?: string }) {
+  const styles = useStyles();
   return <View style={styles.row}>
     <View style={styles.copy}>
       <Text style={styles.label}>{label}</Text>
@@ -20,18 +22,18 @@ export function SettingSwitchRow({ label, description, enabled, hint, onPress, h
   </View>;
 }
 
-const styles = StyleSheet.create({
-  row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: theme.spacing.sm, borderBottomWidth: theme.control.hairline, borderBottomColor: theme.colors.border },
+const useStyles = makeStyles((colors) => ({
+  row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: theme.spacing.sm, borderBottomWidth: theme.control.hairline, borderBottomColor: colors.border },
   help: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  question: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: theme.colors.primary, textAlign: 'center', color: theme.colors.primary, fontSize: 14, lineHeight: 20, fontWeight: '800' },
+  question: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: colors.primary, textAlign: 'center', color: colors.primary, fontSize: 14, lineHeight: 20, fontWeight: '800' },
   switchTouch: { minHeight: 44, minWidth: 50, alignItems: 'center', justifyContent: 'center' },
   copy: { flex: 1, gap: 2 },
-  label: { color: theme.colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '800' },
-  description: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  label: { color: colors.ink, fontSize: 16, lineHeight: 22, fontWeight: '800' },
+  description: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
   track: { width: 50, height: 30, borderRadius: 15, flexShrink: 0 },
-  trackOn: { backgroundColor: theme.colors.primary },
-  trackOff: { backgroundColor: theme.colors.borderStrong },
-  knob: { position: 'absolute', top: 3, width: 24, height: 24, borderRadius: 12, backgroundColor: theme.colors.white },
+  trackOn: { backgroundColor: colors.primaryFill },
+  trackOff: { backgroundColor: colors.borderStrong },
+  knob: { position: 'absolute', top: 3, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.onFill },
   knobOn: { right: 3 },
   knobOff: { left: 3 },
-});
+}));

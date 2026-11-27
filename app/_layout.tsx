@@ -1,4 +1,3 @@
-import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuthSnapshot, type AuthSession, type VerifiedProfile } from '../src/services/authSession';
@@ -21,6 +20,7 @@ import { registerConfiguredFriendPushTask } from '../src/services/friendPush';
 import { configureChapterAudio } from '../src/services/chapterAudioStartup';
 import { OtaUpdateCheck } from '../src/ui/admin/OtaUpdates';
 import { startClientInfo } from '../src/services/clientInfoNative';
+import { NightModeProvider } from '../src/ui/NightModeProvider';
 
 // At module scope, as the meeting task once was: a push that wakes a closed app has to find the task
 // already defined. A phone without the native modules simply has no friend notifications.
@@ -70,5 +70,6 @@ export default function RootLayout() {
   configureReminderRuntime(reminderRuntime);
   // The gesture root stays for react-native-gesture-handler users; the SDK's sheets no longer need it (they are the app's own, src/ui/sheet/bottomSheet.tsx).
   // OtaUpdateCheck stays outside the hydrating gate: it waits for a definite member itself on a preview phone.
-  return <GestureHandlerRootView style={{ flex: 1 }}><AuthProvider loadProfile={loadProfile}><OtaUpdateCheck /><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><StatusBar style="dark" /><AppStack signedIn={signedIn} hydrating={hydrating} />{!hydrating && <><CongregationGate /><UpdatePrompt /></>}</AuthProvider></GestureHandlerRootView>;
+  // NightModeProvider (夜間模式) gives every screen its colours, the navigation bars theirs, and sets the status bar.
+  return <GestureHandlerRootView style={{ flex: 1 }}><NightModeProvider><AuthProvider loadProfile={loadProfile}><OtaUpdateCheck /><ReminderNotificationBridge revokeQueue={reminderRevokeQueue} /><AppStack signedIn={signedIn} hydrating={hydrating} />{!hydrating && <><CongregationGate /><UpdatePrompt /></>}</AuthProvider></NightModeProvider></GestureHandlerRootView>;
 }

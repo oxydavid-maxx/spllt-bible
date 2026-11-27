@@ -23,6 +23,10 @@ vi.mock('expo-router', () => ({
   Stack: () => React.createElement('Stack', { readingDate: useReadingSession().selectedDate }),
   router: { push: state.push },
   useRootNavigationState: () => ({ key: state.navigationKey }),
+  // 夜間模式 gives the navigators their colours through expo-router's theme (src/ui/NightModeProvider.tsx).
+  DefaultTheme: { dark: false, colors: {}, fonts: {} },
+  DarkTheme: { dark: true, colors: {}, fonts: {} },
+  ThemeProvider: ({ children }: { children?: React.ReactNode }) => children,
 }));
 vi.mock('expo-status-bar', () => ({ StatusBar: 'StatusBar' }));
 vi.mock('expo-crypto', () => ({ randomUUID: () => 'fixture-id' }));

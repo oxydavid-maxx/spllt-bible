@@ -2,7 +2,7 @@ import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useViewerCapabilities } from '../services/viewerCapabilities';
 import { requestOpenAllScores } from '../services/allScoresRequest';
-import { adminRowStyles } from './admin/adminRowStyles';
+import { useAdminRowStyles } from './admin/adminRowStyles';
 
 /**
  * 全體, the first row of the 管理者 card on 我的帳戶 (AdminSection). It used to sit faded at the foot of the
@@ -11,6 +11,7 @@ import { adminRowStyles } from './admin/adminRowStyles';
  * asks for the device unlock before opening it, and only then shows its 全體 (管理) tab.
  */
 export function AdminAllScoresEntry() {
+  const adminRowStyles = useAdminRowStyles();
   if (!useViewerCapabilities()?.canViewAllScores) return null;
   return <Pressable accessibilityRole="button" accessibilityLabel="全體" accessibilityHint="每個人的積分、在哪邊聚會、手機版本" onPress={() => { requestOpenAllScores(); router.navigate('/progress'); }} style={adminRowStyles.row}>
     <View style={adminRowStyles.text}>

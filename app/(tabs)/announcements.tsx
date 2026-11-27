@@ -15,6 +15,7 @@ import { NO_UPDATE, type UpdateState } from '../../src/services/updateCheck';
 import { UpdateCard } from '../../src/ui/UpdateCard';
 import { installedVersionCode } from '../../src/ui/UpdatePrompt';
 import { theme } from '../../src/ui/Theme';
+import { makeStyles } from '../../src/ui/useAppTheme';
 import { useCongregation } from '../../src/ui/congregation/congregationStore';
 import { SIDE_NAME, SIDE_ORDER } from '../../src/ui/congregation/congregationCopy';
 import type { Congregation } from '../../src/services/devotionClient';
@@ -42,6 +43,7 @@ const SIDES = SIDE_ORDER.map((value) => ({ value, name: SIDE_NAME[value] }));
 type Side = Congregation;
 
 export default function AnnouncementsScreen() {
+  const styles = useStyles();
   const [client] = useState(() => createAnnouncementClient({
     storage: {
       getItem: (key) => SecureStore.getItemAsync(key),
@@ -150,14 +152,14 @@ export default function AnnouncementsScreen() {
   </SafeAreaView>;
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.colors.background },
+const useStyles = makeStyles((colors) => ({
+  screen: { flex: 1, backgroundColor: colors.background },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm },
-  title: { color: theme.colors.ink, fontSize: theme.type.title.size, fontWeight: '800' },
+  title: { color: colors.ink, fontSize: theme.type.title.size, fontWeight: '800' },
   sides: { flexDirection: 'row', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.sm },
-  side: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface },
-  sideActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-  sideText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
-  sideTextActive: { color: theme.colors.white },
-  empty: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md },
-});
+  side: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: theme.control.hairline, borderColor: colors.borderStrong, backgroundColor: colors.surface },
+  sideActive: { backgroundColor: colors.primaryFill, borderColor: colors.primaryFill },
+  sideText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  sideTextActive: { color: colors.onFill },
+  empty: { color: colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md },
+}));

@@ -8,12 +8,15 @@ import { runtimeConfig } from '../config/runtime';
 import { GoogleLoginCard } from './GoogleLoginCard';
 import { appVersionLabel, buildAccountSurfaceModel } from './accountSurface';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 import { ReminderSettings } from './ReminderSettings';
 import { CongregationSetting } from './congregation/CongregationSetting';
+import { NightModeCard } from './NightModeSettings';
 import { getReminderRuntimeOwner, useReminderRuntimeSnapshot } from '../services/reminderRuntime';
 
 /** `adminEntry`: the route hands in 全體 (管理), so this surface stays free of navigation. */
 export function AccountSurface({ adminEntry }: { adminEntry?: ReactNode } = {}) {
+  const styles = useStyles();
   const auth = useAuthSnapshot();
   const session = auth.session;
   const profile = session && auth.profile?.memberId === session.memberId ? auth.profile : null;
@@ -69,6 +72,8 @@ export function AccountSurface({ adminEntry }: { adminEntry?: ReactNode } = {}) 
           showMeeting={false}
         />
         <CongregationSetting />
+        {/* 夜間模式 under 我在青少聚會 (光佑 2026-11-04, mock C ⑫). */}
+        <NightModeCard />
         {adminEntry}
 
       </> : model.mode === 'loading' || model.mode === 'error' || model.mode === 'empty' ? <>
@@ -86,20 +91,20 @@ export function AccountSurface({ adminEntry }: { adminEntry?: ReactNode } = {}) 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   // The identity block reads left-aligned like a member row on a printed roster.
   // The 72dp centred avatar was the only element on the screen with no job.
-  card: { flexGrow: 1, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg, gap: theme.spacing.md, backgroundColor: theme.colors.background },
-  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: theme.colors.primary, color: theme.colors.white, fontSize: theme.type.metric.size, fontWeight: '800', textAlign: 'center', textAlignVertical: 'center' },
-  avatarImage: { width: 56, height: 56, borderRadius: 28, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline },
-  title: { color: theme.colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' },
-  body: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-  secondary: { minHeight: theme.control.tap, borderColor: theme.colors.primary, borderWidth: theme.control.hairline, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center' },
-  secondaryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
-  destructive: { minHeight: theme.control.tap, borderRadius: theme.radius.button, backgroundColor: theme.colors.danger, alignItems: 'center', justifyContent: 'center' },
-  destructiveText: { color: theme.colors.white, fontSize: theme.type.label.size, fontWeight: '700' },
-  error: { color: theme.colors.danger, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  card: { flexGrow: 1, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.lg, gap: theme.spacing.md, backgroundColor: colors.background },
+  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryFill, color: colors.onFill, fontSize: theme.type.metric.size, fontWeight: '800', textAlign: 'center', textAlignVertical: 'center' },
+  avatarImage: { width: 56, height: 56, borderRadius: 28, borderColor: colors.borderStrong, borderWidth: theme.control.hairline },
+  title: { color: colors.ink, fontSize: theme.type.display.size, lineHeight: theme.type.display.line, fontWeight: '800' },
+  body: { color: colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  secondary: { minHeight: theme.control.tap, borderColor: colors.primary, borderWidth: theme.control.hairline, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center' },
+  secondaryText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
+  destructive: { minHeight: theme.control.tap, borderRadius: theme.radius.button, backgroundColor: colors.dangerFill, alignItems: 'center', justifyContent: 'center' },
+  destructiveText: { color: colors.onFill, fontSize: theme.type.label.size, fontWeight: '700' },
+  error: { color: colors.danger, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   quiet: { minHeight: theme.control.tap, alignSelf: 'flex-start', justifyContent: 'center' },
-  version: { marginTop: 'auto', color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  quietText: { color: theme.colors.danger, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, textDecorationLine: 'underline' },
-});
+  version: { marginTop: 'auto', color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  quietText: { color: colors.danger, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, textDecorationLine: 'underline' },
+}));

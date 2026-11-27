@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppModal } from '../AppModal';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 import { useAutoUpdateHold } from '../useAutoUpdateHold';
 import type { Congregation } from '../../services/devotionClient';
 import { useCongregation } from './congregationStore';
@@ -17,6 +19,7 @@ import { CHOICES, QUESTION, whereSentence } from './congregationCopy';
  * with 「再試一次」, rather than letting the member through uncounted.
  */
 export function CongregationGate() {
+  const styles = useStyles();
   const congregation = useCongregation();
   const [picked, setPicked] = useState<Congregation | null>(null);
   const [saving, setSaving] = useState(false);
@@ -37,7 +40,7 @@ export function CongregationGate() {
     try { await congregation.choose(picked); } catch { setFailed(true); } finally { setSaving(false); }
   };
   const confirmLabel = saving ? '儲存中…' : picked ? whereSentence(picked) : '請先選上面其中一個';
-  return <Modal visible animationType="fade" onRequestClose={() => undefined}>
+  return <AppModal visible animationType="fade" onRequestClose={() => undefined}>
     <View style={styles.page}>
       <Text accessibilityRole="header" style={styles.title}>{QUESTION}</Text>
       {CHOICES.map((choice) => {
@@ -80,23 +83,23 @@ export function CongregationGate() {
         <Text style={styles.retryText}>{retrying ? '讀取中…' : '再試一次'}</Text>
       </Pressable> : null}
     </View>
-  </Modal>;
+  </AppModal>;
 }
 
-const styles = StyleSheet.create({
-  page: { flex: 1, justifyContent: 'center', gap: theme.spacing.md, paddingHorizontal: theme.spacing.xl, backgroundColor: theme.colors.background },
-  title: { color: theme.colors.ink, fontSize: 26, lineHeight: 34, fontWeight: '800' },
-  choice: { minHeight: 88, justifyContent: 'center', gap: 2, paddingHorizontal: theme.spacing.xl, borderRadius: 18, borderWidth: 2, borderColor: theme.colors.border, backgroundColor: theme.colors.surface },
-  choicePicked: { borderColor: theme.colors.primary, borderWidth: 3, backgroundColor: theme.colors.primarySoft },
-  pressed: { backgroundColor: theme.colors.primarySoft },
-  choiceName: { color: theme.colors.ink, fontSize: 26, lineHeight: 34, fontWeight: '800' },
-  choiceDetail: { color: theme.colors.muted, fontSize: 17, lineHeight: 24 },
-  hint: { color: theme.colors.muted, fontSize: 15, lineHeight: 22 },
-  error: { color: theme.colors.danger, fontSize: 16, lineHeight: 24 },
-  confirm: { minHeight: theme.control.cta, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.button, backgroundColor: theme.colors.primary },
-  confirmOff: { backgroundColor: theme.colors.border },
-  confirmText: { color: theme.colors.white, fontSize: 18, lineHeight: 24, fontWeight: '800', textAlign: 'center' },
-  confirmTextOff: { color: theme.colors.muted },
-  retry: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: 2, borderColor: theme.colors.primary, backgroundColor: theme.colors.surface },
-  retryText: { color: theme.colors.primary, fontSize: 17, fontWeight: '800' },
-});
+const useStyles = makeStyles((colors) => ({
+  page: { flex: 1, justifyContent: 'center', gap: theme.spacing.md, paddingHorizontal: theme.spacing.xl, backgroundColor: colors.background },
+  title: { color: colors.ink, fontSize: 26, lineHeight: 34, fontWeight: '800' },
+  choice: { minHeight: 88, justifyContent: 'center', gap: 2, paddingHorizontal: theme.spacing.xl, borderRadius: 18, borderWidth: 2, borderColor: colors.border, backgroundColor: colors.surface },
+  choicePicked: { borderColor: colors.primary, borderWidth: 3, backgroundColor: colors.primarySoft },
+  pressed: { backgroundColor: colors.primarySoft },
+  choiceName: { color: colors.ink, fontSize: 26, lineHeight: 34, fontWeight: '800' },
+  choiceDetail: { color: colors.muted, fontSize: 17, lineHeight: 24 },
+  hint: { color: colors.muted, fontSize: 15, lineHeight: 22 },
+  error: { color: colors.danger, fontSize: 16, lineHeight: 24 },
+  confirm: { minHeight: theme.control.cta, alignItems: 'center', justifyContent: 'center', paddingHorizontal: theme.spacing.md, borderRadius: theme.radius.button, backgroundColor: colors.primaryFill },
+  confirmOff: { backgroundColor: colors.border },
+  confirmText: { color: colors.onFill, fontSize: 18, lineHeight: 24, fontWeight: '800', textAlign: 'center' },
+  confirmTextOff: { color: colors.muted },
+  retry: { minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderWidth: 2, borderColor: colors.primary, backgroundColor: colors.surface },
+  retryText: { color: colors.primary, fontSize: 17, fontWeight: '800' },
+}));

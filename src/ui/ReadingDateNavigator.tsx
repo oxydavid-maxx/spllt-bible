@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
@@ -26,6 +27,7 @@ export function formatReadingDateFull(date: string): string {
 }
 
 export function ReadingDateNavigator({ date, previousDate, nextDate, onSelect }: { date: string; previousDate?: string; nextDate?: string; onSelect: (date: string) => void }) {
+  const styles = useStyles();
   return (
     <View style={styles.row} accessible accessibilityLabel={`讀經日期${date}`}>
       <Pressable accessibilityRole="button" accessibilityLabel="上一個排定讀經日" disabled={!previousDate} onPress={() => previousDate && onSelect(previousDate)} style={[styles.step, !previousDate && styles.disabled]}>
@@ -39,7 +41,7 @@ export function ReadingDateNavigator({ date, previousDate, nextDate, onSelect }:
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   // One 48dp band instead of two outlined pills separated by ~219dp of dead space.
   // Each step names the day it leads to, so paging is recognition, not recall.
   row: {
@@ -47,13 +49,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderWidth: theme.control.hairline,
     borderRadius: theme.radius.button,
     paddingHorizontal: theme.spacing.xs,
   },
-  date: { color: theme.colors.ink, flex: 1, fontSize: theme.type.body.size, fontWeight: '800', textAlign: 'center' },
+  date: { color: colors.ink, flex: 1, fontSize: theme.type.body.size, fontWeight: '800', textAlign: 'center' },
   step: {
     minWidth: 72,
     minHeight: theme.control.tapCompact,
@@ -63,6 +65,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
   },
   disabled: { opacity: 0.4 },
-  disabledText: { color: theme.colors.muted },
-  stepText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
-});
+  disabledText: { color: colors.muted },
+  stepText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
+}));

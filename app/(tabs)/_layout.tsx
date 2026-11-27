@@ -2,7 +2,7 @@ import { router, Tabs, usePathname } from 'expo-router';
 import { Pressable, Text } from 'react-native';
 import type { ComponentRef, Ref } from 'react';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { theme } from '../../src/ui/Theme';
+import { useColors } from '../../src/ui/useAppTheme';
 import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
 import { taipeiDate } from '../../src/domain/gamificationV1';
 import { useAuthSnapshot } from '../../src/services/authSession';
@@ -12,6 +12,7 @@ import { useReaderImmersionSnapshot } from '../../src/ui/readerImmersionState';
 import { getReaderAudioSnapshot } from '../../src/services/readerAudioBridge';
 
 export default function TabsLayout() {
+  const colors = useColors();
   const readerImmersed = useReaderImmersionSnapshot();
   const auth = useAuthSnapshot();
   const memberId = auth.session?.memberId ?? (process.env.EXPO_PUBLIC_QINGMU_FIXTURE === 'true' ? fixtureProfile.memberId : null);
@@ -53,8 +54,8 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: true,
         headerRight: accountEntry,
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.muted,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.muted,
         tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
       }}
     >
@@ -75,14 +76,14 @@ export default function TabsLayout() {
             />
           );
         },
-        tabBarLabel: ({ color }) => <Text style={{ color: readerRouteSelected ? theme.colors.primary : color, fontSize: 12, fontWeight: '600' }}>讀經</Text>,
-        tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="book-open-page-variant-outline" color={readerRouteSelected ? theme.colors.primary : color} size={size} />,
+        tabBarLabel: ({ color }) => <Text style={{ color: readerRouteSelected ? colors.primary : color, fontSize: 12, fontWeight: '600' }}>讀經</Text>,
+        tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="book-open-page-variant-outline" color={readerRouteSelected ? colors.primary : color} size={size} />,
       }} />
       <Tabs.Screen name="progress" options={{ title: '積分', tabBarAccessibilityLabel: '積分', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="chart-line" color={color} size={size} /> }} />
       {/* 日記 left the tab bar (維護者 2026-10-14): the route and every saved entry stay on the phone. */}
       <Tabs.Screen name="journal" options={{ href: null, title: '日記', headerShown: false, tabBarAccessibilityLabel: '靈修日記', tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="notebook-outline" color={color} size={size} /> }} />
       {/* Over Reader the tab bar floats, so hiding it while immersed never resizes the scripture (a resize can jump it to the chapter top). */}
-      <Tabs.Screen name="reader" options={{ href: null, title: '讀經閱讀器', headerShown: false, tabBarAccessibilityLabel: '讀經閱讀器', freezeOnBlur: false, tabBarStyle: readerImmersed ? { display: 'none' } : { position: 'absolute' } }} />
+      <Tabs.Screen name="reader" options={{ href: null, title: '讀經閱讀器', headerShown: false, tabBarAccessibilityLabel: '讀經閱讀器', freezeOnBlur: false, tabBarStyle: readerImmersed ? { display: 'none' } : { position: 'absolute', backgroundColor: colors.readerSurface, borderTopColor: colors.border } }} />
       <Tabs.Screen name="groups" options={{ href: null, title: '讀經', headerShown: false }} />
     </Tabs>
   );

@@ -266,7 +266,8 @@ describe('iPhone OTA acceptance: what the workflow may do', () => {
       expect(JSON.stringify(commands), name).not.toMatch(/launchApp|clearState|stopApp|inputText|eraseText|swipe|pressKey/);
       visit(commands);
     }
-    expect([...new Set(taps)].sort()).toEqual(['積分', '開啟帳戶'].sort());
+    // 知道了 only puts away the 夜間模式 新功能 card the update shows once (a flag on the phone, nothing on the server).
+    expect([...new Set(taps)].sort()).toEqual(['積分', '開啟帳戶', '知道了'].sort());
   });
 
   it('starts the update signed in only through the synthetic fixture session, against the local backend', () => {

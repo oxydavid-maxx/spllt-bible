@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AppModal } from './AppModal';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { createApiClient, type ReadingDaySnapshot } from '../services/apiClient';
 import { getAuthSnapshot, useAuthSnapshot } from '../services/authSession';
@@ -14,6 +15,7 @@ import { formatReadingDateLabel, formatReadingDateWithWeekday } from './ReadingD
 import { SheetBackdrop } from './SheetBackdrop';
 import { createSheetDrag, SHEET_CLOSE_MS } from './sheet/sheetDrag';
 import { theme } from './Theme';
+import { makeStyles } from './useAppTheme';
 
 interface Props {
   visible: boolean;
@@ -27,6 +29,7 @@ export function ReadingPlanSheet({ visible, ...props }: Props) {
 }
 
 function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>) {
+  const styles = useStyles();
   const auth = useAuthSnapshot();
   const session = auth.status === 'signed-in' ? auth.session : null;
   const ownerKey = JSON.stringify([session?.memberId, session?.sessionToken, auth.epoch]);
@@ -138,7 +141,7 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
   const last = days[days.length - 1]?.date;
   const summary = first && last ? `${formatReadingDateLabel(first)}–${formatReadingDateLabel(last)}，共 ${days.length} 天，已讀 ${days.filter(day => day.completed).length} 天` : '目前沒有讀經計畫';
 
-  return <Modal visible transparent animationType="slide" onShow={() => { modalShown.current = true; scrollToToday(); }} onRequestClose={dismiss}>
+  return <AppModal visible transparent animationType="slide" onShow={() => { modalShown.current = true; scrollToToday(); }} onRequestClose={dismiss}>
     <SafeAreaProvider><SheetBackdrop label="關閉整份讀經計畫" onPress={dismiss} style={styles.scrim}>
       <Animated.View testID="reading-plan-sheet" onLayout={event => { sheetHeight.current = event.nativeEvent.layout.height; }} style={[styles.sheetWrap, { transform: [{ translateY }] }]}>
         <SafeAreaView style={styles.sheet} edges={['bottom', 'left', 'right']} accessibilityViewIsModal>
@@ -174,28 +177,28 @@ function OpenReadingPlanSheet({ onClose, onSelectDate }: Omit<Props, 'visible'>)
         </SafeAreaView>
       </Animated.View>
     </SheetBackdrop></SafeAreaProvider>
-  </Modal>;
+  </AppModal>;
 }
 
-const styles = StyleSheet.create({
-  scrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(21,48,42,0.28)' },
+const useStyles = makeStyles((colors) => ({
+  scrim: { flex: 1, justifyContent: 'flex-end', backgroundColor: colors.scrimSoft },
   sheetWrap: { width: '100%', height: '82%' },
-  sheet: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, overflow: 'hidden' },
-  grab: { width: 36, height: 4, borderRadius: 2, backgroundColor: theme.colors.border, alignSelf: 'center', marginTop: 8, marginBottom: 4 },
+  sheet: { flex: 1, minHeight: 0, backgroundColor: colors.surface, borderTopLeftRadius: theme.radius.card, borderTopRightRadius: theme.radius.card, overflow: 'hidden' },
+  grab: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginTop: 8, marginBottom: 4 },
   header: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.md },
-  title: { flexShrink: 1, color: theme.colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
+  title: { flexShrink: 1, color: colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
   close: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center' },
-  closeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
-  subtitle: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.sm },
-  notice: { color: theme.colors.muted, fontSize: theme.type.caption.size, paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.xs },
-  list: { flex: 1, minHeight: 0, borderTopWidth: theme.control.hairline, borderTopColor: theme.colors.border },
-  month: { color: theme.colors.muted, backgroundColor: theme.colors.surfaceMuted, fontSize: theme.type.caption.size, fontWeight: '700', paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs },
-  row: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, borderBottomWidth: theme.control.hairline, borderBottomColor: theme.colors.border },
-  date: { width: 98, color: theme.colors.muted, fontSize: theme.type.label.size },
-  passages: { flex: 1, color: theme.colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+  closeText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  subtitle: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.sm },
+  notice: { color: colors.muted, fontSize: theme.type.caption.size, paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.xs },
+  list: { flex: 1, minHeight: 0, borderTopWidth: theme.control.hairline, borderTopColor: colors.border },
+  month: { color: colors.muted, backgroundColor: colors.surfaceMuted, fontSize: theme.type.caption.size, fontWeight: '700', paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs },
+  row: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, borderBottomWidth: theme.control.hairline, borderBottomColor: colors.border },
+  date: { width: 98, color: colors.muted, fontSize: theme.type.label.size },
+  passages: { flex: 1, color: colors.ink, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
   status: { minWidth: 44, alignItems: 'flex-end', gap: theme.spacing.xxs },
-  today: { backgroundColor: theme.colors.primarySoft },
-  todayText: { color: theme.colors.ink, fontWeight: '800' },
-  todayTag: { color: theme.colors.primary, fontSize: theme.type.micro.size, fontWeight: '800', borderWidth: 1, borderColor: theme.colors.primary, borderRadius: theme.radius.pill, paddingHorizontal: theme.spacing.xs },
-  tick: { color: theme.colors.white, backgroundColor: theme.colors.primary, borderRadius: 12, overflow: 'hidden', width: 24, height: 24, textAlign: 'center', lineHeight: 24, fontSize: theme.type.caption.size, fontWeight: '800' },
-});
+  today: { backgroundColor: colors.primarySoft },
+  todayText: { color: colors.ink, fontWeight: '800' },
+  todayTag: { color: colors.primary, fontSize: theme.type.micro.size, fontWeight: '800', borderWidth: 1, borderColor: colors.primary, borderRadius: theme.radius.pill, paddingHorizontal: theme.spacing.xs },
+  tick: { color: colors.onFill, backgroundColor: colors.primaryFill, borderRadius: 12, overflow: 'hidden', width: 24, height: 24, textAlign: 'center', lineHeight: 24, fontSize: theme.type.caption.size, fontWeight: '800' },
+}));

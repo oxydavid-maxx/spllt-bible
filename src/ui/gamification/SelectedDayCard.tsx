@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatReferenceListZhTw } from '../../domain/scriptureReference';
 import { theme } from '../Theme';
+import { makeStyles } from '../useAppTheme';
 import { dayHeading, dayMessage, dayState, type CalendarDay } from './readingCalendarModel';
 
 /**
@@ -29,6 +30,7 @@ export interface SelectedDayCardProps {
 }
 
 export function SelectedDayCard({ date, today, day, action, onBackToToday }: SelectedDayCardProps) {
+  const styles = useStyles();
   const isToday = date === today;
   const message = dayMessage(date, dayState(date, today, day));
   const passages = day ? formatReferenceListZhTw(day.references) : '';
@@ -45,15 +47,15 @@ export function SelectedDayCard({ date, today, day, action, onBackToToday }: Sel
   </View>;
 }
 
-const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, padding: 14, gap: theme.spacing.sm },
+const useStyles = makeStyles((colors) => ({
+  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, padding: 14, gap: theme.spacing.sm },
   dayLine: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: theme.spacing.sm },
   // Clay, the app's "needs you" colour, the same as the ring on the picked day in the calendar.
-  chip: { overflow: 'hidden', paddingHorizontal: theme.spacing.sm, paddingVertical: 1, borderRadius: theme.radius.pill, backgroundColor: theme.colors.warningSoft, color: theme.colors.warning, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '800' },
-  heading: { color: theme.colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
-  passages: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  message: { color: theme.colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
+  chip: { overflow: 'hidden', paddingHorizontal: theme.spacing.sm, paddingVertical: 1, borderRadius: theme.radius.pill, backgroundColor: colors.warningSoft, color: colors.warning, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, fontWeight: '800' },
+  heading: { color: colors.ink, fontSize: theme.type.heading.size, lineHeight: theme.type.heading.line, fontWeight: '800' },
+  passages: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  message: { color: colors.muted, fontSize: theme.type.body.size, lineHeight: theme.type.body.line, fontWeight: '700' },
   // A full 48dp tap target that tucks into the card's gap and bottom padding, so the link adds one short line.
   backLink: { alignSelf: 'flex-end', minHeight: theme.control.tap, justifyContent: 'center', marginTop: -theme.spacing.sm, marginBottom: -theme.spacing.sm },
-  backText: { color: theme.colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
-});
+  backText: { color: colors.primary, fontSize: theme.type.caption.size, fontWeight: '800' },
+}));

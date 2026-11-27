@@ -4,9 +4,12 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { createApiClient } from '../services/apiClient';
 import { beginAuthSessionAttempt, configureAuthSessionTransport, finishAuthSessionAttempt, persistEstablishedAuthSession } from '../services/authSession';
 import { theme } from './Theme';
+import { makeStyles, useAppTheme } from './useAppTheme';
 
 /** Apple native authorization is iOS-only; Android retains its existing Google sign-in. */
 export function AppleLoginCard({ baseUrl }: { baseUrl: string }) {
+  const styles = useStyles();
+  const { scheme } = useAppTheme();
   const [available, setAvailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
@@ -41,14 +44,15 @@ export function AppleLoginCard({ baseUrl }: { baseUrl: string }) {
   return <View style={styles.card}>
     <View pointerEvents={busy ? 'none' : 'auto'} accessibilityState={{ busy, disabled: busy }}>
       <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-        buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK} cornerRadius={12}
+        // Apple's white button on a dark page, black on a light one (夜間模式, 光佑 2026-11-04).
+        buttonStyle={scheme === 'dark' ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK} cornerRadius={12}
         accessibilityLabel="使用Apple登入" style={styles.button} onPress={() => { void signIn(); }} />
     </View>
     {message ? <Text accessibilityRole="alert" style={styles.message}>{message}</Text> : null}
   </View>;
 }
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => ({
   card: { marginTop: theme.spacing.md, gap: theme.spacing.sm },
   button: { width: '100%', height: theme.control.cta },
-  message: { color: theme.colors.danger, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
-});
+  message: { color: colors.danger, fontSize: theme.type.body.size, lineHeight: theme.type.body.line },
+}));

@@ -4,6 +4,7 @@ import Svg, { Circle, Polyline } from 'react-native-svg';
 import type { MonthPoints, ScoreChart, ScoreChartBucket, ScoreChartQuery, ScoreChartRange } from '../../services/gamificationApiClient';
 import { taipeiDate } from '../../domain/gamificationV1';
 import { theme } from '../Theme';
+import { makeStyles, useColors } from '../useAppTheme';
 
 // Reading calendar. One point per day means a bar chart degenerates into 0/1 hairlines; a
 // calendar shows at a glance which days were read, which were missed, and what is still ahead.
@@ -71,6 +72,8 @@ function cumulativePoints(chart: ScoreChart, today: string): CumulativePoint[] |
 }
 
 function CumulativeCurve({ chart, today, selectedKey, onSelect }: { chart: ScoreChart; today: string; selectedKey: string | null; onSelect: (key: string) => void }) {
+  const styles = useStyles();
+  const colors = useColors();
   const points = cumulativePoints(chart, today);
   const [plotWidth, setPlotWidth] = useState(320);
   if (!points) return <Text style={styles.empty}>累積走勢尚未提供可靠資料</Text>;
@@ -96,8 +99,8 @@ function CumulativeCurve({ chart, today, selectedKey, onSelect }: { chart: Score
       style={styles.curveControl}
     >
       <Svg width="100%" height={144} viewBox={`0 0 ${CURVE_VIEW_BOX_WIDTH} 128`} preserveAspectRatio="none" pointerEvents="none" accessible={false}>
-        {points.length > 1 ? <Polyline points={points.map((point) => `${point.x},${point.y}`).join(' ')} fill="none" stroke={theme.colors.primary} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /> : null}
-        {points.map(({ bucket, value, x, y }) => <Circle key={bucket.key} cx={x} cy={y} r={bucket.key === selectedKey ? 6 : 4} fill={bucket.key === selectedKey ? theme.colors.primaryDeep : theme.colors.primary} stroke={theme.colors.white} strokeWidth={2} />)}
+        {points.length > 1 ? <Polyline points={points.map((point) => `${point.x},${point.y}`).join(' ')} fill="none" stroke={colors.primary} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /> : null}
+        {points.map(({ bucket, value, x, y }) => <Circle key={bucket.key} cx={x} cy={y} r={bucket.key === selectedKey ? 6 : 4} fill={bucket.key === selectedKey ? colors.primaryDeepFill : colors.primary} stroke={colors.surface} strokeWidth={2} />)}
       </Svg>
     </Pressable>
     <View style={styles.trendFooter}>
@@ -209,6 +212,7 @@ function weekColumn(date: string): number {
 }
 
 function DayCell({ bucket, today, selected, onSelect, perfect = false }: { bucket: ScoreChartBucket; today: string; selected: boolean; onSelect: (key: string) => void; perfect?: boolean }) {
+  const styles = useStyles();
   const state = cellState(bucket, today);
   const isToday = bucket.key === today;
   return <View style={styles.slot}><Pressable
@@ -244,6 +248,7 @@ export function perfectWeekKeys(buckets: readonly ScoreChartBucket[]): Set<strin
 }
 
 function CountCell({ bucket, label, selected, onSelect, today }: { bucket: ScoreChartBucket; label: string; selected: boolean; onSelect: (key: string) => void; today: string }) {
+  const styles = useStyles();
   const strong = bucket.earnedPoints >= 15;
   const ratio = Math.max(0, Math.min(1, bucket.earnedPoints / bucketCapacity(bucket)));
   const future = bucket.startDate > today;
@@ -261,6 +266,7 @@ function CountCell({ bucket, label, selected, onSelect, today }: { bucket: Score
 }
 
 export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChartChange, today: suppliedToday, showViewToggle = true }: ScoreProfileChartProps) {
+  const styles = useStyles();
   const chart = suppliedChart ?? fallbackChart(fallbackMonths);
   const isLegacyFallback = suppliedChart === undefined;
   const today = suppliedToday ?? taipeiDate(new Date());
@@ -310,53 +316,53 @@ export function ScoreProfileChart({ chart: suppliedChart, fallbackMonths, onChar
   </View>;
 }
 
-const styles = StyleSheet.create({
-  card: { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, borderLeftColor: theme.colors.primary, borderLeftWidth: theme.control.rail, padding: theme.spacing.md, gap: theme.spacing.sm },
+const useStyles = makeStyles((colors) => ({
+  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: theme.control.hairline, borderRadius: theme.radius.card, borderLeftColor: colors.primary, borderLeftWidth: theme.control.rail, padding: theme.spacing.md, gap: theme.spacing.sm },
   headingRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: theme.spacing.sm },
-  cardTitle: { color: theme.colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
-  periodTotal: { color: theme.colors.primaryDeep, fontSize: theme.type.label.size, fontWeight: '800' },
-  rangeSelector: { flexDirection: 'row', gap: theme.spacing.xs, borderBottomColor: theme.colors.border, borderBottomWidth: theme.control.hairline },
-  rangeOption: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: 8, borderWidth: theme.control.hairline, borderColor: theme.colors.borderStrong, backgroundColor: theme.colors.surface },
-  rangeOptionActive: { backgroundColor: theme.colors.primarySoft, borderColor: theme.colors.primary },
-  rangeText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
-  rangeTextActive: { color: theme.colors.primaryDeep },
+  cardTitle: { color: colors.ink, fontSize: theme.type.heading.size, fontWeight: '800' },
+  periodTotal: { color: colors.primaryDeep, fontSize: theme.type.label.size, fontWeight: '800' },
+  rangeSelector: { flexDirection: 'row', gap: theme.spacing.xs, borderBottomColor: colors.border, borderBottomWidth: theme.control.hairline },
+  rangeOption: { flex: 1, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: 8, borderWidth: theme.control.hairline, borderColor: colors.borderStrong, backgroundColor: colors.surface },
+  rangeOptionActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  rangeText: { color: colors.primary, fontSize: theme.type.label.size, fontWeight: '800' },
+  rangeTextActive: { color: colors.primaryDeep },
   curveControl: { minHeight: 144 },
   trendFooter: { flexDirection: 'row', justifyContent: 'space-between' },
-  trendDate: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
-  trendOpening: { color: theme.colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
-  legacyPeriod: { minHeight: theme.control.tap, color: theme.colors.muted, fontSize: theme.type.body.size, fontWeight: '700', textAlign: 'center', textAlignVertical: 'center' },
+  trendDate: { color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+  trendOpening: { color: colors.muted, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line },
+  legacyPeriod: { minHeight: theme.control.tap, color: colors.muted, fontSize: theme.type.body.size, fontWeight: '700', textAlign: 'center', textAlignVertical: 'center' },
   periodNav: { minHeight: theme.control.tap, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.xs },
-  navButton: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderColor: theme.colors.borderStrong, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface },
-  navText: { color: theme.colors.primary, fontSize: 30, lineHeight: 32 },
-  periodLabel: { flex: 1, color: theme.colors.ink, fontSize: theme.type.body.size, fontWeight: '800', textAlign: 'center' },
+  navButton: { minWidth: theme.control.tap, minHeight: theme.control.tap, alignItems: 'center', justifyContent: 'center', borderRadius: theme.radius.button, borderColor: colors.borderStrong, borderWidth: theme.control.hairline, backgroundColor: colors.surface },
+  navText: { color: colors.primary, fontSize: 30, lineHeight: 32 },
+  periodLabel: { flex: 1, color: colors.ink, fontSize: theme.type.body.size, fontWeight: '800', textAlign: 'center' },
   // Exactly 7 slots per row: each slot is 1/7 of the width and carries the gutter as padding,
   // so no gap arithmetic can push the seventh column onto the next line.
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   slot: { width: '14.2857%', paddingHorizontal: 2.5, paddingVertical: 2.5 },
-  weekday: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, textAlign: 'center' },
+  weekday: { color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line, textAlign: 'center' },
   cellBlank: { height: 32 },
-  cell: { height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted },
-  cellRead: { backgroundColor: theme.colors.primary },
+  cell: { height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
+  cellRead: { backgroundColor: colors.primaryFill },
   // A whole Sunday–Saturday row read: the seven cells deepen together, a capped "streak" that never punishes.
-  cellPerfect: { backgroundColor: theme.colors.primaryDeep },
-  cellMissed: { backgroundColor: theme.colors.surfaceMuted },
-  cellFuture: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: theme.colors.border },
-  cellToday: { borderWidth: 2, borderColor: theme.colors.primaryDeep },
-  cellSelected: { borderWidth: 2, borderColor: theme.colors.borderStrong },
-  cellText: { color: theme.colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
-  cellTextRead: { color: theme.colors.white },
-  cellTextFuture: { color: theme.colors.border },
+  cellPerfect: { backgroundColor: colors.primaryDeepFill },
+  cellMissed: { backgroundColor: colors.surfaceMuted },
+  cellFuture: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border },
+  cellToday: { borderWidth: 2, borderColor: colors.primaryDeep },
+  cellSelected: { borderWidth: 2, borderColor: colors.borderStrong },
+  cellText: { color: colors.muted, fontSize: theme.type.caption.size, fontWeight: '700' },
+  cellTextRead: { color: colors.onFill },
+  cellTextFuture: { color: colors.border },
   countGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   countSlot: { width: '25%', padding: 3 },
-  countCell: { minHeight: theme.control.tap, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceMuted, paddingVertical: theme.spacing.xs },
-  countCellSome: { backgroundColor: theme.colors.primarySoft },
-  countCellStrong: { backgroundColor: theme.colors.primary },
-  countCellFuture: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: theme.colors.border },
-  countBar: { width: '80%', height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden', marginTop: 3 },
-  countBarFill: { height: 4, borderRadius: 2, backgroundColor: theme.colors.primary },
-  countBarFillStrong: { backgroundColor: theme.colors.white },
-  countLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, fontWeight: '800' },
-  countValue: { color: theme.colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
-  selectedLabel: { color: theme.colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
-  empty: { color: theme.colors.muted, fontSize: theme.type.body.size, paddingVertical: theme.spacing.lg },
-});
+  countCell: { minHeight: theme.control.tap, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted, paddingVertical: theme.spacing.xs },
+  countCellSome: { backgroundColor: colors.primarySoft },
+  countCellStrong: { backgroundColor: colors.primaryFill },
+  countCellFuture: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border },
+  countBar: { width: '80%', height: 4, borderRadius: 2, backgroundColor: colors.track, overflow: 'hidden', marginTop: 3 },
+  countBarFill: { height: 4, borderRadius: 2, backgroundColor: colors.primaryFill },
+  countBarFillStrong: { backgroundColor: colors.onFill },
+  countLabel: { color: colors.ink, fontSize: theme.type.caption.size, fontWeight: '800' },
+  countValue: { color: colors.muted, fontSize: theme.type.micro.size, lineHeight: theme.type.micro.line },
+  selectedLabel: { color: colors.ink, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
+  empty: { color: colors.muted, fontSize: theme.type.body.size, paddingVertical: theme.spacing.lg },
+}));
