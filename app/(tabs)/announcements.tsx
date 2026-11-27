@@ -99,6 +99,10 @@ export default function AnnouncementsScreen() {
   }, []);
   useFocusEffect(loadUpdate);
 
+  // The address pin closes every time 公告 comes back into view, not only when switching sides (作答頁 Q13347).
+  const [visits, setVisits] = useState(0);
+  useFocusEffect(useCallback(() => { setVisits((count) => count + 1); }, []));
+
   const congregation = useCongregation();
   const [picked, setPicked] = useState<Side | null>(null);
   const side: Side = picked ?? (congregation.value === 'main' ? 'main' : 'youth');
@@ -132,7 +136,7 @@ export default function AnnouncementsScreen() {
         <Text style={[styles.sideText, side === item.value && styles.sideTextActive]}>{item.name}</Text>
       </Pressable>)}
     </View>
-    <PlacePin key={side} place={PLACES[side]} />
+    <PlacePin key={`${side}:${visits}`} place={PLACES[side]} />
     <UpdateCard state={update} onUpdate={() => { void startAppUpdate(update, (url) => Linking.openURL(url)); }} />
     {side === 'main'
       ? <BulletinBoard

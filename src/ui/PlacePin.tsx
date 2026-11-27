@@ -32,6 +32,10 @@ export function PlacePin({ place }: { place: Place }) {
   // Closed every time the tab mounts: one line until someone asks for it.
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [mapFailed, setMapFailed] = useState(false);
+  const openMap = async () => {
+    try { await Linking.openURL(place.mapUrl); setMapFailed(false); } catch { setMapFailed(true); }
+  };
   const copy = async () => { await Clipboard.setStringAsync(placeCopyText(place)); setCopied(true); };
   return <View style={styles.card} accessibilityLabel={`${place.name}地址`}>
     <Pressable
@@ -50,9 +54,10 @@ export function PlacePin({ place }: { place: Place }) {
       <Pressable accessibilityRole="button" accessibilityLabel={`複製${place.name}地址和地圖連結`} onPress={() => { void copy(); }} style={styles.secondary}>
         <Text style={styles.secondaryText}>{copied ? '已複製，可以貼到 LINE' : '複製地址和地圖連結'}</Text>
       </Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel={`開${place.name}地圖`} onPress={() => { void Linking.openURL(place.mapUrl); }} style={styles.primary}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`開${place.name}地圖`} onPress={() => { void openMap(); }} style={styles.primary}>
         <Text style={styles.primaryText}>開地圖</Text>
       </Pressable>
+      {mapFailed ? <Text style={styles.failed}>這支手機打不開地圖，請用上面的「複製」，再貼到地圖或 LINE。</Text> : null}
     </View> : null}
   </View>;
 }
@@ -68,5 +73,6 @@ const styles = StyleSheet.create({
   secondary: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', borderColor: theme.colors.primary, borderWidth: theme.control.hairline, backgroundColor: theme.colors.surface, paddingHorizontal: theme.spacing.md },
   secondaryText: { color: theme.colors.primary, fontSize: theme.type.label.size, fontWeight: '700' },
   primary: { minHeight: theme.control.tap, borderRadius: theme.radius.button, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary, paddingHorizontal: theme.spacing.md },
+  failed: { color: theme.colors.accent, fontSize: theme.type.caption.size, lineHeight: theme.type.caption.line, fontWeight: '700' },
   primaryText: { color: theme.colors.white, fontSize: theme.type.label.size, fontWeight: '700' },
 });

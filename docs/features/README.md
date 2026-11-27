@@ -8,7 +8,7 @@
 
 | 檔案 | 範圍 |
 |---|---|
-| [announcements.md](announcements.md) | 公告分頁：主堂｜青少、下次聚會、服事、報名狀況、講道紀錄、常設資訊、主堂週刊 |
+| [announcements.md](announcements.md) | 公告分頁：主堂｜青少、地址列、下次聚會、服事、報名狀況、講道紀錄、常設資訊、主堂週刊 |
 | [reader.md](reader.md) | 讀經頁：版面與沉浸模式、靈修分頁與接續靈修、譯本、字體、經節複製、預先載入、閱讀位置、載入失敗與重試 |
 | [narration.md](narration.md) | 朗讀：播放、速度、接續讀經、背景播放、朗讀跟著走 (靈修朗讀見 reader.md) |
 | [reading-plan.md](reading-plan.md) | 讀經計畫與每日完成：開啟日期、日期列、整份計畫清單、當日章節、完成打卡、靈修打勾、補登、撤銷、積分月曆 |
@@ -26,6 +26,7 @@
 | 講道紀錄 | 一個主日一張卡，最新的一週標「上週」；每堂列名稱、講員和資料連結，同類兩份檔案編成 1、2；沒有內容的堂次收成一行 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
 | 離線提示 | 抓不到最新公告時，小字註明目前顯示哪一週 | 公告分頁底部 | Android、iOS | [announcements.md](announcements.md) |
 | 主堂｜青少 | 公告最上面兩個分頁 (主堂在左，跟積分頁一樣)，預設打開自己那一邊 | 分頁列「公告」 | Android、iOS | [announcements.md](announcements.md) |
+| 地址列 | 兩邊最上面釘一條地址 (主堂竹科靈糧堂、青少青年館)，點開可複製地址和地圖連結、開地圖 | 公告最上面 | Android、iOS | [announcements.md](announcements.md) |
 | 主堂週刊 | 教會在 LINE 公布欄貼的週刊原圖，最新在上、留 8 週，點了全螢幕放大 | 公告「主堂」 | Android、iOS | [announcements.md](announcements.md) |
 
 ## 讀經

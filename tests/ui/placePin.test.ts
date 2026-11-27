@@ -62,9 +62,22 @@ describe('the address pinned on top of 公告 (作答頁 Q13347)', () => {
 
   it('is on both sides of 公告, above everything else on the page', () => {
     const screen = readFileSync(join(__dirname, '../../app/(tabs)/announcements.tsx'), 'utf8');
-    const pin = screen.indexOf('<PlacePin key={side} place={PLACES[side]} />');
+    const pin = screen.indexOf('<PlacePin key={`${side}:${visits}`} place={PLACES[side]} />');
     expect(pin).toBeGreaterThan(screen.indexOf('accessibilityRole="tablist"'));
     expect(pin).toBeLessThan(screen.indexOf('<UpdateCard'));
     expect(pin).toBeLessThan(screen.indexOf("{side === 'main'"));
+  });
+
+  it('closes again every time 公告 comes back into view', () => {
+    const screen = readFileSync(join(__dirname, '../../app/(tabs)/announcements.tsx'), 'utf8');
+    expect(screen).toContain('useFocusEffect(useCallback(() => { setVisits((count) => count + 1); }, []));');
+  });
+
+  it('says to copy instead when the phone cannot open the map', async () => {
+    openURL.mockRejectedValueOnce(new Error('no handler'));
+    const pin = render('main');
+    act(() => { pin.byLabel('竹科靈糧堂地址，展開').props.onPress(); });
+    await act(async () => { await pin.byLabel('開竹科靈糧堂地圖').props.onPress(); });
+    expect(pin.text()).toContain('打不開地圖');
   });
 });
