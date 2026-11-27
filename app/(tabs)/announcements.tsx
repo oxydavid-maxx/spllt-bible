@@ -13,6 +13,7 @@ import { AccountEntryButton } from '../../src/ui/AccountEntryButton';
 import { checkAppUpdate, startAppUpdate } from '../../src/services/appUpdate';
 import { NO_UPDATE, type UpdateState } from '../../src/services/updateCheck';
 import { UpdateCard } from '../../src/ui/UpdateCard';
+import { PLACES, PlacePin } from '../../src/ui/PlacePin';
 import { installedVersionCode } from '../../src/ui/UpdatePrompt';
 import { theme } from '../../src/ui/Theme';
 import { useCongregation } from '../../src/ui/congregation/congregationStore';
@@ -131,6 +132,7 @@ export default function AnnouncementsScreen() {
         <Text style={[styles.sideText, side === item.value && styles.sideTextActive]}>{item.name}</Text>
       </Pressable>)}
     </View>
+    <PlacePin key={side} place={PLACES[side]} />
     <UpdateCard state={update} onUpdate={() => { void startAppUpdate(update, (url) => Linking.openURL(url)); }} />
     {side === 'main'
       ? <BulletinBoard
