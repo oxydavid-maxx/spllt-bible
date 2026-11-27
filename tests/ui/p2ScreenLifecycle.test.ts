@@ -21,6 +21,7 @@ vi.mock('../../src/services/devotionClient', () => ({ createDevotionClient: () =
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => any) => { React.useEffect(() => nav.focused ? callback() : undefined, [callback, nav.focused]); } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: (key: string) => storageGet(key), setItemAsync: async (key: string, value: string) => { if (!/^[\w.-]+$/.test(key)) throw Error('invalid key'); store.set(key, value); } }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn() }));
+vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn(async () => true) }));
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: (p: any) => React.createElement('SafeAreaView', p, p.children) }));
 vi.mock('../../src/services/authSession', () => ({ getAuthSnapshot: () => auth, useAuthSnapshot: () => auth, isCurrentAuthSession: (session: any) => session === auth.session, registerAuthLifecycleListener: () => () => undefined }));
 vi.mock('../../src/services/gamificationApiClient', () => ({ createGamificationApiClient: () => api, GamificationApiError: class extends Error {} }));
