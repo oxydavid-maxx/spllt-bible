@@ -34,6 +34,7 @@ vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: (props: { child
 vi.mock('expo-router', () => ({ useFocusEffect: (callback: () => (() => void) | void) => { require('react').useEffect(callback, [callback]); } }));
 vi.mock('expo-secure-store', () => ({ getItemAsync: vi.fn(async () => null), setItemAsync: vi.fn(async () => undefined) }));
 vi.mock('expo-web-browser', () => ({ openBrowserAsync: vi.fn() }));
+vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn(async () => true) }));
 vi.mock('../../src/services/announcementClient', () => ({ createAnnouncementClient: () => ({ readCached: async () => null, load: async () => ({ announcement: null, stale: false }), cancel: () => undefined }) }));
 vi.mock('../../src/ui/AnnouncementBoard', () => ({ AnnouncementBoard: () => null }));
 vi.mock('../../src/ui/AccountEntryButton', () => ({ AccountEntryButton: () => null }));
