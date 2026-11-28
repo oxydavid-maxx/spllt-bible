@@ -57,6 +57,8 @@ beforeEach(() => {
   for (const fn of [...Object.values(api), ...Object.values(devotionApi)]) fn.mockClear();
 });
 
+import { GroupReadingCard } from '../../src/ui/gamification/GroupReadingCard';
+
 async function screen() {
   let tree!: TestRenderer.ReactTestRenderer;
   await act(async () => { tree = TestRenderer.create(React.createElement(ProgressScreen)); mounted.push(tree); });
@@ -134,6 +136,45 @@ describe('積分頁: where I meet', () => {
     await flush();
     expect(texts(tree)).toContain('青少一起讀經');
     expect(busy(tree)).toBe(0);
+  });
+
+  it('shows the prizes of the other side at once on a second look, while it reads them again', async () => {
+    const tree = await screen();
+    await act(async () => { tree.root.findByType('ScoreProfile' as any).props.onChooseReward(); });
+    await press(pressable(tree, '青少獎品', 'tab'));
+    expect(texts(tree)).toContain('電影票');
+    await press(pressable(tree, '主堂獎品', 'tab'));
+    api.getRewards.mockImplementationOnce(() => new Promise(() => undefined) as any);
+    await press(pressable(tree, '青少獎品', 'tab'));
+    expect(texts(tree)).toContain('電影票');
+    await press(pressable(tree, '主堂獎品', 'tab'));
+    api.getRewards.mockImplementationOnce(async () => { throw new Error('offline'); });
+    await press(pressable(tree, '青少獎品', 'tab'));
+    expect(texts(tree)).toContain('電影票');
+    expect(texts(tree).join('')).not.toContain('沒有讀到青少的獎品');
+  });
+
+  it('names the next month at once, reads it once, and goes back when it cannot be read', async () => {
+    const base = devotionApi.getGroupReading.getMockImplementation()!;
+    devotionApi.getGroupReading.mockImplementation(async (month: string, asked?: 'youth' | 'main') => ({ ...(await base(month, asked)), month }) as any);
+    const tree = await screen();
+    const reads = () => devotionApi.getGroupReading.mock.calls.length;
+    const monthLabel = () => textOf(tree.root.findByType(GroupReadingCard).findAll((node) => String(node.type) === 'Text' && node.props.style?.fontWeight === '800' && /^\d+ 月$/.test(textOf(node)))[0]);
+    const shown = monthLabel();
+    let reject!: (reason: unknown) => void;
+    devotionApi.getGroupReading.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }) as any);
+    const before = reads();
+    const card = () => tree.root.findByType(GroupReadingCard);
+    await act(async () => { card().props.onPreviousMonth(); });
+    expect(monthLabel()).not.toBe(shown);
+    expect(busy(tree)).toBe(1);
+    expect(reads()).toBe(before + 1);
+    await act(async () => { reject(new Error('offline')); });
+    await flush();
+    expect(monthLabel()).toBe(shown);
+    expect(busy(tree)).toBe(0);
+    expect(texts(tree).some((line) => /^沒有讀到\d+ 月的人數，請再按一次。$/.test(line))).toBe(true);
+    expect(texts(tree).join('')).not.toContain('沒有讀到青少');
   });
 
   it('opens the prize picker on my own side and shows the other side without letting me pick it', async () => {

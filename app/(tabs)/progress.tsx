@@ -215,7 +215,7 @@ export default function ProgressScreen() {
     setSheet(preserveScanner ? 'scan' : null);
     if (!preserveView) {
       setProfileStale(Boolean(ownProfile)); setRewards(null); setRedemptions([]); setPrimaryReady(Boolean(ownProfile));
-      setShelfRewards(null); setGroupReading(null); groupCache.current.clear(); setGroupTapped(null); setScoreHistory(null);
+      setShelfRewards(null); setGroupReading(null); groupCache.current.clear(); otherRewardsCache.current.clear(); setGroupTapped(null); setGroupMonthFrom(null); setGroupMonthFailed(null); setScoreHistory(null);
     }
     if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
   }, [client, session, stopPrefetch]);
@@ -407,14 +407,17 @@ export default function ProgressScreen() {
   };
   const pickerOwn: Congregation = ownSide ?? 'youth';
   // 「主堂獎品｜青少獎品」: the other side's list is read when asked for and shown without any way to pick from it.
+  // 光佑 20261128: the other side's prizes, once read, show at once on the next tap and are read again.
+  const otherRewardsCache = useRef(new Map<Congregation, Reward[]>());
   const viewRewards = async (side: Congregation) => {
     if (side === pickerOwn) { setRewardSide(null); return; }
     if (!client || !session) return;
     const generation = requestGeneration.current; const expectedScope = activeScope.current; const origin = sheetVersion.current;
     const owns = () => sheetVersion.current === origin && isLive(generation, expectedScope, undefined, expectedScope === 'all');
-    setRewardSide(side); setOtherRewards(null); setOtherRewardsFailed(false);
-    try { const value = await client.getRewards(side); if (owns()) setOtherRewards(value); }
-    catch { if (owns()) setOtherRewardsFailed(true); }
+    setRewardSide(side); setOtherRewards(otherRewardsCache.current.get(side) ?? null); setOtherRewardsFailed(false);
+    try { const value = await client.getRewards(side); if (owns()) { otherRewardsCache.current.set(side, value); setOtherRewards(value); } }
+    // A list already on screen stays when its second read fails.
+    catch { if (owns() && !otherRewardsCache.current.has(side)) setOtherRewardsFailed(true); }
   };
   const loadRedemptions = async () => {
     if (!client || !session) return;
@@ -474,6 +477,11 @@ export default function ProgressScreen() {
   // here and shown at once on the next tap (then read again), and the other side is read once the page has its own.
   const groupCache = useRef(new Map<string, GroupReading>());
   const groupReadingAhead = useRef(new Set<string>());
+  // The month shown before a ‹ › tap whose numbers have not come yet; a failed read goes back to it.
+  const [groupMonthFrom, setGroupMonthFrom] = useState<string | null>(null);
+  const groupMonthFromRef = useRef(groupMonthFrom); groupMonthFromRef.current = groupMonthFrom;
+  const [groupMonthFailed, setGroupMonthFailed] = useState<string | null>(null);
+  const stepGroupMonth = (delta: number) => { setGroupMonthFailed(null); setGroupMonthFrom((from) => from ?? groupMonth); setGroupMonth(shiftMonth(groupMonth, delta)); };
   // The side tapped whose numbers have not come yet: the switch shows it and the card fades. Cleared when the
   // answer comes or fails, never guessed from ownSide; each tap counts, so 「請再按一次」 asks again.
   const [groupTapped, setGroupTapped] = useState<Congregation | null>(null);
@@ -503,11 +511,11 @@ export default function ProgressScreen() {
     const cache = groupCache.current;
     const key = `${groupMonth}:${asked ?? `own:${ownSide ?? ''}`}`;
     const kept = cache.get(key);
-    if (kept) { setGroupReading(kept); setGroupFailed(null); setGroupTapped(null); }
+    if (kept) { setGroupReading(kept); setGroupFailed(null); setGroupTapped(null); setGroupMonthFrom(null); }
     void (asked ? devotionClient.getGroupReading(groupMonth, asked) : devotionClient.getGroupReading(groupMonth)).then((value) => {
       if (!active || !isViewLive(generation)) return;
       if (!asked || value.scope === asked) cache.set(key, value);
-      setGroupReading(value); setGroupFailed(asked && value.scope !== asked ? asked : null); setGroupTapped(null);
+      setGroupReading(value); setGroupFailed(asked && value.scope !== asked ? asked : null); setGroupTapped(null); setGroupMonthFrom(null);
       // Read the other side once, quietly, so its first tap needs no wait; a failure is left to that tap.
       const other: Congregation | null = asked ? null : value.scope === 'main' ? 'youth' : 'main';
       const ahead = `${groupMonth}:${other}`;
@@ -521,11 +529,16 @@ export default function ProgressScreen() {
     }).catch(() => {
       if (!active || !isViewLive(generation)) return;
       setGroupTapped(null);
+      // A month that could not be read goes back to the month on screen, so the label never shows numbers it has
+      // not got, and says so; that is a month failing, not the side.
+      const from = groupMonthFromRef.current;
+      setGroupMonthFrom(null);
+      if (from !== null && from !== groupMonth) { setGroupMonthFailed(groupMonth); setGroupMonth(from); return; }
       if (asked) setGroupFailed(asked);
     });
     return () => { active = false; };
   }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, groupMonth, groupSide, isViewLive, ownSide, groupTaps]);
-  const viewGroup = (side: Congregation) => { setGroupFailed(null); setGroupTapped(side); setGroupSide(side === ownSide ? null : side); setGroupTaps((taps) => taps + 1); };
+  const viewGroup = (side: Congregation) => { setGroupFailed(null); setGroupMonthFailed(null); setGroupTapped(side); setGroupSide(side === ownSide ? null : side); setGroupTaps((taps) => taps + 1); };
   // After a change of side (here, on 我的帳戶, or on another phone) the page reads everything again for the new
   // side: its group numbers, its prizes, and the profile, whose target from the side left behind is gone.
   const seenOwnSide = useRef<Congregation | null>(null);
@@ -730,8 +743,10 @@ export default function ProgressScreen() {
             onView={ownSide ? viewGroup : undefined}
             failedSide={groupFailed}
             pendingSide={groupTapped}
-            onPreviousMonth={groupMonth > groupFirstMonth ? () => setGroupMonth(shiftMonth(groupMonth, -1)) : undefined}
-            onNextMonth={groupMonth < today.slice(0, 7) ? () => setGroupMonth(shiftMonth(groupMonth, 1)) : undefined}
+            askedMonth={groupMonthFrom !== null ? groupMonth : undefined}
+            failedMonth={groupMonthFailed}
+            onPreviousMonth={groupMonth > groupFirstMonth ? () => stepGroupMonth(-1) : undefined}
+            onNextMonth={groupMonth < today.slice(0, 7) ? () => stepGroupMonth(1) : undefined}
           /> : null}
           <SectionHeader title="個人" />
         </> : null}
