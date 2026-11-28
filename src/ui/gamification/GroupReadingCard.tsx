@@ -26,6 +26,12 @@ export interface GroupReadingCardProps {
   onView?: (side: Congregation) => void;
   /** The side last asked for that could not be read; the card still shows the side it has. */
   failedSide?: Congregation | null;
+  /** The side just tapped while its numbers are still on the way (光佑 20261128「按鈕反應很慢」): the switch shows it at once and the numbers below fade until they come. */
+  pendingSide?: Congregation | null;
+  /** The month just asked for (‹ ›): its name shows at once and the numbers fade until they come. */
+  askedMonth?: string;
+  /** The month last asked for that could not be read; the card went back to the month it has. */
+  failedMonth?: string | null;
 }
 
 function Chevron({ direction }: { direction: 'left' | 'right' }) {
@@ -50,7 +56,9 @@ function Count({ label, readers }: { label: string; readers: number | null }) {
   </View>;
 }
 
-export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onView, failedSide }: GroupReadingCardProps) {
+export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onView, failedSide, pendingSide, askedMonth, failedMonth }: GroupReadingCardProps) {
+  const sideWaiting = pendingSide != null && pendingSide !== view.scope;
+  const waiting = sideWaiting || (askedMonth != null && askedMonth !== view.month);
   const readers = new Map(view.days.map((day) => [day.date, day.readers]));
   const busiest = view.busiest?.readers ?? 0;
   const summary = monthSummary(view);
@@ -64,9 +72,11 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onVi
   return <View style={styles.card} accessibilityLabel={title}>
     <View style={styles.titleRow}>
       <Text accessibilityRole="header" style={styles.title}>{title}</Text>
-      {onView ? <SideSwitch labels={GROUP_NAME} selected={view.scope} onSelect={onView} /> : null}
+      {onView ? <SideSwitch labels={GROUP_NAME} selected={sideWaiting ? pendingSide! : view.scope} onSelect={onView} /> : null}
     </View>
+    <View style={[styles.body, waiting && styles.bodyWaiting]} accessibilityState={{ busy: waiting }}>
     {onlyLooking ? <Text style={styles.looking}>{`${whereSentence(own!)}，這裡只是看看${GROUP_NAME[view.scope]}。`}</Text> : null}
+    {failedMonth && failedMonth !== view.month ? <Text accessibilityRole="alert" style={styles.failed}>{`沒有讀到${monthName(failedMonth)}的人數，請再按一次。`}</Text> : null}
     {failedSide && failedSide !== view.scope ? <Text accessibilityRole="alert" style={styles.failed}>{`沒有讀到${GROUP_NAME[failedSide]}的人數，請再按一次。`}</Text> : null}
     <View style={styles.counts}>
       <Count label="今天 (還在進行)" readers={view.todayReaders} />
@@ -76,7 +86,7 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onVi
     <View style={styles.monthRow}>
       <Text style={[styles.caption, styles.monthCaption]}>每一格是那天讀經的人數，顏色越深人越多</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="上個月" accessibilityState={{ disabled: !onPreviousMonth }} disabled={!onPreviousMonth} onPress={onPreviousMonth} style={[styles.monthStep, !onPreviousMonth && styles.disabled]}><Chevron direction="left" /></Pressable>
-      <Text style={styles.monthLabel}>{monthName(view.month)}</Text>
+      <Text style={styles.monthLabel}>{monthName(askedMonth ?? view.month)}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel="下個月" accessibilityState={{ disabled: !onNextMonth }} disabled={!onNextMonth} onPress={onNextMonth} style={[styles.monthStep, !onNextMonth && styles.disabled]}><Chevron direction="right" /></Pressable>
     </View>
     <View>
@@ -117,11 +127,14 @@ export function GroupReadingCard({ view, onPreviousMonth, onNextMonth, own, onVi
         </View>;
       })}
     </View> : null}
+    </View>
   </View>;
 }
 
 const styles = StyleSheet.create({
   card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, padding: 14, gap: theme.spacing.md },
+  body: { gap: theme.spacing.md },
+  bodyWaiting: { opacity: 0.45 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   title: { flex: 1, color: theme.colors.ink, fontSize: 18, lineHeight: 24, fontWeight: '800' },
   monthRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs },

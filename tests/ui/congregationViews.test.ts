@@ -64,6 +64,24 @@ describe('團體: the 全教會｜青少 switch', () => {
     expect(tree.root.findAll((node) => String(node.type) === 'Pressable' && node.props.accessibilityLabel === '上個月')).toHaveLength(1);
   });
 
+  it('lights the tapped side at once while its numbers are on the way (光佑 20261128 按鈕反應很慢)', () => {
+    const tree = render(React.createElement(GroupReadingCard, { view: churchView, own: 'main', onView: vi.fn(), pendingSide: 'youth' }));
+    expect(tab(tree, '青少').props.accessibilityState).toMatchObject({ selected: true });
+    expect(tab(tree, '全教會').props.accessibilityState).toMatchObject({ selected: false });
+    expect(tree.root.findAll((node) => String(node.type) === 'View' && node.props.accessibilityState?.busy === true)).toHaveLength(1);
+    const settled = render(React.createElement(GroupReadingCard, { view: youthView, own: 'main', onView: vi.fn(), pendingSide: 'youth' }));
+    expect(tab(settled, '青少').props.accessibilityState).toMatchObject({ selected: true });
+    expect(settled.root.findAll((node) => String(node.type) === 'View' && node.props.accessibilityState?.busy === true)).toHaveLength(0);
+  });
+
+  it('names the month just asked for at once and fades the numbers until they come (光佑 20261128)', () => {
+    const tree = render(React.createElement(GroupReadingCard, { view: churchView, own: 'main', onView: vi.fn(), askedMonth: '2026-09', pendingSide: 'main' }));
+    expect(texts(tree)).toContain('9 月');
+    expect(texts(tree)).not.toContain('10 月');
+    expect(tree.root.findAll((node) => String(node.type) === 'View' && node.props.accessibilityState?.busy === true)).toHaveLength(1);
+    expect(tab(tree, '全教會').props.accessibilityState).toMatchObject({ selected: true });
+  });
+
   it('shows no switch where the screen offers none', () => {
     const tree = render(React.createElement(GroupReadingCard, { view: youthView }));
     expect(tree.root.findAll((node) => node.props.accessibilityRole === 'tab')).toHaveLength(0);
