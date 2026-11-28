@@ -80,8 +80,12 @@ describe('積分頁: where I meet', () => {
 
   it('opens the group card on my own side and lets me look at the other one', async () => {
     const tree = await screen();
-    expect(devotionApi.getGroupReading.mock.calls.at(-1)).toHaveLength(1);
+    expect(devotionApi.getGroupReading.mock.calls[0]).toHaveLength(1);
+    // 光佑 20261128 按鈕反應很慢: the other side is read ahead once, so its tap shows at once.
+    expect(devotionApi.getGroupReading.mock.calls.at(-1)?.[1]).toBe('youth');
+    const before = devotionApi.getGroupReading.mock.calls.length;
     await press(pressable(tree, '青少', 'tab'));
+    expect(devotionApi.getGroupReading.mock.calls.length).toBe(before + 1);
     expect(devotionApi.getGroupReading.mock.calls.at(-1)?.[1]).toBe('youth');
     expect(texts(tree)).toEqual(expect.arrayContaining(['青少一起讀經', '我在主堂聚會 (不是青少)，這裡只是看看青少。']));
     await press(pressable(tree, '全教會', 'tab'));
@@ -89,6 +93,47 @@ describe('積分頁: where I meet', () => {
     expect(texts(tree)).toContain('全教會一起讀經');
     expect(texts(tree).join('')).not.toContain('只是看看');
     expect(devotionApi.setCongregation).not.toHaveBeenCalled();
+  });
+
+  // 光佑 20261128「點擊青少或是主堂，按鈕反應很慢」: one read is 0.5 s or more, so a tap never waits for it to light up.
+  const busy = (tree: TestRenderer.ReactTestRenderer) => tree.root.findAll((node) => String(node.type) === 'View' && node.props.accessibilityState?.busy === true).length;
+  const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
+
+  it('shows the other side at once from what it read ahead, while it reads it again', async () => {
+    const tree = await screen();
+    devotionApi.getGroupReading.mockImplementationOnce(() => new Promise(() => undefined));
+    await press(pressable(tree, '青少', 'tab'));
+    expect(pressable(tree, '青少', 'tab').props.accessibilityState).toMatchObject({ selected: true });
+    expect(texts(tree)).toContain('青少一起讀經');
+    expect(busy(tree)).toBe(0);
+  });
+
+  it('lights a tapped side at once and fades the numbers; a failed read lets the next tap ask again', async () => {
+    const base = devotionApi.getGroupReading.getMockImplementation()!;
+    const waiting: Array<{ month: string; resolve: (value: unknown) => void; reject: (reason: unknown) => void }> = [];
+    devotionApi.getGroupReading.mockImplementation((month: string, asked?: 'youth' | 'main') => asked
+      ? new Promise((resolve, reject) => { waiting.push({ month, resolve, reject }); }) as any
+      : base(month));
+    const tree = await screen();
+    expect(waiting).toHaveLength(1);
+    await act(async () => { waiting[0].reject(new Error('offline')); });
+    await press(pressable(tree, '青少', 'tab'));
+    expect(waiting).toHaveLength(2);
+    expect(pressable(tree, '青少', 'tab').props.accessibilityState).toMatchObject({ selected: true });
+    expect(texts(tree)).toContain('全教會一起讀經');
+    expect(busy(tree)).toBe(1);
+    await act(async () => { waiting[1].reject(new Error('offline')); });
+    await flush();
+    expect(pressable(tree, '全教會', 'tab').props.accessibilityState).toMatchObject({ selected: true });
+    expect(texts(tree)).toContain('沒有讀到青少的人數，請再按一次。');
+    expect(busy(tree)).toBe(0);
+    await press(pressable(tree, '青少', 'tab'));
+    expect(waiting).toHaveLength(3);
+    expect(busy(tree)).toBe(1);
+    await act(async () => { waiting[2].resolve(await base(waiting[2].month, 'youth')); });
+    await flush();
+    expect(texts(tree)).toContain('青少一起讀經');
+    expect(busy(tree)).toBe(0);
   });
 
   it('opens the prize picker on my own side and shows the other side without letting me pick it', async () => {

@@ -215,7 +215,7 @@ export default function ProgressScreen() {
     setSheet(preserveScanner ? 'scan' : null);
     if (!preserveView) {
       setProfileStale(Boolean(ownProfile)); setRewards(null); setRedemptions([]); setPrimaryReady(Boolean(ownProfile));
-      setShelfRewards(null); setGroupReading(null); setScoreHistory(null);
+      setShelfRewards(null); setGroupReading(null); groupCache.current.clear(); setGroupTapped(null); setScoreHistory(null);
     }
     if (!preserveScanner) { scannerActivityRequest.current = null; resumeScannerAfterActivity.current = false; }
   }, [client, session, stopPrefetch]);
@@ -470,6 +470,14 @@ export default function ProgressScreen() {
   // 團體 (維護者 2026-10-14): replaces 一起走過. Absent on a backend that predates it; the section then hides.
   const [groupMonth, setGroupMonth] = useState(() => today.slice(0, 7));
   const [groupReading, setGroupReading] = useState<GroupReading | null>(null);
+  // 光佑 20261128「點擊青少或是主堂，按鈕反應很慢」: one request is 0.5 s or more, so each side and month read is kept
+  // here and shown at once on the next tap (then read again), and the other side is read once the page has its own.
+  const groupCache = useRef(new Map<string, GroupReading>());
+  const groupReadingAhead = useRef(new Set<string>());
+  // The side tapped whose numbers have not come yet: the switch shows it and the card fades. Cleared when the
+  // answer comes or fails, never guessed from ownSide; each tap counts, so 「請再按一次」 asks again.
+  const [groupTapped, setGroupTapped] = useState<Congregation | null>(null);
+  const [groupTaps, setGroupTaps] = useState(0);
   const [scoreHistory, setScoreHistory] = useState<ScoreHistory | null>(null);
   const [scoreHistoryMissing, setScoreHistoryMissing] = useState(false);
   // A 靈修 tap redraws only the chart's gold line: it is not in the group's numbers or the points.
@@ -492,13 +500,32 @@ export default function ProgressScreen() {
     let active = true; const generation = viewGeneration.current;
     // The member's own side asks without naming it, as before (and as an older server understands).
     const asked = groupSide;
+    const cache = groupCache.current;
+    const key = `${groupMonth}:${asked ?? `own:${ownSide ?? ''}`}`;
+    const kept = cache.get(key);
+    if (kept) { setGroupReading(kept); setGroupFailed(null); setGroupTapped(null); }
     void (asked ? devotionClient.getGroupReading(groupMonth, asked) : devotionClient.getGroupReading(groupMonth)).then((value) => {
       if (!active || !isViewLive(generation)) return;
-      setGroupReading(value); setGroupFailed(asked && value.scope !== asked ? asked : null);
-    }).catch(() => { if (active && isViewLive(generation) && asked) setGroupFailed(asked); });
+      if (!asked || value.scope === asked) cache.set(key, value);
+      setGroupReading(value); setGroupFailed(asked && value.scope !== asked ? asked : null); setGroupTapped(null);
+      // Read the other side once, quietly, so its first tap needs no wait; a failure is left to that tap.
+      const other: Congregation | null = asked ? null : value.scope === 'main' ? 'youth' : 'main';
+      const ahead = `${groupMonth}:${other}`;
+      if (other && ownSide === value.scope && !cache.has(ahead) && !groupReadingAhead.current.has(ahead)) {
+        groupReadingAhead.current.add(ahead);
+        void devotionClient.getGroupReading(groupMonth, other)
+          .then((seen) => { if (isViewLive(generation) && seen.scope === other) cache.set(ahead, seen); })
+          .catch(() => undefined)
+          .finally(() => { groupReadingAhead.current.delete(ahead); });
+      }
+    }).catch(() => {
+      if (!active || !isViewLive(generation)) return;
+      setGroupTapped(null);
+      if (asked) setGroupFailed(asked);
+    });
     return () => { active = false; };
-  }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, groupMonth, groupSide, isViewLive]);
-  const viewGroup = (side: Congregation) => { setGroupFailed(null); setGroupSide(side === ownSide ? null : side); };
+  }, [devotionClient, session, scope, focused, primaryReady, secondaryRefresh, groupMonth, groupSide, isViewLive, ownSide, groupTaps]);
+  const viewGroup = (side: Congregation) => { setGroupFailed(null); setGroupTapped(side); setGroupSide(side === ownSide ? null : side); setGroupTaps((taps) => taps + 1); };
   // After a change of side (here, on 我的帳戶, or on another phone) the page reads everything again for the new
   // side: its group numbers, its prizes, and the profile, whose target from the side left behind is gone.
   const seenOwnSide = useRef<Congregation | null>(null);
@@ -702,6 +729,7 @@ export default function ProgressScreen() {
             own={ownSide}
             onView={ownSide ? viewGroup : undefined}
             failedSide={groupFailed}
+            pendingSide={groupTapped}
             onPreviousMonth={groupMonth > groupFirstMonth ? () => setGroupMonth(shiftMonth(groupMonth, -1)) : undefined}
             onNextMonth={groupMonth < today.slice(0, 7) ? () => setGroupMonth(shiftMonth(groupMonth, 1)) : undefined}
           /> : null}
